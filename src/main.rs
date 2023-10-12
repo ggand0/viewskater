@@ -1,8 +1,11 @@
-use iced::{
-    button, Button, Column, Element, Image, Length, Row, Sandbox, Settings, Text,
-    Container
-};
 use iced::alignment::{Horizontal, Vertical};
+use iced::theme;
+use iced::widget::{
+    button, checkbox, column, container, horizontal_space, image, radio, row,
+    scrollable, slider, text, text_input, toggler, vertical_space,
+};
+use iced::widget::{Button, Image, Text, Row, Column, Container, Slider};
+use iced::{Color, Element, Font, Length, Pixels, Renderer, Sandbox, Settings};
 
 // Define the application state
 #[derive(Default)]
@@ -38,7 +41,7 @@ impl Sandbox for ImageViewer {
         }
     }
 
-    fn view(&mut self) -> Element<Message> {
+    fn view(&self) -> Element<Message> {
         let image: Element<Message> = if self.image_path.is_empty() {
             Text::new("No image loaded")
                 .size(30)
@@ -54,7 +57,8 @@ impl Sandbox for ImageViewer {
                 .into()
         };
 
-        let load_button: Element<Message> = Button::new(&mut self.load_button_state, Text::new("Load Image"))
+        // let load_button: Element<Message> = Button::new(&mut self.load_button_state, Text::new("Load Image"))
+        let load_button: Element<Message> = button("Load Image")
             .on_press(Message::LoadImage)
             .into();
 
