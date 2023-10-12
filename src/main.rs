@@ -7,6 +7,13 @@ use iced::widget::{
 use iced::widget::{Button, Image, Text, Row, Column, Container, Slider};
 use iced::{Color, Element, Font, Length, Pixels, Renderer, Sandbox, Settings};
 
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+// use log::Level;
+#[macro_use]
+extern crate log;
+
 // Define the application state
 #[derive(Default)]
 struct ImageViewer {
@@ -36,7 +43,33 @@ impl Sandbox for ImageViewer {
         match message {
             Message::LoadImage => {
                 // Simulate loading an image (replace with actual image loading logic)
-                self.image_path = "sample.jpg".to_string();
+                //self.image_path = "sample.jpg".to_string();
+
+
+                
+
+                // Trying to load images in a directory
+                let data_dir = "../data/landscape";
+
+                let mut file_paths: Vec<String> = Vec::new();
+                let paths = fs::read_dir(data_dir).unwrap();
+                /* for path in paths {
+                    // println!("Name: {}", path.unwrap().path().display())
+                    // info!("Name: {}", path.unwrap().path().display());
+                    // log::info!("Name: {}", path.unwrap().path().display());
+                } */
+                for entry in paths {
+                    if let Ok(entry) = entry {
+                        if let Some(file_name) = entry.file_name().to_str() {
+                            // Convert the file name to a String and add it to the vector
+                            file_paths.push(file_name.to_string());
+                        }
+                    }
+                }
+                let file_name = file_paths.get(0).cloned().unwrap_or_default();
+                self.image_path = Path::new(data_dir).join(file_name).to_string_lossy().to_string();
+                println!("Image path: {}", self.image_path);
+
             }
         }
     }
@@ -81,5 +114,9 @@ impl Sandbox for ImageViewer {
 }
 
 fn main() -> iced::Result {
+    env_logger::init();
+    // console_log::init().expect("Initialize logger");
+    // console_log::init_with_level(Level::Debug);
+
     ImageViewer::run(Settings::default())
 }

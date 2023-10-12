@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 iced = {version = "0.10", features = ["image"]}
 iced_native = "0.10"
+env_logger = "0.10"
+console_log = "1.0"
+log = "0.4.20"
