@@ -5,7 +5,7 @@ use iced::widget::{
     scrollable, slider, text, text_input, toggler, vertical_space,
 };
 use iced::widget::{Button, Image, Text, Row, Column, Container, Slider};
-use iced::{Color, Element, Font, Length, Pixels, Renderer, Sandbox, Settings};
+use iced::{Color, Element, Font, Length, Pixels, Renderer, Application, Sandbox, Theme, Settings, Command, Subscription};
 
 use std::fs;
 use std::path::Path;
@@ -28,18 +28,22 @@ enum Message {
 }
 
 
-impl Sandbox for ImageViewer {
+impl Application for ImageViewer {
     type Message = Message;
+    type Theme = Theme;
+    type Executor= iced::executor::Default;
+    type Flags = ();
 
-    fn new() -> Self {
-        ImageViewer::default()
+    // fn new() -> Self {
+    fn new(flags: Self::Flags) -> (Self, Command<Self::Message>) {
+        (ImageViewer::default(), Command::none())
     }
 
     fn title(&self) -> String {
         String::from("Image Viewer")
     }
 
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Command<Self::Message> {
         match message {
             Message::LoadImage => {
                 // Simulate loading an image (replace with actual image loading logic)
@@ -70,6 +74,7 @@ impl Sandbox for ImageViewer {
                 self.image_path = Path::new(data_dir).join(file_name).to_string_lossy().to_string();
                 println!("Image path: {}", self.image_path);
 
+                Command::none()
             }
         }
     }
