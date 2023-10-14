@@ -1,11 +1,15 @@
 use iced::alignment::{Horizontal, Vertical};
+use iced::event::{self, Event};
+use iced::subscription::{self, Subscription};
 use iced::theme;
+use iced::executor;
+use iced::keyboard;
 use iced::widget::{
     button, checkbox, column, container, horizontal_space, image, radio, row,
     scrollable, slider, text, text_input, toggler, vertical_space,
 };
 use iced::widget::{Button, Image, Text, Row, Column, Container, Slider};
-use iced::{Color, Element, Font, Length, Pixels, Renderer, Application, Sandbox, Theme, Settings, Command, Subscription};
+use iced::{Color, Element, Font, Length, Pixels, Renderer, Application, Sandbox, Theme, Settings, Command};
 
 use std::fs;
 use std::path::Path;
@@ -25,6 +29,7 @@ struct ImageViewer {
 #[derive(Debug, Clone)]
 enum Message {
     LoadImage,
+    Event(Event),
 }
 
 
@@ -76,6 +81,17 @@ impl Application for ImageViewer {
 
                 Command::none()
             }
+            Message::Event(event) => match event {
+                Event::Keyboard(keyboard::Event::KeyPressed {
+                    key_code: keyboard::KeyCode::Tab,
+                    modifiers,
+                }) => {
+                    println!("Tab pressed");
+                    Command::none()
+
+                }
+                _ => Command::none(),
+            },
         }
     }
 
@@ -89,6 +105,11 @@ impl Application for ImageViewer {
                 .vertical_alignment(Vertical::Center)
                 .into()
         } else {
+            /* button(Image::new(&self.image_path))
+                .on_press(Message::Left_Click)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into() */
             Image::new(&self.image_path)
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -115,6 +136,10 @@ impl Application for ImageViewer {
             .center_x()
             .center_y()
             .into()
+    }
+
+    fn subscription(&self) -> Subscription<Self::Message> {
+        subscription::events().map(Message::Event)
     }
 }
 
