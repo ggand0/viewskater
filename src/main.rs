@@ -21,7 +21,10 @@ extern crate log;
 // Define the application state
 #[derive(Default)]
 struct ImageViewer {
+    current_image_index: usize,
     image_path: String,
+    image_paths: Vec<String>,
+    dir_loaded: bool,
     load_button_state: button::State,
 }
 
@@ -75,9 +78,12 @@ impl Application for ImageViewer {
                         }
                     }
                 }
+                println!("File paths: {}", file_paths.len());
                 let file_name = file_paths.get(0).cloned().unwrap_or_default();
+                self.image_paths = file_paths;
                 self.image_path = Path::new(data_dir).join(file_name).to_string_lossy().to_string();
                 println!("Image path: {}", self.image_path);
+                self.dir_loaded = true;
 
                 Command::none()
             }
@@ -90,6 +96,37 @@ impl Application for ImageViewer {
                     Command::none()
 
                 }
+
+                Event::Keyboard(keyboard::Event::KeyPressed {
+                    key_code: keyboard::KeyCode::Right,
+                    modifiers,
+                }) => {
+                    println!("ArrowRight pressed");
+                    if (self.dir_loaded) {
+                        if self.current_image_index < self.image_paths.len() - 1 {
+                            self.current_image_index += 1;
+                        }
+                        self.image_path = "../data/landscape/".to_string() + &self.image_paths[self.current_image_index].clone();
+                        println!("Image path: {}", self.image_path)
+                    }
+                    Command::none()
+                }
+
+                Event::Keyboard(keyboard::Event::KeyPressed {
+                    key_code: keyboard::KeyCode::Left,
+                    modifiers,
+                }) => {
+                    println!("ArrowLeft pressed");
+                    if (self.dir_loaded) {
+                        if self.current_image_index > 0 {
+                            self.current_image_index -= 1;
+                        }
+                        self.image_path = "../data/landscape/".to_string() + &self.image_paths[self.current_image_index].clone();
+                        println!("Image path: {}", self.image_path)
+                    }
+                    Command::none()
+                }
+
                 _ => Command::none(),
             },
         }
