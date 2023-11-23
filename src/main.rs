@@ -1,412 +1,450 @@
-// use iced::alignment::{Horizontal, Vertical};
-use iced::event::{self, Event};
+use iced::event::Event;
 use iced::subscription::{self, Subscription};
-// use iced::theme;
-// use iced::executor;
 use iced::keyboard;
 use iced::widget::{
-    button, checkbox, column, container, horizontal_space, image, radio, row,
-    scrollable, slider, text, text_input, toggler, vertical_space,
+    container, row, column, slider, horizontal_space,
 };
-use iced::widget::{Image, Container};
-use iced::{Color, Element, Font, Length, Pixels, Renderer, Application, Theme, Settings, Command};
+use iced::widget::Image;
+use iced::{Element, Length, Application, Theme, Settings, Command, Color, alignment};
 
-use std::fs;
+use iced_aw::menu::{CloseCondition, ItemHeight, ItemWidth, PathHighlight};
+use iced_aw::menu_bar;
+
 use std::path::Path;
 use std::path::PathBuf;
-// use log::Level;
-
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-use std::io::Read;
 
 // #[macro_use]
 extern crate log;
 
 mod image_cache;
 use image_cache::LoadOperation;
-use std::collections::VecDeque;
-use std::sync::Arc;
+mod utils;
+use utils::{async_load_image, empty_async_block, is_file, is_directory, get_file_paths, get_file_index, Error};
+mod ui;
+
 
 // Define the application state
 // #[derive(Default)]
-struct ImageViewer {
+struct DataViewer {
+    // image_path: String,
+    // image_paths: Vec<String>,
+    // error: Option<io::ErrorKind>,
     dir_loaded: bool,
-    // load_button_state: button::State,
-    image_path: String,
+    
+    directory_path: Option<String>,
     current_image_index: usize,
-
-    image_paths: Vec<String>,
-    image_cache: image_cache::ImageCache,
+    
+    // image_cache: image_cache::ImageCache,
+    img_cache: image_cache::ImageCache,
     // current_image: Option<iced::widget::Image<iced::widget::image::Handle>>,
     current_image: iced::widget::image::Handle,
-
     slider_value: u16,
+    prev_slider_value: u16,
+    num_files: usize,
+    title: String,
 }
 
-impl Default for ImageViewer {
+impl Default for DataViewer {
     fn default() -> Self {
         Self {
+            // image_path: String::new(),
+            // image_paths: Vec::new(),
+            // error: None,
             dir_loaded: false,
-            // load_button_state: button::State::new(),
-            image_path: String::new(),
+            directory_path: None,
             current_image_index: 0,
-            image_paths: Vec::new(),
-            image_cache: image_cache::ImageCache::new("../data/landscape", 10).unwrap(),
+            img_cache: image_cache::ImageCache::default(),
             current_image: iced::widget::image::Handle::from_memory(vec![]),
             slider_value: 0,
+            prev_slider_value: 0,
+            num_files: 0,
+            title: String::from("Data Viewer"),
         }
     }
 }
 
 // Define application messages
 #[derive(Debug, Clone)]
-enum Message {
-    LoadImage,
+pub enum Message {
+    OpenFolder,
+    OpenFile,
+    Close,
+    FolderOpened(Result<String, Error>),
     SliderChanged(u16),
     Event(Event),
     // ImageLoaded(Result<(), std::io::ErrorKind>),// std::io::Error doesn't seem to be clonable
     // ImageLoaded(Result<Option<Vec<u8>>, std::io::ErrorKind>),
-    ImageLoaded(Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind>)
+    ImageLoaded(Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind>),
+    // MenuItemClicked(MenuItem),
+    Debug(String),
 }
 
-
-async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
-    let file_path = path.as_ref();
-
-    match tokio::fs::File::open(file_path).await {
-        Ok(mut file) => {
-            let mut buffer = Vec::new();
-            if file.read_to_end(&mut buffer).await.is_ok() {
-                // Ok(Some(buffer))
-                Ok((Some(buffer), Some(operation) ))
-            } else {
-                Err(std::io::ErrorKind::InvalidData)
-            }
-        }
-        Err(e) => Err(e.kind()),
-    }
+#[derive(Debug, Clone, Copy)]
+pub enum MenuItem {
+    Open,
+    Close,
+    Help
 }
 
-impl ImageViewer {
-    // Define your custom function
-    fn my_custom_function(&mut self) {
-        // Implement your custom logic here
-        println!("My custom function is called!");
+impl DataViewer {
+    fn reset_state(&mut self) {
+        self.dir_loaded = false;
+        self.directory_path = None;
+        self.current_image_index = 0;
+        self.img_cache = image_cache::ImageCache::default();
+        self.current_image = iced::widget::image::Handle::from_memory(vec![]);
+        self.slider_value = 0;
+        self.num_files = 0;
+        self.title = String::from("Data Viewer");
     }
 
-    fn load_image_by_index(&mut self, target_index: usize, operation: LoadOperation) -> Command<<ImageViewer as iced::Application>::Message> {
-        let path = self.image_cache.image_paths.get(target_index);
+    fn load_image_by_index(img_cache: &mut image_cache::ImageCache, target_index: usize, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
+        let path = img_cache.image_paths.get(target_index);
         if let Some(path) = path {
-            println!("Path: {}", path.clone().to_string_lossy());
+            // println!("target_index: {}, Loading Path: {}", path.clone().to_string_lossy(), target_index );
             let image_loading_task = async_load_image(path.clone(), operation);
             Command::perform(image_loading_task, Message::ImageLoaded)
-            
         } else {
-            // Handle the case when there are no more images to load
-            // You can return an empty Command or some other variant as needed
             Command::none()
         }
     }
 
-    // , loading_queue: VecDeque<LoadOperation>
-    fn load_image_by_operation(&mut self) -> Command<<ImageViewer as iced::Application>::Message> {
-        println!("load_image_by_operation");
-        println!("loading_queue length: {}", self.image_cache.loading_queue.len());
-        if !self.image_cache.loading_queue.is_empty() {
-        // if !loading_queue.is_empty() {
-            println!("load_image_by_operation: not empty");
-            if let Some(operation) = self.image_cache.loading_queue.pop_front() {
-                println!("load_image_by_operation: operation: {:?}", operation);
-                let loaded_image = self.image_cache.get_current_image().unwrap().to_vec();
-                self.current_image = iced::widget::image::Handle::from_memory(loaded_image);
-
-                self.current_image_index = self.image_cache.current_index;
-                self.slider_value = self.current_image_index as u16;
-                println!("Current image index at base struct: {}", self.current_image_index);
-                println!("image_cache.current_index: {}", self.image_cache.current_index);
+    fn load_image_by_operation(&mut self) -> Command<Message> {
+        if !self.img_cache.loading_queue.is_empty() {
+            if let Some(operation) = self.img_cache.loading_queue.pop_front() {
+                self.img_cache.enqueue_image_being_loaded(operation.clone());
                 match operation {
                     LoadOperation::LoadNext(target_index) => {
-                        self.image_cache.move_next(None);
-                        self.load_image_by_index(target_index, operation);
+                        DataViewer::load_image_by_index(&mut self.img_cache, target_index, operation)
                     }
                     LoadOperation::LoadPrevious(target_index) => {
-                        self.image_cache.move_prev(None);
-                        self.load_image_by_index(target_index, operation);
+                        DataViewer::load_image_by_index(&mut self.img_cache, target_index, operation)
+                    }
+                    LoadOperation::ShiftNext(_target_index) => {
+                        let empty_async_block = empty_async_block(operation);
+                        Command::perform(empty_async_block, Message::ImageLoaded)
+                    }
+                    LoadOperation::ShiftPrevious(_target_index) => {
+                        let empty_async_block = empty_async_block(operation);
+                        Command::perform(empty_async_block, Message::ImageLoaded)
                     }
                 }
-
-                
-
-                Command::none()
             } else {
-                // Handle the case when there are no more images to load
-                // You can return an empty Command or some other variant as needed
                 Command::none()
             }
         } else {
             Command::none()
-        }   
+        }
+            
+    }
+
+    fn initialize_dir_path(&mut self, path: PathBuf) {
+        let mut _file_paths: Vec<PathBuf> = Vec::new();
+        let initial_index: usize;
+        if is_file(&path) {
+            println!("Dropped path is a file");
+            let directory = path.parent().unwrap_or(Path::new(""));
+            let dir = directory.to_string_lossy().to_string();
+            self.directory_path = Some(dir);
+
+            // _file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
+            _file_paths = utils::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
+            let file_index = get_file_index(&_file_paths, &path);
+            // let file_index = get_file_index(&self.image_paths.iter().map(PathBuf::from).collect::<Vec<_>>(), &path);
+            if let Some(file_index) = file_index {
+                println!("File index: {}", file_index);
+                initial_index = file_index;
+                self.current_image_index = file_index;
+                self.slider_value = file_index as u16;
+            } else {
+                println!("File index not found");
+                return;
+            }
+        } else if is_directory(&path) {
+            println!("Dropped path is a directory");
+            self.directory_path = Some(path.to_string_lossy().to_string());
+            _file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
+            initial_index = 0;
+            self.current_image_index = 0;
+            self.slider_value = 0;
+        } else {
+            println!("Dropped path does not exist or cannot be accessed");
+            // Handle the case where the path does not exist or cannot be accessed
+            return;
+        }
+
+        // Debug print the files
+        for path in _file_paths.iter().take(20) {
+            println!("{}", path.display());
+        }
+
+        // self.image_paths = file_paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        println!("File paths: {}", _file_paths.len());
+        self.num_files = _file_paths.len();
+        self.dir_loaded = true;
+
+        // Instantiate a new image cache and load the initial images
+        let mut img_cache =  image_cache::ImageCache::new(
+            _file_paths,
+            2,
+            initial_index,
+        ).unwrap();
+        img_cache.load_initial_images().unwrap();
+        self.current_image = iced::widget::image::Handle::from_memory(img_cache.get_current_image().unwrap().to_vec());
+        self.img_cache = img_cache;
+    }
+
+    fn update_pos(&mut self, pos: usize) {
+        // self.current_image_index = pos;
+        // self.slider_value = pos as u16;
+        // self.title = format!("{}", self.img_cache.image_paths[pos].display());
+
+        let file_paths = self.img_cache.image_paths.clone();
+
+        let mut img_cache =  image_cache::ImageCache::new(
+            file_paths,
+            2,
+            pos,
+        ).unwrap();
+        img_cache.load_initial_images().unwrap();
+        self.current_image = iced::widget::image::Handle::from_memory(img_cache.get_current_image().unwrap().to_vec());
+        self.img_cache = img_cache;
+
+        let loaded_image = self.img_cache.get_current_image().unwrap().to_vec();
+        self.current_image = iced::widget::image::Handle::from_memory(loaded_image);
+    }
+
+    fn move_left(&mut self) -> Command<Message> {
+        // v1
+        // self.img_cache.move_prev();
+        // self.current_image = self.img_cache.get_current_image().unwrap().clone();
+
+        // v2
+        let img_cache = &mut self.img_cache;
+        if img_cache.current_index <=0 {
+            Command::none()
+        } else {
+            // let next_image_index = img_cache.current_index - 1; // WRONG
+            let next_image_index: isize = img_cache.current_index as isize - img_cache.cache_count as isize - 1;
+            if img_cache.is_next_image_index_in_queue(next_image_index) {
+                if next_image_index < 0 {
+                    // No new images to load but shift the cache
+                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious(next_image_index));
+                } else {
+                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious(next_image_index as usize));
+                }
+            }
+            img_cache.print_queue();
+            self.load_image_by_operation()
+        }
+    }
+
+    fn move_right(&mut self) -> Command<Message> {
+        // 1. Naive loading
+        // self.image_path = "../data/landscape/".to_string() + &self.image_paths[self.current_image_index].clone();
+        // println!("Image path: {}", self.image_path)
+
+        // 2. Load from cache (sync)
+        // load the image from cache now
+        // STRATEGY: image at current_index: ALREADY LOADED in cache => set to self.current_image
+        //      image at current_index + cache_count: NOT LOADED in cache => enqueue load operation
+
+        // since it's a new image, update the cache
+        if self.img_cache.image_paths.len() > 0 && self.img_cache.current_index < self.img_cache.image_paths.len() - 1 {
+                        
+            // let next_image_index = img_cache.current_index + 1; // WRONG
+            let next_image_index = self.img_cache.current_index + self.img_cache.cache_count + 1;
+            println!("NEXT_IMAGE_INDEX: {}", next_image_index);
+
+            if self.img_cache.is_next_image_index_in_queue(next_image_index as isize) {
+                if next_image_index >= self.img_cache.image_paths.len() {
+                    // No new images to load, but shift the cache
+                    self.img_cache.enqueue_image_load(LoadOperation::ShiftNext(next_image_index));
+                } else {
+                    self.img_cache.enqueue_image_load(LoadOperation::LoadNext(next_image_index));
+                }
+
+            }
+            self.img_cache.print_queue();
+            self.load_image_by_operation()
+            // ImageViewer::load_image_by_operation_with_cache(&mut self.img_cache)
+        } else {
+            Command::none()
+        }
     }
 }
 
 
-impl Application for ImageViewer {
+impl Application for DataViewer {
     type Message = Message;
     type Theme = Theme;
     type Executor= iced::executor::Default;
     type Flags = ();
 
-    fn new(flags: Self::Flags) -> (Self, Command<Self::Message>) {
-
-        let mut image_cache =  image_cache::ImageCache::new("../data/landscape", 10).unwrap();
-        image_cache.load_initial_images().unwrap();
-        
+    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         (
             Self {
+                // image_path: String::new(),
+                // image_paths: Vec::new(),
+                // error: None,
                 dir_loaded: false,
-                // load_button_state: button::State::new(),
-                image_path: String::new(),
+                directory_path: None,
                 current_image_index: 0,
-                image_paths: Vec::new(),
-                image_cache: image_cache,
+                img_cache: image_cache::ImageCache::default(),
                 current_image: iced::widget::image::Handle::from_memory(vec![]),
                 slider_value: 0,
-                
+                prev_slider_value: 0,
+                num_files: 0,
+                title: String::from("Data Viewer"),
             },
             Command::none()
-            // Command::perform(async_load_image(
-            //     Path::new("../data/landscape/00000000.jpg")), Message::ImageLoaded)
-            
         )
 
     }
 
     fn title(&self) -> String {
-        String::from("Image Viewer")
+        self.title.clone()
     }
 
     fn update(&mut self, message: Message) -> Command<Self::Message> {
         match message {
-            Message::LoadImage => {
-                // Simulate loading an image (replace with actual image loading logic)
-                //self.image_path = "sample.jpg".to_string();
-
-                // Trying to load images in a directory
-                let data_dir = "../data/landscape";
-                let mut file_paths: Vec<String> = Vec::new();
-                let paths = fs::read_dir(data_dir).unwrap();
-                for entry in paths {
-                    if let Ok(entry) = entry {
-                        if let Some(file_name) = entry.file_name().to_str() {
-                            // Convert the file name to a String and add it to the vector
-                            file_paths.push(file_name.to_string());
-                        }
-                    }
-                }
-                self.image_paths = file_paths.clone();
-                println!("File paths: {}", file_paths.len());
-                let file_name = file_paths.get(0).cloned().unwrap_or_default();
-
-                self.image_path = Path::new(data_dir).join(file_name).to_string_lossy().to_string();
-                println!("Image path: {}", self.image_path);
-                self.dir_loaded = true;
-
+            Message::Debug(s) => {
+                self.title = s;
                 Command::none()
             }
+            Message::OpenFolder => {
+                Command::perform(utils::pick_folder(), |result| {
+                    Message::FolderOpened(result)
+                })
+            }
+            Message::OpenFile => {
+                Command::perform(utils::pick_file(), |result| {
+                    Message::FolderOpened(result)
+                })
+            }
+            Message::Close => {
+                self.reset_state();
+                // self.current_image = iced::widget::image::Handle::from_memory(vec![]);
+                println!("directory_path: {:?}", self.directory_path);
+                println!("self.current_image_index: {}", self.current_image_index);
+                println!("self.img_cache.current_index: {}", self.img_cache.current_index);
+                println!("self.img_cache.image_paths.len(): {}", self.img_cache.image_paths.len());
+                Command::none()
+            }
+
+            Message::FolderOpened(result) => {
+                match result {
+                    Ok(dir) => {
+                        println!("Folder opened: {}", dir);
+                        self.initialize_dir_path(PathBuf::from(dir));
+
+                        Command::none()
+                    }
+                    Err(err) => {
+                        println!("Folder open failed: {:?}", err);
+                        Command::none()
+                    }
+                }
+            }
+
             Message::ImageLoaded (result) => {
+                let img_cache = &mut self.img_cache;
                 match result {
                     Ok((image_data, operation)) => {
+                        let _ = img_cache.being_loaded_queue.pop_front();
+
+                        // println!("Image loaded [before shift] img_cache.current_index: {:?}, operation: {:?}", img_cache.current_index, operation);
+                        println!("    Image Loaded");
                         if let Some(op) = operation {
                             match op {
-                                LoadOperation::LoadNext(target_index) => {
-                                    self.image_cache.move_next(image_data);
+                                LoadOperation::LoadNext(_target_index) => {
+                                    let _ = img_cache.move_next(image_data);
                                 }
-                                LoadOperation::LoadPrevious(target_index) => {
-                                    self.image_cache.move_prev(image_data);
+                                LoadOperation::LoadPrevious(_target_index) => {
+                                    let _ = img_cache.move_prev(image_data);
+                                }
+                                LoadOperation::ShiftNext(_target_index) => {
+                                    let _ = img_cache.move_next(None);
+                                }
+                                LoadOperation::ShiftPrevious(_target_index) => {
+                                    let _ = img_cache.move_prev(None);
                                 }
                             }
                         }
-                        let loaded_image = self.image_cache.get_current_image().unwrap().to_vec();
+                        let loaded_image = img_cache.get_current_image().unwrap().to_vec();
                         self.current_image = iced::widget::image::Handle::from_memory(loaded_image);
-                        self.current_image_index = self.image_cache.current_index;
-                        println!("loading_queue length: {}", self.image_cache.loading_queue.len());
+                        self.current_image_index = img_cache.current_index;
+                        self.slider_value = img_cache.current_index as u16;
+                        self.title = format!("{}", img_cache.image_paths[img_cache.current_index].display());
+                        
+                        // println!("loading_queue length: {}", img_cache.loading_queue.len());
                         let command = self.load_image_by_operation();
-                        println!("Current image index: {}", self.current_image_index);
+                        // println!("Current image index: {}", self.current_image_index);
                         command
                             
                     }
                     Err(err) => {
-                        // println!("Image load failed");
                         println!("Image load failed: {:?}", err);
                         Command::none()
                     }
                 }
+
             }
 
             Message::SliderChanged(value) => {
+                self.prev_slider_value = self.slider_value;
                 self.slider_value = value;
-                // Create an async command to perform the async task
-                /*let command = Command::perform(async {
-                    // Call your async function here
-                    let new_index = value as usize;
-                    self.image_cache.on_slider_value_changed(new_index).await;
 
-                    self.slider_value = new_index as u16;
-                    self.current_image_index = new_index;
-                    println!("Current image index: {}", self.current_image_index);
-                    self.current_image = self.image_cache.get_current_image().unwrap().to_vec();
+                if value == self.prev_slider_value + 1 {
+                    // Value changed by +1
+                    // Call a function or perform an action for this case
+                    self.move_right()
 
-                    // Return a result or a unit value as needed
-                    Ok(())
-                }, |result| {
-                    // Handle the result of the async task
-                    match result {
-                        Ok(_) => Message::AsyncTaskCompleted,
-                        Err(_) => Message::AsyncTaskFailed,
-                    }
-                });
-
-                // Dispatch the command
-                Some(command);*/
-
-                /*println!("Slider value: {}", value);
-                let new_index = value as usize;
-                
-
-                self.slider_value = new_index as u16;
-                self.current_image_index = new_index;
-                
-                
-                Command::perform(slider_update(new_index))*/
-
-                Command::none()
+                } else if value == self.prev_slider_value - 1 {
+                    // Value changed by -1
+                    // Call a different function or perform an action for this case
+                    self.move_left()
+                } else {
+                    // Value changed by more than 1 or it's the initial change
+                    // Call another function or handle this case differently
+                    self.update_pos(value as usize);
+                    Command::none()
+                }
             }
 
 
             Message::Event(event) => match event {
+                Event::Window(iced::window::Event::FileDropped(dropped_path)) => {
+                    println!("File dropped: {:?}", dropped_path);
+
+                    self.initialize_dir_path(dropped_path);
+                    
+                    Command::none()
+                }
+
                 Event::Keyboard(keyboard::Event::KeyPressed {
                     key_code: keyboard::KeyCode::Tab,
-                    modifiers,
+                    modifiers: _,
                 }) => {
                     println!("Tab pressed");
                     Command::none()
-
                 }
 
                 Event::Keyboard(keyboard::Event::KeyPressed {
                     key_code: keyboard::KeyCode::Right,
-                    modifiers,
+                    modifiers: _,
                 }) => {
                     println!("ArrowRight pressed");
-
-                    // 1. Naive loading
-                    // self.image_path = "../data/landscape/".to_string() + &self.image_paths[self.current_image_index].clone();
-                    // println!("Image path: {}", self.image_path)
-
-                    // 2. Load from cache (sync)
-                    // load the image from cache now
-                    let loaded_image = self.image_cache.get_current_image().unwrap().to_vec();
-                    self.current_image = iced::widget::image::Handle::from_memory(loaded_image);
-
-
-                    // since it's a new image, update the cache
-                    if self.image_cache.current_index < self.image_cache.image_paths.len() - 1 {
-                        
-                        let next_image_index = self.image_cache.current_index + 1;
-                        if self.image_cache.loading_queue.iter().all(|op| match op {
-                            LoadOperation::LoadNext(index) => index != &next_image_index,
-                            LoadOperation::LoadPrevious(index) => index != &next_image_index,
-                        }) {
-                            // The next image index is not in the queue, so you can enqueue the load operation.
-                            println!("Enqueue next image load operation");
-                            self.image_cache.enqueue_image_load(LoadOperation::LoadNext(next_image_index));
-                            self.slider_value = next_image_index as u16;
-                        }
-
-                        if !self.image_cache.loading_queue.is_empty() {
-                            println!("Right: load_image_by_operation: not empty");
-                            if let Some(operation) = self.image_cache.loading_queue.pop_front() {   
-                                // println!("load_image_by_operation: operation: {:?}", operation);
-                                // self.current_image = self.image_cache.get_current_image().unwrap().to_vec();
-                                // self.current_image_index = self.image_cache.current_index;
-                                // println!("Current image index at base struct: {}", self.current_image_index);
-                                match operation {
-                                    LoadOperation::LoadNext(target_index) => {
-                                        println!("Load next image target_index: {}", target_index);
-                                        self.load_image_by_index(target_index, operation)
-                                    }
-                                    LoadOperation::LoadPrevious(target_index) => {
-                                        self.load_image_by_index(target_index, operation)
-                                    }
-                                }
-                
-                                // Command::none()
-                            } else {
-                                // Handle the case when there are no more images to load
-                                // You can return an empty Command or some other variant as needed
-                                Command::none()
-                            }
-                        } else {
-                            Command::none()
-                        }
-                    } else {
-                        Command::none()
-                    }
+                    self.move_right()
                 }
+
 
                 Event::Keyboard(keyboard::Event::KeyPressed {
                     key_code: keyboard::KeyCode::Left,
-                    modifiers,
+                    modifiers: _,
                 }) => {
                     println!("ArrowLeft pressed");
-                    // v1
-                    // self.image_cache.move_prev();
-                    // self.current_image = self.image_cache.get_current_image().unwrap().clone();
-
-                    // v2
-                    println!("debug0");
-                    if self.image_cache.current_index <=0 {
-                        Command::none()
-                    } else {
-                        let next_image_index = self.image_cache.current_index - 1;
-                        println!("Left: loading_queue length: {}", self.image_cache.loading_queue.len());
-
-                        if self.image_cache.loading_queue.iter().all(|op| match op {
-                            LoadOperation::LoadNext(index) => index != &next_image_index,
-                            LoadOperation::LoadPrevious(index) => index != &next_image_index,
-                        }) {
-                            // The next image index is not in the queue, so you can enqueue the load operation.
-                            println!("Enqueue next image load operation");
-                            self.image_cache.enqueue_image_load(LoadOperation::LoadPrevious(next_image_index));
-                            self.slider_value = next_image_index as u16;
-                        }
-
-                        if !self.image_cache.loading_queue.is_empty() {
-                            println!("Left: load_image_by_operation: not empty");
-                            if let Some(operation) = self.image_cache.loading_queue.pop_front() {   
-                                match operation {
-                                    LoadOperation::LoadNext(target_index) => {
-                                        println!("Load next image target_index: {}", target_index);
-                                        self.load_image_by_index(target_index, operation)
-                                    }
-                                    LoadOperation::LoadPrevious(target_index) => {
-                                        self.load_image_by_index(target_index, operation)
-                                    }
-                                }
-                
-                                // Command::none()
-                            } else {
-                                // Handle the case when there are no more images to load
-                                // You can return an empty Command or some other variant as needed
-                                Command::none()
-                                
-                            }
-                        } else {
-                            Command::none()
-                        }
-                    }
-
+                    self.move_left()
                 }
 
                 _ => Command::none(),
@@ -415,20 +453,39 @@ impl Application for ImageViewer {
     }
 
     fn view(&self) -> Element<Message> {
-        // let image: Element<Message> = Image::new(iced::widget::image::Handle::from_memory(self.current_image.clone()))
-        /*let image: Element<Message> = Image::new(iced::widget::image::Handle::from_memory(self.current_image))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into();*/
+        let mb =  { menu_bar!(ui::menu_1())
+                    .item_width(ItemWidth::Uniform(180))
+                    .item_height(ItemHeight::Uniform(27)) }
+                    .spacing(4.0)
+                    .bounds_expand(30)
+                    .main_offset(13)
+                    .cross_offset(16)
+                    .path_highlight(Some(PathHighlight::MenuActive))
+                    .close_condition(CloseCondition {
+                        leave: true,
+                        click_outside: false,
+                        click_inside: false,
+                    });
+        let r = row!(mb, horizontal_space(Length::Fill))
+            .padding([2, 8])
+            .align_items(alignment::Alignment::Center);
+        let top_bar_style: fn(&iced::Theme) -> container::Appearance =
+            |_theme| container::Appearance {
+                background: Some(Color::TRANSPARENT.into()),
+                ..Default::default()
+            };
+        let top_bar = container(r).width(Length::Fill).style(top_bar_style);
 
-        // let load_button: Element<Message> = Button::new(&mut self.load_button_state, Text::new("Load Image"))
-        let load_button: Element<Message> = button("Load Image")
-            .on_press(Message::LoadImage)
-            .into();
-
-        let h_slider =
-            slider(0..= (self.image_cache.image_paths.len()-1) as u16, self.slider_value, Message::SliderChanged)
-                .width(Length::Fill);
+        let h_slider: iced::widget::Slider<u16, Message>;
+        if self.dir_loaded {
+            h_slider =
+                slider(0..= (self.num_files-1) as u16, self.slider_value, Message::SliderChanged)
+                    .width(Length::Fill);
+        } else {
+            h_slider =
+                slider(0..= 0 as u16, 0, Message::SliderChanged)
+                    .width(Length::Fill);
+        }
 
 
         let image: Element<Message> = Image::new(self.current_image.clone())
@@ -436,30 +493,49 @@ impl Application for ImageViewer {
             .height(Length::Fill)
             .into();
 
-        container(
-            column![
-                // load_button,
-                image,
-                h_slider,
-            ]
-            .spacing(25),
-        )
+        let container = if self.dir_loaded {
+            container(
+                column![
+                    top_bar,
+                    image,
+                    h_slider,
+                ]
+                .spacing(25),
+            )
+            .center_y()
+        } else {
+            container(
+                column![
+                    top_bar,
+                ]
+                .spacing(25),
+            )
+
+        };
+        
+        container
         .height(Length::Fill)
         .width(Length::Fill)
         .center_x()
-        .center_y()
+        // .title(format!("{}", current_image_path.display()))
+        //.title(current_image_path.to_string_lossy().to_string())
         .into()
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        subscription::events().map(Message::Event)
+        // subscription::events().map(Message::Event)
+
+        Subscription::batch(vec![
+            subscription::events().map(Message::Event),
+        ])
+    }
+
+    fn theme(&self) -> Self::Theme {
+        Theme::Dark
     }
 }
 
 fn main() -> iced::Result {
     env_logger::init();
-    // console_log::init().expect("Initialize logger");
-    // console_log::init_with_level(Level::Debug);
-
-    ImageViewer::run(Settings::default())
+    DataViewer::run(Settings::default())
 }

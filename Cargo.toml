@@ -1,15 +1,20 @@
 [package]
-name = "iced_starter"
+name = "data_viewer"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-iced = {version = "0.10", features = ["image", "tokio"]}
+iced = {version = "0.10", features = ["image", "tokio", "svg"]}
 iced_native = "0.10"
+iced_aw = { version = "0.7.0", features = [
+    "menu",
+    "quad",
+    "icon_text"
+] }
 env_logger = "0.10"
 console_log = "1.0"
 log = "0.4.20"
 tokio = { version = "1.32", features = ["full"] }
-#iced_wgpu = "0.10"
+rfd = "0.12"
