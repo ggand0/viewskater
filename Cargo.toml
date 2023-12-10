@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-iced = {version = "0.10", features = ["image", "tokio", "svg"]}
+iced = {version = "0.10", features = ["image", "tokio", "svg", "lazy"]}
 iced_native = "0.10"
 iced_aw = { version = "0.7.0", features = [
     "menu",
@@ -18,3 +18,9 @@ console_log = "1.0"
 log = "0.4.20"
 tokio = { version = "1.32", features = ["full"] }
 rfd = "0.12"
+num-traits = "0.2"
+
+[dependencies.iced_widget]
+#git = "https://github.com/iced-rs/iced.git"
+#rev = "8221794"
+version = "0.1.1"

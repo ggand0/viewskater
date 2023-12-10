@@ -7,12 +7,26 @@ use tokio::io::AsyncReadExt;
 use std::collections::VecDeque;
 
 
-#[derive(Debug, Clone)]
+/*#[derive(Debug, Clone)]
 pub enum LoadOperation {
     LoadNext(usize),     // Includes the target index
     ShiftNext(usize),
     LoadPrevious(usize), // Includes the target index
     ShiftPrevious(isize),
+}*/
+#[derive(Debug, Clone)]
+pub enum LoadOperation {
+    LoadNext((usize, usize)),     // Includes the target index
+    ShiftNext((usize, usize)),
+    LoadPrevious((usize, usize)), // Includes the target index
+    ShiftPrevious((usize, isize)),
+}
+
+// Shared state to track completion of image loading tasks
+#[derive(Default)]
+pub struct ImageLoadState {
+    pane1_loaded: bool,
+    pane2_loaded: bool,
 }
 
 
@@ -20,6 +34,7 @@ pub enum LoadOperation {
 #[derive(Default, Clone)]
 pub struct ImageCache {
     pub image_paths: Vec<PathBuf>,
+    pub num_files: usize,
     pub current_index: usize,
     // pub current_queued_index: isize, // 
     pub cache_count: usize, // Number of images to cache in advance
@@ -34,6 +49,7 @@ impl ImageCache {
     pub fn new(image_paths: Vec<PathBuf>, cache_count: usize, initial_index: usize) -> Result<Self, io::Error> {
         Ok(ImageCache {
             image_paths,
+            num_files: 0,
             current_index: initial_index,
             cache_count,
             cached_images: vec![None; cache_count * 2 + 1], // Initialize cached_images with None
@@ -59,18 +75,18 @@ impl ImageCache {
         self.being_loaded_queue.push_back(operation);
     }
 
-    pub fn is_next_image_index_in_queue(&self, next_image_index: isize) -> bool {
+    pub fn is_next_image_index_in_queue(&self, cache_index: usize, next_image_index: isize) -> bool {
         let next_index_usize = next_image_index as usize;
         self.loading_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext(index) => index != &next_index_usize,
-            LoadOperation::LoadPrevious(index) => index != &next_index_usize,
-            LoadOperation::ShiftNext(index) => index != &next_index_usize,
-            LoadOperation::ShiftPrevious(index) => index != &next_image_index,
+            LoadOperation::LoadNext((c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::LoadPrevious((c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::ShiftNext((c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::ShiftPrevious((c_index, img_index)) => img_index != &next_image_index,
         }) && self.being_loaded_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext(index) => index != &next_index_usize,
-            LoadOperation::LoadPrevious(index) => index != &next_index_usize,
-            LoadOperation::ShiftNext(index) => index != &next_index_usize,
-            LoadOperation::ShiftPrevious(index) => index != &next_image_index,
+            LoadOperation::LoadNext((c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::LoadPrevious((c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::ShiftNext((c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::ShiftPrevious((c_index, img_index)) => img_index != &next_image_index,
         })
     }
 
@@ -116,6 +132,8 @@ impl ImageCache {
                 }
             }
         }
+
+        self.num_files = self.image_paths.len();
 
         Ok(())
     }
