@@ -1,12 +1,23 @@
 use iced::widget::{
-    row, button, text, svg,
+    row, button, text, svg, responsive, container, scrollable, column, toggler
 };
-use iced::{Element, Length, Color, theme, alignment};
+use iced::alignment::{self, Alignment};
+use iced::{Element, Length, Color, theme, Size};
 
 use iced_aw::menu::menu_tree::MenuTree;
 use iced_aw::{helpers::menu_tree, menu_tree};
 
-use crate::Message;
+use iced::widget::pane_grid::{self, PaneGrid};
+// use iced_native::widget::toggler;
+
+use crate::{Message, DataViewer};
+
+#[derive(Debug, Clone)]
+pub enum PaneLayout {
+    SinglePane,
+    DualPane,
+}
+
 
 struct ButtonStyle;
 impl button::StyleSheet for ButtonStyle {
@@ -55,8 +66,11 @@ fn labeled_button<'a>(label: &str, msg: Message) -> button::Button<'a, Message, 
 fn debug_button<'a>(label: &str) -> button::Button<'a, Message, iced::Renderer> {
     labeled_button(label, Message::Debug(label.into()))
 }
+fn nothing_button<'a>(label: &str) -> button::Button<'a, Message, iced::Renderer> {
+    labeled_button(label, Message::Nothing)
+}
 
-/*pub fn sub_menu<'a>(
+pub fn sub_menu_msg<'a>(
     label: &str,
     msg: Message,
     children: Vec<MenuTree<'a, Message, iced::Renderer>>,
@@ -89,48 +103,167 @@ fn debug_button<'a>(label: &str) -> button::Button<'a, Message, iced::Renderer> 
     )
 }
 
-fn debug_sub_menu<'a>(
+fn base_label<'a>(
+    content: impl Into<Element<'a, Message, iced::Renderer>>,
+) -> button::Button<'a, Message, iced::Renderer> {
+    button(content)
+        .padding([4, 8])
+        .style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
+}
+
+fn sub_menu<'a>(
     label: &str,
     children: Vec<MenuTree<'a, Message, iced::Renderer>>,
 ) -> MenuTree<'a, Message, iced::Renderer> {
-    sub_menu(label, Message::Debug(label.into()), children)
+    let handle = svg::Handle::from_path(format!(
+        "{}/caret-right-fill.svg",
+        env!("CARGO_MANIFEST_DIR")
+    ));
+    let arrow = svg(handle)
+        .width(Length::Shrink)
+        .style(theme::Svg::custom_fn(|theme| svg::Appearance {
+            color: Some(theme.extended_palette().background.base.text),
+        }));
+
+    menu_tree(
+        base_label(
+            row![
+                text(label)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .vertical_alignment(alignment::Vertical::Center),
+                arrow
+            ]
+            .align_items(iced::Alignment::Center),
+            // No specific message passed here
+        )
+        .width(Length::Fill)
+        .height(Length::Fill),
+        children,
+    )
 }
 
-fn debug_item<'a>(label: &str) -> MenuTree<'a, Message, iced::Renderer> {
-    menu_tree!(debug_button(label).width(Length::Fill).height(Length::Fill))
-}*/
 
-fn build_menu_items<'a>() -> Vec<MenuTree<'a, Message, iced::Renderer>> {
+fn build_menu_items_v1<'a>() -> Vec<MenuTree<'a, Message, iced::Renderer>> {
     let menu_items = vec![
         // labeled_button(label, Message::OpenFolder(label.into()))
         labeled_button(&String::from("Open Folder"), Message::OpenFolder ),
         labeled_button(&String::from("Open File"), Message::OpenFile ),
         labeled_button(&String::from("Close"), Message::Close ),
+        
     ];
     menu_items.into_iter().map(|item| menu_tree!(item.width(Length::Fill).height(Length::Fill))).collect()
 }
 
-pub fn menu_1<'a>() -> MenuTree<'a, Message, iced::Renderer> {
-    /*let sub_1 = debug_sub_menu(
-        "A sub menu",
-        vec![
-            debug_item("Item"),
-            debug_item("Item"),
-            // sub_2,
-            debug_item("Item"),
-            debug_item("Item"),
-            debug_item("Item"),
-        ],
-    )
-    .width(220);*/
 
-    let c = build_menu_items();
+pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
+    // Other menu items...
+
+    // Create a submenu for pane layout selection
+    let pane_layout_submenu = sub_menu_msg(
+        "Pane Layout",
+        // Message::Debug(String::from("Pane Layout")),
+        Message::Nothing,
+        vec![
+            menu_tree!(
+                labeled_button("Single Pane", Message::TogglePaneLayout(PaneLayout::SinglePane))
+            ),
+            menu_tree!(
+                labeled_button("Dual Pane", Message::TogglePaneLayout(PaneLayout::DualPane))
+            ),
+
+        ],
+    );
 
     let root = menu_tree(
-        debug_button("File"),
+        nothing_button("Controls"),
+        vec![
+            // Other menu items...
+            // separator(),
+            pane_layout_submenu,
+            menu_tree!(row![toggler(
+                Some("Toggle Slider".into()),
+                app.is_slider_dual,
+                Message::ToggleSliderType
+            )])
+        ],
+    );
+
+    root
+}
+
+pub fn menu_1<'a>(_app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
+    let c = build_menu_items_v1();
+    let root = menu_tree(
+        nothing_button("File"),
         c
     )
     .width(110);
 
     root
+}
+
+
+#[derive(Clone, Copy)]
+pub struct Pane {
+    id: usize,
+    pub is_pinned: bool,
+}
+
+impl Pane {
+    pub fn new(id: usize) -> Self {
+        Self {
+            id,
+            is_pinned: false,
+        }
+    }
+}
+
+
+
+mod style {
+    use iced::widget::container;
+    use iced::Theme;
+
+    pub fn title_bar_active(theme: &Theme) -> container::Appearance {
+        let palette = theme.extended_palette();
+
+        container::Appearance {
+            text_color: Some(palette.background.strong.text),
+            background: Some(palette.background.strong.color.into()),
+            ..Default::default()
+        }
+    }
+
+    pub fn title_bar_focused(theme: &Theme) -> container::Appearance {
+        let palette = theme.extended_palette();
+
+        container::Appearance {
+            text_color: Some(palette.primary.strong.text),
+            background: Some(palette.primary.strong.color.into()),
+            ..Default::default()
+        }
+    }
+
+    pub fn pane_active(theme: &Theme) -> container::Appearance {
+        let palette = theme.extended_palette();
+
+        container::Appearance {
+            background: Some(palette.background.weak.color.into()),
+            border_width: 2.0,
+            border_color: palette.background.strong.color,
+            ..Default::default()
+        }
+    }
+
+    pub fn pane_focused(theme: &Theme) -> container::Appearance {
+        let palette = theme.extended_palette();
+
+        container::Appearance {
+            background: Some(palette.background.weak.color.into()),
+            border_width: 2.0,
+            border_color: palette.primary.strong.color,
+            ..Default::default()
+        }
+    }
 }

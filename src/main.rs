@@ -10,6 +10,7 @@ use iced::{Element, Length, Application, Theme, Settings, Command, Color, alignm
 
 use iced_aw::menu::{CloseCondition, ItemHeight, ItemWidth, PathHighlight};
 use iced_aw::menu_bar;
+use iced_native::image::Data;
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -1229,5 +1230,37 @@ impl Application for DataViewer {
 
 fn main() -> iced::Result {
     env_logger::init();
-    DataViewer::run(Settings::default())
+    use iced::window;
+
+    let app_icon_data = include_bytes!("../icon_v0.png"); // Replace with your icon path
+
+    // Load the image using the image crate
+    // self.current_images = vec![iced::widget::image::Handle::from_memory(vec![])
+    // let app_icon_image = iced::widget::image::Handle::from_memory(app_icon_data);
+    // let icon = window::icon::Icon::from(app_icon_image);
+    // let icon = window::Icon::from_rgba(app_icon_data.to_vec(), 64, 64);
+
+    // let icon =  iced::window::icon::from_file("../icon_v0.png");
+    let icon =  iced::window::icon::from_file("icon_v2_cropped.png");
+    match icon {
+        Ok(icon) => {
+            println!("Icon loaded successfully");
+            let settings = Settings {
+                window: window::Settings {
+                    icon: Some(icon),
+                    ..Default::default()
+                },
+                ..Settings::default()
+            };
+            DataViewer::run(settings)
+        }
+        Err(err) => {
+            println!("Icon load failed: {:?}", err);
+            DataViewer::run(Settings::default())
+        }
+    }
+
+
+    // DataViewer::run(Settings::default())
+    
 }
