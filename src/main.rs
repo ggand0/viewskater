@@ -900,7 +900,25 @@ impl Application for DataViewer {
                 }
             }
             PaneLayout::DualPane => {
-                self.title.clone()
+                let left_pane_filename = if self.dir_loaded[0] {
+                    self.img_caches[0].image_paths[self.img_caches[0].current_index]
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .unwrap_or_else(|| String::from("Unknown"))
+                } else {
+                    String::from("No File")
+                };
+    
+                let right_pane_filename = if self.dir_loaded[1] {
+                    self.img_caches[1].image_paths[self.img_caches[1].current_index]
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .unwrap_or_else(|| String::from("Unknown"))
+                } else {
+                    String::from("No File")
+                };
+    
+                format!("Left: {} | Right: {}", left_pane_filename, right_pane_filename)
             }
         }
     }
