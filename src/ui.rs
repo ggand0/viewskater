@@ -1,3 +1,46 @@
+/*#[cfg(target_os = "macos")]
+mod macos {
+    pub use iced_custom as iced;
+    pub use iced_aw_custom as iced_aw;
+    pub use iced_widget_custom as iced_widget;
+}
+
+#[cfg(not(target_os = "macos"))]
+mod other_os {
+    pub use iced;
+    pub use iced_aw;
+    pub use iced_widget;
+}
+
+#[cfg(target_os = "macos")]
+use macos::*;
+
+#[cfg(not(target_os = "macos"))]
+use other_os::*;*/
+
+#[cfg(target_os = "linux")]
+mod other_os {
+    pub use iced;
+    pub use iced_aw;
+    pub use iced_widget;
+}
+
+#[cfg(not(target_os = "linux"))]
+mod macos {
+    pub use iced_custom as iced;
+    pub use iced_aw_custom as iced_aw;
+    pub use iced_widget_custom as iced_widget;
+}
+
+#[cfg(target_os = "linux")]
+use other_os::*;
+
+#[cfg(not(target_os = "linux"))]
+use macos::*;
+// Continue with your code using the imported modules
+
+
+
 use iced::widget::{
     row, button, text, svg, responsive, container, scrollable, column, toggler
 };
@@ -11,6 +54,9 @@ use iced::widget::pane_grid::{self, PaneGrid};
 // use iced_native::widget::toggler;
 
 use crate::{Message, DataViewer};
+
+// use iced::widget::container;
+use iced::Theme;
 
 #[derive(Debug, Clone)]
 pub enum PaneLayout {
@@ -222,6 +268,9 @@ impl Pane {
 
 
 mod style {
+    #[cfg(not(target_os = "linux"))]
+    use iced_custom as iced;
+
     use iced::widget::container;
     use iced::Theme;
 

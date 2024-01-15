@@ -1,3 +1,58 @@
+
+/*#[cfg(target_os = "macos")]
+use iced_custom as iced;
+#[cfg(not(target_os = "macos"))]
+use iced;
+
+#[cfg(target_os = "macos")]
+use iced_aw_custom as iced_aw;
+#[cfg(not(target_os = "macos"))]
+use iced_aw;
+
+#[cfg(target_os = "macos")]
+use iced_widget_custom as iced_widget;
+#[cfg(not(target_os = "macos"))]
+use iced_widget;*/
+
+/*#[cfg(target_os = "macos")]
+mod macos {
+    pub use iced_custom as iced;
+    pub use iced_aw_custom as iced_aw;
+    pub use iced_widget_custom as iced_widget;
+}
+
+#[cfg(not(target_os = "macos"))]
+mod other_os {
+    pub use iced;
+    pub use iced_aw;
+    pub use iced_widget;
+}
+
+#[cfg(target_os = "macos")]
+use macos::*;
+
+#[cfg(not(target_os = "macos"))]
+use other_os::*;*/
+
+#[cfg(target_os = "linux")]
+mod other_os {
+    pub use iced;
+    pub use iced_aw;
+}
+
+#[cfg(not(target_os = "linux"))]
+mod macos {
+    pub use iced_custom as iced;
+    pub use iced_aw_custom as iced_aw;
+}
+
+#[cfg(target_os = "linux")]
+use other_os::*;
+
+#[cfg(not(target_os = "linux"))]
+use macos::*;
+
+
 use iced::event::Event;
 use iced::subscription::{self, Subscription};
 use iced::keyboard;
@@ -83,6 +138,7 @@ pub struct DataViewer {
     // slider_type: SliderType,
     is_slider_dual: bool,
     pane_layout: PaneLayout,
+    last_opened_pane: usize,
 }
 
 impl Default for DataViewer {
@@ -102,13 +158,14 @@ impl Default for DataViewer {
             slider_values: vec![0; 2],
             prev_slider_values: vec![0; 2],
             // num_files: 0,
-            title: String::from("Data Viewer"),
+            title: String::from("View Skater"),
             ver_divider_position: None,
             hor_divider_position: None,
             image_load_state: vec![true; 2],
             pane_count: 2,
             is_slider_dual: false,
             pane_layout: PaneLayout::SinglePane,
+            last_opened_pane: 0,
         }
     }
 }
@@ -120,7 +177,7 @@ pub enum Message {
     Nothing,
     OpenFolder,
     OpenFile,
-    FileDropped(usize, String),
+    FileDropped(isize, String),
     Close,
     FolderOpened(Result<String, Error>),
     SliderChanged(isize, u16),
@@ -143,6 +200,7 @@ pub enum Message {
 impl DataViewer {
     fn reset_state(&mut self) {
         self.dir_loaded = vec![false; 2];
+        self.image_load_state = vec![true; 2];
         self.directory_path = None;
         self.current_image_index = 0;
         //self.img_cache = image_cache::ImageCache::default();
@@ -154,7 +212,8 @@ impl DataViewer {
         self.slider_values = vec![0; 2];
         self.prev_slider_values = vec![0; 2];
         // self.num_files = 0;
-        self.title = String::from("Data Viewer");
+        self.title = String::from("View Skater");
+        self.last_opened_pane = 0;
     }
 
     fn load_image_by_index(img_cache: &mut image_cache::ImageCache, target_index: usize, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
@@ -244,10 +303,16 @@ impl DataViewer {
 
     // Function to check if all images are loaded
     fn are_all_images_loaded(&self) -> bool {
-        self.image_load_state.iter().all(|&loaded| loaded)
+        // self.image_load_state.iter().all(|&loaded| loaded)
+        self.image_load_state
+        .iter()
+        .zip(self.dir_loaded.iter())
+        .all(|(&loaded, &dir)| !dir || (dir && loaded))
     }
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
+        self.last_opened_pane = pane_index;
+        println!("last_opened_pane: {}", self.last_opened_pane);
         let mut _file_paths: Vec<PathBuf> = Vec::new();
         let initial_index: usize;
         if is_file(&path) {
@@ -319,7 +384,13 @@ impl DataViewer {
         println!("current images all: {:?}", self.current_images);
 
         self.img_caches[pane_index] = img_cache;
-            
+        
+        
+        for (cache_index, img_cache) in self.img_caches.iter_mut().enumerate() {
+            let file_paths = img_cache.image_paths.clone();
+            println!("file_paths.len() {:?}", file_paths.len());
+
+        }
         
     }
 
@@ -352,19 +423,37 @@ impl DataViewer {
             // Update all panes
             let mut updated_caches = Vec::with_capacity(self.img_caches.len());
             for (cache_index, img_cache) in self.img_caches.iter_mut().enumerate() {
-                let file_paths = img_cache.image_paths.clone();
+                if self.dir_loaded[cache_index] {
+                    let file_paths = img_cache.image_paths.clone();
+                    println!("file_paths.len() {:?}", file_paths.len());
 
-                let mut img_cache =  image_cache::ImageCache::new(
-                    file_paths,
-                    2,
-                    pos,
-                ).unwrap();
-                img_cache.load_initial_images().unwrap();
-                // self.current_image = iced::widget::image::Handle::from_memory(img_cache.get_current_image().unwrap().to_vec());
-                updated_caches.push(img_cache);
+                    // NOTE: be careful with the `pos`; if pos is greater than img_cache.image_paths.len(), it will panic
+                    let position = pos.min(img_cache.image_paths.len() - 1);
+                    let mut img_cache =  image_cache::ImageCache::new(
+                        file_paths,
+                        2,
+                        position,
+                    ).unwrap();
 
-                // let loaded_image = self.img_caches[cache_index].get_current_image().unwrap().to_vec();
-                // self.current_images[cache_index] = iced::widget::image::Handle::from_memory(loaded_image);
+                    /*let mut img_cache =  image_cache::ImageCache::new(
+                        file_paths,
+                        2,
+                        pos,
+                    ).unwrap();*/
+                    img_cache.load_initial_images().unwrap();
+                    // self.current_image = iced::widget::image::Handle::from_memory(img_cache.get_current_image().unwrap().to_vec());
+                    updated_caches.push(img_cache);
+
+                    // let loaded_image = self.img_caches[cache_index].get_current_image().unwrap().to_vec();
+                    // self.current_images[cache_index] = iced::widget::image::Handle::from_memory(loaded_image);
+                } else {
+                    let mut img_cache =  image_cache::ImageCache::new(
+                        Vec::new(),
+                        2,
+                        0,
+                    ).unwrap();
+                    updated_caches.push(img_cache);
+                }
             }
 
             for (cache_index, new_cache) in updated_caches.into_iter().enumerate() {
@@ -423,10 +512,52 @@ impl DataViewer {
         // v3 (multiple panes)
         let mut commands = Vec::new();
 
+        // Get the current index of the img_cache that has the largest file_paths
+        /*let max_length = img_caches
+        .iter() // Iterate over ImageCache elements
+        .map(|cache| cache.file_paths.len()) // Map each ImageCache to the length of its file_paths
+        .max(); // Find the maximum length*/
+
+        let mut global_current_index = None;
+        let mut index_of_max_length_cache = None;
+        // Find the index of the ImageCache with the longest file_paths
+        if let Some(index_of_max_length) = self.img_caches
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, cache)| cache.image_paths.len())
+            .map(|(index, _)| index)
+        {
+            let current_index_of_max_length = self.img_caches[index_of_max_length].current_index;
+            println!("Index of max length file_paths: {}", index_of_max_length);
+            println!("Current index of max length file_paths: {}", current_index_of_max_length);
+
+            global_current_index = Some(current_index_of_max_length);
+            index_of_max_length_cache = Some(index_of_max_length);
+        } else {
+            println!("No ImageCache found in the array");
+        }
+        println!("global_current_index: {:?}", global_current_index);
+        println!("index_of_max_length_cache: {:?}", index_of_max_length_cache);
+
+
         for (cache_index, img_cache) in self.img_caches.iter_mut().enumerate() {
-            if img_cache.current_index <=0 {
+            println!("current_index: {}, global_current_index: {:?}", img_cache.current_index, global_current_index);
+            println!("cache_index, index_of_max_length_cache: {}, {}", cache_index, index_of_max_length_cache.unwrap());
+            /*if img_cache.current_index <=0 || cache_index == index_of_max_length_cache.unwrap() ||
+                img_cache.current_index < global_current_index.unwrap() {
                 commands.push(Command::none())
-            } else {
+            } else {*/
+            if img_cache.current_index <=0 {
+                commands.push(Command::none());
+                continue;
+            }
+
+            if cache_index != index_of_max_length_cache.unwrap() && img_cache.current_index < global_current_index.unwrap() {
+                self.image_load_state[cache_index] = true;
+            }
+
+            if cache_index == index_of_max_length_cache.unwrap() ||
+                cache_index != index_of_max_length_cache.unwrap() && img_cache.current_index == global_current_index.unwrap() {
                 // let next_image_index = img_cache.current_index - 1; // WRONG
                 let next_image_index: isize = img_cache.current_index as isize - img_cache.cache_count as isize - 1;
                 if img_cache.is_next_image_index_in_queue(cache_index, next_image_index) {
@@ -441,6 +572,8 @@ impl DataViewer {
                 // let command = DataViewer::load_image_by_operation(&mut img_cache);
                 let command = DataViewer::load_image_by_operation(img_cache);
                 commands.push(command);
+            } else {
+                commands.push(Command::none())
             }
         }
 
@@ -484,6 +617,7 @@ impl DataViewer {
         let mut commands = Vec::new();
 
         for (cache_index, img_cache) in self.img_caches.iter_mut().enumerate() {
+            // println!("move_right_all(): cache_index: {}", cache_index);
             if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
                             
                 // let next_image_index = img_cache.current_index + 1; // WRONG
@@ -539,22 +673,29 @@ impl DataViewer {
     fn move_right_index (&mut self, pane_index: usize) -> Command<Message> {
         // NOTE: pane_index == cache_index
         let img_cache = &mut self.img_caches[pane_index];
-        if img_cache.current_index <=0 {
-            Command::none()
-        } else {
+        // if img_cache.current_index <=0 {
+        //     Command::none()
+        // } else {
+        if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
             // let next_image_index = img_cache.current_index - 1; // WRONG
-            let next_image_index: isize = img_cache.current_index as isize - img_cache.cache_count as isize - 1;
-            if img_cache.is_next_image_index_in_queue(pane_index, next_image_index) {
-                if next_image_index < 0 {
-                    // No new images to load but shift the cache
-                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((pane_index, next_image_index)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((pane_index, next_image_index as usize)));
+            let next_image_index = img_cache.current_index + img_cache.cache_count + 1;
+                println!("NEXT_IMAGE_INDEX: {}", next_image_index);
+                println!("image load state: {:?}", self.image_load_state);
+
+                if img_cache.is_next_image_index_in_queue(pane_index, next_image_index as isize) {
+                    if next_image_index >= img_cache.image_paths.len() {
+                        // No new images to load, but shift the cache
+                        img_cache.enqueue_image_load(LoadOperation::ShiftNext((pane_index, next_image_index)));
+                    } else {
+                        img_cache.enqueue_image_load(LoadOperation::LoadNext((pane_index, next_image_index)));
+                    }
+
                 }
-            }
             img_cache.print_queue();
             // let command = DataViewer::load_image_by_operation(&mut img_cache);
             DataViewer::load_image_by_operation(img_cache)
+        } else {
+            Command::none()
         }
     }
     // UI
@@ -733,21 +874,35 @@ impl Application for DataViewer {
                 slider_values: vec![0; 2],
                 prev_slider_values: vec![0; 2],
                 // num_files: 0,
-                title: String::from("Data Viewer"),
+                title: String::from("View Skater"),
                 ver_divider_position: None,
                 hor_divider_position: None,
                 image_load_state: vec![true; 2],
                 pane_count: 2,
                 is_slider_dual: false,
                 pane_layout: PaneLayout::SinglePane,
+                last_opened_pane: 0,
             },
             Command::none()
         )
 
     }
-
+    
     fn title(&self) -> String {
-        self.title.clone()
+        match self.pane_layout  {
+            PaneLayout::SinglePane => {
+                if self.dir_loaded[0] {
+                    // return string here
+                    self.img_caches[0].image_paths[self.img_caches[0].current_index].display().to_string()
+
+                } else {
+                    self.title.clone()
+                }
+            }
+            PaneLayout::DualPane => {
+                self.title.clone()
+            }
+        }
     }
 
     fn update(&mut self, message: Message) -> Command<Self::Message> {
@@ -772,7 +927,32 @@ impl Application for DataViewer {
             Message::FileDropped(pane_index, dropped_path) => {
                 println!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
 
-                self.initialize_dir_path( PathBuf::from(dropped_path), pane_index);
+                // Workaround: when the index is -2,
+                // 1. when the both panes are empty, load it into the first pane
+                // 2. when the first pane is loaded and second is empty, load it into the second pane
+                // 3. when the first pane is empty and second is loaded, load it into the first pane
+                // 4. when both panes are loaded, load it into the pane not in `self.last_opened_pane`
+                println!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}", self.dir_loaded, pane_index, self.last_opened_pane);
+                /*if pane_index == -2 {
+                    if !self.dir_loaded[0] && !self.dir_loaded[1] {
+                        self.initialize_dir_path( PathBuf::from(dropped_path), 0);
+                    } else if self.dir_loaded[0] && !self.dir_loaded[1] {
+                        self.initialize_dir_path( PathBuf::from(dropped_path), 1);
+                    } else if !self.dir_loaded[0] && self.dir_loaded[1] {
+                        self.initialize_dir_path( PathBuf::from(dropped_path), 0);
+                    } else if self.dir_loaded[0] && self.dir_loaded[1] {
+                        if self.last_opened_pane == 0 {
+                            self.initialize_dir_path( PathBuf::from(dropped_path), 1);
+                        } else {
+                            self.initialize_dir_path( PathBuf::from(dropped_path), 0);
+                        }
+                    }
+
+                    return Command::none();
+                }*/
+
+
+                self.initialize_dir_path( PathBuf::from(dropped_path), pane_index as usize);
                 
                 Command::none()
             
@@ -912,9 +1092,20 @@ impl Application for DataViewer {
                             }
                         }
 
-                        let loaded_image = img_cache.unwrap().get_current_image().unwrap().to_vec();
-                        let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
-                        self.current_images[cache_index] = handle;
+                        if let Some(mut cache) = img_cache.take() {
+                            let loaded_image = cache.get_current_image().unwrap().to_vec();
+                            let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+                            self.current_images[cache_index] = handle;
+                        
+                            // Update slider values
+                            if self.is_slider_dual {
+                                self.slider_values[cache_index] = cache.current_index as u16;
+                            } else {
+                                self.slider_value = cache.current_index as u16;
+                            }
+
+                            img_cache = Some(cache);
+                        }
 
                         println!("image load state: {:?}", self.image_load_state);
 
@@ -958,6 +1149,7 @@ impl Application for DataViewer {
                     println!("pane_index {} slider value: {}", pane_index, self.slider_values[pane_index]);
                     
                     if value == self.prev_slider_values[pane_index] + 1 {
+                        println!("move_right_index");
                         // Value changed by +1
                         // Call a function or perform an action for this case
                         self.move_right_index(pane_index)
@@ -965,10 +1157,12 @@ impl Application for DataViewer {
                     } else if value == self.prev_slider_values[pane_index].saturating_sub(1) {
                         // Value changed by -1
                         // Call a different function or perform an action for this case
+                        println!("move_left_index");
                         self.move_left_index(pane_index)
                     } else {
                         // Value changed by more than 1 or it's the initial change
                         // Call another function or handle this case differently
+                        println!("update_pos");
                         self.update_pos(pane_index as isize, value as usize);
                         Command::none()
                     }
@@ -978,6 +1172,22 @@ impl Application for DataViewer {
 
             Message::Event(event) => match event {
                 // Only using for single pane layout
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
+                Event::Window(iced::window::Event::FileDropped(dropped_paths, _position)) => {
+                    match self.pane_layout {
+                        PaneLayout::SinglePane => {
+                            println!("File dropped: {:?}", dropped_paths.clone());
+
+                            self.initialize_dir_path(dropped_paths[0].clone(), 0);
+                            
+                            Command::none()
+                        },
+                        PaneLayout::DualPane => {
+                            Command::none()
+                        }
+                    }
+                }
+                #[cfg(target_os = "linux")]
                 Event::Window(iced::window::Event::FileDropped(dropped_path)) => {
                     match self.pane_layout {
                         PaneLayout::SinglePane => {
@@ -1006,8 +1216,13 @@ impl Application for DataViewer {
                     modifiers: _,
                 }) => {
                     println!("ArrowRight pressed");
+                    println!("image load state bf: {:?}", self.image_load_state);
+                    println!("dir_loaded: {:?}", self.dir_loaded);
+                    println!("are_all_images_loaded: {}", self.are_all_images_loaded());
                     if self.are_all_images_loaded() {
                         self.init_image_loaded(); // [false, false]
+                        println!("image load state af: {:?}", self.image_load_state);
+
                         // if a pane has reached the directory boundary, mark as loaded
                         let finished_indices: Vec<usize> = self.img_caches.iter().enumerate().filter_map(|(index, img_cache)| {
                             if img_cache.image_paths.len() > 0 && img_cache.current_index >= img_cache.image_paths.len() - 1 {
@@ -1016,9 +1231,10 @@ impl Application for DataViewer {
                                 None
                             }
                         }).collect();
-                        for finished_index in finished_indices {
+                        for finished_index in finished_indices.clone() {
                             self.mark_image_loaded(finished_index);
                         }
+                        println!("finished_indices: {:?}", finished_indices);
 
                         self.move_right_all()
                     } else {
@@ -1232,7 +1448,7 @@ fn main() -> iced::Result {
     env_logger::init();
     use iced::window;
 
-    let app_icon_data = include_bytes!("../icon_v0.png"); // Replace with your icon path
+    // let app_icon_data = include_bytes!("../icon_v0.png"); // Replace with your icon path
 
     // Load the image using the image crate
     // self.current_images = vec![iced::widget::image::Handle::from_memory(vec![])
@@ -1241,7 +1457,9 @@ fn main() -> iced::Result {
     // let icon = window::Icon::from_rgba(app_icon_data.to_vec(), 64, 64);
 
     // let icon =  iced::window::icon::from_file("../icon_v0.png");
-    let icon =  iced::window::icon::from_file("icon_v2_cropped.png");
+    
+    // let icon =  iced::window::icon::from_file("v2.png");
+    let icon =  iced::window::icon::from_file("icon.ico");
     match icon {
         Ok(icon) => {
             println!("Icon loaded successfully");

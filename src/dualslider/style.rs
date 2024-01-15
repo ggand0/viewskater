@@ -1,4 +1,24 @@
 //! Change the apperance of a slider.
+
+#[cfg(target_os = "linux")]
+mod other_os {
+    pub use iced;
+    pub use iced_aw;
+    pub use iced_widget;
+}
+
+#[cfg(not(target_os = "linux"))]
+mod macos {
+    pub use iced_custom as iced;
+    pub use iced_aw_custom as iced_aw;
+    pub use iced_widget_custom as iced_widget;
+}
+
+#[cfg(target_os = "linux")]
+use other_os::*;
+
+#[cfg(not(target_os = "linux"))]
+use macos::*;
 // use iced_core::{BorderRadius, Color};
 use iced_widget::{
     core::{BorderRadius, Color},

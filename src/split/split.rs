@@ -2,6 +2,48 @@
 //!
 //! *This API requires the following crate features to be activated: split*
 
+//#[cfg(not(target_os = "macos"))]
+
+/*#[cfg(target_os = "macos")]
+mod macos {
+    pub use iced_custom as iced;
+    pub use iced_aw_custom as iced_aw;
+    pub use iced_widget_custom as iced_widget;
+}
+
+#[cfg(not(target_os = "macos"))]
+mod other_os {
+    pub use iced;
+    pub use iced_aw;
+    pub use iced_widget;
+}
+
+#[cfg(target_os = "macos")]
+use macos::*;
+
+#[cfg(not(target_os = "macos"))]
+use other_os::*;*/
+
+#[cfg(target_os = "linux")]
+mod other_os {
+    pub use iced;
+    pub use iced_aw;
+    pub use iced_widget;
+}
+
+#[cfg(not(target_os = "linux"))]
+mod macos {
+    pub use iced_custom as iced;
+    pub use iced_aw_custom as iced_aw;
+    pub use iced_widget_custom as iced_widget;
+}
+
+#[cfg(target_os = "linux")]
+use other_os::*;
+
+#[cfg(not(target_os = "linux"))]
+use macos::*;
+
 use iced_widget::{
     container,
     core::{
@@ -18,6 +60,7 @@ use iced_widget::{
     },
     Container, Row,
 };
+
 use std::time::{Duration, Instant};
 
 // pub use crate::style::split::{Appearance, StyleSheet};
@@ -55,6 +98,7 @@ where
     second: Element<'a, Message, Renderer>,
     /// The position of the divider.
     divider_position: Option<u16>,
+    divider_init_position: Option<u16>,
     /// The axis to split at.
     axis: Axis,
     /// The padding around the elements of the [`Split`].
@@ -75,7 +119,7 @@ where
     on_resize: Box<dyn Fn(u16) -> Message>,
     on_double_click: Box<dyn Fn(u16) -> Message>,
     // on_drop: Option<Box<dyn Fn(u16) -> Message>>,
-    on_drop: Box<dyn Fn(usize, String) -> Message>,
+    on_drop: Box<dyn Fn(isize, String) -> Message>,
 
     /// The style of the [`Split`].
     style: <Renderer::Theme as StyleSheet>::Style,
@@ -111,7 +155,7 @@ where
         B: Into<Element<'a, Message, Renderer>>,
         F: 'static + Fn(u16) -> Message,
         G: 'static + Fn(u16) -> Message,
-        H: 'static + Fn(usize, String) -> Message,
+        H: 'static + Fn(isize, String) -> Message,
     {
         Self {
             first: Container::new(first.into())
@@ -123,6 +167,7 @@ where
                 .height(Length::Fill)
                 .into(),
             divider_position,
+            divider_init_position: divider_position,
             axis,
             padding: 0.0,
             spacing: 5.0,
@@ -244,6 +289,13 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) -> event::Status {
+        // println!("self.divider_position: {:?}", self.divider_position);
+        // println!("Cursor position: {:?}", cursor.position().unwrap_or_default());
+        for child_layout in layout.children() {
+            let bounds = child_layout.bounds();
+            // println!("cursor.is_over(bounds): {:?}", cursor.is_over(bounds));
+        }
+
         let split_state: &mut SplitState = state.state.downcast_mut();
         let mut children = layout.children();
 
@@ -286,11 +338,15 @@ where
                             };
     
                             if let Some(position) = double_click_position {
+                                
+                                self.divider_position = None;
+                                split_state.dragging = false;
                                 shell.publish((self.on_double_click)(position as u16));
                             }
                         } else {
                             // Reset the timer for a new potential double-click
                             split_state.last_click_time = Some(Instant::now());
+                            
                         }
                     } else {
                         split_state.last_click_time = Some(Instant::now());
@@ -298,12 +354,27 @@ where
                 }
             }
 
-            Event::Window(iced::window::Event::FileDropped(path)) => {
+
+            // #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            Event::Window(iced::window::Event::FileHovered(position)) => {
+                // Access the cursor position from the FileHovered event
+                // println!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
+                println!("FILEHOVER POSITION: {:?}", position);
+            }
+
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            Event::Window(iced::window::Event::FileDropped(paths, position)) => {
+                println!("FILEDROP POSITION: {:?}", position);
                 let mut index = 0;
-            
+                println!("layout children length: {}", layout.children().count());
                 for child_layout in layout.children() {
-                    println!("Child layout: {:?}", child_layout);
+                    // println!("Child layout: {:?}", child_layout);
                     let bounds = child_layout.bounds();
+                    println!("Child bounds: {:?}", bounds);
+                    // println!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
+                    
+                    // println!("Cursor position: {:?}", cursor.position());
 
                     // TODO: Implement enum LayoutItem { Pane, Divider }
                     /////// BEGIN HACK
@@ -313,8 +384,50 @@ where
                     }
                     /////// END HACK
             
+                    let custom_position = Point::new(position.x as f32, position.y as f32);
+                    println!("custom_position, bounds.contains(custom_position: {:?}, {:?}", custom_position, bounds.contains(custom_position));
+                    if bounds.contains(custom_position) {
+                        shell.publish((self.on_drop)(index, paths[0].to_string_lossy().to_string()));
+                        return event::Status::Captured;
+                    }
+            
+                    index += 1;
+                }
+            }
+
+            #[cfg(target_os = "linux")]
+            Event::Window(iced::window::Event::FileHovered(path)) => {
+                // Access the cursor position from the FileHovered event
+                println!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
+            }
+    
+            #[cfg(target_os = "linux")]
+            Event::Window(iced::window::Event::FileDropped(path)) => {
+                let mut index = 0;
+                println!("layout children length: {}", layout.children().count());
+                for child_layout in layout.children() {
+                    println!("Child layout: {:?}", child_layout);
+                    let bounds = child_layout.bounds();
+                    println!("Child bounds: {:?}", bounds);
+                    println!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
+                    
+                    // println!("Cursor position: {:?}", cursor.position());
+    
+                    // TODO: Implement enum LayoutItem { Pane, Divider }
+                    /////// BEGIN HACK
+                    if (bounds.width - 5.0).abs() < std::f32::EPSILON {
+                        // This is a divider
+                        continue;
+                    }
+                    /////// END HACK
+    
+                    // Workaround for the winit bug on Mac OS when dragging files with trackpad
+                    /*if cursor.position().unwrap_or_default() == (iced::Point { x: 0.0, y: 0.0 }) {
+                        shell.publish(((self.on_drop)(-2, path.to_string_lossy().to_string())));
+                        return event::Status::Captured;
+                    }*/
+            
                     if bounds.contains(cursor.position().unwrap_or_default()) {
-                        
                         shell.publish((self.on_drop)(index, path.to_string_lossy().to_string()));
                         return event::Status::Captured;
                     }
@@ -322,6 +435,7 @@ where
                     index += 1;
                 }
             }
+
 
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerLifted { .. }) => {
@@ -332,12 +446,12 @@ where
 
             Event::Mouse(mouse::Event::CursorMoved { position })
             | Event::Touch(touch::Event::FingerMoved { position, .. }) => {
+                // println!("CursorMoved Cursor position: {:?}", position);
                 if split_state.dragging {
                     let position = match self.axis {
                         Axis::Horizontal => position.y,
                         Axis::Vertical => position.x,
                     };
-
                     shell.publish((self.on_resize)(position as u16));
                 }
             }
@@ -690,6 +804,7 @@ where
             })
     }
 }
+
 
 /// Do a horizontal split.
 fn horizontal_split<'a, Message, Renderer>(
