@@ -724,7 +724,6 @@ impl DataViewer {
                 self.img_caches.resize(2, Default::default()); // Resize to hold 2 image caches
                 println!("self.img_caches.len(): {}", self.img_caches.len());
                 //self.pane_layout = PaneLayout::SinglePane;
-                
             }
         }
         // Update other app state as needed...
@@ -1116,10 +1115,15 @@ impl Application for DataViewer {
                             self.current_images[cache_index] = handle;
                         
                             // Update slider values
+                            
                             if self.is_slider_dual {
+                                println!("self.slider_values: {:?}", self.slider_values);
                                 self.slider_values[cache_index] = cache.current_index as u16;
+                                println!("self.slider_values: {:?}", self.slider_values);
                             } else {
+                                println!("self.slider_value: {}", self.slider_value);
                                 self.slider_value = cache.current_index as u16;
+                                println!("self.slider_value: {}", self.slider_value);
                             }
 
                             img_cache = Some(cache);
@@ -1138,6 +1142,7 @@ impl Application for DataViewer {
             }
 
             Message::SliderChanged(pane_index, value) => {
+                println!("pane_index {} slider value: {}", pane_index, value);
                 // -1 means the master slider (broadcast operation to all panes)
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
@@ -1359,8 +1364,9 @@ impl Application for DataViewer {
                         )*/
                         DualSlider::new(
                             0..= (self.img_caches[0].num_files - 1) as u16,
-                            self.slider_values[0],
-                            0,
+                            // self.slider_values[0],
+                            self.slider_value,
+                            -1,
                             Message::SliderChanged
                         )
                         .width(Length::Fill)
@@ -1408,6 +1414,7 @@ impl Application for DataViewer {
                         }
                     });
                     if self.dir_loaded[0] || self.dir_loaded[1] {
+                        println!("self.slider_value at draw: {}", self.slider_value);
                         let h_slider = DualSlider::new(
                             0..= (max_num_files - 1) as u16,
                             self.slider_value,
