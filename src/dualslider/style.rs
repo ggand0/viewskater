@@ -22,7 +22,7 @@ use macos::*;
 // use iced_core::{BorderRadius, Color};
 use iced_widget::{
     core::{BorderRadius, Color},
-    style::Theme, style::Theme::Light,
+    style::Theme, //style::Theme::Light,
 };
 
 /// The appearance of a slider.

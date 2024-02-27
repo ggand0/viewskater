@@ -63,10 +63,8 @@ use iced_widget::{
 
 use std::time::{Duration, Instant};
 
-// pub use crate::style::split::{Appearance, StyleSheet};
-// mod style;
-// use style::{Appearance, StyleSheet};
-use crate::split::style::{Appearance, StyleSheet};
+//use crate::split::style::{Appearance, StyleSheet};
+use crate::split::style::StyleSheet;
 
 /// A split can divide the available space by half to display two different elements.
 /// It can split horizontally or vertically.
@@ -292,7 +290,7 @@ where
         // println!("self.divider_position: {:?}", self.divider_position);
         // println!("Cursor position: {:?}", cursor.position().unwrap_or_default());
         for child_layout in layout.children() {
-            let bounds = child_layout.bounds();
+            let _bounds = child_layout.bounds();
             // println!("cursor.is_over(bounds): {:?}", cursor.is_over(bounds));
         }
 
@@ -396,7 +394,7 @@ where
             }
 
             #[cfg(target_os = "linux")]
-            Event::Window(iced::window::Event::FileHovered(path)) => {
+            Event::Window(iced::window::Event::FileHovered(_path)) => {
                 // Access the cursor position from the FileHovered event
                 println!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
             }

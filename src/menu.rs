@@ -42,21 +42,18 @@ use macos::*;
 
 
 use iced::widget::{
-    row, button, text, svg, responsive, container, scrollable, column, toggler
+    row, button, text, svg, toggler
 };
-use iced::alignment::{self, Alignment};
-use iced::{Element, Length, Color, theme, Size};
+use iced::alignment;
+use iced::{Element, Length, Color, theme};
 
 use iced_aw::menu::menu_tree::MenuTree;
 use iced_aw::{helpers::menu_tree, menu_tree};
 
-use iced::widget::pane_grid::{self, PaneGrid};
-// use iced_native::widget::toggler;
-
 use crate::{Message, DataViewer};
 
 // use iced::widget::container;
-use iced::Theme;
+//use iced::Theme;
 
 #[derive(Debug, Clone)]
 pub enum PaneLayout {
@@ -109,9 +106,9 @@ fn labeled_button<'a>(label: &str, msg: Message) -> button::Button<'a, Message, 
     )
 }
 
-fn debug_button<'a>(label: &str) -> button::Button<'a, Message, iced::Renderer> {
+/*fn debug_button<'a>(label: &str) -> button::Button<'a, Message, iced::Renderer> {
     labeled_button(label, Message::Debug(label.into()))
-}
+}*/
 fn nothing_button<'a>(label: &str) -> button::Button<'a, Message, iced::Renderer> {
     labeled_button(label, Message::Nothing)
 }
@@ -149,7 +146,7 @@ pub fn sub_menu_msg<'a>(
     )
 }
 
-fn base_label<'a>(
+/*fn base_label<'a>(
     content: impl Into<Element<'a, Message, iced::Renderer>>,
 ) -> button::Button<'a, Message, iced::Renderer> {
     button(content)
@@ -187,7 +184,7 @@ fn sub_menu<'a>(
         .height(Length::Fill),
         children,
     )
-}
+}*/
 
 
 fn build_menu_items_v1<'a>() -> Vec<MenuTree<'a, Message, iced::Renderer>> {
@@ -249,25 +246,8 @@ pub fn menu_1<'a>(_app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
     root
 }
 
-
-#[derive(Clone, Copy)]
-pub struct Pane {
-    id: usize,
-    pub is_pinned: bool,
-}
-
-impl Pane {
-    pub fn new(id: usize) -> Self {
-        Self {
-            id,
-            is_pinned: false,
-        }
-    }
-}
-
-
-
-mod style {
+// 022524: This one doesn't seem to be used
+/*mod style {
     #[cfg(not(target_os = "linux"))]
     use iced_custom as iced;
 
@@ -315,4 +295,4 @@ mod style {
             ..Default::default()
         }
     }
-}
+}*/

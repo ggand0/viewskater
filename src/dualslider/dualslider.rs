@@ -58,7 +58,7 @@ use other_os::*;
 use macos::*;
 
 
-use iced_widget::core::{
+/*use iced_widget::core::{
     self, event, layout, Element, Layout, Length, Point, Rectangle, Shell, Size, Pixels,
     mouse::{self, Cursor},
     renderer, touch,
@@ -67,9 +67,21 @@ use iced_widget::core::{
         Widget,
     },
     Clipboard, Color, Event, Padding,
+};*/
+use iced_widget::core::{
+    self, event, layout, Element, Layout, Length, Point, Rectangle, Shell, Size, Pixels,
+    mouse,
+    renderer, touch,
+    widget::{
+        tree::{self, State, Tree},
+        Widget,
+    },
+    Clipboard, Color, Event,
 };
 
-use crate::dualslider::style::{Appearance, Handle, HandleShape, Rail, StyleSheet};
+//use crate::dualslider::style::{Appearance, Handle, HandleShape, Rail, StyleSheet};
+use crate::dualslider::style::{HandleShape, StyleSheet};
+
 //use num_traits
 // use num_traits::NumCast;
 use std::ops::RangeInclusive;
@@ -245,7 +257,7 @@ where
     }*/
     fn layout(
             &self,
-            renderer: &Renderer,
+            _renderer: &Renderer,
             limits: &layout::Limits,
         ) -> layout::Node {
         let limits = limits.width(self.width).height(self.height);
