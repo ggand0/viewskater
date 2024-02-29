@@ -50,6 +50,7 @@ mod dualslider {
 
 mod pane;
 mod ui_builder;
+mod viewer;
 
 
 #[derive(Debug, Clone, Copy)]
