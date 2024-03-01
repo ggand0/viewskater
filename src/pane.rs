@@ -41,6 +41,7 @@ use iced::{Element, Length};
 use crate::dualslider::dualslider::DualSlider;
 
 use crate::split::split::{Axis, Split};
+use crate::viewer;
 
 
 // ref: https://github.com/iced-rs/iced/blob/master/examples/todos/src/main.rs
@@ -234,7 +235,8 @@ impl Pane {
     pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {
         let img: iced::widget::Container<Message>  = if self.dir_loaded {
             container(column![
-                Image::new(self.current_image.clone())
+                //Image::new(self.current_image.clone())
+                viewer::Viewer::new(self.current_image.clone())
                 .width(Length::Fill)
                 .height(Length::Fill),
             ])   
@@ -296,7 +298,8 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
 pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
     let first_img: iced::widget::Container<Message> = if panes[0].dir_loaded {
         container(column![
-            Image::new(panes[0].current_image.clone())
+            //Image::new(panes[0].current_image.clone())
+            viewer::Viewer::new(panes[0].current_image.clone())
             .width(Length::Fill)
             .height(Length::Fill),
             DualSlider::new(
@@ -318,7 +321,8 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
 
     let second_img: iced::widget::Container<Message> = if panes[1].dir_loaded {
         container(column![
-            Image::new(panes[1].current_image.clone())
+            //Image::new(panes[1].current_image.clone())
+            viewer::Viewer::new(panes[1].current_image.clone())
             .width(Length::Fill)
             .height(Length::Fill),
             DualSlider::new(
