@@ -32,6 +32,7 @@ use crate::pane;
 //use crate::pane::{Pane};
 use crate::menu;
 use crate::{Message, PaneLayout, DataViewer};
+use crate::viewer;
 
 
 //panes: &[Pane], ver_divider_position: Option<u16>, slider_value: u16, pane_layout: PaneLayout
@@ -68,7 +69,8 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
             // let first_img: iced::widget::Container<Message> = _app.panes[0].build_ui();
             let first_img: iced::widget::Container<Message>  = if _app.panes[0].dir_loaded {
                 container(column![
-                    Image::new(_app.panes[0].current_image.clone())
+                    //Image::new(_app.panes[0].current_image.clone())
+                    viewer::Viewer::new(_app.panes[0].current_image.clone())
                     .width(Length::Fill)
                     .height(Length::Fill),
                     DualSlider::new(

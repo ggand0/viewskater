@@ -13,7 +13,7 @@ use crate::core::{
 use iced_widget::{
     core::{
         event::{self, Event},
-        image,
+        image::{self, Handle},
         layout,
         mouse,
         renderer,
@@ -22,8 +22,12 @@ use iced_widget::{
         Widget,
     },
 };
+//iced::widget::image::Handle
 
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+
+
 /// A frame that displays an image with the ability to zoom in/out and pan.
 #[allow(missing_debug_implementations)]
 pub struct Viewer<Handle> {
@@ -34,12 +38,13 @@ pub struct Viewer<Handle> {
     max_scale: f32,
     scale_step: f32,
     handle: Handle,
+    handle_hash: u64,
 }
 
-impl<Handle> Viewer<Handle> {
+impl<Handle: Hash> Viewer<Handle> {
     /// Creates a new [`Viewer`] with the given [`State`].
     pub fn new(handle: Handle) -> Self {
-        Viewer {
+        let mut viewer = Viewer {
             padding: 0.0,
             width: Length::Shrink,
             height: Length::Shrink,
@@ -47,7 +52,18 @@ impl<Handle> Viewer<Handle> {
             max_scale: 10.0,
             scale_step: 0.10,
             handle,
-        }
+            handle_hash: 0,
+        };
+        viewer.compute_and_store_handle_hash();
+        viewer
+    }
+
+    // New method to compute and store hash
+    fn compute_and_store_handle_hash(&mut self) {
+        let mut hasher = DefaultHasher::new();
+        self.handle.hash(&mut hasher);
+        //self.handle.data().hash(&mut hasher);
+        self.handle_hash = hasher.finish();
     }
 
     /// Sets the padding of the [`Viewer`].
@@ -163,6 +179,44 @@ where
         _viewport: &Rectangle,
     ) -> event::Status {
         let bounds = layout.bounds();
+
+        //let state = tree.state.downcast_mut::<State>();
+        // Fetch the previous handle
+        /*let previous_handle = state.previous_handle.clone();
+        // Check if the handle has changed
+        if state.handle_changed(&previous_handle) {
+            // Handle has changed, perform necessary actions
+            // For example, reset zoom state, update handle, etc.
+
+            // Update the previous handle
+            state.update_previous_handle(self.handle.clone());
+
+            // Reset the state
+            state.scale = 1.0;
+            state.starting_offset = Vector::default();
+            state.current_offset = Vector::default();
+            state.cursor_grabbed_at = None;
+        }*/
+
+        //let state = tree.state.downcast_mut::<State<Handle>>().unwrap();
+        let state = tree.state.downcast_mut::<State>();
+
+        // Fetch the previous handle hash
+        let previous_handle_hash = state.previous_handle_hash;
+        if state.handle_hash_changed(&self.handle_hash) {
+            // Handle has changed, perform necessary actions
+            // For example, reset zoom state, update handle, etc.
+    
+            // Update the previous handle hash
+            state.update_previous_handle_hash(self.handle_hash);
+
+            // Reset the state
+            state.scale = 1.0;
+            state.starting_offset = Vector::default();
+            state.current_offset = Vector::default();
+            state.cursor_grabbed_at = None;
+        }
+
 
         match event {
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
@@ -358,6 +412,9 @@ pub struct State {
     starting_offset: Vector,
     current_offset: Vector,
     cursor_grabbed_at: Option<Point>,
+    //previous_handle_hash: Option<u64>, // Or use the actual type of the hash
+    previous_handle_hash: u64,
+    //previous_handle: Option<Handle>,
 }
 
 impl Default for State {
@@ -367,6 +424,8 @@ impl Default for State {
             starting_offset: Vector::default(),
             current_offset: Vector::default(),
             cursor_grabbed_at: None,
+            //previous_handle: None,
+            previous_handle_hash: 0,
         }
     }
 }
@@ -375,6 +434,39 @@ impl State {
     /// Creates a new [`State`].
     pub fn new() -> Self {
         State::default()
+    }
+
+    /*fn update_previous_handle(&mut self, handle: Handle) {
+        self.previous_handle.replace(handle);
+    }
+
+    fn handle_changed(&self, handle: &Handle) -> bool
+    where
+        Handle: PartialEq,
+    {
+        self.previous_handle.as_ref().map_or(true, |old_handle| old_handle != handle)
+    }
+    fn update_previous_handle_hash<Handle>(&mut self, handle: &Handle)
+    where
+        Handle: Hash,
+    {
+        let new_hash = hash_handle(handle);
+        self.previous_handle_hash.replace(new_hash);
+    }
+
+    fn handle_changed<Handle>(&self, handle: &Handle) -> bool
+    where
+        Handle: Hash,
+    {
+        let new_hash = hash_handle(handle);
+        self.previous_handle_hash.map_or(true, |old_hash| old_hash != new_hash)
+    }*/
+    fn update_previous_handle_hash(&mut self, handle_hash: u64) {
+        self.previous_handle_hash = handle_hash;
+    }
+
+    fn handle_hash_changed(&self, handle_hash: &u64) -> bool {
+        &self.previous_handle_hash != handle_hash
     }
 
     /// Returns the current offset of the [`State`], given the bounds
@@ -391,7 +483,7 @@ impl State {
             self.current_offset.y.clamp(-hidden_height, hidden_height),
         )
     }
-
+    
     /// Returns if the cursor is currently grabbed by the [`Viewer`].
     pub fn is_cursor_grabbed(&self) -> bool {
         self.cursor_grabbed_at.is_some()
@@ -409,6 +501,17 @@ where
         Element::new(viewer)
     }
 }
+
+// Helper function to hash the handle
+/*fn hash_handle<Handle>(handle: &Handle) -> u64
+where
+    Handle: Hash,
+{
+    let mut hasher = DefaultHasher::new();
+    //handle.hash(&mut hasher);
+    handle.data.hash(&mut hasher);
+    hasher.finish()
+}*/
 
 /// Returns the bounds of the underlying image, given the bounds of
 /// the [`Viewer`]. Scaling will be applied and original aspect ratio
