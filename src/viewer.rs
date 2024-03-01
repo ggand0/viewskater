@@ -3,7 +3,7 @@
 use iced_widget::{
     core::{
         event::{self, Event},
-        image::{self, Handle},
+        image,
         layout,
         mouse,
         renderer,
@@ -14,6 +14,7 @@ use iced_widget::{
 };
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::time::{Duration, Instant};
 
 
 /// A frame that displays an image with the ability to zoom in/out and pan.
@@ -172,27 +173,19 @@ where
         // Detect if the handle has changed and reset zoom state
         // TODO: Avoid calling this block every time
         let state = tree.state.downcast_mut::<State>();
-
-        // Fetch the previous handle hash
-        let previous_handle_hash = state.previous_handle_hash;
         if state.handle_hash_changed(&self.handle_hash) {
             // Handle has changed, perform necessary actions
-            // For example, reset zoom state, update handle, etc.
+            // to reset state
+            state.reset();
     
             // Update the previous handle hash
             state.update_previous_handle_hash(self.handle_hash);
-
-            // Reset the state
-            state.scale = 1.0;
-            state.starting_offset = Vector::default();
-            state.current_offset = Vector::default();
-            state.cursor_grabbed_at = None;
         }
 
 
         match event {
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
-                let Some(cursor_position) = cursor.position() else {
+                let Some(_cursor_position) = cursor.position() else {
                     return event::Status::Ignored;
                 };
 
@@ -251,15 +244,39 @@ where
                 }
             }
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                if let Some(cursor_position) = cursor.position_over(bounds) {
+                if let Some(_cursor_position) = cursor.position_over(bounds) {
                     let Some(cursor_position) = cursor.position() else {
                         return event::Status::Ignored;
                     };
 
-                    let state = tree.state.downcast_mut::<State>();
-
+                    //let state = tree.state.downcast_mut::<State>();
                     state.cursor_grabbed_at = Some(cursor_position);
                     state.starting_offset = state.current_offset;
+
+                    // double click to reset zoom
+                    // Save the current time
+                    if let Some(last_click_time) = state.last_click_time {
+                        let elapsed = last_click_time.elapsed();
+                        if elapsed < Duration::from_millis(500) {
+                            // Double-click detected
+                            state.last_click_time = None;
+    
+                            let double_click_position = cursor.position();
+                            if let Some(_position) = double_click_position {
+                                // Reset the state
+                                /*state.scale = 1.0;
+                                state.starting_offset = Vector::default();
+                                state.current_offset = Vector::default();
+                                state.cursor_grabbed_at = None;*/
+                                state.reset();
+                            }
+                        } else {
+                            // Reset the timer for a new potential double-click
+                            state.last_click_time = Some(Instant::now());
+                        }
+                    } else {
+                        state.last_click_time = Some(Instant::now());
+                    }
 
                     event::Status::Captured
                 } else {
@@ -267,7 +284,7 @@ where
                 }
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                if let Some(cursor_position) = cursor.position_over(bounds) {
+                if let Some(_cursor_position) = cursor.position_over(bounds) {
                     let state = tree.state.downcast_mut::<State>();
 
                     if state.cursor_grabbed_at.is_some() {
@@ -402,6 +419,7 @@ pub struct State {
     current_offset: Vector,
     cursor_grabbed_at: Option<Point>,
     previous_handle_hash: u64,
+    last_click_time: Option<Instant>,
 }
 
 impl Default for State {
@@ -412,6 +430,7 @@ impl Default for State {
             current_offset: Vector::default(),
             cursor_grabbed_at: None,
             previous_handle_hash: 0,
+            last_click_time: None,
         }
     }
 }
@@ -422,6 +441,13 @@ impl State {
         State::default()
     }
 
+    fn reset(&mut self) {
+        // Reset the state
+        self.scale = 1.0;
+        self.starting_offset = Vector::default();
+        self.current_offset = Vector::default();
+        self.cursor_grabbed_at = None;
+    }
 
     fn update_previous_handle_hash(&mut self, handle_hash: u64) {
         self.previous_handle_hash = handle_hash;
