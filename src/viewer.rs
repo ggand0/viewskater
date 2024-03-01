@@ -196,117 +196,134 @@ where
                     return event::Status::Ignored;
                 };
 
-                match delta {
-                    mouse::ScrollDelta::Lines { y, .. }
-                    | mouse::ScrollDelta::Pixels { y, .. } => {
-                        let state = tree.state.downcast_mut::<State>();
-                        let previous_scale = state.scale;
+                if let Some(cursor_position) = cursor.position_over(bounds) {
+                    match delta {
+                        mouse::ScrollDelta::Lines { y, .. }
+                        | mouse::ScrollDelta::Pixels { y, .. } => {
+                            let state = tree.state.downcast_mut::<State>();
+                            let previous_scale = state.scale;
 
-                        if y < 0.0 && previous_scale > self.min_scale
-                            || y > 0.0 && previous_scale < self.max_scale
-                        {
-                            state.scale = (if y > 0.0 {
-                                state.scale * (1.0 + self.scale_step)
-                            } else {
-                                state.scale / (1.0 + self.scale_step)
-                            })
-                            .clamp(self.min_scale, self.max_scale);
-
-                            let image_size = image_size(
-                                renderer,
-                                &self.handle,
-                                state,
-                                bounds.size(),
-                            );
-
-                            let factor = state.scale / previous_scale - 1.0;
-
-                            let cursor_to_center =
-                                cursor_position - bounds.center();
-
-                            let adjustment = cursor_to_center * factor
-                                + state.current_offset * factor;
-
-                            state.current_offset = Vector::new(
-                                if image_size.width > bounds.width {
-                                    state.current_offset.x + adjustment.x
+                            if y < 0.0 && previous_scale > self.min_scale
+                                || y > 0.0 && previous_scale < self.max_scale
+                            {
+                                state.scale = (if y > 0.0 {
+                                    state.scale * (1.0 + self.scale_step)
                                 } else {
-                                    0.0
-                                },
-                                if image_size.height > bounds.height {
-                                    state.current_offset.y + adjustment.y
-                                } else {
-                                    0.0
-                                },
-                            );
+                                    state.scale / (1.0 + self.scale_step)
+                                })
+                                .clamp(self.min_scale, self.max_scale);
+
+                                let image_size = image_size(
+                                    renderer,
+                                    &self.handle,
+                                    state,
+                                    bounds.size(),
+                                );
+
+                                let factor = state.scale / previous_scale - 1.0;
+
+                                let cursor_to_center =
+                                    cursor_position - bounds.center();
+
+                                let adjustment = cursor_to_center * factor
+                                    + state.current_offset * factor;
+
+                                state.current_offset = Vector::new(
+                                    if image_size.width > bounds.width {
+                                        state.current_offset.x + adjustment.x
+                                    } else {
+                                        0.0
+                                    },
+                                    if image_size.height > bounds.height {
+                                        state.current_offset.y + adjustment.y
+                                    } else {
+                                        0.0
+                                    },
+                                );
+                            }
                         }
                     }
-                }
-
-                event::Status::Captured
-            }
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                let Some(cursor_position) = cursor.position() else {
-                    return event::Status::Ignored;
-                };
-
-                let state = tree.state.downcast_mut::<State>();
-
-                state.cursor_grabbed_at = Some(cursor_position);
-                state.starting_offset = state.current_offset;
-
-                event::Status::Captured
-            }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                let state = tree.state.downcast_mut::<State>();
-
-                if state.cursor_grabbed_at.is_some() {
-                    state.cursor_grabbed_at = None;
+                
 
                     event::Status::Captured
                 } else {
                     event::Status::Ignored
                 }
             }
-            Event::Mouse(mouse::Event::CursorMoved { position }) => {
-                let state = tree.state.downcast_mut::<State>();
-
-                if let Some(origin) = state.cursor_grabbed_at {
-                    let image_size = image_size(
-                        renderer,
-                        &self.handle,
-                        state,
-                        bounds.size(),
-                    );
-
-                    let hidden_width = (image_size.width - bounds.width / 2.0)
-                        .max(0.0)
-                        .round();
-
-                    let hidden_height = (image_size.height
-                        - bounds.height / 2.0)
-                        .max(0.0)
-                        .round();
-
-                    let delta = position - origin;
-
-                    let x = if bounds.width < image_size.width {
-                        (state.starting_offset.x - delta.x)
-                            .clamp(-hidden_width, hidden_width)
-                    } else {
-                        0.0
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                if let Some(cursor_position) = cursor.position_over(bounds) {
+                    let Some(cursor_position) = cursor.position() else {
+                        return event::Status::Ignored;
                     };
 
-                    let y = if bounds.height < image_size.height {
-                        (state.starting_offset.y - delta.y)
-                            .clamp(-hidden_height, hidden_height)
-                    } else {
-                        0.0
-                    };
+                    let state = tree.state.downcast_mut::<State>();
 
-                    state.current_offset = Vector::new(x, y);
+                    state.cursor_grabbed_at = Some(cursor_position);
+                    state.starting_offset = state.current_offset;
 
                     event::Status::Captured
+                } else {
+                    event::Status::Ignored
+                }
+            }
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                if let Some(cursor_position) = cursor.position_over(bounds) {
+                    let state = tree.state.downcast_mut::<State>();
+
+                    if state.cursor_grabbed_at.is_some() {
+                        state.cursor_grabbed_at = None;
+
+                        event::Status::Captured
+                    } else {
+                        event::Status::Ignored
+                    }
+                } else {
+                    event::Status::Ignored
+                }
+            }
+            Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                if bounds.contains(position) {
+                    let state = tree.state.downcast_mut::<State>();
+
+                    if let Some(origin) = state.cursor_grabbed_at {
+                        let image_size = image_size(
+                            renderer,
+                            &self.handle,
+                            state,
+                            bounds.size(),
+                        );
+
+                        let hidden_width = (image_size.width - bounds.width / 2.0)
+                            .max(0.0)
+                            .round();
+
+                        let hidden_height = (image_size.height
+                            - bounds.height / 2.0)
+                            .max(0.0)
+                            .round();
+
+                        let delta = position - origin;
+
+                        let x = if bounds.width < image_size.width {
+                            (state.starting_offset.x - delta.x)
+                                .clamp(-hidden_width, hidden_width)
+                        } else {
+                            0.0
+                        };
+
+                        let y = if bounds.height < image_size.height {
+                            (state.starting_offset.y - delta.y)
+                                .clamp(-hidden_height, hidden_height)
+                        } else {
+                            0.0
+                        };
+
+                        state.current_offset = Vector::new(x, y);
+
+                        event::Status::Captured
+                    } else {
+                        event::Status::Ignored
+                    }
                 } else {
                     event::Status::Ignored
                 }
