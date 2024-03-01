@@ -289,7 +289,8 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
         Axis::Vertical,
         Message::OnVerResize,
         Message::ResetSplit,
-        Message::FileDropped
+        Message::FileDropped,
+        Message::PaneSelected
         //Message::FileDropped((1), (String::from("")).into()),
     )
     .into()
@@ -350,6 +351,7 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
         Message::OnVerResize,
         Message::ResetSplit,
         Message::FileDropped,
+        Message::PaneSelected
     )
     .into()
 }

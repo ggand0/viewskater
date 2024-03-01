@@ -122,6 +122,7 @@ pub enum Message {
     ResetSplit(u16),
     ToggleSliderType(bool),
     TogglePaneLayout(PaneLayout),
+    PaneSelected(usize),
 }
 
 impl DataViewer {
@@ -385,6 +386,15 @@ impl Application for DataViewer {
                 self.toggle_pane_layout(pane_layout);
                 Command::none()
             },
+            Message::PaneSelected(pane_index) => {
+                if self.panes[pane_index].is_selected {
+                    self.panes[pane_index].is_selected = false;
+                } else {
+                    self.panes[pane_index].is_selected = true;
+                }
+                
+                Command::none()
+            }
 
             Message::ImageLoaded (result) => {
                 // v2: multiple panes

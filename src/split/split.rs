@@ -118,6 +118,7 @@ where
     on_double_click: Box<dyn Fn(u16) -> Message>,
     // on_drop: Option<Box<dyn Fn(u16) -> Message>>,
     on_drop: Box<dyn Fn(isize, String) -> Message>,
+    on_select: Box<dyn Fn(usize) -> Message>,
 
     /// The style of the [`Split`].
     style: <Renderer::Theme as StyleSheet>::Style,
@@ -139,7 +140,7 @@ where
     ///     - The position of the divider. If none, the space will be split in half.
     ///     - The [`Axis`] to split at.
     ///     - The message that is send on moving the divider
-    pub fn new<A, B, F, G, H>(
+    pub fn new<A, B, F, G, H, I>(
         first: A,
         second: B,
         divider_position: Option<u16>,
@@ -147,6 +148,7 @@ where
         on_resize: F,
         on_double_click: G,
         on_drop: H,
+        on_select: I,
     ) -> Self
     where
         A: Into<Element<'a, Message, Renderer>>,
@@ -154,6 +156,7 @@ where
         F: 'static + Fn(u16) -> Message,
         G: 'static + Fn(u16) -> Message,
         H: 'static + Fn(isize, String) -> Message,
+        I: 'static + Fn(usize) -> Message,
     {
         Self {
             first: Container::new(first.into())
@@ -178,6 +181,7 @@ where
             on_resize: Box::new(on_resize),
             on_double_click: Box::new(on_double_click),
             on_drop: Box::new(on_drop),
+            on_select: Box::new(on_select),
             style: <Renderer::Theme as StyleSheet>::Style::default(),
             default_position: None,
             has_been_split: false,
@@ -314,6 +318,12 @@ where
         let divider_layout = children
             .next()
             .expect("Native: Layout should have a divider layout");
+
+
+        let second_layout = children
+            .next()
+            .expect("Native: Layout should have a second layout");
+        
         match event.clone() {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
@@ -349,6 +359,23 @@ where
                     } else {
                         split_state.last_click_time = Some(Instant::now());
                     }
+                }
+
+                if first_layout.bounds().contains(cursor.position().unwrap_or_default()) {
+                    if split_state.panes_seleced[0] {
+                        split_state.panes_seleced[0] = false;
+                    } else {
+                        split_state.panes_seleced[0] = true;
+                    }
+                    
+                    shell.publish((self.on_select)(0));
+                } else if second_layout.bounds().contains(cursor.position().unwrap_or_default()) {
+                    if split_state.panes_seleced[1] {
+                        split_state.panes_seleced[1] = false;
+                    } else {
+                        split_state.panes_seleced[1] = true;
+                    }
+                    shell.publish((self.on_select)(1));
                 }
             }
 
@@ -474,9 +501,21 @@ where
             shell.publish(self.on_double_click);
         }*/
 
-        let second_layout = children
+        // idk why this block is here
+        /*let second_layout = children
             .next()
             .expect("Native: Layout should have a second layout");
+        let second_status = self.second.as_widget_mut().on_event(
+            &mut state.children[1],
+            event,
+            second_layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
+        );*/
+
         let second_status = self.second.as_widget_mut().on_event(
             &mut state.children[1],
             event,
@@ -750,6 +789,30 @@ where
             // Color::BLACK
             Color::from_rgb(0.2, 0.2, 0.2)
         );
+
+        // Draw pane selection status; if selected, draw a border around the pane
+        if split_state.panes_seleced[0] {
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: first_layout.bounds(),
+                    border_radius: (0.0).into(),
+                    border_width: 2.0,
+                    border_color: Color::from_rgb(0.0, 0.0, 1.0),
+                },
+                Color::TRANSPARENT,
+            );
+        }
+        if split_state.panes_seleced[1] {
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: second_layout.bounds(),
+                    border_radius: (0.0).into(),
+                    border_width: 2.0,
+                    border_color: Color::from_rgb(0.0, 0.0, 1.0),
+                },
+                Color::TRANSPARENT,
+            );
+        }
     }
 
     fn operate<'b>(
@@ -959,6 +1022,7 @@ pub struct SplitState {
     /// If the divider is dragged by the user.
     dragging: bool,
     last_click_time: Option<Instant>,
+    panes_seleced: [bool; 2],
 }
 
 impl SplitState {
@@ -972,6 +1036,7 @@ impl SplitState {
         Self {
             dragging: false,
             last_click_time: None,
+            panes_seleced: [false, false],
         }
     }
 }
