@@ -83,7 +83,7 @@ impl Default for Pane {
             prev_slider_value: 0,
             id: 0,
             is_pinned: false,
-            is_selected: false,
+            is_selected: true,
         }
     }
 }
@@ -100,7 +100,7 @@ impl Pane {
             prev_slider_value: 0,
             id: 0,
             is_pinned: false,
-            is_selected: false,
+            is_selected: true,
         }
     }
 
@@ -283,6 +283,7 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
     let first_img: iced::widget::Container<Message>  = panes[0].build_ui_dual_pane_slider1();
     let second_img: iced::widget::Container<Message> = panes[1].build_ui_dual_pane_slider1();
     Split::new(
+        false,
         first_img,
         second_img,
         ver_divider_position,
@@ -291,7 +292,6 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
         Message::ResetSplit,
         Message::FileDropped,
         Message::PaneSelected
-        //Message::FileDropped((1), (String::from("")).into()),
     )
     .into()
 }
@@ -344,6 +344,7 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
     };
 
     Split::new(
+        true,
         first_img,
         second_img,
         ver_divider_position,

@@ -55,7 +55,7 @@ use crate::{Message, DataViewer};
 // use iced::widget::container;
 //use iced::Theme;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaneLayout {
     SinglePane,
     DualPane,

@@ -124,6 +124,9 @@ where
     style: <Renderer::Theme as StyleSheet>::Style,
     default_position: Option<u16>,
     has_been_split: bool,
+
+    // Whether to enable pane selection
+    enable_pane_selection: bool,
 }
 
 impl<'a, Message, Renderer> Split<'a, Message, Renderer>
@@ -141,6 +144,7 @@ where
     ///     - The [`Axis`] to split at.
     ///     - The message that is send on moving the divider
     pub fn new<A, B, F, G, H, I>(
+        enable_pane_selection: bool,
         first: A,
         second: B,
         divider_position: Option<u16>,
@@ -185,6 +189,7 @@ where
             style: <Renderer::Theme as StyleSheet>::Style::default(),
             default_position: None,
             has_been_split: false,
+            enable_pane_selection: enable_pane_selection,
         }
     }
 
@@ -361,21 +366,24 @@ where
                     }
                 }
 
-                if first_layout.bounds().contains(cursor.position().unwrap_or_default()) {
-                    if split_state.panes_seleced[0] {
-                        split_state.panes_seleced[0] = false;
-                    } else {
-                        split_state.panes_seleced[0] = true;
+                // Detect pane selection
+                if self.enable_pane_selection {
+                    if first_layout.bounds().contains(cursor.position().unwrap_or_default()) {
+                        if split_state.panes_seleced[0] {
+                            split_state.panes_seleced[0] = false;
+                        } else {
+                            split_state.panes_seleced[0] = true;
+                        }
+                        
+                        shell.publish((self.on_select)(0));
+                    } else if second_layout.bounds().contains(cursor.position().unwrap_or_default()) {
+                        if split_state.panes_seleced[1] {
+                            split_state.panes_seleced[1] = false;
+                        } else {
+                            split_state.panes_seleced[1] = true;
+                        }
+                        shell.publish((self.on_select)(1));
                     }
-                    
-                    shell.publish((self.on_select)(0));
-                } else if second_layout.bounds().contains(cursor.position().unwrap_or_default()) {
-                    if split_state.panes_seleced[1] {
-                        split_state.panes_seleced[1] = false;
-                    } else {
-                        split_state.panes_seleced[1] = true;
-                    }
-                    shell.publish((self.on_select)(1));
                 }
             }
 
@@ -791,27 +799,29 @@ where
         );
 
         // Draw pane selection status; if selected, draw a border around the pane
-        if split_state.panes_seleced[0] {
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: first_layout.bounds(),
-                    border_radius: (0.0).into(),
-                    border_width: 2.0,
-                    border_color: Color::from_rgb(0.0, 0.0, 1.0),
-                },
-                Color::TRANSPARENT,
-            );
-        }
-        if split_state.panes_seleced[1] {
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: second_layout.bounds(),
-                    border_radius: (0.0).into(),
-                    border_width: 2.0,
-                    border_color: Color::from_rgb(0.0, 0.0, 1.0),
-                },
-                Color::TRANSPARENT,
-            );
+        if self.enable_pane_selection {
+            if split_state.panes_seleced[0] {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: first_layout.bounds(),
+                        border_radius: (0.0).into(),
+                        border_width: 1.0,
+                        border_color: Color::from_rgb(0.0, 1.0, 0.0),
+                    },
+                    Color::TRANSPARENT,
+                );
+            }
+            if split_state.panes_seleced[1] {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: second_layout.bounds(),
+                        border_radius: (0.0).into(),
+                        border_width: 1.0,
+                        border_color: Color::from_rgb(0.0, 1.0, 0.0),
+                    },
+                    Color::TRANSPARENT,
+                );
+            }
         }
     }
 
@@ -1036,7 +1046,8 @@ impl SplitState {
         Self {
             dragging: false,
             last_click_time: None,
-            panes_seleced: [false, false],
+            //panes_seleced: [false, false],
+            panes_seleced: [true, true],
         }
     }
 }

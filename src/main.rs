@@ -141,7 +141,13 @@ impl DataViewer {
     // Function to initialize image_load_state for all panes
     fn init_image_loaded(&mut self) {
         for pane in self.panes.iter_mut() {
-            pane.image_load_state = false;
+            if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
+                if pane.is_selected {
+                    pane.image_load_state = false;
+                }
+            } else {
+                pane.image_load_state = false;
+            }
         }
     }
 
@@ -154,7 +160,22 @@ impl DataViewer {
 
     // Function to check if all images are loaded for all panes
     fn are_all_images_loaded(&self) -> bool {
-        self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
+        //self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
+
+        if self.is_slider_dual {
+            self.panes
+            .iter()
+            .filter(|pane| pane.is_selected)  // Filter only selected panes
+            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
+        } else {
+            self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
+        }
+    }
+    fn are_all_images_loaded_in_selected(&self) -> bool {
+        self.panes
+            .iter()
+            .filter(|pane| pane.is_selected)  // Filter only selected panes
+            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
     }
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
@@ -217,6 +238,7 @@ impl DataViewer {
 
             //self.slider_value = pane.img_cache.current_index as u16;
             if self.are_all_images_loaded() {
+            //if self.are_all_images_loaded_in_selected() {
                 // Set the smaller index for slider value
                 let min_index = self.panes.iter().map(|pane| pane.img_cache.current_index).min().unwrap();
                 self.slider_value = min_index as u16;
@@ -235,6 +257,16 @@ impl DataViewer {
         }*/
         
         // binary ver
+        //self.is_slider_dual = !self.is_slider_dual;
+
+        // When toggling from dual to single, reset pane.is_selected to true
+        if self.is_slider_dual {
+            for pane in self.panes.iter_mut() {
+                pane.is_selected = true;
+                pane.image_load_state = true;
+            }
+        }
+
         self.is_slider_dual = !self.is_slider_dual;
     }
 
@@ -545,6 +577,12 @@ impl Application for DataViewer {
                     modifiers: _,
                 }) => {
                     println!("ArrowRight pressed");
+                    if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
+                        println!("No panes selected");
+                        return Command::none();
+                    }
+
+
                     /*println!("image load state bf: {:?}", self.image_load_state);
                     println!("dir_loaded: {:?}", self.dir_loaded);
                     println!("are_all_images_loaded: {}", self.are_all_images_loaded());*/
@@ -552,7 +590,9 @@ impl Application for DataViewer {
                         println!("pane.image_load_state: {:?}", pane.image_load_state);
                     }
                     println!("are_all_images_loaded: {}", self.are_all_images_loaded());
+                    println!("are_all_images_loaded_in_selected: {}", self.are_all_images_loaded_in_selected());
                     if self.are_all_images_loaded() {
+                    //if self.are_all_images_loaded_in_selected() {
                         self.init_image_loaded(); // [false, false]
                         // println!("image load state af: {:?}", self.image_load_state);
 
@@ -582,11 +622,19 @@ impl Application for DataViewer {
                     modifiers: _,
                 }) => {
                     println!("ArrowLeft pressed");
+                    // Return if it's dual pane, dual slider and no panes are selected
+                    if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
+                        println!("No panes selected");
+                        return Command::none();
+                    }
+
                     for pane in self.panes.iter() {
                         println!("pane.image_load_state: {:?}", pane.image_load_state);
                     }
                     println!("are_all_images_loaded: {}", self.are_all_images_loaded());
+                    println!("are_all_images_loaded_in_selected: {}", self.are_all_images_loaded_in_selected());
                     if self.are_all_images_loaded() {
+                    //if self.are_all_images_loaded_in_selected() {
                         self.init_image_loaded(); // [false, false]
                         // if a pane has reached the directory boundary, mark as loaded
                         let finished_indices: Vec<usize> = self.panes.iter_mut().enumerate().filter_map(|(index, pane)| {
@@ -605,6 +653,7 @@ impl Application for DataViewer {
                     } else {
                         Command::none()
                     }
+                    
                 }
 
                 _ => Command::none(),

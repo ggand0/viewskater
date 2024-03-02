@@ -412,6 +412,11 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>) -> Command<Message> {
     // 3. Load from cache (async), multiple panes
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
+        // Skip panes that are not selected
+        if !pane.is_selected {
+            continue;
+        }
+
         let img_cache = &mut pane.img_cache;
         
         if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
@@ -448,6 +453,11 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>) -> Command<Message> {
     // v3 (multiple panes)
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
+        // Skip panes that are not selected
+        if !pane.is_selected {
+            continue;
+        }
+
         let img_cache = &mut pane.img_cache;
         // println!("current_index: {}, global_current_index: {:?}", img_cache.current_index, global_current_index);
         // println!("cache_index, index_of_max_length_cache: {}, {}", cache_index, index_of_max_length_cache.unwrap());
