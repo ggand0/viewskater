@@ -242,6 +242,7 @@ where
         self.style = style;
         self
     }
+
 }
 
 impl<'a, Message, Renderer> Widget<Message, Renderer> for Split<'a, Message, Renderer>
@@ -370,74 +371,15 @@ where
 
                 // Detect pane selection
                 if self.enable_pane_selection {
-                    // If we don't care if the bounds include the slider
-                    /*if first_layout.bounds().contains(cursor.position().unwrap_or_default()) {
-                        if split_state.panes_seleced[0] {
-                            split_state.panes_seleced[0] = false;
-                        } else {
-                            split_state.panes_seleced[0] = true;
-                        }
-                        
+                    let is_within_bounds_first = is_cursor_within_bounds::<Message>(first_layout, cursor, 0, split_state);
+                    if is_within_bounds_first {
+                        split_state.panes_seleced[0] = !split_state.panes_seleced[0];
                         shell.publish((self.on_select)(0));
-                    } else if second_layout.bounds().contains(cursor.position().unwrap_or_default()) {
-                        if split_state.panes_seleced[1] {
-                            split_state.panes_seleced[1] = false;
-                        } else {
-                            split_state.panes_seleced[1] = true;
-                        }
-                        shell.publish((self.on_select)(1));
-                    }*/
-
-                    if let Some(container_layout) = first_layout.children().next() {
-                        if let Some(column_layout) = container_layout.children().next() {
-                            /*
-                            Image layout: Layout { position: Point { x: 0.0, y: 32.8 }, node: Node { bounds: Rectangle { x: 0.0, y: 0.0, width: 510.0, height: 735.2 }, children: [
-                                Node { bounds: Rectangle { x: 0.0, y: 0.0, width: 510.0, height: 713.2 }, children: [] },
-                                Node { bounds: Rectangle { x: 0.0, y: 713.2, width: 510.0, height: 22.0 }, children: [] }] } }
-                            */
-                            //println!("Column layout: {:?}", column_layout);
-                            if let Some(image_layout) = column_layout.children().next() {
-                                // println!("Image layout: {:?}", image_layout);
-
-                                // NOTE: ASSUMING THE FIRST CHILD OF THE CONTAINER IS THE IMAGE WIDGET
-                                let image_bounds = image_layout.bounds();
-                    
-                                // Now you can use content_bounds for further processing
-                                // For example, check if the cursor is within the bounds of the content
-                                if image_bounds.contains(cursor.position().unwrap_or_default()) {
-                                    // Do something when the cursor is within the content bounds
-                                    println!("Cursor is within the Image content bounds");
-                                    if split_state.panes_seleced[0] {
-                                        split_state.panes_seleced[0] = false;
-                                    } else {
-                                        split_state.panes_seleced[0] = true;
-                                    }
-                                    
-                                    shell.publish((self.on_select)(0));
-                                }
-                            }
-                        }
                     }
-
-                    if let Some(container_layout) = second_layout.children().next() {
-                        if let Some(column_layout) = container_layout.children().next() {
-                            if let Some(image_layout) = column_layout.children().next() {
-                                let image_bounds = image_layout.bounds();
-                    
-                                // Now you can use content_bounds for further processing
-                                // For example, check if the cursor is within the bounds of the content
-                                if image_bounds.contains(cursor.position().unwrap_or_default()) {
-                                    // Do something when the cursor is within the content bounds
-                                    println!("Cursor is within the Image content bounds");
-                                    if split_state.panes_seleced[1] {
-                                        split_state.panes_seleced[1] = false;
-                                    } else {
-                                        split_state.panes_seleced[1] = true;
-                                    }
-                                    shell.publish((self.on_select)(1));
-                                }
-                            }
-                        }
+                    let is_within_bounds_second = is_cursor_within_bounds::<Message>(second_layout, cursor, 1, split_state);
+                    if is_within_bounds_second {
+                        split_state.panes_seleced[1] = !split_state.panes_seleced[1];
+                        shell.publish((self.on_select)(1));
                     }
                 }
             }
@@ -931,6 +873,30 @@ where
     }
 }
 
+// Helper function to process a layout and check for cursor position
+// This function assumes that the first child of the container is the Image widget
+// TODO: Fix hardcoding
+fn is_cursor_within_bounds<Message>(
+    layout: Layout<'_>,
+    cursor: Cursor,
+    pane_index: usize,
+    split_state: &mut SplitState,
+) -> bool {
+    println!("Processing layout");
+    if let Some(container_layout) = layout.children().next() {
+        if let Some(column_layout) = container_layout.children().next() {
+            if let Some(image_layout) = column_layout.children().next() {
+                let image_bounds = image_layout.bounds();
+
+                if image_bounds.contains(cursor.position().unwrap_or_default()) {
+                    println!("Cursor is within the Image content bounds");
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
 
 /// Do a horizontal split.
 fn horizontal_split<'a, Message, Renderer>(
