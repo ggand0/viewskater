@@ -122,7 +122,7 @@ pub enum Message {
     ResetSplit(u16),
     ToggleSliderType(bool),
     TogglePaneLayout(PaneLayout),
-    PaneSelected(usize),
+    PaneSelected(usize, bool),
 }
 
 impl DataViewer {
@@ -262,8 +262,13 @@ impl DataViewer {
         // When toggling from dual to single, reset pane.is_selected to true
         if self.is_slider_dual {
             for pane in self.panes.iter_mut() {
+                pane.is_selected_cache = pane.is_selected;
                 pane.is_selected = true;
                 pane.image_load_state = true;
+            }
+        } else {
+            for pane in self.panes.iter_mut() {
+                pane.is_selected = pane.is_selected_cache; // TODO: check if this is needed
             }
         }
 
@@ -418,12 +423,13 @@ impl Application for DataViewer {
                 self.toggle_pane_layout(pane_layout);
                 Command::none()
             },
-            Message::PaneSelected(pane_index) => {
-                if self.panes[pane_index].is_selected {
+            Message::PaneSelected(pane_index, is_selected) => {
+                self.panes[pane_index].is_selected = is_selected;
+                /*if self.panes[pane_index].is_selected {
                     self.panes[pane_index].is_selected = false;
                 } else {
                     self.panes[pane_index].is_selected = true;
-                }
+                }*/
                 
                 Command::none()
             }

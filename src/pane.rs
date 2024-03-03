@@ -67,8 +67,8 @@ pub struct Pane {
     pub prev_slider_value: u16,
 
     pub id: usize,
-    pub is_pinned: bool,
     pub is_selected: bool,
+    pub is_selected_cache: bool,
 }
 
 impl Default for Pane {
@@ -82,8 +82,8 @@ impl Default for Pane {
             slider_value: 0,
             prev_slider_value: 0,
             id: 0,
-            is_pinned: false,
             is_selected: true,
+            is_selected_cache: true,
         }
     }
 }
@@ -99,8 +99,8 @@ impl Pane {
             slider_value: 0,
             prev_slider_value: 0,
             id: 0,
-            is_pinned: false,
             is_selected: true,
+            is_selected_cache: true,
         }
     }
 

@@ -1,29 +1,6 @@
 //! Use a split to split the available space in two parts to display two different elements.
 //!
 //! *This API requires the following crate features to be activated: split*
-
-//#[cfg(not(target_os = "macos"))]
-
-/*#[cfg(target_os = "macos")]
-mod macos {
-    pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
-    pub use iced_widget_custom as iced_widget;
-}
-
-#[cfg(not(target_os = "macos"))]
-mod other_os {
-    pub use iced;
-    pub use iced_aw;
-    pub use iced_widget;
-}
-
-#[cfg(target_os = "macos")]
-use macos::*;
-
-#[cfg(not(target_os = "macos"))]
-use other_os::*;*/
-
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
@@ -118,7 +95,7 @@ where
     on_double_click: Box<dyn Fn(u16) -> Message>,
     // on_drop: Option<Box<dyn Fn(u16) -> Message>>,
     on_drop: Box<dyn Fn(isize, String) -> Message>,
-    on_select: Box<dyn Fn(usize) -> Message>,
+    on_select: Box<dyn Fn(usize, bool) -> Message>,
 
     /// The style of the [`Split`].
     style: <Renderer::Theme as StyleSheet>::Style,
@@ -160,7 +137,7 @@ where
         F: 'static + Fn(u16) -> Message,
         G: 'static + Fn(u16) -> Message,
         H: 'static + Fn(isize, String) -> Message,
-        I: 'static + Fn(usize) -> Message,
+        I: 'static + Fn(usize, bool) -> Message,
     {
         Self {
             first: Container::new(first.into())
@@ -375,12 +352,12 @@ where
                     let is_within_bounds_first = is_cursor_within_bounds::<Message>(first_layout, cursor, 0, split_state);
                     if is_within_bounds_first {
                         split_state.panes_seleced[0] = !split_state.panes_seleced[0];
-                        shell.publish((self.on_select)(0));
+                        shell.publish((self.on_select)(0, split_state.panes_seleced[0]));
                     }
                     let is_within_bounds_second = is_cursor_within_bounds::<Message>(second_layout, cursor, 1, split_state);
                     if is_within_bounds_second {
                         split_state.panes_seleced[1] = !split_state.panes_seleced[1];
-                        shell.publish((self.on_select)(1));
+                        shell.publish((self.on_select)(1, split_state.panes_seleced[1]));
                     }
                 }
             }
