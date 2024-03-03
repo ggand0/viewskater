@@ -298,6 +298,7 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) -> event::Status {
+        // DEBUG
         // println!("self.divider_position: {:?}", self.divider_position);
         // println!("Cursor position: {:?}", cursor.position().unwrap_or_default());
         for child_layout in layout.children() {
@@ -335,6 +336,7 @@ where
         match event.clone() {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
+                // Detect double-click event on the divider
                 if divider_layout
                     .bounds()
                     .contains(cursor.position().unwrap_or_default())
@@ -354,7 +356,6 @@ where
                             };
     
                             if let Some(position) = double_click_position {
-                                
                                 self.divider_position = None;
                                 split_state.dragging = false;
                                 shell.publish((self.on_double_click)(position as u16));
@@ -403,7 +404,6 @@ where
                     let bounds = child_layout.bounds();
                     println!("Child bounds: {:?}", bounds);
                     // println!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
-                    
                     // println!("Cursor position: {:?}", cursor.position());
 
                     // TODO: Implement enum LayoutItem { Pane, Divider }
@@ -489,37 +489,7 @@ where
             _ => {}
         }
 
-        // Detect double-click event on the divider
-        /*let is_double_click = match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                // Check if the cursor is within the divider bounds
-                divider_layout.bounds().contains(cursor.position().unwrap_or_default())
-                    && split_state.last_click.elapsed() < Duration::from_millis(500)
-            }
-            _ => false,
-        };
-
-        // Reset split position if a double-click is detected
-        if is_double_click {
-            // Reset the split position to default or initial state
-            // shell.publish((self.on_resize)(DEFAULT_SPLIT_POSITION));
-            shell.publish(self.on_double_click);
-        }*/
-
-        // idk why this block is here
-        /*let second_layout = children
-            .next()
-            .expect("Native: Layout should have a second layout");
-        let second_status = self.second.as_widget_mut().on_event(
-            &mut state.children[1],
-            event,
-            second_layout,
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            viewport,
-        );*/
+        
 
         let second_status = self.second.as_widget_mut().on_event(
             &mut state.children[1],
@@ -572,21 +542,6 @@ where
             mouse::Interaction::default()
         };
 
-        /*let divider_mouse_interaction = if divider_layout
-            .bounds()
-            .expand(10.0) // Expand the bounds by 5.0 in all directions
-            .contains(cursor.position().unwrap_or_default())
-        {
-            println!("Mouse is over the divider, axis: {:?}", self.axis);
-            match self.axis {
-                Axis::Horizontal => mouse::Interaction::ResizingVertically,
-                Axis::Vertical => mouse::Interaction::ResizingHorizontally,
-            }
-        } else {
-            mouse::Interaction::default()
-        };*/
-
-
 
         let second_layout = children
             .next()
@@ -598,36 +553,6 @@ where
             viewport,
             renderer,
         );
-
-        
-        /*if divider_layout
-            .bounds()
-            .expand(5.0) // Expand the bounds by 5.0 in all directions
-            .contains(cursor.position().unwrap_or_default())
-        {
-            divider_mouse_interaction
-        } else {
-            let fmi = first_mouse_interaction
-            .max(second_mouse_interaction)
-            .max(divider_mouse_interaction);
-            println!("Mouse interaction: {:?}", fmi);
-            fmi
-        }*/
-        // Collecting interactions for all elements
-        /*let interactions = [
-            first_mouse_interaction,
-            second_mouse_interaction,
-            divider_mouse_interaction,
-        ];
-
-        // Finding the highest priority interaction among all elements
-        let final_interaction = interactions.iter().fold(
-            mouse::Interaction::default(),
-            |acc, &interaction| acc.max(interaction),
-        );
-
-        final_interaction*/
-        
 
         let fmi = first_mouse_interaction
             .max(second_mouse_interaction)
