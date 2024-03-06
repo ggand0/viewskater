@@ -197,6 +197,11 @@ impl DataViewer {
             self.panes.resize_with(pane_index + 1, || pane::Pane::default());
             println!("resized pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
         }
+
+        // Update the slider position
+        if !self.is_slider_dual {
+            self.slider_value = self.panes[pane_index].img_cache.current_index as u16;
+        }
     }
 
 
@@ -266,9 +271,14 @@ impl DataViewer {
                 pane.is_selected = true;
                 pane.image_load_state = true;
             }
+
+            // Set the slider value to the first pane's current index
+            self.slider_value = self.panes[0].img_cache.current_index as u16;
         } else {
+            // Single to dual slider: give slider.value to each slider
             for pane in self.panes.iter_mut() {
-                pane.is_selected = pane.is_selected_cache; // TODO: check if this is needed
+                pane.slider_value = self.slider_value;
+                pane.is_selected = pane.is_selected_cache;
             }
         }
 
