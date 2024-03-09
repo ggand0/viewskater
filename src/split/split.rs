@@ -1,29 +1,6 @@
 //! Use a split to split the available space in two parts to display two different elements.
 //!
 //! *This API requires the following crate features to be activated: split*
-
-//#[cfg(not(target_os = "macos"))]
-
-/*#[cfg(target_os = "macos")]
-mod macos {
-    pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
-    pub use iced_widget_custom as iced_widget;
-}
-
-#[cfg(not(target_os = "macos"))]
-mod other_os {
-    pub use iced;
-    pub use iced_aw;
-    pub use iced_widget;
-}
-
-#[cfg(target_os = "macos")]
-use macos::*;
-
-#[cfg(not(target_os = "macos"))]
-use other_os::*;*/
-
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
@@ -118,11 +95,15 @@ where
     on_double_click: Box<dyn Fn(u16) -> Message>,
     // on_drop: Option<Box<dyn Fn(u16) -> Message>>,
     on_drop: Box<dyn Fn(isize, String) -> Message>,
+    on_select: Box<dyn Fn(usize, bool) -> Message>,
 
     /// The style of the [`Split`].
     style: <Renderer::Theme as StyleSheet>::Style,
     default_position: Option<u16>,
     has_been_split: bool,
+
+    // Whether to enable pane selection
+    enable_pane_selection: bool,
 }
 
 impl<'a, Message, Renderer> Split<'a, Message, Renderer>
@@ -139,7 +120,8 @@ where
     ///     - The position of the divider. If none, the space will be split in half.
     ///     - The [`Axis`] to split at.
     ///     - The message that is send on moving the divider
-    pub fn new<A, B, F, G, H>(
+    pub fn new<A, B, F, G, H, I>(
+        enable_pane_selection: bool,
         first: A,
         second: B,
         divider_position: Option<u16>,
@@ -147,6 +129,7 @@ where
         on_resize: F,
         on_double_click: G,
         on_drop: H,
+        on_select: I,
     ) -> Self
     where
         A: Into<Element<'a, Message, Renderer>>,
@@ -154,6 +137,7 @@ where
         F: 'static + Fn(u16) -> Message,
         G: 'static + Fn(u16) -> Message,
         H: 'static + Fn(isize, String) -> Message,
+        I: 'static + Fn(usize, bool) -> Message,
     {
         Self {
             first: Container::new(first.into())
@@ -178,9 +162,11 @@ where
             on_resize: Box::new(on_resize),
             on_double_click: Box::new(on_double_click),
             on_drop: Box::new(on_drop),
+            on_select: Box::new(on_select),
             style: <Renderer::Theme as StyleSheet>::Style::default(),
             default_position: None,
             has_been_split: false,
+            enable_pane_selection: enable_pane_selection,
         }
     }
 
@@ -233,6 +219,7 @@ where
         self.style = style;
         self
     }
+
 }
 
 impl<'a, Message, Renderer> Widget<Message, Renderer> for Split<'a, Message, Renderer>
@@ -276,6 +263,7 @@ where
         }
     }
 
+
     fn on_event(
         &mut self,
         state: &mut Tree,
@@ -287,6 +275,7 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) -> event::Status {
+        // DEBUG
         // println!("self.divider_position: {:?}", self.divider_position);
         // println!("Cursor position: {:?}", cursor.position().unwrap_or_default());
         for child_layout in layout.children() {
@@ -300,6 +289,7 @@ where
         let first_layout = children
             .next()
             .expect("Native: Layout should have a first layout");
+
         let first_status = self.first.as_widget_mut().on_event(
             &mut state.children[0],
             event.clone(),
@@ -314,9 +304,16 @@ where
         let divider_layout = children
             .next()
             .expect("Native: Layout should have a divider layout");
+
+
+        let second_layout = children
+            .next()
+            .expect("Native: Layout should have a second layout");
+        
         match event.clone() {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
+                // Detect double-click event on the divider
                 if divider_layout
                     .bounds()
                     .contains(cursor.position().unwrap_or_default())
@@ -336,7 +333,6 @@ where
                             };
     
                             if let Some(position) = double_click_position {
-                                
                                 self.divider_position = None;
                                 split_state.dragging = false;
                                 shell.publish((self.on_double_click)(position as u16));
@@ -348,6 +344,20 @@ where
                         }
                     } else {
                         split_state.last_click_time = Some(Instant::now());
+                    }
+                }
+
+                // Detect pane selection
+                if self.enable_pane_selection {
+                    let is_within_bounds_first = is_cursor_within_bounds::<Message>(first_layout, cursor, 0, split_state);
+                    if is_within_bounds_first {
+                        split_state.panes_seleced[0] = !split_state.panes_seleced[0];
+                        shell.publish((self.on_select)(0, split_state.panes_seleced[0]));
+                    }
+                    let is_within_bounds_second = is_cursor_within_bounds::<Message>(second_layout, cursor, 1, split_state);
+                    if is_within_bounds_second {
+                        split_state.panes_seleced[1] = !split_state.panes_seleced[1];
+                        shell.publish((self.on_select)(1, split_state.panes_seleced[1]));
                     }
                 }
             }
@@ -371,7 +381,6 @@ where
                     let bounds = child_layout.bounds();
                     println!("Child bounds: {:?}", bounds);
                     // println!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
-                    
                     // println!("Cursor position: {:?}", cursor.position());
 
                     // TODO: Implement enum LayoutItem { Pane, Divider }
@@ -457,26 +466,8 @@ where
             _ => {}
         }
 
-        // Detect double-click event on the divider
-        /*let is_double_click = match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                // Check if the cursor is within the divider bounds
-                divider_layout.bounds().contains(cursor.position().unwrap_or_default())
-                    && split_state.last_click.elapsed() < Duration::from_millis(500)
-            }
-            _ => false,
-        };
+        
 
-        // Reset split position if a double-click is detected
-        if is_double_click {
-            // Reset the split position to default or initial state
-            // shell.publish((self.on_resize)(DEFAULT_SPLIT_POSITION));
-            shell.publish(self.on_double_click);
-        }*/
-
-        let second_layout = children
-            .next()
-            .expect("Native: Layout should have a second layout");
         let second_status = self.second.as_widget_mut().on_event(
             &mut state.children[1],
             event,
@@ -528,21 +519,6 @@ where
             mouse::Interaction::default()
         };
 
-        /*let divider_mouse_interaction = if divider_layout
-            .bounds()
-            .expand(10.0) // Expand the bounds by 5.0 in all directions
-            .contains(cursor.position().unwrap_or_default())
-        {
-            println!("Mouse is over the divider, axis: {:?}", self.axis);
-            match self.axis {
-                Axis::Horizontal => mouse::Interaction::ResizingVertically,
-                Axis::Vertical => mouse::Interaction::ResizingHorizontally,
-            }
-        } else {
-            mouse::Interaction::default()
-        };*/
-
-
 
         let second_layout = children
             .next()
@@ -554,36 +530,6 @@ where
             viewport,
             renderer,
         );
-
-        
-        /*if divider_layout
-            .bounds()
-            .expand(5.0) // Expand the bounds by 5.0 in all directions
-            .contains(cursor.position().unwrap_or_default())
-        {
-            divider_mouse_interaction
-        } else {
-            let fmi = first_mouse_interaction
-            .max(second_mouse_interaction)
-            .max(divider_mouse_interaction);
-            println!("Mouse interaction: {:?}", fmi);
-            fmi
-        }*/
-        // Collecting interactions for all elements
-        /*let interactions = [
-            first_mouse_interaction,
-            second_mouse_interaction,
-            divider_mouse_interaction,
-        ];
-
-        // Finding the highest priority interaction among all elements
-        let final_interaction = interactions.iter().fold(
-            mouse::Interaction::default(),
-            |acc, &interaction| acc.max(interaction),
-        );
-
-        final_interaction*/
-        
 
         let fmi = first_mouse_interaction
             .max(second_mouse_interaction)
@@ -750,6 +696,32 @@ where
             // Color::BLACK
             Color::from_rgb(0.2, 0.2, 0.2)
         );
+
+        // Draw pane selection status; if selected, draw a border around the pane
+        if self.enable_pane_selection {
+            if split_state.panes_seleced[0] {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: first_layout.bounds(),
+                        border_radius: (0.0).into(),
+                        border_width: 1.0,
+                        border_color: Color::from_rgb(0.0, 1.0, 0.0),
+                    },
+                    Color::TRANSPARENT,
+                );
+            }
+            if split_state.panes_seleced[1] {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: second_layout.bounds(),
+                        border_radius: (0.0).into(),
+                        border_width: 1.0,
+                        border_color: Color::from_rgb(0.0, 1.0, 0.0),
+                    },
+                    Color::TRANSPARENT,
+                );
+            }
+        }
     }
 
     fn operate<'b>(
@@ -803,6 +775,30 @@ where
     }
 }
 
+// Helper function to process a layout and check for cursor position
+// This function assumes that the first child of the container is the Image widget
+// TODO: Fix hardcoding
+fn is_cursor_within_bounds<Message>(
+    layout: Layout<'_>,
+    cursor: Cursor,
+    pane_index: usize,
+    split_state: &mut SplitState,
+) -> bool {
+    println!("Processing layout");
+    if let Some(container_layout) = layout.children().next() {
+        if let Some(column_layout) = container_layout.children().next() {
+            if let Some(image_layout) = column_layout.children().next() {
+                let image_bounds = image_layout.bounds();
+
+                if image_bounds.contains(cursor.position().unwrap_or_default()) {
+                    println!("Cursor is within the Image content bounds");
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
 
 /// Do a horizontal split.
 fn horizontal_split<'a, Message, Renderer>(
@@ -959,6 +955,7 @@ pub struct SplitState {
     /// If the divider is dragged by the user.
     dragging: bool,
     last_click_time: Option<Instant>,
+    panes_seleced: [bool; 2],
 }
 
 impl SplitState {
@@ -972,6 +969,8 @@ impl SplitState {
         Self {
             dragging: false,
             last_click_time: None,
+            //panes_seleced: [false, false],
+            panes_seleced: [true, true],
         }
     }
 }

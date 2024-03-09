@@ -67,8 +67,8 @@ pub struct Pane {
     pub prev_slider_value: u16,
 
     pub id: usize,
-    pub is_pinned: bool,
     pub is_selected: bool,
+    pub is_selected_cache: bool,
 }
 
 impl Default for Pane {
@@ -82,8 +82,8 @@ impl Default for Pane {
             slider_value: 0,
             prev_slider_value: 0,
             id: 0,
-            is_pinned: false,
-            is_selected: false,
+            is_selected: true,
+            is_selected_cache: true,
         }
     }
 }
@@ -99,8 +99,8 @@ impl Pane {
             slider_value: 0,
             prev_slider_value: 0,
             id: 0,
-            is_pinned: false,
-            is_selected: false,
+            is_selected: true,
+            is_selected_cache: true,
         }
     }
 
@@ -182,8 +182,9 @@ impl Pane {
 
         let file_paths = img_cache.image_paths.clone();
         println!("file_paths.len() {:?}", file_paths.len());
-        self.img_cache = img_cache;
         
+        self.img_cache = img_cache;
+        println!("img_cache.cache_count {:?}", self.img_cache.cache_count);
         
         
     }
@@ -254,9 +255,11 @@ impl Pane {
     pub fn build_ui_dual_pane_slider2(&self) -> iced::widget::Container<Message> {
         let img: iced::widget::Container<Message>  = if self.dir_loaded {
             container(column![
+                container(
                 Image::new(self.current_image.clone())
                 .width(Length::Fill)
-                .height(Length::Fill),
+                .height(Length::Fill)),
+                
 
                 DualSlider::new(
                     0..= (self.img_cache.num_files - 1) as u16,
@@ -283,14 +286,15 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
     let first_img: iced::widget::Container<Message>  = panes[0].build_ui_dual_pane_slider1();
     let second_img: iced::widget::Container<Message> = panes[1].build_ui_dual_pane_slider1();
     Split::new(
+        false,
         first_img,
         second_img,
         ver_divider_position,
         Axis::Vertical,
         Message::OnVerResize,
         Message::ResetSplit,
-        Message::FileDropped
-        //Message::FileDropped((1), (String::from("")).into()),
+        Message::FileDropped,
+        Message::PaneSelected
     )
     .into()
 }
@@ -298,6 +302,7 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
 pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
     let first_img: iced::widget::Container<Message> = if panes[0].dir_loaded {
         container(column![
+            // NOTE: Wrapping the image in a container messes up the layout
             //Image::new(panes[0].current_image.clone())
             viewer::Viewer::new(panes[0].current_image.clone())
             .width(Length::Fill)
@@ -321,7 +326,8 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
 
     let second_img: iced::widget::Container<Message> = if panes[1].dir_loaded {
         container(column![
-            //Image::new(panes[1].current_image.clone())
+            // NOTE: Wrapping the image in a container messes up the layout
+            // Image::new(panes[1].current_image.clone())
             viewer::Viewer::new(panes[1].current_image.clone())
             .width(Length::Fill)
             .height(Length::Fill),
@@ -343,6 +349,7 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
     };
 
     Split::new(
+        true,
         first_img,
         second_img,
         ver_divider_position,
@@ -350,6 +357,7 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
         Message::OnVerResize,
         Message::ResetSplit,
         Message::FileDropped,
+        Message::PaneSelected
     )
     .into()
 }
