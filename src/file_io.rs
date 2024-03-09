@@ -81,8 +81,8 @@ pub async fn pick_file() -> Result<String, Error> {
 
 
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
-    let duration = Duration::from_millis(50);
-    thread::sleep(duration);
+    //let duration = Duration::from_millis(1);
+    //thread::sleep(duration);
     Ok((None, Some(operation)))
 }
 
