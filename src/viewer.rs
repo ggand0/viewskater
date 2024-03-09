@@ -386,12 +386,30 @@ where
         let image_size =
             image_size(renderer, &self.handle, state, bounds.size());
 
+        // Adjust bounds size and position for padding
+        let padding = 1.0; // Adjust the padding value as needed
+        let padded_bounds = Rectangle {
+            x: bounds.x + padding,
+            y: bounds.y + padding,
+            width: image_size.width - 2.0 * padding,
+            height: image_size.height - 2.0 * padding,
+        };
+        let padded_image_size = image_size - Size::new(2.0 * padding, 2.0 * padding);
+        //println!("image_size: {:?}, padded_image_size: {:?}", image_size, padded_image_size);
+
         let translation = {
-            let image_top_left = Vector::new(
+            /*let image_top_left = Vector::new(
                 bounds.width / 2.0 - image_size.width / 2.0,
                 bounds.height / 2.0 - image_size.height / 2.0,
             );
-
+            image_top_left - state.offset(bounds, image_size)
+            */
+            let image_top_left = Vector::new(
+                bounds.width / 2.0 - image_size.width / 2.0,
+                bounds.height / 2.0 - image_size.height / 2.0,
+                //bounds.width / 2.0 - padded_bounds.width / 2.0,
+                //bounds.height / 2.0 - padded_bounds.height / 2.0,
+            ) + Vector::new(padding, padding);
             image_top_left - state.offset(bounds, image_size)
         };
 
@@ -400,10 +418,16 @@ where
                 image::Renderer::draw(
                     renderer,
                     self.handle.clone(),
-                    Rectangle {
+                    /*Rectangle {
                         x: bounds.x,
                         y: bounds.y,
                         ..Rectangle::with_size(image_size)
+                    },*/
+                    Rectangle {
+                        x: bounds.x,
+                        y: bounds.y,
+                        width: padded_bounds.width,
+                        height: padded_bounds.height,
                     },
                 )
             });
