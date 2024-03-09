@@ -25,12 +25,14 @@ use std::io;
 use tokio::io::AsyncReadExt;
 // use std::io::Read;
 use std::collections::VecDeque;
+use std::time::Instant;
+use log::{debug, info, warn, error};
+
 
 use crate::{DataViewer,Message};
 use iced::Command;
 //use crate::file_io::{async_load_image, empty_async_block, is_file, is_directory, get_file_paths, get_file_index, Error};
 use crate::file_io::{async_load_image, empty_async_block};
-
 use crate::pane;
 
 /*#[derive(Debug, Clone)]
@@ -98,9 +100,8 @@ impl ImageCache {
     }
 
     pub fn print_queue(&self) {
-        println!("loading_queue: {:?}", self.loading_queue);
-        println!("being_loaded_queue: {:?}", self.being_loaded_queue);
-
+        debug!("loading_queue: {:?}", self.loading_queue);
+        debug!("being_loaded_queue: {:?}", self.being_loaded_queue);
     }
 
     pub fn enqueue_image_load(&mut self, operation: LoadOperation) {
@@ -145,7 +146,7 @@ impl ImageCache {
         
         // Fill in the cache array with image paths
         for (i, cache_index) in (start_index..end_index).enumerate() {
-            println!("i: {}, cache_index: {}", i, cache_index);
+            debug!("i: {}, cache_index: {}", i, cache_index);
             if cache_index < 0 {
                 continue;
             }
@@ -158,18 +159,18 @@ impl ImageCache {
         }
 
         // Display information about each image
-        for (index, image_option) in self.cached_images.iter().enumerate() {
+        /*for (index, image_option) in self.cached_images.iter().enumerate() {
             match image_option {
                 Some(image_bytes) => {
                     let image_info = format!("Image {} - Size: {} bytes", index, image_bytes.len());
-                    println!("{}", image_info);
+                    debug!("{}", image_info);
                 }
                 None => {
                     let no_image_info = format!("No image at index {}", index);
-                    println!("{}", no_image_info);
+                    debug!("{}", no_image_info);
                 }
             }
-        }
+        }*/
 
         self.num_files = self.image_paths.len();
 
@@ -187,7 +188,7 @@ impl ImageCache {
         }
     }
 
-    pub async fn async_load_image(path: &Path) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
+    /*pub async fn async_load_image(path: &Path) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
         match tokio::fs::File::open(path).await {
             Ok(mut file) => {
                 let mut buffer = Vec::new();
@@ -199,14 +200,14 @@ impl ImageCache {
             }
             Err(e) => Err(e.kind()),
         }
-    }
+    }*/
     
     pub fn load_current_image(&mut self) -> Result<&Vec<u8>, io::Error> {
         // let cache_index = self.current_index + self.cache_count;
         let cache_index = self.cache_count;
-        println!(" Current index: {}, Cache index: {}", self.current_index, cache_index);
+        debug!(" Current index: {}, Cache index: {}", self.current_index, cache_index);
         if self.cached_images[cache_index].is_none() {
-            println!("Loading image");
+            debug!("Loading image");
             let current_image = self.load_image(self.current_index)?;
             self.cached_images[cache_index] = Some(current_image.clone());
         }
@@ -215,20 +216,20 @@ impl ImageCache {
 
     pub fn get_current_image(&self) -> Result<&Vec<u8>, io::Error> {
         let cache_index = self.cache_count;
-        println!("    Current index: {}, Cache index: {}", self.current_index, cache_index);
+        debug!("    Current index: {}, Cache index: {}", self.current_index, cache_index);
         // Display information about each image
-        for (index, image_option) in self.cached_images.iter().enumerate() {
+        /*for (index, image_option) in self.cached_images.iter().enumerate() {
             match image_option {
                 Some(image_bytes) => {
                     let image_info = format!("    Image {} - Size: {} bytes", index, image_bytes.len());
-                    println!("{}", image_info);
+                    debug!("{}", image_info);
                 }
                 None => {
                     let no_image_info = format!("    No image at index {}", index);
-                    println!("{}", no_image_info);
+                    debug!("{}", no_image_info);
                 }
             }
-        }
+        }*/
 
         if let Some(image_data_option) = self.cached_images.get(cache_index) {
             if let Some(image_data) = image_data_option {
@@ -259,7 +260,10 @@ impl ImageCache {
         if self.current_index < self.image_paths.len() - 1 {
             // Move to the next image
             self.current_index += 1;
+            let start_time = Instant::now();
             self.shift_cache_left(new_image);
+            let elapsed_time = start_time.elapsed();
+            debug!("move_next() & shift_cache_left() Elapsed time: {:?}", elapsed_time);
             Ok(())
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
@@ -293,7 +297,7 @@ impl ImageCache {
 pub fn load_image_by_index(img_cache: &mut ImageCache, target_index: usize, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
     let path = img_cache.image_paths.get(target_index);
     if let Some(path) = path {
-        // println!("target_index: {}, Loading Path: {}", path.clone().to_string_lossy(), target_index );
+        // debug!("target_index: {}, Loading Path: {}", path.clone().to_string_lossy(), target_index );
         let image_loading_task = async_load_image(path.clone(), operation);
         Command::perform(image_loading_task, Message::ImageLoaded)
     } else {
@@ -345,7 +349,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) {
             //if self.dir_loaded[cache_index] {
             if pane.dir_loaded {
                 let file_paths = img_cache.image_paths.clone();
-                println!("file_paths.len() {:?}", file_paths.len());
+                debug!("file_paths.len() {:?}", file_paths.len());
 
                 // NOTE: be careful with the `pos`; if pos is greater than img_cache.image_paths.len(), it will panic
                 let position = pos.min(img_cache.image_paths.len() - 1);
@@ -369,7 +373,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) {
 
         for (cache_index, new_cache) in updated_caches.into_iter().enumerate() {
             let pane = &mut panes[cache_index];
-            println!("new_cache.current_index: {}", new_cache.current_index);
+            debug!("new_cache.current_index: {}", new_cache.current_index);
             //self.img_caches[cache_index] = new_cache;
             pane.img_cache = new_cache;
 
@@ -423,8 +427,8 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>) -> Command<Message> {
                         
             // let next_image_index = img_cache.current_index + 1; // WRONG
             let next_image_index = img_cache.current_index + img_cache.cache_count + 1;
-            println!("NEXT_IMAGE_INDEX: {}", next_image_index);
-            println!("image load state: {:?}", pane.image_load_state);
+            debug!("NEXT_IMAGE_INDEX: {}", next_image_index);
+            debug!("image load state: {:?}", pane.image_load_state);
 
             if img_cache.is_next_image_index_in_queue(cache_index, next_image_index as isize) {
                 if next_image_index >= img_cache.image_paths.len() {
@@ -459,8 +463,8 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>) -> Command<Message> {
         }
 
         let img_cache = &mut pane.img_cache;
-        // println!("current_index: {}, global_current_index: {:?}", img_cache.current_index, global_current_index);
-        // println!("cache_index, index_of_max_length_cache: {}, {}", cache_index, index_of_max_length_cache.unwrap());
+        // debug!("current_index: {}, global_current_index: {:?}", img_cache.current_index, global_current_index);
+        // debug!("cache_index, index_of_max_length_cache: {}, {}", cache_index, index_of_max_length_cache.unwrap());
         if img_cache.current_index <=0 {
             commands.push(Command::none());
             continue;
@@ -517,9 +521,9 @@ pub fn move_right_index(panes: &mut Vec<pane::Pane>, pane_index: usize) -> Comma
     if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
         // let next_image_index = img_cache.current_index - 1; // WRONG
         let next_image_index = img_cache.current_index + img_cache.cache_count + 1;
-            println!("NEXT_IMAGE_INDEX: {}", next_image_index);
-            // println!("image load state: {:?}", self.image_load_state);
-           // println!("image load state: {:?}", self.panes[pane_index].image_load_state);
+            debug!("NEXT_IMAGE_INDEX: {}", next_image_index);
+            // debug!("image load state: {:?}", self.image_load_state);
+           // debug!("image load state: {:?}", self.panes[pane_index].image_load_state);
 
             if img_cache.is_next_image_index_in_queue(pane_index, next_image_index as isize) {
                 if next_image_index >= img_cache.image_paths.len() {
