@@ -551,14 +551,17 @@ impl Application for DataViewer {
                         // Call a function or perform an action for this case
                         //self.move_right_all()
                         println!("slider - move_right_all");
-                        let command = move_right_all(&mut self.panes);
+                        //let command = move_right_all(&mut self.panes);
+                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value);
                         command
     
                     } else if value == self.prev_slider_value.saturating_sub(1) {
                         // Value changed by -1
                         // Call a different function or perform an action for this case
                         println!("slider - move_left_all");
-                        move_left_all(&mut self.panes)
+                        //move_left_all(&mut self.panes)
+                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value);
+                        command
                     } else {
                         // Value changed by more than 1 or it's the initial change
                         // Call another function or handle this case differently
