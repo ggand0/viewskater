@@ -41,7 +41,7 @@ iced_widget_custom = { package = "iced_widget", git = "https://github.com/ggand0
 
 
 [target.'cfg(target_os = "linux")'.dependencies]
-iced = {version = "0.10", features = ["image", "tokio", "svg", "lazy"]}
+iced = {version = "0.10", features = ["image", "tokio", "svg", "lazy", "debug"]}
 iced_aw = { version = "0.7.0", features = [
     "menu",
     "quad",

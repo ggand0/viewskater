@@ -24,6 +24,7 @@ use iced::{Element, Length, Application, Theme, Settings, Command};
 
 use std::path::PathBuf;
 use log::{debug, info, warn, error};
+use std::time::Instant;
 
 // #[macro_use]
 extern crate log;
@@ -31,7 +32,7 @@ extern crate log;
 mod image_cache;
 use crate::image_cache::ImageCache;
 use image_cache::LoadOperation;
-use image_cache::{move_right_all, move_left_all,
+use image_cache::{move_right_all, move_right_all_new, move_left_all,
     move_right_index, move_left_index, update_pos};
 mod file_io;
 use file_io::Error;
@@ -169,9 +170,25 @@ impl DataViewer {
             .filter(|pane| pane.is_selected)  // Filter only selected panes
             .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
         } else {
-            self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
+            //self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
+            self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded ))
         }
     }
+
+    fn are_all_images_loaded_index(&self, next_index: usize) -> bool {
+        if self.is_slider_dual {
+            self.panes
+            .iter()
+            .filter(|pane| pane.is_selected)  // Filter only selected panes
+            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
+        } else {
+            //self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
+            self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.img_cache.is_next_image_loaded(next_index)))
+        }
+    }
+
+
+
     fn are_all_images_loaded_in_selected(&self) -> bool {
         self.panes
             .iter()
@@ -220,6 +237,7 @@ impl DataViewer {
         let mut img_cache = None;
         //let mut cache_index = 0;
 
+        println!("IMAGE LOADED: c_index: {}", c_index);
         self.mark_image_loaded(c_index);
         img_cache.replace(&mut self.panes[c_index].img_cache);
         let cache_index = c_index;
@@ -227,30 +245,32 @@ impl DataViewer {
         if let Some(cache) = img_cache.as_mut() {
             let _ = cache.being_loaded_queue.pop_front();
             let _ = load_fn(cache, image_data);
+            cache.current_offset -= 1;
+            println!("cache.current_offset: {}", cache.current_offset);
         }
+        
     
+        // TODO: run this block right after user interactions
+
         // ref: https://stackoverflow.com/questions/63643732/variable-does-not-need-to-be-mutable-but-it-does
-        let mut pane = &mut self.panes[cache_index];
+        /*let mut pane = &mut self.panes[cache_index];
         let loaded_image = pane.img_cache.get_current_image().unwrap().to_vec();
         let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
         pane.current_image = handle;
+
     
-        // Update slider values
+        // Update slider values => 
         if self.is_slider_dual {
             pane.slider_value = pane.img_cache.current_index as u16;
         } else {
-            debug!("self.slider_value: {}", self.slider_value);
-
-
-            //self.slider_value = pane.img_cache.current_index as u16;
+            //debug!("self.slider_value: {}", self.slider_value);
             if self.are_all_images_loaded() {
-            //if self.are_all_images_loaded_in_selected() {
                 // Set the smaller index for slider value
                 let min_index = self.panes.iter().map(|pane| pane.img_cache.current_index).min().unwrap();
                 self.slider_value = min_index as u16;
             }
-            debug!("self.slider_value: {}", self.slider_value);
-        }
+            //debug!("self.slider_value: {}", self.slider_value);
+        }*/
     }
 
     // UI
@@ -338,8 +358,8 @@ impl Application for DataViewer {
             PaneLayout::SinglePane => {
                 if self.panes[0].dir_loaded {
                     // return string here
-                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
-
+                    //self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
+                    self.title.clone()
                 } else {
                     self.title.clone()
                 }
@@ -499,17 +519,20 @@ impl Application for DataViewer {
                         // Value changed by +1
                         // Call a function or perform an action for this case
                         //self.move_right_all()
+                        println!("slider - move_right_all");
                         let command = move_right_all(&mut self.panes);
                         command
     
                     } else if value == self.prev_slider_value.saturating_sub(1) {
                         // Value changed by -1
                         // Call a different function or perform an action for this case
+                        println!("slider - move_left_all");
                         move_left_all(&mut self.panes)
                     } else {
                         // Value changed by more than 1 or it's the initial change
                         // Call another function or handle this case differently
                         //self.update_pos(pane_index, value as usize);
+                        println!("slider - update_pos");
                         update_pos(&mut self.panes, pane_index, value as usize);
                         Command::none()
                     }
@@ -603,22 +626,27 @@ impl Application for DataViewer {
                         return Command::none();
                     }
 
-
+                    
                     /*debug!("image load state bf: {:?}", self.image_load_state);
                     debug!("dir_loaded: {:?}", self.dir_loaded);
-                    debug!("are_all_images_loaded: {}", self.are_all_images_loaded());*/
-                    for pane in self.panes.iter() {
+                    debug!("are_all_images_loaded: {}", self.are_all_images_loaded());
+                    for pane in panes.iter() {
                         debug!("pane.image_load_state: {:?}", pane.image_load_state);
                     }
-                    debug!("are_all_images_loaded: {}", self.are_all_images_loaded());
-                    debug!("are_all_images_loaded_in_selected: {}", self.are_all_images_loaded_in_selected());
-                    if self.are_all_images_loaded() {
-                    //if self.are_all_images_loaded_in_selected() {
+                    //debug!("are_all_images_loaded: {}", self.are_all_images_loaded());
+                    //debug!("are_all_images_loaded_in_selected: {}", self.are_all_images_loaded_in_selected());
+                    */
+                    
+                    let start_time = Instant::now();
+                    //if self.are_all_images_loaded() {
+                    if true {
                         self.init_image_loaded(); // [false, false]
                         // debug!("image load state af: {:?}", self.image_load_state);
 
+                        //let panes = &mut self.panes;
+
                         // if a pane has reached the directory boundary, mark as loaded
-                        let finished_indices: Vec<usize> = self.panes.iter_mut().enumerate().filter_map(|(index, pane)| {
+                        /*let finished_indices: Vec<usize> = panes.iter_mut().enumerate().filter_map(|(index, pane)| {
                             let img_cache = &mut pane.img_cache;
                             if img_cache.image_paths.len() > 0 && img_cache.current_index >= img_cache.image_paths.len() - 1 {
                                 Some(index)
@@ -631,8 +659,15 @@ impl Application for DataViewer {
                         }
                         debug!("finished_indices: {:?}", finished_indices);
 
-                        //self.move_right_all()
-                        let command = move_right_all(&mut self.panes);
+                        //let command = move_right_all(&mut self.panes);
+                        //command
+                        */
+
+                        let elapsed_time = start_time.elapsed();
+                        println!("move right elapsed time: {:?}", elapsed_time);
+                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value);
+                        
+
                         command
                     } else {
                         Command::none()

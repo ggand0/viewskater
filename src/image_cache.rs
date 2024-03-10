@@ -58,15 +58,14 @@ impl LoadOperation {
             LoadOperation::LoadPrevious(..) => Box::new(|cache, new_image| cache.move_prev(new_image)),
             LoadOperation::ShiftPrevious(..) => Box::new(|cache, new_image| cache.move_prev(new_image)),
         }
+        /*// version that doesn't do anything
+        match self {
+            LoadOperation::LoadNext(..) => Box::new(|_cache, _new_image| Ok(())),
+            LoadOperation::ShiftNext(..) => Box::new(|_cache, _new_image| Ok(())),
+            LoadOperation::LoadPrevious(..) => Box::new(|_cache, _new_image| Ok(())),
+            LoadOperation::ShiftPrevious(..) => Box::new(|_cache, _new_image| Ok(())),
+        }*/
     }
-}
-
-
-// Shared state to track completion of image loading tasks
-#[derive(Default)]
-pub struct ImageLoadState {
-    pane1_loaded: bool,
-    pane2_loaded: bool,
 }
 
 
@@ -76,9 +75,11 @@ pub struct ImageCache {
     pub image_paths: Vec<PathBuf>,
     pub num_files: usize,
     pub current_index: usize,
+    pub current_offset: usize,
     // pub current_queued_index: isize, // 
     pub cache_count: usize, // Number of images to cache in advance
     cached_images: Vec<Option<Vec<u8>>>, // Changed cached_images to store Option<Vec<u8>> for better handling
+    pub cache_states: Vec<bool>, // Cache states
     // pub loading_queue: VecDeque<usize>, // Queue of image indices to load
     pub loading_queue: VecDeque<LoadOperation>,
     pub being_loaded_queue: VecDeque<LoadOperation>, // Queue of image indices being loaded
@@ -91,17 +92,34 @@ impl ImageCache {
             image_paths,
             num_files: 0,
             current_index: initial_index,
+            current_offset: 0,
             cache_count,
             cached_images: vec![None; cache_count * 2 + 1], // Initialize cached_images with None
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
             // max_concurrent_loading: 10,
+            cache_states: Vec::new(),
         })
     }
 
     pub fn print_queue(&self) {
-        debug!("loading_queue: {:?}", self.loading_queue);
-        debug!("being_loaded_queue: {:?}", self.being_loaded_queue);
+        println!("loading_queue: {:?}", self.loading_queue);
+        println!("being_loaded_queue: {:?}", self.being_loaded_queue);
+    }
+
+    pub fn print_cache(&self) {
+        for (index, image_option) in self.cached_images.iter().enumerate() {
+            match image_option {
+                Some(image_bytes) => {
+                    let image_info = format!("Image {} - Size: {} bytes", index, image_bytes.len());
+                    println!("{}", image_info);
+                }
+                None => {
+                    let no_image_info = format!("No image at index {}", index);
+                    println!("{}", no_image_info);
+                }
+            }
+        }
     }
 
     pub fn enqueue_image_load(&mut self, operation: LoadOperation) {
@@ -112,6 +130,10 @@ impl ImageCache {
     pub fn enqueue_image_being_loaded(&mut self, operation: LoadOperation) {
         // Push the index into the being loaded queue
         self.being_loaded_queue.push_back(operation);
+    }
+
+    pub fn is_next_image_loaded(&self, next_image_index: usize) -> bool {
+        self.cache_states[next_image_index]
     }
 
     pub fn is_next_image_index_in_queue(&self, _cache_index: usize, next_image_index: isize) -> bool {
@@ -146,7 +168,7 @@ impl ImageCache {
         
         // Fill in the cache array with image paths
         for (i, cache_index) in (start_index..end_index).enumerate() {
-            debug!("i: {}, cache_index: {}", i, cache_index);
+            println!("i: {}, cache_index: {}", i, cache_index);
             if cache_index < 0 {
                 continue;
             }
@@ -159,7 +181,7 @@ impl ImageCache {
         }
 
         // Display information about each image
-        /*for (index, image_option) in self.cached_images.iter().enumerate() {
+        for (index, image_option) in self.cached_images.iter().enumerate() {
             match image_option {
                 Some(image_bytes) => {
                     let image_info = format!("Image {} - Size: {} bytes", index, image_bytes.len());
@@ -170,9 +192,12 @@ impl ImageCache {
                     debug!("{}", no_image_info);
                 }
             }
-        }*/
+        }
 
         self.num_files = self.image_paths.len();
+
+        // Set the cache states
+        self.cache_states = vec![true; self.image_paths.len()];
 
         Ok(())
     }
@@ -215,7 +240,7 @@ impl ImageCache {
     }
 
     pub fn get_current_image(&self) -> Result<&Vec<u8>, io::Error> {
-        let cache_index = self.cache_count;
+        let cache_index = self.cache_count; // center element of the cache
         debug!("    Current index: {}, Cache index: {}", self.current_index, cache_index);
         // Display information about each image
         /*for (index, image_option) in self.cached_images.iter().enumerate() {
@@ -247,6 +272,25 @@ impl ImageCache {
             ))
         }
     }
+
+    pub fn get_image_by_index(&self, index: usize) -> Result<&Vec<u8>, io::Error> {
+        println!("current index: {}, cached_images.len(): {}", self.current_index, self.cached_images.len());
+        if let Some(image_data_option) = self.cached_images.get(index) {
+            if let Some(image_data) = image_data_option {
+                Ok(image_data)
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Image data is not cached",
+                ))
+            }
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Invalid cache index",
+            ))
+        }
+    }
     
     pub fn is_index_within_bounds(&self, index: usize) -> bool {
         (0..self.image_paths.len()).contains(&index)
@@ -255,9 +299,13 @@ impl ImageCache {
     pub fn is_within_bounds(&self) -> bool {
         (0..self.image_paths.len()).contains(&self.current_index)
     }
+
+    //pub fn move_right
     
     pub fn move_next(&mut self, new_image: Option<Vec<u8>> ) -> Result<(), io::Error> {
+        println!("move_next");
         if self.current_index < self.image_paths.len() - 1 {
+            println!("move_next1");
             // Move to the next image
             self.current_index += 1;
             let start_time = Instant::now();
@@ -409,6 +457,78 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) {
 
 }
 
+pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16) -> Command<Message> {
+    let mut commands = Vec::new();
+    for (cache_index, pane) in panes.iter_mut().enumerate() {
+        // Skip panes that are not selected
+        if !pane.is_selected {
+            continue;
+        }
+
+        let img_cache = &mut pane.img_cache;
+        //println!("img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1: {}", img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1);
+        
+        // If there are images to load and the current index is not the last index
+        if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
+                        
+            
+            let next_image_index_to_load = img_cache.current_index + img_cache.cache_count + 1;
+            let next_image_index_to_render = img_cache.cache_count + img_cache.current_offset + 1;
+            
+            println!("next_image_index_to_load: {}", next_image_index_to_load);
+            println!("next_image_index_to_render: {}", next_image_index_to_render);
+            println!("current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
+
+            if img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load as isize) {
+                if next_image_index_to_load >= img_cache.image_paths.len() {
+                    // No new images to load, but shift the cache
+                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
+                } else {
+                    img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load)));
+                }
+
+            }
+            img_cache.print_cache();
+            let command = load_image_by_operation(img_cache);
+            commands.push(command);
+
+            // Just load the next one (experimental)
+            //let mut pane = &mut panes[cache_index];
+            let loaded_image = img_cache.get_image_by_index(next_image_index_to_render).unwrap().to_vec();
+            let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+            pane.current_image = handle;
+
+            //img_cache.current_index += 1;
+            img_cache.current_offset += 1;
+            *slider_value = *slider_value + 1;
+
+            
+            
+        
+            // Update slider values
+            /*
+            if self.is_slider_dual {
+                pane.slider_value = pane.img_cache.current_index as u16;
+            } else {
+                //debug!("self.slider_value: {}", self.slider_value);
+                if self.are_all_images_loaded() {
+                    // Set the smaller index for slider value
+                    let min_index = panes.iter().map(|pane| pane.img_cache.current_index).min().unwrap();
+                    self.slider_value = min_index as u16;
+                }
+                //debug!("self.slider_value: {}", self.slider_value);
+            }*/
+
+            //commands.push(Command::none())
+            //Command::none()
+        } else {
+            commands.push(Command::none())
+            //Command::none()
+        }
+    }
+    Command::batch(commands)
+}
+
 pub fn move_right_all(panes: &mut Vec<pane::Pane>) -> Command<Message> {
     // Returns a command object given a reference to the panes.
     // It needs to be a mutable reference as we need to enqueue image load operations into the image cache.
@@ -423,6 +543,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>) -> Command<Message> {
 
         let img_cache = &mut pane.img_cache;
         
+        // If there are images to load and the current index is not the last index
         if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
                         
             // let next_image_index = img_cache.current_index + 1; // WRONG
@@ -440,9 +561,11 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>) -> Command<Message> {
 
             }
             img_cache.print_queue();
-            // let command = load_image_by_operation(&mut img_cache);
+
+            
             let command = load_image_by_operation(img_cache);
             commands.push(command);
+            //commands.push(Command::none());
             
             // ImageViewer::load_image_by_operation_with_cache(&mut self.img_cache)
         } else {
