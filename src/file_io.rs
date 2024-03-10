@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 
+
 use rfd;
 use crate::image_cache::LoadOperation;
 
@@ -112,7 +113,7 @@ pub fn get_file_paths(directory_path: &Path) -> Vec<PathBuf> {
         }
     }
 
-    file_paths.sort();
+    //file_paths.sort();
     file_paths
 }
 use std::ffi::OsStr;

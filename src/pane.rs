@@ -146,6 +146,11 @@ impl Pane {
             self.directory_path = Some(path.to_string_lossy().to_string());
             _file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
             initial_index = 0;
+            // Display the first 100 paths
+            /*for path in _file_paths.iter().take(100) {
+                println!("{}", path.display());
+            }*/
+
             // self.current_image_index = 0;
             
             // self.slider_values[pane_index] = 0;
@@ -156,6 +161,9 @@ impl Pane {
             // Handle the case where the path does not exist or cannot be accessed
             return;
         }
+
+        // Sort
+        alphanumeric_sort::sort_path_slice(&mut _file_paths);
 
         // Debug print the files
         for path in _file_paths.iter().take(20) {
@@ -171,6 +179,7 @@ impl Pane {
         let mut img_cache =  image_cache::ImageCache::new(
             _file_paths,
             2,
+            //100,
             initial_index,
         ).unwrap();
         img_cache.load_initial_images().unwrap();

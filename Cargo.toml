@@ -14,6 +14,8 @@ tokio = { version = "1.32", features = ["full"] }
 rfd = "0.12"
 num-traits = "0.2"
 cargo-bundle = "0.6.0"
+#natord = "1.0.9"
+alphanumeric-sort = "1.5.3"
 
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
