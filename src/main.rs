@@ -32,7 +32,7 @@ extern crate log;
 mod image_cache;
 use crate::image_cache::ImageCache;
 use image_cache::LoadOperation;
-use image_cache::{move_right_all, move_right_all_new, move_left_all,
+use image_cache::{move_right_all, move_right_all_new, move_left_all_new, move_left_all,
     move_right_index, move_left_index, update_pos};
 mod file_io;
 use file_io::Error;
@@ -183,7 +183,21 @@ impl DataViewer {
             .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds()))
         } else {
             self.panes.iter().all(|pane|
-                pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds())
+                //pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds())
+                pane.dir_loaded )
+        }
+    }
+
+    fn are_all_images_cached_prev(&self) -> bool {
+        if self.is_slider_dual {
+            self.panes
+            .iter()
+            .filter(|pane| pane.is_selected)  // Filter only selected panes
+            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds()))
+        } else {
+            self.panes.iter().all(|pane|
+                //pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds())
+                pane.dir_loaded )
         }
     }
 
@@ -257,8 +271,11 @@ impl DataViewer {
         if let Some(cache) = img_cache.as_mut() {
             let _ = cache.being_loaded_queue.pop_front();
             let _ = load_fn(cache, image_data);
-            cache.current_offset -= 1;
+
+            // TODO: move this line into load_fn
+            //cache.current_offset -= 1;
             //println!("cache.current_offset: {}", cache.current_offset);
+
             println!("IMAGE LOADED: cache_index: {}, current_offset after decrement: {}",
                 cache_index, cache.current_offset);
         }
@@ -692,36 +709,21 @@ impl Application for DataViewer {
                     key_code: keyboard::KeyCode::Left,
                     modifiers: _,
                 }) => {
-                    debug!("ArrowLeft pressed");
-                    // Return if it's dual pane, dual slider and no panes are selected
                     if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                         debug!("No panes selected");
                         return Command::none();
                     }
 
-                    for pane in self.panes.iter() {
-                        debug!("pane.image_load_state: {:?}", pane.image_load_state);
-                    }
-                    debug!("are_all_images_loaded: {}", self.are_all_images_loaded());
-                    debug!("are_all_images_loaded_in_selected: {}", self.are_all_images_loaded_in_selected());
-                    if self.are_all_images_loaded() {
-                    //if self.are_all_images_loaded_in_selected() {
+                    if self.are_all_images_cached_prev() {
                         self.init_image_loaded(); // [false, false]
-                        // if a pane has reached the directory boundary, mark as loaded
-                        let finished_indices: Vec<usize> = self.panes.iter_mut().enumerate().filter_map(|(index, pane)| {
-                            let img_cache = &mut pane.img_cache;
-                            if img_cache.image_paths.len() > 0 && img_cache.current_index <= 0 {
-                                Some(index)
-                            } else {
-                                None
-                            }
-                        }).collect();
-                        for finished_index in finished_indices {
-                            self.mark_image_loaded(finished_index);
-                        }
+                        
+                        //println!("move right elapsed time: {:?}", elapsed_time);
+                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value);
+                        
 
-                        move_left_all(&mut self.panes)
+                        command
                     } else {
+                        println!("not are_all_images_cached()");
                         Command::none()
                     }
                     
