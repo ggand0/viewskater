@@ -79,6 +79,7 @@ pub struct ImageCache {
     // pub current_queued_index: isize, // 
     pub cache_count: usize, // Number of images to cache in advance
     cached_images: Vec<Option<Vec<u8>>>, // Changed cached_images to store Option<Vec<u8>> for better handling
+    pub cached_image_indices: Vec<usize>, // Indices of cached images (index of the image_paths array)
     pub cache_states: Vec<bool>, // Cache states
     // pub loading_queue: VecDeque<usize>, // Queue of image indices to load
     pub loading_queue: VecDeque<LoadOperation>,
@@ -99,6 +100,7 @@ impl ImageCache {
             being_loaded_queue: VecDeque::new(),
             // max_concurrent_loading: 10,
             cache_states: Vec::new(),
+            cached_image_indices: Vec::new(),
         })
     }
 
@@ -149,6 +151,29 @@ impl ImageCache {
             LoadOperation::ShiftNext((_c_index, img_index)) => img_index != &next_index_usize,
             LoadOperation::ShiftPrevious((_c_index, img_index)) => img_index != &next_image_index,
         })
+    }
+
+    pub fn is_image_index_within_bounds(&self, index: usize) -> bool {
+        (0..self.image_paths.len()).contains(&index)
+    }
+
+    pub fn is_current_index_within_bounds(&self) -> bool {
+        (0..self.image_paths.len()).contains(&self.current_index)
+    }
+
+    pub fn is_cache_index_within_bounds(&self, index: usize) -> bool {
+        (0..self.cached_images.len()).contains(&index)
+    }
+
+    pub fn is_next_cache_index_within_bounds(&self) -> bool {
+        //let next_image_index_to_render = self.current_index + self.cache_count + 1;
+        let next_image_index_to_render = self.cache_count + self.current_offset + 1;
+        self.is_cache_index_within_bounds(next_image_index_to_render)
+    }
+
+    pub fn is_prev_cache_index_within_bounds(&self) -> bool {
+        let prev_image_index_to_render = self.current_index - self.cache_count - 1;
+        self.is_cache_index_within_bounds(prev_image_index_to_render)
     }
 
 
@@ -291,21 +316,10 @@ impl ImageCache {
             ))
         }
     }
-    
-    pub fn is_index_within_bounds(&self, index: usize) -> bool {
-        (0..self.image_paths.len()).contains(&index)
-    }
 
-    pub fn is_within_bounds(&self) -> bool {
-        (0..self.image_paths.len()).contains(&self.current_index)
-    }
-
-    //pub fn move_right
     
     pub fn move_next(&mut self, new_image: Option<Vec<u8>> ) -> Result<(), io::Error> {
-        println!("move_next");
         if self.current_index < self.image_paths.len() - 1 {
-            println!("move_next1");
             // Move to the next image
             self.current_index += 1;
             let start_time = Instant::now();
@@ -472,23 +486,35 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16) -
         if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
                         
             
-            let next_image_index_to_load = img_cache.current_index + img_cache.cache_count + 1;
-            let next_image_index_to_render = img_cache.cache_count + img_cache.current_offset + 1;
+            //let next_image_index_to_load = img_cache.current_index + img_cache.cache_count + 1;
+            let next_image_index_to_load = img_cache.current_index + img_cache.cache_count + img_cache.current_offset + 1;
             
-            println!("next_image_index_to_load: {}", next_image_index_to_load);
-            println!("next_image_index_to_render: {}", next_image_index_to_render);
-            println!("current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
+            let next_image_index_to_render = img_cache.cache_count + img_cache.current_offset + 1;
+            //let next_image_index_to_render = img_cache.cache_count + img_cache.current_offset;
+            
+            //println!("next_image_index_to_load: {}", next_image_index_to_load);
+            //println!("next_image_index_to_render: {}", next_image_index_to_render);
+            //println!("current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
+            println!("RENDERING NEXT: next_image_index_to_load: {}, next_image_index_to_render: {} current_index: {}, current_offset: {}",
+                next_image_index_to_load, next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
+            println!("image filename being rendered: {:?}", img_cache.image_paths[next_image_index_to_render]);
 
+            //if !img_cache.is_image_index_within_bounds(next_image_index_to_load) {
             if img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load as isize) {
-                if next_image_index_to_load >= img_cache.image_paths.len() {
+                /*if next_image_index_to_load >= img_cache.image_paths.len() {
                     // No new images to load, but shift the cache
                     img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
                 } else {
                     img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load)));
+                }*/
+                if next_image_index_to_load < img_cache.image_paths.len() && img_cache.is_image_index_within_bounds(next_image_index_to_load) {
+                    img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load)));
+                } else {
+                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
                 }
-
             }
             img_cache.print_cache();
+            img_cache.print_queue();
             let command = load_image_by_operation(img_cache);
             commands.push(command);
 

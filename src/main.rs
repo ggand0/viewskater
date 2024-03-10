@@ -175,6 +175,18 @@ impl DataViewer {
         }
     }
 
+    fn are_all_images_cached(&self) -> bool {
+        if self.is_slider_dual {
+            self.panes
+            .iter()
+            .filter(|pane| pane.is_selected)  // Filter only selected panes
+            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds()))
+        } else {
+            self.panes.iter().all(|pane|
+                pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds())
+        }
+    }
+
     fn are_all_images_loaded_index(&self, next_index: usize) -> bool {
         if self.is_slider_dual {
             self.panes
@@ -237,7 +249,7 @@ impl DataViewer {
         let mut img_cache = None;
         //let mut cache_index = 0;
 
-        println!("IMAGE LOADED: c_index: {}", c_index);
+        //println!("IMAGE LOADED: c_index: {}", c_index);
         self.mark_image_loaded(c_index);
         img_cache.replace(&mut self.panes[c_index].img_cache);
         let cache_index = c_index;
@@ -246,7 +258,9 @@ impl DataViewer {
             let _ = cache.being_loaded_queue.pop_front();
             let _ = load_fn(cache, image_data);
             cache.current_offset -= 1;
-            println!("cache.current_offset: {}", cache.current_offset);
+            //println!("cache.current_offset: {}", cache.current_offset);
+            println!("IMAGE LOADED: cache_index: {}, current_offset after decrement: {}",
+                cache_index, cache.current_offset);
         }
         
     
@@ -639,7 +653,7 @@ impl Application for DataViewer {
                     
                     let start_time = Instant::now();
                     //if self.are_all_images_loaded() {
-                    if true {
+                    if self.are_all_images_cached() {
                         self.init_image_loaded(); // [false, false]
                         // debug!("image load state af: {:?}", self.image_load_state);
 
@@ -664,12 +678,13 @@ impl Application for DataViewer {
                         */
 
                         let elapsed_time = start_time.elapsed();
-                        println!("move right elapsed time: {:?}", elapsed_time);
+                        //println!("move right elapsed time: {:?}", elapsed_time);
                         let command = move_right_all_new(&mut self.panes, &mut self.slider_value);
                         
 
                         command
                     } else {
+                        println!("not are_all_images_cached()");
                         Command::none()
                     }
                 }
