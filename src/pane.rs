@@ -163,7 +163,7 @@ impl Pane {
         }
 
         // Sort
-        alphanumeric_sort::sort_path_slice(&mut _file_paths);
+        //alphanumeric_sort::sort_path_slice(&mut _file_paths);
 
         // Debug print the files
         for path in _file_paths.iter().take(20) {

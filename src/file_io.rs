@@ -114,6 +114,7 @@ pub fn get_file_paths(directory_path: &Path) -> Vec<PathBuf> {
     }
 
     //file_paths.sort();
+    alphanumeric_sort::sort_path_slice(&mut file_paths);
     file_paths
 }
 use std::ffi::OsStr;
@@ -133,6 +134,7 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
         }
     }
 
-    image_paths.sort();
+    //image_paths.sort();
+    alphanumeric_sort::sort_path_slice(&mut image_paths);
     image_paths
 }
