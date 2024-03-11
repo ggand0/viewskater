@@ -193,7 +193,7 @@ impl DataViewer {
             self.panes
             .iter()
             .filter(|pane| pane.is_selected)  // Filter only selected panes
-            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds()))
+            .all(|pane| !pane.dir_loaded || (pane.dir_loaded))
         } else {
             self.panes.iter().all(|pane|
                 //pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds())

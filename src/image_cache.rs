@@ -588,7 +588,9 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is
                 img_cache.current_offset -= 1;
                 if is_slider_dual {
                     //pane.slider_value = pane.img_cache.current_index as u16;
-                    pane.slider_value = (pane.img_cache.current_index as isize + pane.img_cache.current_offset) as u16;
+                    let tmp = (pane.img_cache.current_index as isize + pane.img_cache.current_offset);
+                    println!("tmp: {}", tmp);
+                    pane.slider_value = tmp as u16;
                 }
             }
         } else {
@@ -685,10 +687,13 @@ pub fn move_left_index_new(panes: &mut Vec<pane::Pane>, pane_index: usize) -> Co
 
             img_cache.current_offset -= 1;
             
-            pane.slider_value -= 1;
+            /*pane.slider_value -= 1;
             if pane.slider_value < 0 {
                 pane.slider_value = 0;
-            }
+            }*/
+            let tmp = (pane.img_cache.current_index as isize + pane.img_cache.current_offset);
+            println!("tmp: {}", tmp);
+            pane.slider_value = tmp as u16;
             println!("pane_index: {}, slider_value: {}", pane_index, pane.slider_value);
         }
 
