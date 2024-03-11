@@ -496,9 +496,6 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, i
         
         // If there are images to load and the current index is not the last index
         if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
-                        
-            
-            //let next_image_index_to_load = img_cache.current_index + img_cache.cache_count + 1;
             let next_image_index_to_load = img_cache.current_index as isize + img_cache.cache_count as isize + img_cache.current_offset + 1;
             assert!(next_image_index_to_load >= 0);
             let next_image_index_to_load_usize = next_image_index_to_load as usize;
@@ -531,7 +528,8 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, i
                 img_cache.current_offset += 1;
                 //*slider_value = *slider_value + 1;
                 if is_slider_dual {
-                    pane.slider_value = pane.img_cache.current_index as u16;
+                    //pane.slider_value = pane.img_cache.current_index as u16;
+                    pane.slider_value = (pane.img_cache.current_index as isize + pane.img_cache.current_offset) as u16;
                 }
             }
 
@@ -589,7 +587,8 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is
 
                 img_cache.current_offset -= 1;
                 if is_slider_dual {
-                    pane.slider_value = pane.img_cache.current_index as u16;
+                    //pane.slider_value = pane.img_cache.current_index as u16;
+                    pane.slider_value = (pane.img_cache.current_index as isize + pane.img_cache.current_offset) as u16;
                 }
             }
         } else {
