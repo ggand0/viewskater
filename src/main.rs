@@ -33,7 +33,7 @@ mod image_cache;
 use crate::image_cache::ImageCache;
 use image_cache::LoadOperation;
 use image_cache::{move_right_all, move_right_all_new, move_left_all_new, move_left_all,
-    move_right_index, move_left_index, update_pos};
+    move_right_index, move_left_index, update_pos, move_right_index_new, move_left_index_new};
 mod file_io;
 use file_io::Error;
 
@@ -180,7 +180,7 @@ impl DataViewer {
             self.panes
             .iter()
             .filter(|pane| pane.is_selected)  // Filter only selected panes
-            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds()))
+            .all(|pane| !pane.dir_loaded )
         } else {
             self.panes.iter().all(|pane|
                 //pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds())
@@ -552,7 +552,7 @@ impl Application for DataViewer {
                         //self.move_right_all()
                         println!("slider - move_right_all");
                         //let command = move_right_all(&mut self.panes);
-                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value);
+                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
                         command
     
                     } else if value == self.prev_slider_value.saturating_sub(1) {
@@ -560,7 +560,7 @@ impl Application for DataViewer {
                         // Call a different function or perform an action for this case
                         println!("slider - move_left_all");
                         //move_left_all(&mut self.panes)
-                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value);
+                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
                         command
                     } else {
                         // Value changed by more than 1 or it's the initial change
@@ -590,14 +590,15 @@ impl Application for DataViewer {
                         debug!("move_right_index");
                         // Value changed by +1
                         // Call a function or perform an action for this case
-                        move_right_index(&mut self.panes, pane_index)
+                        //move_right_index(&mut self.panes, pane_index)
+                        move_right_index_new(&mut self.panes, pane_index)
 
                     // } else if value == self.prev_slider_values[pane_index].saturating_sub(1) {
                     } else if value == pane.prev_slider_value.saturating_sub(1) {
                         // Value changed by -1
                         // Call a different function or perform an action for this case
                         debug!("move_left_index");
-                        move_left_index(&mut self.panes, pane_index)
+                        move_left_index_new(&mut self.panes, pane_index)
                     } else {
                         // Value changed by more than 1 or it's the initial change
                         // Call another function or handle this case differently
@@ -699,7 +700,7 @@ impl Application for DataViewer {
 
                         let elapsed_time = start_time.elapsed();
                         //println!("move right elapsed time: {:?}", elapsed_time);
-                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value);
+                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
                         
 
                         command
@@ -721,8 +722,8 @@ impl Application for DataViewer {
                         self.init_image_loaded(); // [false, false]
                         
                         //println!("move right elapsed time: {:?}", elapsed_time);
-                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value);
-                        
+                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+
 
                         command
                     } else {

@@ -483,7 +483,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) {
 
 }
 
-pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16) -> Command<Message> {
+pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is_slider_dual: bool) -> Command<Message> {
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         // Skip panes that are not selected
@@ -502,26 +502,14 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16) -
             let next_image_index_to_load = img_cache.current_index as isize + img_cache.cache_count as isize + img_cache.current_offset + 1;
             assert!(next_image_index_to_load >= 0);
             let next_image_index_to_load_usize = next_image_index_to_load as usize;
-
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
-            //let next_image_index_to_render = img_cache.cache_count + img_cache.current_offset;
             
-            //println!("next_image_index_to_load: {}", next_image_index_to_load);
-            //println!("next_image_index_to_render: {}", next_image_index_to_render);
-            //println!("current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
             println!("RENDERING NEXT: next_image_index_to_load: {}, next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_load, next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
             //println!("image filename being rendered: {:?}", img_cache.image_paths[next_image_index_to_render]);
 
-            //if !img_cache.is_image_index_within_bounds(next_image_index_to_load) {
             if img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load as isize)  &&
             img_cache.is_image_index_within_bounds(next_image_index_to_load) {
-                /*if next_image_index_to_load >= img_cache.image_paths.len() {
-                    // No new images to load, but shift the cache
-                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load)));
-                }*/
                 if next_image_index_to_load_usize < img_cache.image_paths.len() {
                     img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
                 } else {
@@ -541,44 +529,26 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16) -
                 pane.current_image = handle;
 
                 img_cache.current_offset += 1;
-                *slider_value = *slider_value + 1;
-            }
-            /*let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
-            let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
-            pane.current_image = handle;
-
-            //img_cache.current_index += 1;
-            img_cache.current_offset += 1;
-            *slider_value = *slider_value + 1;*/
-
-            
-            
-        
-            // Update slider values
-            /*
-            if self.is_slider_dual {
-                pane.slider_value = pane.img_cache.current_index as u16;
-            } else {
-                //debug!("self.slider_value: {}", self.slider_value);
-                if self.are_all_images_loaded() {
-                    // Set the smaller index for slider value
-                    let min_index = panes.iter().map(|pane| pane.img_cache.current_index).min().unwrap();
-                    self.slider_value = min_index as u16;
+                //*slider_value = *slider_value + 1;
+                if is_slider_dual {
+                    pane.slider_value = pane.img_cache.current_index as u16;
                 }
-                //debug!("self.slider_value: {}", self.slider_value);
-            }*/
+            }
 
-            //commands.push(Command::none())
-            //Command::none()
         } else {
             commands.push(Command::none())
-            //Command::none()
         }
+    }
+
+    // Update master slider when !is_slider_dual
+    if !is_slider_dual {
+        let min_index = panes.iter().map(|pane| pane.img_cache.current_index as isize + pane.img_cache.current_offset).min().unwrap();
+        *slider_value = min_index as u16;
     }
     Command::batch(commands)
 }
 
-pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16) -> Command<Message> {
+pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is_slider_dual: bool) -> Command<Message> {
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         // Skip panes that are not selected
@@ -597,23 +567,8 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16) ->
             //println!("image filename being rendered: {:?}", img_cache.image_paths[next_image_index_to_render]);
 
             println!("img_cache.is_image_index_within_bounds(next_image_index_to_load)) {}", img_cache.is_image_index_within_bounds(next_image_index_to_load));
-            //if !img_cache.is_image_index_within_bounds(next_image_index_to_load) {
             if img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load as isize) &&
                 img_cache.is_image_index_within_bounds(next_image_index_to_load) {
-                /*if next_image_index_to_load < 0 {
-                    // No new images to load but shift the cache
-                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, next_image_index_to_load)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, next_image_index_to_load)));
-                }*/
-
-                /*if next_image_index_to_load >= 0 &&
-                    img_cache.is_image_index_within_bounds(next_image_index_to_load) {
-                        
-                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, next_image_index_to_load as usize)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, next_image_index_to_load)));
-                }*/
                 if next_image_index_to_load >= 0 {
                     img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, next_image_index_to_load as usize)));
                 } else {
@@ -633,24 +588,116 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16) ->
                 pane.current_image = handle;
 
                 img_cache.current_offset -= 1;
-                *slider_value = *slider_value - 1;
+                if is_slider_dual {
+                    pane.slider_value = pane.img_cache.current_index as u16;
+                }
             }
-            /*let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
+        } else {
+            commands.push(Command::none())
+        }
+    }
+
+    // Update master slider when !is_slider_dual
+    if !is_slider_dual {
+        let min_index = panes.iter().map(|pane| pane.img_cache.current_index as isize + pane.img_cache.current_offset).min().unwrap();
+        *slider_value = min_index as u16;
+    }
+
+    Command::batch(commands)
+}
+
+pub fn move_right_index_new(panes: &mut Vec<pane::Pane>, pane_index: usize) -> Command<Message> {
+    let pane = &mut panes[pane_index];
+    //let img_cache = &mut panes[pane_index].img_cache;
+    let img_cache = &mut pane.img_cache;
+    if !pane.is_selected {
+        return Command::none();
+    }
+    
+    // If there are images to load and the current index is not the last index
+    if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
+        let next_image_index_to_load = img_cache.current_index as isize + img_cache.cache_count as isize + img_cache.current_offset + 1;
+        assert!(next_image_index_to_load >= 0);
+        let next_image_index_to_load_usize = next_image_index_to_load as usize;
+        let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
+        println!("RENDERING NEXT: next_image_index_to_load: {}, next_image_index_to_render: {} current_index: {}, current_offset: {}",
+            next_image_index_to_load, next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
+
+        if img_cache.is_next_image_index_in_queue(pane_index, next_image_index_to_load as isize)  &&
+        img_cache.is_image_index_within_bounds(next_image_index_to_load) {
+            if next_image_index_to_load_usize < img_cache.image_paths.len() {
+                img_cache.enqueue_image_load(LoadOperation::LoadNext((pane_index, next_image_index_to_load_usize)));
+            } else {
+                img_cache.enqueue_image_load(LoadOperation::ShiftNext((pane_index, next_image_index_to_load_usize)));
+            }
+        }
+        img_cache.print_cache();
+        img_cache.print_queue();
+        let command = load_image_by_operation(img_cache);
+
+        // Just load the next one (experimental)
+        // Avoid loading around the edges
+        if img_cache.current_index as isize + img_cache.current_offset < (img_cache.image_paths.len() - 1) as isize {
+            let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
+            let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+            pane.current_image = handle;
+
+            img_cache.current_offset += 1;
+            pane.slider_value += 1;
+        }
+
+        command
+    } else {
+        Command::none()
+    }
+}
+
+pub fn move_left_index_new(panes: &mut Vec<pane::Pane>, pane_index: usize) -> Command<Message> {
+    let pane = &mut panes[pane_index];
+    //let img_cache = &mut panes[pane_index].img_cache;
+    let img_cache = &mut pane.img_cache;
+    if !pane.is_selected {
+        return Command::none();
+    }
+    if img_cache.current_index > 0 {
+        let next_image_index_to_load: isize = img_cache.current_index as isize  - img_cache.cache_count as isize + img_cache.current_offset  as isize  - 1;
+        let next_image_index_to_render = img_cache.cache_count as isize + (img_cache.current_offset - 1);
+        println!("RENDERING PREV: next_image_index_to_load: {}, next_image_index_to_render: {} current_index: {}, current_offset: {}",
+            next_image_index_to_load, next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
+        println!("img_cache.is_image_index_within_bounds(next_image_index_to_load)) {}", img_cache.is_image_index_within_bounds(next_image_index_to_load));
+        if img_cache.is_next_image_index_in_queue(pane_index, next_image_index_to_load as isize) &&
+            img_cache.is_image_index_within_bounds(next_image_index_to_load) {
+            if next_image_index_to_load >= 0 {
+                img_cache.enqueue_image_load(LoadOperation::LoadPrevious((pane_index, next_image_index_to_load as usize)));
+            } else {
+                img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((pane_index, next_image_index_to_load)));
+            }
+        }
+        img_cache.print_cache();
+        img_cache.print_queue();
+        let command = load_image_by_operation(img_cache);
+
+        // Just load the next one (experimental)
+        // Avoid loading around the edges
+        if img_cache.current_index as isize + img_cache.current_offset > 0 {
+            let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
             let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
             pane.current_image = handle;
 
             img_cache.current_offset -= 1;
-            *slider_value = *slider_value - 1;*/
-
-        } else {
-            commands.push(Command::none())
-            //Command::none()
+            
+            pane.slider_value -= 1;
+            if pane.slider_value < 0 {
+                pane.slider_value = 0;
+            }
+            println!("pane_index: {}, slider_value: {}", pane_index, pane.slider_value);
         }
+
+        command
+    } else {
+        Command::none()
     }
-    Command::batch(commands)
 }
-
-
 
 
 pub fn move_right_all(panes: &mut Vec<pane::Pane>) -> Command<Message> {
