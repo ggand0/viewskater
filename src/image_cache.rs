@@ -76,6 +76,7 @@ pub struct ImageCache {
     pub num_files: usize,
     pub current_index: usize,
     pub current_offset: isize,
+    pub current_offset_accumulated: isize,
     // pub current_queued_index: isize, // 
     pub cache_count: usize, // Number of images to cache in advance
     cached_images: Vec<Option<Vec<u8>>>, // Changed cached_images to store Option<Vec<u8>> for better handling
@@ -101,6 +102,7 @@ impl ImageCache {
             // max_concurrent_loading: 10,
             cache_states: Vec::new(),
             cached_image_indices: Vec::new(),
+            current_offset_accumulated: 0,
         })
     }
 
@@ -129,9 +131,17 @@ impl ImageCache {
         self.loading_queue.push_back(operation);
     }
 
+    pub fn reset_image_load_queue(&mut self) {
+        self.loading_queue.clear();
+    }
+
     pub fn enqueue_image_being_loaded(&mut self, operation: LoadOperation) {
         // Push the index into the being loaded queue
         self.being_loaded_queue.push_back(operation);
+    }
+
+    pub fn reset_image_being_loaded_queue(&mut self) {
+        self.being_loaded_queue.clear();
     }
 
     pub fn is_next_image_loaded(&self, next_image_index: usize) -> bool {
@@ -153,6 +163,47 @@ impl ImageCache {
         })
     }
 
+    fn is_some_at_index(&self, index: usize) -> bool {
+        // Using pattern matching to check if element is None
+        /*if let Some(_) = self.cached_images.get(index) {
+            true
+        } else {
+            false
+        }*/
+        if let Some(image_data_option) = self.cached_images.get(index) {
+            if let Some(image_data) = image_data_option {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+        
+    }
+
+    pub fn is_cache_index_within_bounds(&self, index: usize) -> bool {
+        //(0..self.cached_images.len()).contains(&index)
+        if !(0..self.cached_images.len()).contains(&index) {
+            return false;
+        }
+
+        self.is_some_at_index(index)
+    }
+
+    pub fn is_next_cache_index_within_bounds(&self) -> bool {
+        //let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
+        //let next_image_index_to_render = self.current_index + self.cache_count + 1;
+        let next_image_index_to_render = self.get_next_cache_index();
+        assert!(next_image_index_to_render >= 0);
+        self.is_cache_index_within_bounds(next_image_index_to_render as usize)
+    }
+
+    pub fn is_prev_cache_index_within_bounds(&self) -> bool {
+        let prev_image_index_to_render = self.cache_count as isize + self.current_offset - 1;;
+        self.is_cache_index_within_bounds(prev_image_index_to_render as usize)
+    }
+
     pub fn is_image_index_within_bounds(&self, index: isize) -> bool {
         index < 0 && index >= -(self.cache_count as isize) ||
         index >= 0 && index < self.image_paths.len() as isize ||
@@ -163,20 +214,8 @@ impl ImageCache {
         (0..self.image_paths.len()).contains(&self.current_index)
     }
 
-    pub fn is_cache_index_within_bounds(&self, index: usize) -> bool {
-        (0..self.cached_images.len()).contains(&index)
-    }
-
-    pub fn is_next_cache_index_within_bounds(&self) -> bool {
-        //let next_image_index_to_render = self.current_index + self.cache_count + 1;
-        let next_image_index_to_render = self.cache_count as isize + self.current_offset + 1;
-        assert!(next_image_index_to_render >= 0);
-        self.is_cache_index_within_bounds(next_image_index_to_render as usize)
-    }
-
-    pub fn is_prev_cache_index_within_bounds(&self) -> bool {
-        let prev_image_index_to_render = self.cache_count as isize + self.current_offset - 1;;
-        self.is_cache_index_within_bounds(prev_image_index_to_render as usize)
+    pub fn get_next_cache_index(&self) -> isize {
+        self.cache_count as isize + self.current_offset + 1
     }
 
 
@@ -288,6 +327,7 @@ impl ImageCache {
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
+                //println!()
                 Err(io::Error::new(
                     io::ErrorKind::Other,
                     "Image data is not cached",
@@ -327,9 +367,6 @@ impl ImageCache {
             self.current_index += 1;
             let start_time = Instant::now();
             self.shift_cache_left(new_image);
-
-            
-
             let elapsed_time = start_time.elapsed();
             debug!("move_next() & shift_cache_left() Elapsed time: {:?}", elapsed_time);
             Ok(())
@@ -353,6 +390,7 @@ impl ImageCache {
         self.cached_images.pop(); // Remove the last (rightmost) element
         self.cached_images.insert(0, new_image);
 
+        
         self.current_offset += 1;
         println!("shift_cache_right - current_offset: {}", self.current_offset);
     }
@@ -361,8 +399,34 @@ impl ImageCache {
         self.cached_images.remove(0);
         self.cached_images.push(new_image);
 
-        self.current_offset -= 1;
-        println!("shift_cache_left - current_offset: {}", self.current_offset);
+        //self.current_offset -= 1;
+        // If we just decrement the offset, we can't address a case like this,
+        // where the next image hasn't been loaded yet. 
+        /*
+        e.g. next_image_index_to_load: 702, next_image_index_to_render: 8 current_index: 694, current_offset: 2
+        Image 0 - Size: 4736 bytes
+        Image 1 - Size: 4650 bytes
+        Image 2 - Size: 4690 bytes
+        Image 3 - Size: 3885 bytes
+        Image 4 - Size: 3803 bytes
+        Image 5 - Size: 3741 bytes
+        Image 6 - Size: 3625 bytes
+        Image 7 - Size: 3555 bytes
+        No image at index 8
+        Image 9 - Size: 3538 bytes
+        No image at index 10
+        */
+
+        // To address this, introduce a new variable, current_offset_accumulated
+        let next_image_index_to_render = self.cache_count as isize + self.current_offset + 1;
+        if self.is_some_at_index(next_image_index_to_render as usize) {
+            self.current_offset += self.current_offset_accumulated - 1;
+        } else {
+            self.current_offset_accumulated -= 1;
+        }
+        
+        //println!("shift_cache_left - current_offset: {}", self.current_offset);
+        println!("shift_cache_left - current_offset: {}, current_offset_accumulated: {}", self.current_offset, self.current_offset_accumulated);
     }
 }
 
@@ -429,7 +493,8 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) {
                 let position = pos.min(img_cache.image_paths.len() - 1);
                 let mut img_cache =  ImageCache::new( // image_cache::ImageCache::new(
                     file_paths,
-                    2,
+                    //2,
+                    5,
                     position,
                 ).unwrap();
 
@@ -438,7 +503,8 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) {
             } else {
                 let img_cache =  ImageCache::new(
                     Vec::new(),
-                    2,
+                    //2,
+                    5,
                     0,
                 ).unwrap();
                 updated_caches.push(img_cache);

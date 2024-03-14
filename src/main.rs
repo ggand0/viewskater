@@ -84,6 +84,7 @@ pub struct DataViewer {
     last_opened_pane: usize,
     panes: Vec<pane::Pane>,             // Each pane has its own image cache
     move_right: bool,
+    update_counter: u32,
 }
 
 impl Default for DataViewer {
@@ -102,6 +103,7 @@ impl Default for DataViewer {
             last_opened_pane: 0,
             panes: vec![pane::Pane::default()],
             move_right: false,
+            update_counter: 0,
         }
     }
 }
@@ -141,6 +143,7 @@ impl DataViewer {
             pane.reset_state();
         }
         self.move_right = false;
+        self.update_counter = 0;
     }
 
     // Function to initialize image_load_state for all panes
@@ -186,9 +189,13 @@ impl DataViewer {
             //.all(|pane| pane.dir_loaded )
             .all(|pane| true )
         } else {
+            //println!("self.panes[0].img_cache.get_next_cache_index(): {}", self.panes[0].img_cache.get_next_cache_index());
+            //println!("self.panes[0].img_cache.get_next_cache_index_within_bounds(): {}", self.panes[0].img_cache.is_next_cache_index_within_bounds());
+            self.panes[0].img_cache.print_cache();
             self.panes.iter().all(|pane|
                 //pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds())
-                pane.dir_loaded )
+                pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
+                pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
         }
     }
 
@@ -280,8 +287,8 @@ impl DataViewer {
             //cache.current_offset -= 1;
             //println!("cache.current_offset: {}", cache.current_offset);
 
-            println!("IMAGE LOADED: cache_index: {}, current_offset after decrement: {}",
-                cache_index, cache.current_offset);
+            println!("IMAGE LOADED: cache_index: {}, current_offset: {}, current_offset_accumulated: {}",
+                cache_index, cache.current_offset, cache.current_offset_accumulated);
         }
         
     
@@ -383,6 +390,7 @@ impl Application for DataViewer {
                 last_opened_pane: 0,
                 panes: vec![pane::Pane::default()],
                 move_right: false,
+                update_counter: 0,
             },
             Command::none()
         )
@@ -686,6 +694,12 @@ impl Application for DataViewer {
                 }) => {
                     debug!("ArrowRight released");
                     self.move_right = false;
+
+                    // Reset panes' image loading queues
+                    for pane in self.panes.iter_mut() {
+                        pane.img_cache.reset_image_load_queue();
+                        pane.img_cache.reset_image_being_loaded_queue();
+                    }
                     //Command::none()
                 }
                 Event::Keyboard(keyboard::Event::KeyPressed {
@@ -721,8 +735,13 @@ impl Application for DataViewer {
 
         }
 
+        self.update_counter += 1;
         //if self.are_all_images_loaded() {
-        if self.move_right && self.are_all_images_cached() {
+        //if self.move_right && self.update_counter >= 2 && self.are_all_images_cached() {
+        //if self.update_counter % 5 != 0 && self.move_right && self.are_all_images_cached() {
+        if self.update_counter % 2 == 0 && self.move_right && self.are_all_images_cached() {
+            println!("update_counter: {}", self.update_counter);
+            self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
             let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
             command

@@ -178,7 +178,8 @@ impl Pane {
         // Instantiate a new image cache and load the initial images
         let mut img_cache =  image_cache::ImageCache::new(
             _file_paths,
-            2,
+            //2,
+            5,
             //100,
             initial_index,
         ).unwrap();
