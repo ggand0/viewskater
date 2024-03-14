@@ -191,8 +191,9 @@ impl DataViewer {
             //.all(|pane| pane.dir_loaded )
             .all(|pane| true )
         } else {
-            //println!("self.panes[0].img_cache.get_next_cache_index(): {}", self.panes[0].img_cache.get_next_cache_index());
-            //println!("self.panes[0].img_cache.get_next_cache_index_within_bounds(): {}", self.panes[0].img_cache.is_next_cache_index_within_bounds());
+            println!("self.panes[0].img_cache.get_next_cache_index(): {}", self.panes[0].img_cache.get_next_cache_index());
+            println!("self.panes[0].img_cache.get_next_cache_index_within_bounds(): {}", self.panes[0].img_cache.is_next_cache_index_within_bounds());
+            self.panes[0].img_cache.print_queue();
             self.panes[0].img_cache.print_cache();
             self.panes.iter().all(|pane|
                 //pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds())
@@ -734,6 +735,9 @@ impl Application for DataViewer {
                     for pane in self.panes.iter_mut() {
                         pane.img_cache.reset_image_load_queue();
                         pane.img_cache.reset_image_being_loaded_queue();
+
+                        pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
+                        pane.img_cache.current_offset_accumulated = 0;
                     }
                     //Command::none()
                 }
