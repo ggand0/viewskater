@@ -78,7 +78,8 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                         // _app.slider_values[0],
                         _app.slider_value,
                         -1,
-                        Message::SliderChanged
+                        Message::SliderChanged,
+                        Message::SliderReleased
                     )
                     .width(Length::Fill)
                     ]
@@ -130,6 +131,7 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                         _app.slider_value,
                         -1, // -1 means all panes
                         Message::SliderChanged,
+                        Message::SliderReleased
                     );
                 
                     container_all = container(

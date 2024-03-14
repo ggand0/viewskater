@@ -33,7 +33,8 @@ mod image_cache;
 use crate::image_cache::ImageCache;
 use image_cache::LoadOperation;
 use image_cache::{move_right_all, move_right_all_new, move_left_all_new, move_left_all,
-    move_right_index, move_left_index, update_pos, move_right_index_new, move_left_index_new};
+    move_right_index, move_left_index, update_pos, move_right_index_new, move_left_index_new,
+    load_remaining_images};
 mod file_io;
 use file_io::Error;
 
@@ -119,6 +120,7 @@ pub enum Message {
     Close,
     FolderOpened(Result<String, Error>),
     SliderChanged(isize, u16),
+    SliderReleased(isize, u16),
     Event(Event),
     // ImageLoaded(Result<(), std::io::ErrorKind>),// std::io::Error doesn't seem to be clonable
     // ImageLoaded(Result<Option<Vec<u8>>, std::io::ErrorKind>),
@@ -535,6 +537,9 @@ impl Application for DataViewer {
                                 LoadOperation::ShiftPrevious((c_index, _target_index)) => {
                                     self.handle_load_operation(c_index, &mut img_cache, image_data, op.load_fn());
                                 }
+                                LoadOperation::LoadPos((c_index, _target_index, pos)) => {
+                                    self.handle_load_operation(c_index, &mut img_cache, image_data, op.load_fn());
+                                }
                             }
                         }
 
@@ -559,7 +564,7 @@ impl Application for DataViewer {
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    if value == self.prev_slider_value + 1 {
+                    /*if value == self.prev_slider_value + 1 {
                         // Value changed by +1
                         // Call a function or perform an action for this case
                         //self.move_right_all()
@@ -582,7 +587,10 @@ impl Application for DataViewer {
                         println!("slider - update_pos");
                         update_pos(&mut self.panes, pane_index, value as usize);
                         //Command::none()
-                    }
+                    }*/
+                    println!("slider - update_pos");
+                    //update_pos(&mut self.panes, pane_index, value as usize);
+                    return update_pos(&mut self.panes, pane_index, value as usize);
 
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
@@ -619,6 +627,15 @@ impl Application for DataViewer {
                         update_pos(&mut self.panes, pane_index_org, value as usize);
                         //Command::none()
                     }
+                }
+            }
+
+            Message::SliderReleased(pane_index, value) => {
+                if pane_index == -1 {
+                    return load_remaining_images(
+                        &mut self.panes, pane_index, value as usize);
+                } else {
+                    return load_remaining_images(&mut self.panes, pane_index, value as usize);
                 }
             }
 

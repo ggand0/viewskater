@@ -128,7 +128,7 @@ where
     // on_change: Box<dyn Fn(T) -> Message + 'a>,
     // on_change: Box<dyn Fn(usize, T) -> Message + 'a>,
     on_change: Box<dyn Fn(isize, T) -> Message + 'a>,
-    on_release: Option<Message>,
+    on_release: Box<dyn Fn(isize, T) -> Message + 'a>,
     width: Length,
     height: f32,
     style: <Renderer::Theme as StyleSheet>::Style,
@@ -152,9 +152,10 @@ where
     ///   * a function that will be called when the [`Slider`] is dragged.
     ///   It receives the new value of the [`Slider`] and must produce a
     ///   `Message`.
-    pub fn new<F>(range: RangeInclusive<T>, value: T, pane_index: isize, on_change: F) -> Self
+    pub fn new<F, G>(range: RangeInclusive<T>, value: T, pane_index: isize, on_change: F, on_release: G) -> Self
     where
         F: 'a + Fn(isize, T) -> Message,
+        G: 'a + Fn(isize, T) -> Message,
     {
         let value = if value >= *range.start() {
             value
@@ -174,7 +175,7 @@ where
             pane_index: pane_index,
             step: T::from(1),
             on_change: Box::new(on_change),
-            on_release: None,
+            on_release: Box::new(on_release),
             width: Length::Fill,
             height: Self::DEFAULT_HEIGHT,
             style: Default::default(),
@@ -188,7 +189,8 @@ where
     /// This is useful if you need to spawn a long-running task from the slider's result, where
     /// the default on_change message could create too many events.
     pub fn on_release(mut self, on_release: Message) -> Self {
-        self.on_release = Some(on_release);
+        //self.on_release = Some(on_release);
+
         self
     }
 
@@ -355,9 +357,10 @@ where
             | Event::Touch(touch::Event::FingerLifted { .. })
             | Event::Touch(touch::Event::FingerLost { .. }) => {
                 if is_dragging {
-                    if let Some(on_release) = self.on_release.clone() {
+                    /*if let Some(on_release) = self.on_release.clone() {
                         shell.publish(on_release);
-                    }
+                    }*/
+                    shell.publish((self.on_release)( self.pane_index, self.value ));
                     state.is_dragging = false;
 
                     return event::Status::Captured;

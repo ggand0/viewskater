@@ -227,7 +227,8 @@ impl Pane {
                     // self.slider_values[0],
                     self.slider_value,
                     -1,
-                    Message::SliderChanged
+                    Message::SliderChanged,
+                    Message::SliderReleased
                 )
                 .width(Length::Fill)
                 ]
@@ -275,7 +276,8 @@ impl Pane {
                     0..= (self.img_cache.num_files - 1) as u16,
                     self.slider_value,
                     0, // this needs to pane_index instead of 0
-                    Message::SliderChanged
+                    Message::SliderChanged,
+                    Message::SliderReleased
                 )
                 .width(Length::Fill)
                 ]
@@ -321,7 +323,8 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
                 0..= (panes[0].img_cache.num_files - 1) as u16,
                 panes[0].slider_value,
                 0,
-                Message::SliderChanged
+                Message::SliderChanged,
+                Message::SliderReleased
             )
             .width(Length::Fill)
             ]
@@ -345,7 +348,8 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
                 0..= (panes[1].img_cache.num_files - 1) as u16,
                 panes[1].slider_value,
                 1,
-                Message::SliderChanged
+                Message::SliderChanged,
+                Message::SliderReleased
             )
             .width(Length::Fill)
             ]
