@@ -83,7 +83,7 @@ pub struct DataViewer {
     pane_layout: PaneLayout,
     last_opened_pane: usize,
     panes: Vec<pane::Pane>,             // Each pane has its own image cache
-    move_right: bool,
+    skate_right: bool,
     update_counter: u32,
 }
 
@@ -102,7 +102,7 @@ impl Default for DataViewer {
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: 0,
             panes: vec![pane::Pane::default()],
-            move_right: false,
+            skate_right: false,
             update_counter: 0,
         }
     }
@@ -142,7 +142,7 @@ impl DataViewer {
         for pane in self.panes.iter_mut() {
             pane.reset_state();
         }
-        self.move_right = false;
+        self.skate_right = false;
         self.update_counter = 0;
     }
 
@@ -389,7 +389,7 @@ impl Application for DataViewer {
                 pane_layout: PaneLayout::SinglePane,
                 last_opened_pane: 0,
                 panes: vec![pane::Pane::default()],
-                move_right: false,
+                skate_right: false,
                 update_counter: 0,
             },
             Command::none()
@@ -666,15 +666,33 @@ impl Application for DataViewer {
 
                 Event::Keyboard(keyboard::Event::KeyPressed {
                     key_code: keyboard::KeyCode::Right,
-                    modifiers: _,
+                    //modifiers: _,
+                    modifiers,
                 }) => {
+
+
                     debug!("ArrowRight pressed");
                     if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                         debug!("No panes selected");
                         //Command::none();
                     }
 
-                    self.move_right = true;
+                    if modifiers.shift() {
+                        println!("SKATE_RIGHT: true");
+                        self.skate_right = true;
+                    } else {
+                        println!("SKATE_RIGHT: false");
+                        self.skate_right = false;
+
+                        if self.are_all_images_cached() {
+                            self.init_image_loaded(); // [false, false]
+                            let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                            return command;
+                        } else {
+                            println!("not are_all_images_cached()");
+                            //Command::none()
+                        }
+                    }
 
                     /*
                     //if self.are_all_images_loaded() {
@@ -692,8 +710,8 @@ impl Application for DataViewer {
                     key_code: keyboard::KeyCode::Right,
                     modifiers: _,
                 }) => {
-                    debug!("ArrowRight released");
-                    self.move_right = false;
+                    debug!("ArrowRight released, SKATE_RIGHT: false");
+                    self.skate_right = false;
 
                     // Reset panes' image loading queues
                     for pane in self.panes.iter_mut() {
@@ -739,7 +757,8 @@ impl Application for DataViewer {
         //if self.are_all_images_loaded() {
         //if self.move_right && self.update_counter >= 2 && self.are_all_images_cached() {
         //if self.update_counter % 5 != 0 && self.move_right && self.are_all_images_cached() {
-        if self.move_right && self.are_all_images_cached() {
+        if self.skate_right && self.are_all_images_cached() {
+            println!("skae_right: {}", self.skate_right);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
