@@ -739,7 +739,7 @@ impl Application for DataViewer {
         //if self.are_all_images_loaded() {
         //if self.move_right && self.update_counter >= 2 && self.are_all_images_cached() {
         //if self.update_counter % 5 != 0 && self.move_right && self.are_all_images_cached() {
-        if self.update_counter % 2 == 0 && self.move_right && self.are_all_images_cached() {
+        if self.move_right && self.are_all_images_cached() {
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
