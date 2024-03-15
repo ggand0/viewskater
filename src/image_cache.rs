@@ -51,7 +51,7 @@ impl LoadOperation {
             LoadOperation::LoadNext(..) => Box::new(|cache, new_image| cache.move_next(new_image)),
             LoadOperation::ShiftNext(..) => Box::new(|cache, new_image| cache.move_next_edge(new_image)),
             LoadOperation::LoadPrevious(..) => Box::new(|cache, new_image| cache.move_prev(new_image)),
-            LoadOperation::ShiftPrevious(..) => Box::new(|cache, new_image| cache.move_prev(new_image)),
+            LoadOperation::ShiftPrevious(..) => Box::new(|cache, new_image| cache.move_prev_edge(new_image)),
             LoadOperation::LoadPos(..) => {
                 let pos = match self {
                     LoadOperation::LoadPos((_, _, pos)) => *pos,
@@ -386,6 +386,20 @@ impl ImageCache {
         if self.current_index > 0 {
             self.current_index -= 1;
             self.shift_cache_right(new_image);
+            Ok(())
+        } else {
+            Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
+        }
+    }
+
+    pub fn move_prev_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(), io::Error> {
+        if self.current_index > 0 {
+            self.shift_cache_right(new_image);
+            self.current_index -= 1;
+            // Since no more images will be loaded, update the current offset with the accumulated offset
+            self.current_offset += self.current_offset_accumulated;
+            self.current_offset_accumulated = 0;
+            println!("move_prev_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
             Ok(())
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
