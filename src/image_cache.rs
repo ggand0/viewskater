@@ -412,7 +412,14 @@ impl ImageCache {
         self.cached_images.insert(0, new_image);
 
         
-        self.current_offset += 1;
+        //self.current_offset += 1;
+
+        let prev_image_index_to_load = self.cache_count as isize - self.current_offset as isize - 1;
+        if self.is_some_at_index(prev_image_index_to_load as usize) {
+            self.current_offset += self.current_offset_accumulated + 1;
+        } else {
+            self.current_offset_accumulated += 1;
+        }
         println!("shift_cache_right - current_offset: {}", self.current_offset);
     }
 
