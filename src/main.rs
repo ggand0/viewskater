@@ -718,7 +718,7 @@ impl Application for DataViewer {
                     key_code: keyboard::KeyCode::Right,
                     modifiers: _,
                 }) => {
-                    debug!("ArrowRight released, SKATE_RIGHT: false");
+                    println!("ArrowRight released, SKATE_RIGHT: false");
                     self.skate_right = false;
 
                     // Reset panes' image loading queues
@@ -801,6 +801,7 @@ impl Application for DataViewer {
         } else {
             println!("not are_all_images_cached()");
             let command = Command::none();
+            self.panes[0].img_cache.print_cache();
             command
         }
 

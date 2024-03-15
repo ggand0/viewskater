@@ -414,9 +414,10 @@ impl ImageCache {
         
         //self.current_offset += 1;
 
-        let prev_image_index_to_load = self.cache_count as isize - self.current_offset as isize - 1;
+        let prev_image_index_to_load = self.cache_count as isize - self.current_offset as isize + self.current_offset_accumulated - 1;
         if self.is_some_at_index(prev_image_index_to_load as usize) {
             self.current_offset += self.current_offset_accumulated + 1;
+            self.current_offset_accumulated = 0; // need to evaluate if this is needed later
         } else {
             self.current_offset_accumulated += 1;
         }
@@ -446,9 +447,11 @@ impl ImageCache {
         */
 
         // To address this, introduce a new variable, current_offset_accumulated
-        let next_image_index_to_render = self.cache_count as isize + self.current_offset + 1;
+        //let next_image_index_to_render = self.cache_count as isize + self.current_offset + 1;
+        let next_image_index_to_render = self.cache_count as isize + self.current_offset + self.current_offset_accumulated + 1;
         if self.is_some_at_index(next_image_index_to_render as usize) {
             self.current_offset += self.current_offset_accumulated - 1;
+            self.current_offset_accumulated = 0; // need to evaluate if this is needed later
         } else {
             self.current_offset_accumulated -= 1;
         }
