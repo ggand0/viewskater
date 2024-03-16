@@ -171,7 +171,6 @@ impl ImageCache {
         } else {
             false
         }
-        
     }
 
     pub fn is_cache_index_within_bounds(&self, index: usize) -> bool {
@@ -186,6 +185,8 @@ impl ImageCache {
     pub fn is_next_cache_index_within_bounds(&self) -> bool {
         //let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
         //let next_image_index_to_render = self.current_index + self.cache_count + 1;
+        
+        //self.cache_count as isize + self.current_offset + 1
         let next_image_index_to_render = self.get_next_cache_index();
         assert!(next_image_index_to_render >= 0);
         self.is_cache_index_within_bounds(next_image_index_to_render as usize)
@@ -358,10 +359,7 @@ impl ImageCache {
         if self.current_index < self.image_paths.len() - 1 {
             // Move to the next image
             self.current_index += 1;
-            let start_time = Instant::now();
             self.shift_cache_left(new_image);
-            let elapsed_time = start_time.elapsed();
-            debug!("move_next() & shift_cache_left() Elapsed time: {:?}", elapsed_time);
             Ok(())
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
@@ -384,8 +382,9 @@ impl ImageCache {
 
     pub fn move_prev(&mut self, new_image: Option<Vec<u8>>) -> Result<(), io::Error> {
         if self.current_index > 0 {
-            self.current_index -= 1;
+            //self.current_index -= 1; // shuold this be after the cache shift?
             self.shift_cache_right(new_image);
+            self.current_index -= 1;
             Ok(())
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
@@ -410,9 +409,6 @@ impl ImageCache {
         // Shift the elements in cached_images to the right
         self.cached_images.pop(); // Remove the last (rightmost) element
         self.cached_images.insert(0, new_image);
-
-        
-        //self.current_offset += 1;
 
         let prev_image_index_to_load = self.cache_count as isize - self.current_offset as isize + self.current_offset_accumulated - 1;
         if self.is_some_at_index(prev_image_index_to_load as usize) {
@@ -445,7 +441,7 @@ impl ImageCache {
         Image 9 - Size: 3538 bytes
         No image at index 10
         */
-
+        
         // To address this, introduce a new variable, current_offset_accumulated
         //let next_image_index_to_render = self.cache_count as isize + self.current_offset + 1;
         let next_image_index_to_render = self.cache_count as isize + self.current_offset + self.current_offset_accumulated + 1;
@@ -761,7 +757,7 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, i
         
         // If there are images to load and the current index is not the last index
         if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
-            let next_image_index_to_load = img_cache.current_index as isize + img_cache.cache_count as isize + img_cache.current_offset + 1;
+            let next_image_index_to_load = img_cache.current_index as isize + img_cache.cache_count as isize + 1;
             assert!(next_image_index_to_load >= 0);
             let next_image_index_to_load_usize = next_image_index_to_load as usize;
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
@@ -823,7 +819,7 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is
         if img_cache.current_index > 0 {
             //let next_image_index: isize = img_cache.current_index as isize - img_cache.cache_count as isize - 1;
             //let next_image_index_to_load: isize = img_cache.current_index as isize  - img_cache.cache_count as isize - img_cache.current_offset  as isize  - 1;
-            let next_image_index_to_load: isize = img_cache.current_index as isize  - img_cache.cache_count as isize + img_cache.current_offset  as isize  - 1;
+            let next_image_index_to_load: isize = img_cache.current_index as isize  - img_cache.cache_count as isize  - 1;
             let next_image_index_to_render = img_cache.cache_count as isize + (img_cache.current_offset - 1);
             println!("RENDERING PREV: next_image_index_to_load: {}, next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_load, next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
