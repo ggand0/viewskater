@@ -190,15 +190,14 @@ impl DataViewer {
             self.panes
             .iter()
             .filter(|pane| pane.is_selected)  // Filter only selected panes
-            //.all(|pane| pane.dir_loaded )
-            .all(|pane| true )
+            .all(|pane| pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
+            pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
         } else {
             println!("self.panes[0].img_cache.get_next_cache_index(): {}", self.panes[0].img_cache.get_next_cache_index());
             println!("self.panes[0].img_cache.get_next_cache_index_within_bounds(): {}", self.panes[0].img_cache.is_next_cache_index_within_bounds());
             self.panes[0].img_cache.print_queue();
             self.panes[0].img_cache.print_cache();
             self.panes.iter().all(|pane|
-                //pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds())
                 pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
                 pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
         }
@@ -209,7 +208,8 @@ impl DataViewer {
             self.panes
             .iter()
             .filter(|pane| pane.is_selected)  // Filter only selected panes
-            .all(|pane| !pane.dir_loaded || (pane.dir_loaded))
+            .all(|pane| pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds() &&
+            pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
         } else {
             self.panes.iter().all(|pane|
                 pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds() &&
@@ -228,8 +228,6 @@ impl DataViewer {
             self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.img_cache.is_next_image_loaded(next_index)))
         }
     }
-
-
 
     fn are_all_images_loaded_in_selected(&self) -> bool {
         self.panes
@@ -594,7 +592,7 @@ impl Application for DataViewer {
                     }*/
                     println!("slider - update_pos");
                     //update_pos(&mut self.panes, pane_index, value as usize);
-                    return update_pos(&mut self.panes, pane_index, value as usize);
+                    return update_pos(&mut self.panes, pane_index as isize, value as usize);
 
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
@@ -611,7 +609,7 @@ impl Application for DataViewer {
                     debug!("pane_index {} slider value: {}", pane_index, pane.slider_value);
                     
                     // if value == self.prev_slider_values[pane_index] + 1 {
-                    if value == pane.prev_slider_value + 1 {
+                    /*if value == pane.prev_slider_value + 1 {
                         debug!("move_right_index");
                         // Value changed by +1
                         // Call a function or perform an action for this case
@@ -630,7 +628,9 @@ impl Application for DataViewer {
                         debug!("update_pos");
                         update_pos(&mut self.panes, pane_index_org, value as usize);
                         //Command::none()
-                    }
+                    }*/
+
+                    return update_pos(&mut self.panes, pane_index as isize, value as usize);
                 }
             }
 
@@ -639,7 +639,7 @@ impl Application for DataViewer {
                     return load_remaining_images(
                         &mut self.panes, pane_index, value as usize);
                 } else {
-                    return load_remaining_images(&mut self.panes, pane_index, value as usize);
+                    return load_remaining_images(&mut self.panes, pane_index as isize, value as usize);
                 }
             }
 
@@ -783,7 +783,7 @@ impl Application for DataViewer {
             
         }
 
-        self.update_counter += 1;
+        //self.update_counter += 1;
         if self.skate_right && self.are_all_images_cached() {
             println!("skae_right: {}", self.skate_right);
             println!("update_counter: {}", self.update_counter);

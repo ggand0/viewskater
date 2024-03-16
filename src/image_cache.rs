@@ -410,13 +410,14 @@ impl ImageCache {
         self.cached_images.pop(); // Remove the last (rightmost) element
         self.cached_images.insert(0, new_image);
 
-        let prev_image_index_to_load = self.cache_count as isize - self.current_offset as isize + self.current_offset_accumulated - 1;
+        self.current_offset += 1;
+        /*let prev_image_index_to_load = self.cache_count as isize - self.current_offset as isize + self.current_offset_accumulated - 1;
         if self.is_some_at_index(prev_image_index_to_load as usize) {
             self.current_offset += self.current_offset_accumulated + 1;
             self.current_offset_accumulated = 0; // need to evaluate if this is needed later
         } else {
             self.current_offset_accumulated += 1;
-        }
+        }*/
         println!("shift_cache_right - current_offset: {}", self.current_offset);
     }
 
@@ -441,7 +442,9 @@ impl ImageCache {
         Image 9 - Size: 3538 bytes
         No image at index 10
         */
-        
+
+        self.current_offset -= 1;
+        /*
         // To address this, introduce a new variable, current_offset_accumulated
         //let next_image_index_to_render = self.cache_count as isize + self.current_offset + 1;
         let next_image_index_to_render = self.cache_count as isize + self.current_offset + self.current_offset_accumulated + 1;
@@ -450,7 +453,7 @@ impl ImageCache {
             self.current_offset_accumulated = 0; // need to evaluate if this is needed later
         } else {
             self.current_offset_accumulated -= 1;
-        }
+        }*/
         
         //println!("shift_cache_left - current_offset: {}", self.current_offset);
         println!("shift_cache_left - current_offset: {}, current_offset_accumulated: {}", self.current_offset, self.current_offset_accumulated);
@@ -668,6 +671,31 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
         }
         Command::batch(commands)
     } else{
+        //Command::none()
+        let pane_index = pane_index as usize;
+        let pane = &mut panes[pane_index];
+        let img_cache = &mut pane.img_cache;
+
+        if pane.dir_loaded {
+            match img_cache.load_image(pos as usize) {
+                Ok(image) => {
+                    // Handle successful image loading
+                    let center_index = img_cache.cache_count;
+                    img_cache.cached_images[center_index] = Some(image);
+
+                    img_cache.current_index = pos;
+                    img_cache.current_offset = 0;
+                    img_cache.current_offset_accumulated = 0;
+                    let loaded_image = img_cache.get_current_image().unwrap().to_vec();
+                    pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
+                }
+                Err(err) => {
+                    // Handle error
+                    println!("update_pos(): Error loading image: {}", err);
+                }
+            }
+        }
+
         Command::none()
     }
 }
