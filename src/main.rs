@@ -704,14 +704,17 @@ impl Application for DataViewer {
                         println!("SKATE_RIGHT: false");
                         self.skate_right = false;
 
-                        if self.are_all_images_cached() {
+                        /*if self.are_all_images_cached() {
                             self.init_image_loaded(); // [false, false]
                             let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
                             return command;
                         } else {
                             println!("not are_all_images_cached()");
                             //Command::none()
-                        }
+                        }*/
+                        self.init_image_loaded(); // [false, false]
+                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                        return command;
                     }
                 }
                 Event::Keyboard(keyboard::Event::KeyReleased {
@@ -746,14 +749,17 @@ impl Application for DataViewer {
                     } else {
                         println!("SKATE_LEFT: false");
                         self.skate_left = false;
-                        if self.are_all_images_cached_prev() {
+                        /*if self.are_all_images_cached_prev() {
                             self.init_image_loaded(); // [false, false]
                             let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
                             return command;
                         } else {
                             println!("not are_all_images_cached()");
                             //Command::none()
-                        }
+                        }*/
+                        self.init_image_loaded(); // [false, false]
+                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                        return command;
                     }
                     
                 }
@@ -784,14 +790,15 @@ impl Application for DataViewer {
         }
 
         //self.update_counter += 1;
-        if self.skate_right && self.are_all_images_cached() {
+        //if self.skate_right && self.are_all_images_cached() {
+            if self.skate_right {
             println!("skae_right: {}", self.skate_right);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
             let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
             command
-        } else if self.skate_left && self.are_all_images_cached_prev() {
+        } else if self.skate_left {
             println!("skae_left: {}", self.skate_left);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
@@ -799,7 +806,7 @@ impl Application for DataViewer {
             let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
             command
         } else {
-            println!("not are_all_images_cached()");
+            println!("no skate mode detected");
             let command = Command::none();
             self.panes[0].img_cache.print_cache();
             command

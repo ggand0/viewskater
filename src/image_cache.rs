@@ -772,11 +772,25 @@ pub fn update_pos_old(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize
 
 }
 
+fn is_pane_cached_next(pane: pane::Pane, index: usize, is_slider_dual: bool) -> bool {
+    pane.is_selected && pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
+        pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3
+}
+
+fn is_pane_cached_prev(pane: pane::Pane, index: usize, is_slider_dual: bool) -> bool {
+    pane.is_selected && pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds() &&
+        pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3
+}
+
+
 pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is_slider_dual: bool) -> Command<Message> {
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
-        // Skip panes that are not selected
-        if !pane.is_selected {
+        // Skip panes that are not selected or cached
+        /*if !pane.is_selected {
+            continue;
+        }*/
+        if !is_pane_cached_next(pane.clone(), cache_index, is_slider_dual) {
             continue;
         }
 
@@ -839,7 +853,10 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         // Skip panes that are not selected
-        if !pane.is_selected {
+        /*if !pane.is_selected {
+            continue;
+        }*/
+        if !is_pane_cached_prev(pane.clone(), cache_index, is_slider_dual) {
             continue;
         }
 
