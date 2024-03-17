@@ -34,6 +34,7 @@ use iced::Command;
 //use crate::file_io::{async_load_image, empty_async_block, is_file, is_directory, get_file_paths, get_file_index, Error};
 use crate::file_io::{async_load_image, empty_async_block};
 use crate::pane;
+use crate::menu::PaneLayout;
 
 
 #[derive(Debug, Clone)]
@@ -783,7 +784,7 @@ fn is_pane_cached_prev(pane: pane::Pane, index: usize, is_slider_dual: bool) -> 
 }
 
 
-pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is_slider_dual: bool) -> Command<Message> {
+pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool) -> Command<Message> {
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         // Skip panes that are not selected or cached
@@ -830,7 +831,9 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, i
 
                 img_cache.current_offset += 1;
                 //*slider_value = *slider_value + 1;
-                if is_slider_dual {
+                
+                if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+                    println!("dualpane && is_slider_dual slider update");
                     //pane.slider_value = pane.img_cache.current_index as u16;
                     pane.slider_value = (pane.img_cache.current_index as isize + pane.img_cache.current_offset) as u16;
                 }
@@ -842,14 +845,14 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, i
     }
 
     // Update master slider when !is_slider_dual
-    if !is_slider_dual {
+    if !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
         let min_index = panes.iter().map(|pane| pane.img_cache.current_index as isize + pane.img_cache.current_offset).min().unwrap();
         *slider_value = min_index as u16;
     }
     Command::batch(commands)
 }
 
-pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is_slider_dual: bool) -> Command<Message> {
+pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool) -> Command<Message> {
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         // Skip panes that are not selected
@@ -892,7 +895,7 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is
                 pane.current_image = handle;
 
                 img_cache.current_offset -= 1;
-                if is_slider_dual {
+                if *pane_layout == PaneLayout::DualPane && is_slider_dual {
                     //pane.slider_value = pane.img_cache.current_index as u16;
                     let tmp = (pane.img_cache.current_index as isize + pane.img_cache.current_offset);
                     println!("tmp: {}", tmp);
@@ -905,7 +908,7 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, is
     }
 
     // Update master slider when !is_slider_dual
-    if !is_slider_dual {
+    if !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
         let min_index = panes.iter().map(|pane| pane.img_cache.current_index as isize + pane.img_cache.current_offset).min().unwrap();
         *slider_value = min_index as u16;
     }

@@ -713,7 +713,8 @@ impl Application for DataViewer {
                             //Command::none()
                         }*/
                         self.init_image_loaded(); // [false, false]
-                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                        let command = move_right_all_new(
+                            &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
                         return command;
                     }
                 }
@@ -758,7 +759,7 @@ impl Application for DataViewer {
                             //Command::none()
                         }*/
                         self.init_image_loaded(); // [false, false]
-                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
                         return command;
                     }
                     
@@ -796,14 +797,15 @@ impl Application for DataViewer {
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
-            let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+            let command = move_right_all_new(
+                &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
             command
         } else if self.skate_left {
             println!("skae_left: {}", self.skate_left);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
-            let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+            let command = move_left_all_new(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
             command
         } else {
             println!("no skate mode detected");
