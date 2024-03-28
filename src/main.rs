@@ -82,7 +82,7 @@ pub struct DataViewer {
     //pane_count: usize,
     is_slider_dual: bool,
     pane_layout: PaneLayout,
-    last_opened_pane: usize,
+    last_opened_pane: isize,
     panes: Vec<pane::Pane>,             // Each pane has its own image cache
     skate_right: bool,
     skate_left: bool,
@@ -102,7 +102,7 @@ impl Default for DataViewer {
             //pane_count: 2,
             is_slider_dual: false,
             pane_layout: PaneLayout::SinglePane,
-            last_opened_pane: 0,
+            last_opened_pane: -1,
             panes: vec![pane::Pane::default()],
             skate_right: false,
             skate_left: false,
@@ -237,9 +237,17 @@ impl DataViewer {
     }
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
-        self.last_opened_pane = pane_index;
         debug!("last_opened_pane: {}", self.last_opened_pane);
-        self.panes[pane_index].initialize_dir_path(path);
+        //self.panes[pane_index].initialize_dir_path(path);
+
+        //let pane_slider_values = self.panes.iter().map(|pane| pane.slider_value).collect::<Vec<u16>>();
+        let pane_file_lengths = self.panes.iter().map(|pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
+        let pane = &mut self.panes[pane_index];
+        //self.panes[pane_index].initialize_dir_path(&self.panes, pane_index, path, self.is_slider_dual);
+        //pane.initialize_dir_path(panes, pane_index, path, self.is_slider_dual);
+        println!("pane_file_lengths: {:?}", pane_file_lengths);
+        pane.initialize_dir_path(
+            &pane_file_lengths, pane_index, path, self.is_slider_dual, &mut self.slider_value);
 
 
         // If the index is greater than or equal to the length of current_images,
@@ -257,9 +265,10 @@ impl DataViewer {
         }
 
         // Update the slider position
-        if !self.is_slider_dual {
-            self.slider_value = self.panes[pane_index].img_cache.current_index as u16;
+        if !self.is_slider_dual && self.last_opened_pane == -1 {
+            //self.slider_value = self.panes[pane_index].img_cache.current_index as u16;
         }
+        self.last_opened_pane = pane_index as isize;
     }
 
 
@@ -635,6 +644,7 @@ impl Application for DataViewer {
             }
 
             Message::SliderReleased(pane_index, value) => {
+                println!("slider released: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
                     return load_remaining_images(
                         &mut self.panes, pane_index, value as usize);

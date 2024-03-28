@@ -33,7 +33,7 @@ use crate::{DataViewer,Message};
 use iced::Command;
 //use crate::file_io::{async_load_image, empty_async_block, is_file, is_directory, get_file_paths, get_file_index, Error};
 use crate::file_io::{async_load_image, empty_async_block};
-use crate::pane;
+use crate::pane::{self, Pane, get_pane_with_largest_dir_size};
 use crate::menu::PaneLayout;
 
 
@@ -560,19 +560,26 @@ pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos
             let img_cache = &mut pane.img_cache;
 
             if pane.dir_loaded {
+                println!("load_remaining_images - cache_count: {}", img_cache.cache_count);
                 let center_index = img_cache.cache_count;
                 for i in 0..img_cache.cache_count {
                     let next_cache_index = center_index + i + 1;
                     let prev_cache_index = center_index- i - 1;
                     let next_image_index = pos + i + 1;
                     let prev_image_index = pos as isize - i as isize - 1;
+                    println!("next_image_index: {}, prev_image_index: {}", next_image_index, prev_image_index);
 
                     // Load images into cache indices with LoadPos
-                    if next_cache_index < img_cache.image_paths.len() {
-                        img_cache.enqueue_image_load(LoadOperation::LoadPos((cache_index, next_image_index, next_cache_index)));
+                    //if next_cache_index < img_cache.image_paths.len() {
+                    if next_image_index < img_cache.image_paths.len() {
+                        img_cache.enqueue_image_load(
+                            LoadOperation::LoadPos((
+                                cache_index, next_image_index, next_cache_index)));
                     }
                     if prev_image_index >= 0 {
-                        img_cache.enqueue_image_load(LoadOperation::LoadPos((cache_index, prev_image_index as usize, prev_cache_index)));
+                        img_cache.enqueue_image_load(
+                            LoadOperation::LoadPos((
+                                cache_index, prev_image_index as usize, prev_cache_index)));
                     }
                     
                     // Load images into cache indices with LoadPos
@@ -594,7 +601,43 @@ pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos
         }
         Command::batch(commands)
     } else{
-        Command::none()
+        let mut commands = Vec::new();
+        let pane = &mut panes[pane_index as usize];
+        let img_cache = &mut pane.img_cache;
+
+        if pane.dir_loaded {
+            let center_index = img_cache.cache_count;
+            for i in 0..img_cache.cache_count {
+                let next_cache_index = center_index + i + 1;
+                let prev_cache_index = center_index- i - 1;
+                let next_image_index = pos + i + 1;
+                let prev_image_index = pos as isize - i as isize - 1;
+
+                // Load images into cache indices with LoadPos
+                if next_cache_index < img_cache.image_paths.len() {
+                    img_cache.enqueue_image_load(LoadOperation::LoadPos((pane_index as usize, next_image_index, next_cache_index)));
+                }
+                if prev_image_index >= 0 {
+                    img_cache.enqueue_image_load(LoadOperation::LoadPos((pane_index as usize, prev_image_index as usize, prev_cache_index)));
+                }
+                
+                // Load images into cache indices with LoadPos
+                /*if next_cache_index < img_cache.image_paths.len() {
+                    img_cache.enqueue_image_load(LoadOperation::LoadPos((cache_index, next_index, i + 1)));
+                }
+                if prev_index >= 0 {
+                    img_cache.enqueue_image_load(LoadOperation::LoadPos((cache_index, prev_index, img_cache.cache_count - i - 1)));
+                }*/
+            }
+            img_cache.print_queue();
+
+            // Load the images in the loading queue
+            let local_commands = load_all_images_in_queue(img_cache);
+            commands.extend(local_commands);
+        } else {
+            commands.push(Command::none());
+        }
+        Command::batch(commands)
     }
 }
 
@@ -846,8 +889,12 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, p
 
     // Update master slider when !is_slider_dual
     if !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
-        let min_index = panes.iter().map(|pane| pane.img_cache.current_index as isize + pane.img_cache.current_offset).min().unwrap();
-        *slider_value = min_index as u16;
+        // v1
+        //let min_index = panes.iter().map(|pane| pane.img_cache.current_index as isize + pane.img_cache.current_offset).min().unwrap();
+        //*slider_value = min_index as u16;
+
+        // v2: use the current_index of the pane with largest dir size
+        *slider_value = get_pane_with_largest_dir_size(panes) as u16;
     }
     Command::batch(commands)
 }
@@ -909,8 +956,10 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pa
 
     // Update master slider when !is_slider_dual
     if !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
-        let min_index = panes.iter().map(|pane| pane.img_cache.current_index as isize + pane.img_cache.current_offset).min().unwrap();
-        *slider_value = min_index as u16;
+        //let min_index = panes.iter().map(|pane| pane.img_cache.current_index as isize + pane.img_cache.current_offset).min().unwrap();
+        //*slider_value = min_index as u16;
+
+        *slider_value = get_pane_with_largest_dir_size(panes) as u16;
     }
 
     Command::batch(commands)

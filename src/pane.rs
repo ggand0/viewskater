@@ -114,9 +114,18 @@ impl Pane {
         self.prev_slider_value = 0;
     }
 
-    pub fn initialize_dir_path(&mut self, path: PathBuf) {
+    //pub fn initialize_dir_path(&mut self, path: PathBuf) {
+    pub fn initialize_dir_path(&mut self,
+        pane_file_lengths: &[usize], pane_index: usize, path: PathBuf,
+        is_slider_dual: bool, slider_value: &mut u16) {
         let mut _file_paths: Vec<PathBuf> = Vec::new();
         let initial_index: usize;
+        
+        //let min_current_index_in_panes = panes.iter().map(|pane| pane.slider_value).min().unwrap_or(0);
+        //let min_current_index_in_panes = pane_slider_values.iter().min().unwrap_or(&0);
+        // min current slider value in panes except the current pane_index
+        //let min_current_index_in_panes = pane_slider_values.iter().enumerate().filter(|(i, _)| *i != pane_index).map(|(_, v)| v).min().unwrap_or(&0);
+        
         
 
         if is_file(&path) {
@@ -128,6 +137,10 @@ impl Pane {
             _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
             let file_index = get_file_index(&_file_paths, &path);
 
+            let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+            let is_dir_size_bigger = _file_paths.len() > *longest_file_length;
+            println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+
             if let Some(file_index) = file_index {
                 println!("File index: {}", file_index);
                 initial_index = file_index;
@@ -135,7 +148,16 @@ impl Pane {
                 
                 // self.slider_values[pane_index] = file_index as u16;
                 // self.panes[pane_index].slider_value = file_index as u16;
-                self.slider_value = file_index as u16;
+                let current_slider_value = file_index as u16;
+                println!("current_slider_value: {:?}", current_slider_value);
+                if is_slider_dual {
+                    *slider_value = current_slider_value;
+                } else {
+                    if is_dir_size_bigger {
+                        *slider_value = current_slider_value;
+                    }
+                }
+                println!("slider_value: {:?}", *slider_value);
             } else {
                 println!("File index not found");
                 return;
@@ -151,11 +173,20 @@ impl Pane {
                 println!("{}", path.display());
             }*/
 
-            // self.current_image_index = 0;
             
-            // self.slider_values[pane_index] = 0;
-            // self.panes[pane_index].slider_value = 0;
-            self.slider_value = 0;
+            let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+            let is_dir_size_bigger = _file_paths.len() > *longest_file_length;
+            println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+            let current_slider_value = 0;
+            println!("current_slider_value: {:?}", current_slider_value);
+            if is_slider_dual {
+                *slider_value = current_slider_value;
+            } else {
+                if is_dir_size_bigger {
+                    *slider_value = current_slider_value;
+                }
+            }
+            println!("slider_value: {:?}", *slider_value);
         } else {
             println!("Dropped path does not exist or cannot be accessed");
             // Handle the case where the path does not exist or cannot be accessed
@@ -292,6 +323,23 @@ impl Pane {
         };
         img
     }
+}
+
+pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> usize {
+    let mut max_dir_size = 0;
+    let mut max_dir_size_index = 0;
+    for (i, pane) in panes.iter().enumerate() {
+        if pane.dir_loaded {
+            if pane.img_cache.num_files > max_dir_size {
+                max_dir_size = pane.img_cache.num_files;
+                max_dir_size_index = i;
+            }
+        }
+    }
+    //max_dir_size_index
+
+    let pane = &panes[max_dir_size_index];
+    (pane.img_cache.current_index as usize) + pane.img_cache.current_offset as usize
 }
 
 pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
