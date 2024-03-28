@@ -193,10 +193,10 @@ impl DataViewer {
             .all(|pane| pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
             pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
         } else {
-            println!("self.panes[0].img_cache.get_next_cache_index(): {}", self.panes[0].img_cache.get_next_cache_index());
+            /*println!("self.panes[0].img_cache.get_next_cache_index(): {}", self.panes[0].img_cache.get_next_cache_index());
             println!("self.panes[0].img_cache.get_next_cache_index_within_bounds(): {}", self.panes[0].img_cache.is_next_cache_index_within_bounds());
             self.panes[0].img_cache.print_queue();
-            self.panes[0].img_cache.print_cache();
+            self.panes[0].img_cache.print_cache();*/
             self.panes.iter().all(|pane|
                 pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
                 pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
@@ -820,7 +820,7 @@ impl Application for DataViewer {
         } else {
             println!("no skate mode detected");
             let command = Command::none();
-            self.panes[0].img_cache.print_cache();
+            //self.panes[0].img_cache.print_cache();
             command
         }
 
