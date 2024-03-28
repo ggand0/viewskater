@@ -43,11 +43,13 @@ pub enum LoadOperation {
     ShiftNext((usize, usize)),
     LoadPrevious((usize, usize)), // Includes the target index
     ShiftPrevious((usize, isize)),
-    LoadPos((usize, usize, usize)),        // Load an imaeg at a specific position of the cache
+    LoadPos((usize, usize, usize)),        // Load an image at a specific position of the cache
+    //LoadPosReload((usize, usize, usize)),  // Load an image at a specific position of the cache and then update the current_image handle
 }
 
 impl LoadOperation {
-    pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(), std::io::Error>> {
+    //pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(), std::io::Error>> {
+        pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(bool), std::io::Error>> {
         match self {
             LoadOperation::LoadNext(..) => Box::new(|cache, new_image| cache.move_next(new_image)),
             LoadOperation::ShiftNext(..) => Box::new(|cache, new_image| cache.move_next_edge(new_image)),
@@ -60,6 +62,13 @@ impl LoadOperation {
                 };
                 Box::new(move |cache, new_image| cache.load_pos(new_image, pos))
             },
+            /*LoadOperation::LoadPosReload(..) => {
+                let pos = match self {
+                    LoadOperation::LoadPos((_, _, pos)) => *pos,
+                    _ => 0, // Default value if the variant pattern doesn't match
+                };
+                Box::new(move |cache, new_image| cache.load_pos(new_image, pos))
+            },*/
         }
     }
 }
@@ -362,18 +371,18 @@ impl ImageCache {
     }
 
     
-    pub fn move_next(&mut self, new_image: Option<Vec<u8>> ) -> Result<(), io::Error> {
+    pub fn move_next(&mut self, new_image: Option<Vec<u8>> ) -> Result<(bool), io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             // Move to the next image
             self.current_index += 1;
             self.shift_cache_left(new_image);
-            Ok(())
+            Ok((false))
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
         }
     }
 
-    pub fn move_next_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(), io::Error> {
+    pub fn move_next_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(bool), io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             self.shift_cache_left(new_image);
             self.current_index += 1;
@@ -381,24 +390,24 @@ impl ImageCache {
             self.current_offset += self.current_offset_accumulated;
             self.current_offset_accumulated = 0;
             println!("move_next_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
-            Ok(())
+            Ok((false))
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
         }
     }
 
-    pub fn move_prev(&mut self, new_image: Option<Vec<u8>>) -> Result<(), io::Error> {
+    pub fn move_prev(&mut self, new_image: Option<Vec<u8>>) -> Result<(bool), io::Error> {
         if self.current_index > 0 {
             //self.current_index -= 1; // shuold this be after the cache shift?
             self.shift_cache_right(new_image);
             self.current_index -= 1;
-            Ok(())
+            Ok((false))
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
         }
     }
 
-    pub fn move_prev_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(), io::Error> {
+    pub fn move_prev_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(bool), io::Error> {
         if self.current_index > 0 {
             self.shift_cache_right(new_image);
             self.current_index -= 1;
@@ -406,7 +415,7 @@ impl ImageCache {
             self.current_offset += self.current_offset_accumulated;
             self.current_offset_accumulated = 0;
             println!("move_prev_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
-            Ok(())
+            Ok((false))
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
         }
@@ -466,10 +475,17 @@ impl ImageCache {
         println!("shift_cache_left - current_offset: {}, current_offset_accumulated: {}", self.current_offset, self.current_offset_accumulated);
     }
 
-    fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize) -> Result<(), io::Error> {
+    fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize) -> Result<(bool), io::Error> {
+        // If `pos` is at the center of the cache return true to reload the current_image
         self.cached_images[pos] = new_image;
         //self.print_cache();
-        Ok(())
+        //Ok(())
+
+        if pos == self.cache_count {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 

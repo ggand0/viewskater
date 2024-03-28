@@ -277,8 +277,11 @@ impl DataViewer {
         c_index: usize,
         _img_cache: &mut Option<&mut ImageCache>,
         image_data: Option<Vec<u8>>,
-        load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(), std::io::Error>>,
+        //load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(), std::io::Error>>,
+        load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(bool), std::io::Error>>,
     ) {
+        let mut pane = &mut self.panes[c_index];
+
         // TODO: Refactor this function
         // This looks better but I get borrow checker err later
         //let mut img_cache = Some(&mut self.panes[c_index].img_cache);
@@ -287,13 +290,27 @@ impl DataViewer {
         //let mut cache_index = 0;
 
         //println!("IMAGE LOADED: c_index: {}", c_index);
-        self.mark_image_loaded(c_index);
-        img_cache.replace(&mut self.panes[c_index].img_cache);
+        ////self.mark_image_loaded(c_index);
+        //img_cache.replace(&mut self.panes[c_index].img_cache);
+        img_cache.replace(&mut pane.img_cache);
         let cache_index = c_index;
         
         if let Some(cache) = img_cache.as_mut() {
             let _ = cache.being_loaded_queue.pop_front();
-            let _ = load_fn(cache, image_data);
+            //let res = load_fn(cache, image_data);
+            match load_fn(cache, image_data) {
+                Ok(reload_current_image) => {
+                    if reload_current_image {
+                        //let mut pane = &mut self.panes[c_index];
+                        let loaded_image = cache.get_current_image().unwrap().to_vec();
+                        let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+                        pane.current_image = handle;
+                    }
+                }
+                Err(error) => {
+                    eprintln!("Error loading image: {}", error);
+                }
+            }
 
             // TODO: move this line into load_fn
             //cache.current_offset -= 1;
@@ -302,10 +319,11 @@ impl DataViewer {
             println!("IMAGE LOADED: cache_index: {}, current_offset: {}, current_offset_accumulated: {}",
                 cache_index, cache.current_offset, cache.current_offset_accumulated);
         }
+
+
         
     
         // TODO: run this block right after user interactions
-
         // ref: https://stackoverflow.com/questions/63643732/variable-does-not-need-to-be-mutable-but-it-does
         /*let mut pane = &mut self.panes[cache_index];
         let loaded_image = pane.img_cache.get_current_image().unwrap().to_vec();
