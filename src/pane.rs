@@ -339,7 +339,9 @@ pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> usize {
     //max_dir_size_index
 
     let pane = &panes[max_dir_size_index];
-    (pane.img_cache.current_index as usize) + pane.img_cache.current_offset as usize
+    ////(pane.img_cache.current_index as usize) + pane.img_cache.current_offset as usize
+    ////(pane.img_cache.current_index as isize + pane.img_cache.current_offset) as usize
+    pane.img_cache.current_index as usize
 }
 
 pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
