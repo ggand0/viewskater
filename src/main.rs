@@ -247,7 +247,7 @@ impl DataViewer {
         //pane.initialize_dir_path(panes, pane_index, path, self.is_slider_dual);
         println!("pane_file_lengths: {:?}", pane_file_lengths);
         pane.initialize_dir_path(
-            &pane_file_lengths, pane_index, path, self.is_slider_dual, &mut self.slider_value);
+            &self.pane_layout, &pane_file_lengths, pane_index, path, self.is_slider_dual, &mut self.slider_value);
 
 
         // If the index is greater than or equal to the length of current_images,
@@ -433,8 +433,8 @@ impl Application for DataViewer {
             PaneLayout::SinglePane => {
                 if self.panes[0].dir_loaded {
                     // return string here
-                    //self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
-                    self.title.clone()
+                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
+                    //self.title.clone()
                 } else {
                     self.title.clone()
                 }
@@ -834,6 +834,7 @@ impl Application for DataViewer {
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
             let command = move_left_all_new(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
+            println!("command: {:?}", command);
             command
         } else {
             println!("no skate mode detected");

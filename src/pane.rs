@@ -39,6 +39,7 @@ use iced::widget::{
 use iced::widget::Image;
 use iced::{Element, Length};
 use crate::dualslider::dualslider::DualSlider;
+use crate::menu::PaneLayout;
 
 use crate::split::split::{Axis, Split};
 use crate::viewer;
@@ -115,7 +116,7 @@ impl Pane {
     }
 
     //pub fn initialize_dir_path(&mut self, path: PathBuf) {
-    pub fn initialize_dir_path(&mut self,
+    pub fn initialize_dir_path(&mut self, pane_layout: &PaneLayout,
         pane_file_lengths: &[usize], pane_index: usize, path: PathBuf,
         is_slider_dual: bool, slider_value: &mut u16) {
         let mut _file_paths: Vec<PathBuf> = Vec::new();
@@ -127,7 +128,7 @@ impl Pane {
         //let min_current_index_in_panes = pane_slider_values.iter().enumerate().filter(|(i, _)| *i != pane_index).map(|(_, v)| v).min().unwrap_or(&0);
         
         
-
+        let mut is_dir_size_bigger: bool = false;
         if is_file(&path) {
             println!("Dropped path is a file");
             let directory = path.parent().unwrap_or(Path::new(""));
@@ -138,7 +139,13 @@ impl Pane {
             let file_index = get_file_index(&_file_paths, &path);
 
             let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-            let is_dir_size_bigger = _file_paths.len() > *longest_file_length;
+            is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
+                true
+            } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+                true
+            } else {
+                _file_paths.len() > *longest_file_length
+            };
             println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
 
             if let Some(file_index) = file_index {
@@ -152,6 +159,7 @@ impl Pane {
                 println!("current_slider_value: {:?}", current_slider_value);
                 if is_slider_dual {
                     *slider_value = current_slider_value;
+                    self.slider_value = current_slider_value;
                 } else {
                     if is_dir_size_bigger {
                         *slider_value = current_slider_value;
@@ -175,12 +183,19 @@ impl Pane {
 
             
             let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-            let is_dir_size_bigger = _file_paths.len() > *longest_file_length;
+            is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
+                true
+            } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+                true
+            } else {
+                _file_paths.len() > *longest_file_length
+            };
             println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
             let current_slider_value = 0;
             println!("current_slider_value: {:?}", current_slider_value);
             if is_slider_dual {
                 *slider_value = current_slider_value;
+                self.slider_value = current_slider_value;
             } else {
                 if is_dir_size_bigger {
                     *slider_value = current_slider_value;
@@ -215,11 +230,26 @@ impl Pane {
             initial_index,
         ).unwrap();
         img_cache.load_initial_images().unwrap();
+        img_cache.print_cache();
         
 
-        let loaded_image = img_cache.get_current_image().unwrap().to_vec();
+        let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
         let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
         self.current_image = handle;
+
+        let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+        
+        println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+        let current_slider_value = initial_index as u16;
+        println!("current_slider_value: {:?}", current_slider_value);
+        if is_slider_dual {
+            //*slider_value = current_slider_value;
+        } else {
+            if is_dir_size_bigger {
+                *slider_value = current_slider_value;
+            }
+        }
+        println!("slider_value: {:?}", *slider_value);
 
         let file_paths = img_cache.image_paths.clone();
         println!("file_paths.len() {:?}", file_paths.len());

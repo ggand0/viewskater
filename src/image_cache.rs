@@ -235,14 +235,35 @@ impl ImageCache {
         let _cache_size = self.cache_count * 2 + 1;
 
         // Calculate the starting index of the cache array
-        // let start_index = self.current_index.saturating_sub(self.cache_count);
-        // let start_index = self.cache_count.saturating_sub(self.current_index);
-        let start_index: isize = self.current_index as isize - self.cache_count as isize;
+        // let start_index: isize = self.current_index as isize - self.cache_count as isize
+        /*let start_index: isize = if self.current_index <= self.cache_count {
+            0
+        } else if img_cache.current_index > (img_cache.image_paths.len()-1) - img_cache.cache_count -1 {
+            (img_cache.image_paths.len()-1) - img_cache.cache_count -1
+        } else {
+            self.current_index as isize - self.cache_count as isize
+        };*/
+        let start_index: isize;
+        let end_index: isize;
+        if self.current_index <= self.cache_count {
+            start_index = 0;
+            end_index = (self.cache_count * 2 + 1) as isize;
+            self.current_offset = -(self.cache_count as isize - self.current_index as isize);
+        } else if self.current_index > (self.image_paths.len()-1) - self.cache_count {
+            //start_index = (self.image_paths.len()-1) as isize - self.cache_count as isize ;
+            start_index = self.image_paths.len() as isize - self.cache_count as isize * 2 - 1;
+            end_index = (self.image_paths.len()) as isize;
+            self.current_offset = self.cache_count  as isize - ((self.image_paths.len()-1) as isize - self.current_index as isize);
+        } else {
+            start_index = self.current_index as isize - self.cache_count as isize;
+            end_index = self.current_index as isize + self.cache_count as isize + 1;
+        }
+        println!("start_index: {}, end_index: {}, current_offset: {}", start_index, end_index, self.current_offset);
 
         // Calculate the ending index of the cache array
         // let end_index = (start_index + cache_size).min(self.image_paths.len());
         // let end_index = start_index + cache_size as isize;
-        let end_index: isize = self.current_index as isize + self.cache_count as isize + 1;
+        ////let end_index: isize = self.current_index as isize + self.cache_count as isize + 1;
 
         
         // Fill in the cache array with image paths
@@ -316,6 +337,26 @@ impl ImageCache {
             self.cached_images[cache_index] = Some(current_image.clone());
         }
         Ok(self.cached_images[cache_index].as_ref().unwrap())
+    }
+
+    pub fn get_initial_image(&self) -> Result<&Vec<u8>, io::Error> {
+        let cache_index = (self.cache_count as isize + self.current_offset) as usize;
+        if let Some(image_data_option) = self.cached_images.get(cache_index) {
+            if let Some(image_data) = image_data_option {
+                Ok(image_data)
+            } else {
+                //println!()
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Image data is not cached",
+                ))
+            }
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Invalid cache index",
+            ))
+        }
     }
 
     pub fn get_current_image(&self) -> Result<&Vec<u8>, io::Error> {
@@ -1022,7 +1063,9 @@ pub fn move_right_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, p
                 //pane.slider_value = pane.img_cache.current_index as u16;
 
                 ////pane.slider_value = (pane.img_cache.current_index as isize + pane.img_cache.current_offset) as u16;
-                pane.slider_value = (img_cache.current_index as isize + img_cache.current_offset) as u16;
+                //pane.slider_value = (img_cache.current_index as isize + img_cache.current_offset) as u16;
+
+                pane.slider_value = img_cache.current_index as u16;
             }
         }
         
@@ -1164,9 +1207,12 @@ pub fn move_left_all_new(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pa
                     //pane.slider_value = pane.img_cache.current_index as u16;
 
                     ////let tmp = (pane.img_cache.current_index as isize + pane.img_cache.current_offset);
-                    let tmp = (img_cache.current_index as isize + img_cache.current_offset);
+                    
+                    /*let tmp = (img_cache.current_index as isize + img_cache.current_offset);
                     println!("tmp: {}", tmp);
-                    pane.slider_value = tmp as u16;
+                    pane.slider_value = tmp as u16;*/
+
+                    pane.slider_value = img_cache.current_index as u16;
                 }
 
                 did_new_render_happen = true;
