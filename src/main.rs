@@ -302,7 +302,9 @@ impl DataViewer {
                 Ok(reload_current_image) => {
                     if reload_current_image {
                         //let mut pane = &mut self.panes[c_index];
-                        let loaded_image = cache.get_current_image().unwrap().to_vec();
+                        
+                        ////let loaded_image = cache.get_current_image().unwrap().to_vec();
+                        let loaded_image = cache.get_initial_image().unwrap().to_vec();
                         let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
                         pane.current_image = handle;
                     }
