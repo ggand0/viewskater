@@ -144,7 +144,7 @@ impl Pane {
             } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
                 true
             } else {
-                _file_paths.len() > *longest_file_length
+                _file_paths.len() >= *longest_file_length
             };
             println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
 
@@ -188,7 +188,7 @@ impl Pane {
             } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
                 true
             } else {
-                _file_paths.len() > *longest_file_length
+                _file_paths.len() >= *longest_file_length
             };
             println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
             let current_slider_value = 0;
