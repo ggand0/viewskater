@@ -32,9 +32,8 @@ extern crate log;
 mod image_cache;
 use crate::image_cache::ImageCache;
 use image_cache::LoadOperation;
-use image_cache::{move_right_all, move_right_all_new, move_left_all_new, move_left_all,
-    move_right_index, move_left_index, update_pos, move_right_index_new, move_left_index_new,
-    load_remaining_images};
+use image_cache::{move_right_all, move_left_all,
+    update_pos, load_remaining_images};
 mod file_io;
 use file_io::Error;
 
@@ -743,7 +742,7 @@ impl Application for DataViewer {
                             //Command::none()
                         }*/
                         self.init_image_loaded(); // [false, false]
-                        let command = move_right_all_new(
+                        let command = move_right_all(
                             &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
                         return command;
                     }
@@ -789,7 +788,7 @@ impl Application for DataViewer {
                             //Command::none()
                         }*/
                         self.init_image_loaded(); // [false, false]
-                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
+                        let command = move_left_all(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
                         return command;
                     }
                     
@@ -827,7 +826,7 @@ impl Application for DataViewer {
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
-            let command = move_right_all_new(
+            let command = move_right_all(
                 &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
             command
         } else if self.skate_left {
@@ -835,7 +834,7 @@ impl Application for DataViewer {
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
-            let command = move_left_all_new(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
+            let command = move_left_all(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
             println!("command: {:?}", command);
             command
         } else {
