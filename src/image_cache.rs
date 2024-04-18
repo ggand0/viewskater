@@ -207,14 +207,20 @@ impl ImageCache {
         //self.print_cache();
         
         //self.cache_count as isize + self.current_offset + 1
-        let next_image_index_to_render = self.get_next_cache_index();
+        let next_image_index_to_render: usize = self.get_next_cache_index() as usize;
+        if next_image_index_to_render >= self.image_paths.len() {
+            return false;
+        }
         assert!(next_image_index_to_render >= 0);
         self.is_cache_index_within_bounds(next_image_index_to_render as usize)
     }
 
     pub fn is_prev_cache_index_within_bounds(&self) -> bool {
         //self.print_cache();
-        let prev_image_index_to_render = self.cache_count as isize + self.current_offset - 1;
+        let prev_image_index_to_render: isize = self.cache_count as isize + self.current_offset - 1;
+        if prev_image_index_to_render < 0 {
+            return false;
+        }
         println!("is_prev_cache_index_within_bounds - prev_image_index_to_render: {}", prev_image_index_to_render);
         self.print_cache();
         self.is_cache_index_within_bounds(prev_image_index_to_render as usize)
