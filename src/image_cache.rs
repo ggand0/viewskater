@@ -50,7 +50,7 @@ pub enum LoadOperation {
 
 impl LoadOperation {
     //pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(), std::io::Error>> {
-        pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(bool), std::io::Error>> {
+    pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(bool), std::io::Error>> {
         match self {
             LoadOperation::LoadNext(..) => Box::new(|cache, new_image| cache.move_next(new_image)),
             LoadOperation::ShiftNext(..) => Box::new(|cache, new_image| cache.move_next_edge(new_image)),
@@ -323,20 +323,6 @@ impl ImageCache {
             ))
         }
     }
-
-    /*pub async fn async_load_image(path: &Path) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
-        match tokio::fs::File::open(path).await {
-            Ok(mut file) => {
-                let mut buffer = Vec::new();
-                if file.read_to_end(&mut buffer).await.is_ok() {
-                    Ok(Some(buffer))
-                } else {
-                    Err(std::io::ErrorKind::InvalidData)
-                }
-            }
-            Err(e) => Err(e.kind()),
-        }
-    }*/
     
     pub fn load_current_image(&mut self) -> Result<&Vec<u8>, io::Error> {
         // let cache_index = self.current_index + self.cache_count;
@@ -424,7 +410,6 @@ impl ImageCache {
         }
     }
 
-    
     pub fn move_next(&mut self, new_image: Option<Vec<u8>> ) -> Result<(bool), io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             // Move to the next image
@@ -727,6 +712,9 @@ fn get_loading_commands_slider(img_cache: &mut ImageCache, pane_index: usize, po
 }
 
 pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) -> Command<<DataViewer as iced::Application>::Message> {
+    // Load the rest of the images within the cache window asynchronously
+    // Called from Message::SliderReleased
+
     // Since we've moved to a completely new position, clear the loading queues
     for (_cache_index, pane) in panes.iter_mut().enumerate() {
         let img_cache = &mut pane.img_cache;
@@ -918,6 +906,51 @@ pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos
     }
 }
 
+fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), io::Error> {
+    /*let img_cache = &mut pane.img_cache;
+    let image = img_cache.load_current_image()?;
+    pane.current_image = iced::widget::image::Handle::from_memory(image.to_vec());
+    Ok(())*/
+
+    // Load the image at pos synchronously into the center position of cache
+    //let image = img_cache.load_image(pos as usize)?;
+    let img_cache = &mut pane.img_cache;
+    match img_cache.load_image(pos as usize) {
+        Ok(image) => {
+            // Handle successful image loading
+            //let center_index = img_cache.cache_count;
+            //img_cache.cached_images[center_index] = Some(image);
+
+            let target_index: usize;
+            if pos < img_cache.cache_count {
+                target_index = pos;
+                img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
+            } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
+                //target_index = img_cache.image_paths.len() - pos;
+                target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
+                img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
+            } else {
+                target_index = img_cache.cache_count;
+                img_cache.current_offset = 0;
+            }
+            img_cache.cached_images[target_index] = Some(image);
+
+            img_cache.current_index = pos;
+            //img_cache.current_offset = 0;
+            img_cache.current_offset_accumulated = 0;
+            let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
+            pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
+
+            Ok(())
+        }
+        Err(err) => {
+            // Handle error
+            //println!("update_pos(): Error loading image: {}", err);
+            Err(err)
+        }
+    }
+}
+
 pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) -> Command<<DataViewer as iced::Application>::Message> {
     // Since we're moving to a completely new position, clear the loading queues
     for (_cache_index, pane) in panes.iter_mut().enumerate() {
@@ -932,193 +965,45 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
         // and then load the rest of the images within the cache window asynchronously
         let mut commands = Vec::new();
         for (cache_index, pane) in panes.iter_mut().enumerate() {
-            let img_cache = &mut pane.img_cache;
+            //let img_cache = &mut pane.img_cache;
 
             if pane.dir_loaded {
-                // Load the image at pos synchronously into the center position of cache
-                //let image = img_cache.load_image(pos as usize)?;
-                match img_cache.load_image(pos as usize) {
-                    Ok(image) => {
-                        // Handle successful image loading
-                        //let center_index = img_cache.cache_count;
-                        //img_cache.cached_images[center_index] = Some(image);
-
-                        let target_index: usize;
-                        if pos < img_cache.cache_count {
-                            target_index = pos;
-                            img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
-                        } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
-                            //target_index = img_cache.image_paths.len() - pos;
-                            target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
-                            img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
-                        } else {
-                            target_index = img_cache.cache_count;
-                            img_cache.current_offset = 0;
-                        }
-                        img_cache.cached_images[target_index] = Some(image);
-
-                        img_cache.current_index = pos;
-                        //img_cache.current_offset = 0;
-                        img_cache.current_offset_accumulated = 0;
-                        let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
-                        pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
+                match load_current_slider_image(pane, pos) {
+                    Ok(()) => {
+                        // Handle success
+                        println!("update_pos - Image loaded successfully for pane {}", cache_index);
                     }
                     Err(err) => {
-                        // Handle error
-                        println!("update_pos(): Error loading image: {}", err);
+                        // Handle error by logging
+                        println!("update_pos - Error loading image for pane {}: {}", cache_index, err);
                     }
                 }
-                    
-
-                // Load the rest of the images within the cache window asynchronously
-                // => do this on SliderReleased
-                /*let center_index = img_cache.cache_count;
-                for i in 0..img_cache.cache_count {
-                    let next_cache_index = center_index + i + 1;
-                    let prev_cache_index = center_index- i - 1;
-                    let next_image_index = pos + i + 1;
-                    let prev_image_index = pos as isize - i as isize - 1;
-
-                    // Load images into cache indices with LoadPos
-                    if next_cache_index < img_cache.image_paths.len() {
-                        img_cache.enqueue_image_load(LoadOperation::LoadPos((cache_index, next_image_index, next_cache_index)));
-                    }
-                    if prev_image_index >= 0 {
-                        img_cache.enqueue_image_load(LoadOperation::LoadPos((cache_index, prev_image_index as usize, prev_cache_index)));
-                    }
-                    
-                    // Load images into cache indices with LoadPos
-                    /*if next_cache_index < img_cache.image_paths.len() {
-                        img_cache.enqueue_image_load(LoadOperation::LoadPos((cache_index, next_index, i + 1)));
-                    }
-                    if prev_index >= 0 {
-                        img_cache.enqueue_image_load(LoadOperation::LoadPos((cache_index, prev_index, img_cache.cache_count - i - 1)));
-                    }*/
-                }
-                img_cache.print_queue();
-
-                // Load the images in the loading queue
-                let local_commands = load_all_images_in_queue(img_cache);
-                commands.extend(local_commands);*/
             } else {
                 commands.push(Command::none());
             }
         }
         Command::batch(commands)
+
     } else {
-        //Command::none()
         let pane_index = pane_index as usize;
         let pane = &mut panes[pane_index];
         let img_cache = &mut pane.img_cache;
 
         if pane.dir_loaded {
-            match img_cache.load_image(pos as usize) {
-                Ok(image) => {
-                    // Handle successful image loading
-                    //let center_index = img_cache.cache_count;
-                    //img_cache.cached_images[center_index] = Some(image);
-                    let target_index: usize;
-                    if pos < img_cache.cache_count {
-                        target_index = pos;
-                        img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
-                    } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
-                        //target_index = img_cache.image_paths.len() - pos;
-                        target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
-                        img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
-                    } else {
-                        target_index = img_cache.cache_count;
-                        img_cache.current_offset = 0;
-                    }
-                    img_cache.cached_images[target_index] = Some(image);
-
-                    img_cache.current_index = pos;
-                    //img_cache.current_offset = 0;
-                    img_cache.current_offset_accumulated = 0;
-                    ////let loaded_image = img_cache.get_current_image().unwrap().to_vec();
-                    let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
-                    pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
+            match load_current_slider_image(pane, pos) {
+                Ok(()) => {
+                    // Handle success
+                    println!("update_pos - Image loaded successfully for pane {}", pane_index);
                 }
                 Err(err) => {
-                    // Handle error
-                    println!("update_pos(): Error loading image: {}", err);
+                    // Handle error by logging
+                    println!("update_pos - Error loading image for pane {}: {}", pane_index, err);
                 }
             }
         }
 
         Command::none()
     }
-}
-
-pub fn update_pos_old(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) {
-    // v2: multiple panes
-    if pane_index == -1 {
-        // Update all panes
-        let mut updated_caches = Vec::with_capacity(panes.len());
-        for (_cache_index, pane) in panes.iter_mut().enumerate() {
-            let img_cache = &mut pane.img_cache;
-
-            if pane.dir_loaded {
-                let file_paths = img_cache.image_paths.clone();
-                debug!("file_paths.len() {:?}", file_paths.len());
-
-                // NOTE: be careful with the `pos`; if pos is greater than img_cache.image_paths.len(), it will panic
-                let position = pos.min(img_cache.image_paths.len() - 1);
-                let mut img_cache =  ImageCache::new( // image_cache::ImageCache::new(
-                    file_paths,
-                    //2,
-                    5,
-                    position,
-                ).unwrap();
-
-                img_cache.load_initial_images().unwrap();
-                updated_caches.push(img_cache);
-            } else {
-                let img_cache =  ImageCache::new(
-                    Vec::new(),
-                    //2,
-                    5,
-                    0,
-                ).unwrap();
-                updated_caches.push(img_cache);
-            }
-        }
-
-        for (cache_index, new_cache) in updated_caches.into_iter().enumerate() {
-            let pane = &mut panes[cache_index];
-            debug!("new_cache.current_index: {}", new_cache.current_index);
-            //self.img_caches[cache_index] = new_cache;
-            pane.img_cache = new_cache;
-
-            /*if self.dir_loaded[cache_index] {
-                let loaded_image = self.img_caches[cache_index].get_current_image().unwrap().to_vec();
-                self.current_images[cache_index] = iced::widget::image::Handle::from_memory(loaded_image);
-            }*/
-            if pane.dir_loaded {
-                let loaded_image = pane.img_cache.get_current_image().unwrap().to_vec();
-                pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
-            }
-        }
-    } else {
-        let pane_index = pane_index as usize;
-        let pane = &mut panes[pane_index];
-        // let file_paths = self.img_caches[pane_index].image_paths.clone();
-        let file_paths = pane.img_cache.image_paths.clone();
-
-        let mut img_cache =  ImageCache::new(
-            file_paths,
-            2,
-            pos,
-        ).unwrap();
-        img_cache.load_initial_images().unwrap();
-        //self.img_caches[pane_index] = img_cache;
-        pane.img_cache = img_cache;
-
-        // let loaded_image = self.img_caches[pane_index].get_current_image().unwrap().to_vec();
-        let loaded_image = pane.img_cache.get_current_image().unwrap().to_vec();
-        // self.current_images[pane_index] = iced::widget::image::Handle::from_memory(loaded_image);
-        pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
-    }
-
 }
 
 fn is_pane_cached_next(pane: pane::Pane, index: usize, is_slider_dual: bool) -> bool {
