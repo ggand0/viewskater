@@ -45,7 +45,6 @@ pub enum LoadOperation {
     LoadPrevious((usize, usize)), // Includes the target index
     ShiftPrevious((usize, isize)),
     LoadPos((usize, usize, usize)),        // Load an image at a specific position of the cache
-    //LoadPosReload((usize, usize, usize)),  // Load an image at a specific position of the cache and then update the current_image handle
 }
 
 impl LoadOperation {
@@ -63,13 +62,6 @@ impl LoadOperation {
                 };
                 Box::new(move |cache, new_image| cache.load_pos(new_image, pos))
             },
-            /*LoadOperation::LoadPosReload(..) => {
-                let pos = match self {
-                    LoadOperation::LoadPos((_, _, pos)) => *pos,
-                    _ => 0, // Default value if the variant pattern doesn't match
-                };
-                Box::new(move |cache, new_image| cache.load_pos(new_image, pos))
-            },*/
         }
     }
 }
@@ -82,7 +74,6 @@ pub struct ImageCache {
     pub num_files: usize,
     pub current_index: usize,
     pub current_offset: isize,
-    pub current_offset_accumulated: isize,
     // pub current_queued_index: isize, // 
     pub cache_count: usize, // Number of images to cache in advance
     cached_images: Vec<Option<Vec<u8>>>, // Changed cached_images to store Option<Vec<u8>> for better handling
@@ -108,7 +99,6 @@ impl ImageCache {
             // max_concurrent_loading: 10,
             cache_states: Vec::new(),
             cached_image_indices: Vec::new(),
-            current_offset_accumulated: 0,
         })
     }
 
@@ -237,23 +227,13 @@ impl ImageCache {
     }
 
     pub fn get_next_cache_index(&self) -> isize {
-        println!("self.current_offset_accumulated: {}", self.current_offset_accumulated);
         self.cache_count as isize + self.current_offset + 1
     }
-
 
     pub fn load_initial_images(&mut self) -> Result<(), io::Error> {
         let _cache_size = self.cache_count * 2 + 1;
 
-        // Calculate the starting index of the cache array
-        // let start_index: isize = self.current_index as isize - self.cache_count as isize
-        /*let start_index: isize = if self.current_index <= self.cache_count {
-            0
-        } else if img_cache.current_index > (img_cache.image_paths.len()-1) - img_cache.cache_count -1 {
-            (img_cache.image_paths.len()-1) - img_cache.cache_count -1
-        } else {
-            self.current_index as isize - self.cache_count as isize
-        };*/
+        // Calculate the starting & ending indices for the cache array
         let start_index: isize;
         let end_index: isize;
         if self.current_index <= self.cache_count {
@@ -270,12 +250,6 @@ impl ImageCache {
             end_index = self.current_index as isize + self.cache_count as isize + 1;
         }
         println!("start_index: {}, end_index: {}, current_offset: {}", start_index, end_index, self.current_offset);
-
-        // Calculate the ending index of the cache array
-        // let end_index = (start_index + cache_size).min(self.image_paths.len());
-        // let end_index = start_index + cache_size as isize;
-        ////let end_index: isize = self.current_index as isize + self.cache_count as isize + 1;
-
         
         // Fill in the cache array with image paths
         for (i, cache_index) in (start_index..end_index).enumerate() {
@@ -423,15 +397,6 @@ impl ImageCache {
 
     pub fn move_next_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(bool), io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
-            // v1
-            /*
-            self.shift_cache_left(new_image);
-            self.current_index += 1;
-            // Since no more images will be loaded, update the current offset with the accumulated offset
-            self.current_offset += self.current_offset_accumulated;
-            self.current_offset_accumulated = 0;
-            */
-
             // v2
             //self.current_offset += 1;
             //self.current_index += 1;
@@ -455,13 +420,6 @@ impl ImageCache {
 
     pub fn move_prev_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(bool), io::Error> {
         if self.current_index > 0 {
-            // v1
-            /*self.shift_cache_right(new_image);
-            self.current_index -= 1;
-            // Since no more images will be loaded, update the current offset with the accumulated offset
-            self.current_offset += self.current_offset_accumulated;
-            self.current_offset_accumulated = 0;*/
-
             // v2
             //self.current_offset -= 1;
             //self.current_index -= 1;
@@ -479,13 +437,6 @@ impl ImageCache {
         self.cached_images.insert(0, new_image);
 
         self.current_offset += 1;
-        /*let prev_image_index_to_load = self.cache_count as isize - self.current_offset as isize + self.current_offset_accumulated - 1;
-        if self.is_some_at_index(prev_image_index_to_load as usize) {
-            self.current_offset += self.current_offset_accumulated + 1;
-            self.current_offset_accumulated = 0; // need to evaluate if this is needed later
-        } else {
-            self.current_offset_accumulated += 1;
-        }*/
         println!("shift_cache_right - current_offset: {}", self.current_offset);
     }
 
@@ -512,19 +463,7 @@ impl ImageCache {
         */
 
         self.current_offset -= 1;
-        /*
-        // To address this, introduce a new variable, current_offset_accumulated
-        //let next_image_index_to_render = self.cache_count as isize + self.current_offset + 1;
-        let next_image_index_to_render = self.cache_count as isize + self.current_offset + self.current_offset_accumulated + 1;
-        if self.is_some_at_index(next_image_index_to_render as usize) {
-            self.current_offset += self.current_offset_accumulated - 1;
-            self.current_offset_accumulated = 0; // need to evaluate if this is needed later
-        } else {
-            self.current_offset_accumulated -= 1;
-        }*/
-        
-        //println!("shift_cache_left - current_offset: {}", self.current_offset);
-        println!("shift_cache_left - current_offset: {}, current_offset_accumulated: {}", self.current_offset, self.current_offset_accumulated);
+        println!("shift_cache_left - current_offset: {}", self.current_offset);
     }
 
     fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize) -> Result<(bool), io::Error> {
@@ -589,7 +528,7 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
     }
 }
 
-//pub fn load_all_images_in_queue(img_cache: &mut ImageCache) -> Command<<DataViewer as iced::Application>::Message> {
+
 pub fn load_all_images_in_queue(img_cache: &mut ImageCache) -> Vec<Command<<DataViewer as iced::Application>::Message>>{
     if !img_cache.loading_queue.is_empty() {
         //let mut command = Command::none();
@@ -651,7 +590,6 @@ fn get_loading_commands_slider(img_cache: &mut ImageCache, pane_index: usize, po
                 cache_index, last_index, img_cache.cache_count)));
         img_cache.current_index = last_index;
         img_cache.current_offset = 0;
-        img_cache.current_offset_accumulated = 0;
 
         if img_cache.image_paths.len() > img_cache.cache_count {
             // Load the last N images into the cache
@@ -804,7 +742,6 @@ pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos
                             cache_index, last_index, img_cache.cache_count)));
                     img_cache.current_index = last_index;
                     img_cache.current_offset = 0;
-                    img_cache.current_offset_accumulated = 0;
 
                     if img_cache.image_paths.len() > img_cache.cache_count {
                         // Load the last N images into the cache
@@ -875,28 +812,6 @@ pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos
         let img_cache = &mut pane.img_cache;
 
         if pane.dir_loaded {
-            /*let center_index = img_cache.cache_count;
-            for i in 0..img_cache.cache_count {
-                let next_cache_index = center_index + i + 1;
-                let prev_cache_index = center_index- i - 1;
-                let next_image_index = pos + i + 1;
-                let prev_image_index = pos as isize - i as isize - 1;
-
-                // Load images into cache indices with LoadPos
-                if next_cache_index < img_cache.image_paths.len() {
-                    img_cache.enqueue_image_load(LoadOperation::LoadPos((pane_index as usize, next_image_index, next_cache_index)));
-                }
-                if prev_image_index >= 0 {
-                    img_cache.enqueue_image_load(LoadOperation::LoadPos((pane_index as usize, prev_image_index as usize, prev_cache_index)));
-                }
-                
-            }
-            img_cache.print_queue();
-
-            // Load the images in the loading queue
-            let local_commands = load_all_images_in_queue(img_cache);
-            commands.extend(local_commands);*/
-
             let local_commands = get_loading_commands_slider(img_cache, pane_index as usize, pos);
             commands.extend(local_commands);
         } else {
@@ -907,11 +822,6 @@ pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos
 }
 
 fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), io::Error> {
-    /*let img_cache = &mut pane.img_cache;
-    let image = img_cache.load_current_image()?;
-    pane.current_image = iced::widget::image::Handle::from_memory(image.to_vec());
-    Ok(())*/
-
     // Load the image at pos synchronously into the center position of cache
     //let image = img_cache.load_image(pos as usize)?;
     let img_cache = &mut pane.img_cache;
@@ -937,7 +847,6 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
 
             img_cache.current_index = pos;
             //img_cache.current_offset = 0;
-            img_cache.current_offset_accumulated = 0;
             let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
             pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
 
@@ -1022,7 +931,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         println!("move_right_all_new - cache_index: {}, is_pane_cached_next: {}", cache_index, is_pane_cached_next(pane.clone(), cache_index, is_slider_dual));
-        println!("current_index: {}, current_offset, current_offset_accumulated: {}, {}", pane.img_cache.current_index, pane.img_cache.current_offset, pane.img_cache.current_offset_accumulated);
+        println!("current_index: {}, current_offset: {}", pane.img_cache.current_index, pane.img_cache.current_offset);
         pane.img_cache.print_cache();
         pane.img_cache.print_queue();
         if !is_pane_cached_next(pane.clone(), cache_index, is_slider_dual) {
@@ -1104,7 +1013,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
     let mut did_new_render_happen = false;
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         println!("move_left_all_new - cache_index: {}, is_pane_cached_prev: {}", cache_index, is_pane_cached_prev(pane.clone(), cache_index, is_slider_dual));
-        println!("current_index: {}, current_offset, current_offset_accumulated: {}, {}", pane.img_cache.current_index, pane.img_cache.current_offset, pane.img_cache.current_offset_accumulated);
+        println!("current_index: {}, current_offset: {}", pane.img_cache.current_index, pane.img_cache.current_offset);
         pane.img_cache.print_cache();
         
         if !is_pane_cached_prev(pane.clone(), cache_index, is_slider_dual) {

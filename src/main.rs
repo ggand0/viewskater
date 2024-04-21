@@ -317,8 +317,8 @@ impl DataViewer {
             //cache.current_offset -= 1;
             //println!("cache.current_offset: {}", cache.current_offset);
 
-            println!("IMAGE LOADED: cache_index: {}, current_offset: {}, current_offset_accumulated: {}",
-                cache_index, cache.current_offset, cache.current_offset_accumulated);
+            println!("IMAGE LOADED: cache_index: {}, current_offset: {}",
+                cache_index, cache.current_offset);
         }
 
 
@@ -759,8 +759,8 @@ impl Application for DataViewer {
                         pane.img_cache.reset_image_load_queue();
                         pane.img_cache.reset_image_being_loaded_queue();
 
-                        pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
-                        pane.img_cache.current_offset_accumulated = 0;
+                        //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
+                        //pane.img_cache.current_offset_accumulated = 0;
                     }
                     //Command::none()
                 }
@@ -805,8 +805,8 @@ impl Application for DataViewer {
                         pane.img_cache.reset_image_load_queue();
                         pane.img_cache.reset_image_being_loaded_queue();
 
-                        pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
-                        pane.img_cache.current_offset_accumulated = 0;
+                        //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
+                        //pane.img_cache.current_offset_accumulated = 0;
                     }
                     //Command::none()
                 }
