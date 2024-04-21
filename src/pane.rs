@@ -115,9 +115,10 @@ impl Pane {
         self.prev_slider_value = 0;
     }
 
-    //pub fn initialize_dir_path(&mut self, path: PathBuf) {
+    // Allowing for the sake of `is_dir_size_bigger`
+    #[allow(unused_assignments)]
     pub fn initialize_dir_path(&mut self, pane_layout: &PaneLayout,
-        pane_file_lengths: &[usize], pane_index: usize, path: PathBuf,
+        pane_file_lengths: &[usize], _pane_index: usize, path: PathBuf,
         is_slider_dual: bool, slider_value: &mut u16) {
         let mut _file_paths: Vec<PathBuf> = Vec::new();
         let initial_index: usize;

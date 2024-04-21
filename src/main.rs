@@ -24,7 +24,6 @@ use iced::{Element, Length, Application, Theme, Settings, Command};
 
 use std::path::PathBuf;
 use log::{debug, info, warn, error};
-use std::time::Instant;
 
 // #[macro_use]
 extern crate log;
@@ -62,10 +61,10 @@ pub enum MenuItem {
     Help
 }
 
-enum SliderType {
+/*enum SliderType {
     Single,
     Dual,
-}
+}*/
 
 
 // Define the application state
@@ -277,9 +276,10 @@ impl DataViewer {
         _img_cache: &mut Option<&mut ImageCache>,
         image_data: Option<Vec<u8>>,
         //load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(), std::io::Error>>,
-        load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(bool), std::io::Error>>,
+        load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<bool, std::io::Error>>,
     ) {
-        let mut pane = &mut self.panes[c_index];
+        //let mut pane = &mut self.panes[c_index];
+        let pane = &mut self.panes[c_index];
 
         // TODO: Refactor this function
         // This looks better but I get borrow checker err later
@@ -567,7 +567,7 @@ impl Application for DataViewer {
                                 LoadOperation::ShiftPrevious((c_index, _target_index)) => {
                                     self.handle_load_operation(c_index, &mut img_cache, image_data, op.load_fn());
                                 }
-                                LoadOperation::LoadPos((c_index, _target_index, pos)) => {
+                                LoadOperation::LoadPos((c_index, _target_index, _pos)) => {
                                     self.handle_load_operation(c_index, &mut img_cache, image_data, op.load_fn());
                                 }
                             }
@@ -625,7 +625,7 @@ impl Application for DataViewer {
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
 
-                    let pane_index_org = pane_index.clone();
+                    let _pane_index_org = pane_index.clone();
                     let pane_index = pane_index as usize;
 
                     debug!("pane_index {} slider value: {}", pane_index, value);

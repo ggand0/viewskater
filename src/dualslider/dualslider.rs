@@ -188,7 +188,8 @@ where
     /// Typically, the user's interaction with the slider is finished when this message is produced.
     /// This is useful if you need to spawn a long-running task from the slider's result, where
     /// the default on_change message could create too many events.
-    pub fn on_release(mut self, on_release: Message) -> Self {
+    #[allow(unused_mut)]
+    pub fn on_release(mut self, _on_release: Message) -> Self {
         //self.on_release = Some(on_release);
 
         self

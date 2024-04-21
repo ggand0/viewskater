@@ -21,7 +21,8 @@ use macos::*;
 use iced::widget::{
     container, row, column, horizontal_space, text
 };
-use iced::widget::{Image, Container};
+//use iced::widget::{Image, Container};
+use iced::widget::Container;
 use iced::{Length, Color, alignment};
 use iced_aw::menu::{CloseCondition, ItemHeight, ItemWidth, PathHighlight};
 use iced_aw::menu_bar;

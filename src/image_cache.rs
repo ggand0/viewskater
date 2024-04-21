@@ -19,13 +19,12 @@ use other_os::*;
 use macos::*;
 
 use std::fs;
-use std::path::{Path, PathBuf};
+//use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::io;
-// use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-// use std::io::Read;
+//use tokio::io::AsyncReadExt;
 use std::collections::VecDeque;
-use std::time::Instant;
+//use std::time::Instant;
 use log::{debug, info, warn, error};
 
 
@@ -33,7 +32,7 @@ use crate::{DataViewer,Message};
 use iced::Command;
 //use crate::file_io::{async_load_image, empty_async_block, is_file, is_directory, get_file_paths, get_file_index, Error};
 use crate::file_io::{async_load_image, empty_async_block};
-use crate::pane::{self, Pane, get_pane_with_largest_dir_size};
+use crate::pane::{self, get_pane_with_largest_dir_size};
 use crate::menu::PaneLayout;
 
 
@@ -48,8 +47,7 @@ pub enum LoadOperation {
 }
 
 impl LoadOperation {
-    //pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(), std::io::Error>> {
-    pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(bool), std::io::Error>> {
+    pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<bool, std::io::Error>> {
         match self {
             LoadOperation::LoadNext(..) => Box::new(|cache, new_image| cache.move_next(new_image)),
             LoadOperation::ShiftNext(..) => Box::new(|cache, new_image| cache.move_next_edge(new_image)),
@@ -192,21 +190,14 @@ impl ImageCache {
     }
 
     pub fn is_next_cache_index_within_bounds(&self) -> bool {
-        //let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
-        //let next_image_index_to_render = self.current_index + self.cache_count + 1;
-        //self.print_cache();
-        
-        //self.cache_count as isize + self.current_offset + 1
         let next_image_index_to_render: usize = self.get_next_cache_index() as usize;
         if next_image_index_to_render >= self.image_paths.len() {
             return false;
         }
-        assert!(next_image_index_to_render >= 0);
         self.is_cache_index_within_bounds(next_image_index_to_render as usize)
     }
 
     pub fn is_prev_cache_index_within_bounds(&self) -> bool {
-        //self.print_cache();
         let prev_image_index_to_render: isize = self.cache_count as isize + self.current_offset - 1;
         if prev_image_index_to_render < 0 {
             return false;
@@ -384,48 +375,48 @@ impl ImageCache {
         }
     }
 
-    pub fn move_next(&mut self, new_image: Option<Vec<u8>> ) -> Result<(bool), io::Error> {
+    pub fn move_next(&mut self, new_image: Option<Vec<u8>> ) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             // Move to the next image
             ////self.current_index += 1;
             self.shift_cache_left(new_image);
-            Ok((false))
+            Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
         }
     }
 
-    pub fn move_next_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(bool), io::Error> {
+    pub fn move_next_edge(&mut self, _new_image: Option<Vec<u8>>) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             // v2
             //self.current_offset += 1;
             //self.current_index += 1;
             println!("move_next_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
-            Ok((false))
+            Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
         }
     }
 
-    pub fn move_prev(&mut self, new_image: Option<Vec<u8>>) -> Result<(bool), io::Error> {
+    pub fn move_prev(&mut self, new_image: Option<Vec<u8>>) -> Result<bool, io::Error> {
         if self.current_index > 0 {
             //self.current_index -= 1; // shuold this be after the cache shift?
             self.shift_cache_right(new_image);
             ////self.current_index -= 1;
-            Ok((false))
+            Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
         }
     }
 
-    pub fn move_prev_edge(&mut self, new_image: Option<Vec<u8>>) -> Result<(bool), io::Error> {
+    pub fn move_prev_edge(&mut self, _new_image: Option<Vec<u8>>) -> Result<bool, io::Error> {
         if self.current_index > 0 {
             // v2
             //self.current_offset -= 1;
             //self.current_index -= 1;
 
             println!("move_prev_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
-            Ok((false))
+            Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
         }
@@ -466,7 +457,7 @@ impl ImageCache {
         println!("shift_cache_left - current_offset: {}", self.current_offset);
     }
 
-    fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize) -> Result<(bool), io::Error> {
+    fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize) -> Result<bool, io::Error> {
         // If `pos` is at the center of the cache return true to reload the current_image
         self.cached_images[pos] = new_image;
         self.print_cache();
@@ -516,7 +507,7 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
                     let empty_async_block = empty_async_block(operation);
                     Command::perform(empty_async_block, Message::ImageLoaded)
                 }
-                LoadOperation::LoadPos((_cache_index, target_index, pos)) => {
+                LoadOperation::LoadPos((_cache_index, target_index, _pos)) => {
                     load_image_by_index(img_cache, target_index, operation)
                 }
             }
@@ -896,7 +887,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
     } else {
         let pane_index = pane_index as usize;
         let pane = &mut panes[pane_index];
-        let img_cache = &mut pane.img_cache;
+        //let img_cache = &mut pane.img_cache;
 
         if pane.dir_loaded {
             match load_current_slider_image(pane, pos) {
@@ -915,12 +906,12 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
     }
 }
 
-fn is_pane_cached_next(pane: pane::Pane, index: usize, is_slider_dual: bool) -> bool {
+fn is_pane_cached_next(pane: pane::Pane, _index: usize, _is_slider_dual: bool) -> bool {
     pane.is_selected && pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
         pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3
 }
 
-fn is_pane_cached_prev(pane: pane::Pane, index: usize, is_slider_dual: bool) -> bool {
+fn is_pane_cached_prev(pane: pane::Pane, _index: usize, _is_slider_dual: bool) -> bool {
     println!("pane.is_selected: {}, pane.dir_loaded: {}, pane.img_cache.is_prev_cache_index_within_bounds(): {}, pane.img_cache.loading_queue.len(): {}, pane.img_cache.being_loaded_queue.len(): {}",
         pane.is_selected, pane.dir_loaded, pane.img_cache.is_prev_cache_index_within_bounds(), pane.img_cache.loading_queue.len(), pane.img_cache.being_loaded_queue.len());
     pane.is_selected && pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds() &&
@@ -1023,7 +1014,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
 
         if img_cache.current_index > 0 {
             let next_image_index_to_load: isize = img_cache.current_index as isize  - img_cache.cache_count as isize  - 1;
-            let next_image_index_to_load_usize = next_image_index_to_load as usize;
+            let _next_image_index_to_load_usize = next_image_index_to_load as usize;
             println!("LOADING PREV: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
                 next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
 
@@ -1090,6 +1081,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
     Command::batch(commands)
 }
 
+#[allow(dead_code)]
 pub fn move_right_all_unused(panes: &mut Vec<pane::Pane>) -> Command<Message> {
     // Returns a command object given a reference to the panes.
     // It needs to be a mutable reference as we need to enqueue image load operations into the image cache.
@@ -1137,6 +1129,7 @@ pub fn move_right_all_unused(panes: &mut Vec<pane::Pane>) -> Command<Message> {
     Command::batch(commands)
 }
 
+#[allow(dead_code)]
 pub fn move_left_all_unused(panes: &mut Vec<pane::Pane>) -> Command<Message> {        
     // v3 (multiple panes)
     let mut commands = Vec::new();
