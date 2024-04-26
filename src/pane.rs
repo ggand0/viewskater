@@ -356,9 +356,10 @@ impl Pane {
     }
 }
 
-pub fn get_pane_with_largest_dir_size(panes: &[Pane], last_opened_pane: usize) -> usize {
+pub fn get_pane_with_largest_dir_size(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = 0;
+    println!("get_pane_with_largest_dir_size - panes.len(): {:?}", panes.len());
     for (i, pane) in panes.iter().enumerate() {
         if pane.dir_loaded {
             if pane.img_cache.num_files > max_dir_size {
@@ -370,7 +371,8 @@ pub fn get_pane_with_largest_dir_size(panes: &[Pane], last_opened_pane: usize) -
 
     // If the directory size of the pane of max_dir_size_index and the pane of last_opened_pane is the same, 
     // select (prioritize) the last_opened_pane's current_index
-    if panes[max_dir_size_index].img_cache.num_files == panes[last_opened_pane].img_cache.num_files {
+    if pane_layout == &PaneLayout::DualPane && !is_slider_dual &&
+        panes[max_dir_size_index].img_cache.num_files == panes[last_opened_pane].img_cache.num_files {
         return panes[last_opened_pane].img_cache.current_index as usize;
     }
 

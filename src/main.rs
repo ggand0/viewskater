@@ -370,7 +370,7 @@ impl DataViewer {
             // Set the slider value to the first pane's current index
             //self.slider_value = self.panes[0].img_cache.current_index as u16;
 
-            self.slider_value = get_pane_with_largest_dir_size(&self.panes, self.last_opened_pane as usize) as u16;
+            self.slider_value = get_pane_with_largest_dir_size(&self.panes, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
         } else {
             // Single to dual slider: give slider.value to each slider
             for pane in self.panes.iter_mut() {
@@ -384,13 +384,21 @@ impl DataViewer {
     }
 
     fn toggle_pane_layout(&mut self, pane_layout: PaneLayout) {
-        self.pane_layout = pane_layout;
-        match self.pane_layout {
+        
+        match pane_layout {
             PaneLayout::SinglePane => {
                 // self.img_caches.resize(1, Default::default()); // Resize to hold 1 image cache
                 self.panes.resize(1, Default::default());
                 debug!("self.panes.len(): {}", self.panes.len());
                 // self.dir_loaded[1] = false;
+
+                if self.pane_layout == PaneLayout::DualPane {
+                    // Reset the slider value to the first pane's current index
+                    //self.slider_value = self.panes[0].img_cache.current_index as u16;
+                    self.slider_value = get_pane_with_largest_dir_size(
+                        &self.panes, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+                    self.panes[0].is_selected = true;
+                }
             }
             PaneLayout::DualPane => {
                 self.panes.resize(2, Default::default()); // Resize to hold 2 image caches
@@ -398,7 +406,8 @@ impl DataViewer {
                 //self.pane_layout = PaneLayout::SinglePane;
             }
         }
-        // Update other app state as needed...
+        
+        self.pane_layout = pane_layout;
     }
 }
 
