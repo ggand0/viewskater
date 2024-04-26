@@ -50,6 +50,7 @@ mod dualslider {
 //use dualslider::dualslider::DualSlider;
 
 mod pane;
+use crate::pane::get_pane_with_largest_dir_size;
 mod ui_builder;
 mod viewer;
 
@@ -367,11 +368,14 @@ impl DataViewer {
             }
 
             // Set the slider value to the first pane's current index
-            self.slider_value = self.panes[0].img_cache.current_index as u16;
+            //self.slider_value = self.panes[0].img_cache.current_index as u16;
+
+            self.slider_value = get_pane_with_largest_dir_size(&self.panes, self.last_opened_pane as usize) as u16;
         } else {
             // Single to dual slider: give slider.value to each slider
             for pane in self.panes.iter_mut() {
-                pane.slider_value = self.slider_value;
+                //pane.slider_value = self.slider_value;
+                pane.slider_value = pane.img_cache.current_index as u16;
                 pane.is_selected = pane.is_selected_cache;
             }
         }
