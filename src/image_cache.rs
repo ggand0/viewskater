@@ -918,7 +918,9 @@ fn is_pane_cached_prev(pane: pane::Pane, _index: usize, _is_slider_dual: bool) -
         pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3
 }
 
-pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool) -> Command<Message> {
+pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
+    pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> Command<Message> {
+
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         println!("move_right_all_new - cache_index: {}, is_pane_cached_next: {}", cache_index, is_pane_cached_next(pane.clone(), cache_index, is_slider_dual));
@@ -994,12 +996,13 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_
     if !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
         // v2: use the current_index of the pane with largest dir size
         //*slider_value = get_pane_with_largest_dir_size(panes) as u16;
-        *slider_value = (get_pane_with_largest_dir_size(panes)) as u16;
+        *slider_value = (get_pane_with_largest_dir_size(panes, last_opened_pane)) as u16;
     }
     Command::batch(commands)
 }
 
-pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool) -> Command<Message> {
+pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize
+) -> Command<Message> {
     let mut commands = Vec::new();
     let mut did_new_render_happen = false;
     for (cache_index, pane) in panes.iter_mut().enumerate() {
@@ -1075,7 +1078,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
 
     // Update master slider when !is_slider_dual
     if did_new_render_happen && (!is_slider_dual || *pane_layout == PaneLayout::SinglePane) {
-        *slider_value = (get_pane_with_largest_dir_size(panes) ) as u16;
+        *slider_value = (get_pane_with_largest_dir_size(panes, last_opened_pane) ) as u16;
     }
 
     Command::batch(commands)

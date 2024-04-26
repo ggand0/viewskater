@@ -356,7 +356,7 @@ impl Pane {
     }
 }
 
-pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> usize {
+pub fn get_pane_with_largest_dir_size(panes: &[Pane], last_opened_pane: usize) -> usize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = 0;
     for (i, pane) in panes.iter().enumerate() {
@@ -367,7 +367,12 @@ pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> usize {
             }
         }
     }
-    //max_dir_size_index
+
+    // If the directory size of the pane of max_dir_size_index and the pane of last_opened_pane is the same, 
+    // select (prioritize) the last_opened_pane's current_index
+    if panes[max_dir_size_index].img_cache.num_files == panes[last_opened_pane].img_cache.num_files {
+        return panes[last_opened_pane].img_cache.current_index as usize;
+    }
 
     let pane = &panes[max_dir_size_index];
     ////(pane.img_cache.current_index as usize) + pane.img_cache.current_offset as usize

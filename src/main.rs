@@ -743,7 +743,8 @@ impl Application for DataViewer {
                         }*/
                         self.init_image_loaded(); // [false, false]
                         let command = move_right_all(
-                            &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
+                            &mut self.panes, &mut self.slider_value,
+                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
                         return command;
                     }
                 }
@@ -788,7 +789,9 @@ impl Application for DataViewer {
                             //Command::none()
                         }*/
                         self.init_image_loaded(); // [false, false]
-                        let command = move_left_all(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
+                        let command = move_left_all(
+                            &mut self.panes, &mut self.slider_value,
+                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
                         return command;
                     }
                     
@@ -827,14 +830,14 @@ impl Application for DataViewer {
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
             let command = move_right_all(
-                &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
+                &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
             command
         } else if self.skate_left {
             println!("skae_left: {}", self.skate_left);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             self.init_image_loaded(); // [false, false]
-            let command = move_left_all(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual);
+            let command = move_left_all(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
             println!("command: {:?}", command);
             command
         } else {
