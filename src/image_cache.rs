@@ -32,7 +32,7 @@ use crate::{DataViewer,Message};
 use iced::Command;
 //use crate::file_io::{async_load_image, empty_async_block, is_file, is_directory, get_file_paths, get_file_index, Error};
 use crate::file_io::{async_load_image, empty_async_block};
-use crate::pane::{self, get_pane_with_largest_dir_size};
+use crate::pane::{self, get_master_slider_value};
 use crate::menu::PaneLayout;
 
 
@@ -995,8 +995,8 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
     // Update master slider when !is_slider_dual
     if !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
         // v2: use the current_index of the pane with largest dir size
-        //*slider_value = get_pane_with_largest_dir_size(panes) as u16;
-        *slider_value = (get_pane_with_largest_dir_size(panes, pane_layout, is_slider_dual, last_opened_pane)) as u16;
+        //*slider_value = get_master_slider_value(panes) as u16;
+        *slider_value = (get_master_slider_value(panes, pane_layout, is_slider_dual, last_opened_pane)) as u16;
     }
     Command::batch(commands)
 }
@@ -1078,7 +1078,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
 
     // Update master slider when !is_slider_dual
     if did_new_render_happen && (!is_slider_dual || *pane_layout == PaneLayout::SinglePane) {
-        *slider_value = (get_pane_with_largest_dir_size(panes, pane_layout, is_slider_dual, last_opened_pane) ) as u16;
+        *slider_value = (get_master_slider_value(panes, pane_layout, is_slider_dual, last_opened_pane) ) as u16;
     }
 
     Command::batch(commands)

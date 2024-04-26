@@ -356,10 +356,10 @@ impl Pane {
     }
 }
 
-pub fn get_pane_with_largest_dir_size(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
+pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = 0;
-    println!("get_pane_with_largest_dir_size - panes.len(): {:?}", panes.len());
+    println!("get_master_slider_value - panes.len(): {:?}", panes.len());
     for (i, pane) in panes.iter().enumerate() {
         if pane.dir_loaded {
             if pane.img_cache.num_files > max_dir_size {
