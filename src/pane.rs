@@ -39,6 +39,7 @@ use iced::widget::{
 use iced::widget::Image;
 use iced::{Element, Length};
 use crate::dualslider::dualslider::DualSlider;
+use crate::menu::PaneLayout;
 
 use crate::split::split::{Axis, Split};
 use crate::viewer;
@@ -114,11 +115,21 @@ impl Pane {
         self.prev_slider_value = 0;
     }
 
-    pub fn initialize_dir_path(&mut self, path: PathBuf) {
+    // Allowing for the sake of `is_dir_size_bigger`
+    #[allow(unused_assignments)]
+    pub fn initialize_dir_path(&mut self, pane_layout: &PaneLayout,
+        pane_file_lengths: &[usize], _pane_index: usize, path: PathBuf,
+        is_slider_dual: bool, slider_value: &mut u16) {
         let mut _file_paths: Vec<PathBuf> = Vec::new();
         let initial_index: usize;
         
-
+        //let min_current_index_in_panes = panes.iter().map(|pane| pane.slider_value).min().unwrap_or(0);
+        //let min_current_index_in_panes = pane_slider_values.iter().min().unwrap_or(&0);
+        // min current slider value in panes except the current pane_index
+        //let min_current_index_in_panes = pane_slider_values.iter().enumerate().filter(|(i, _)| *i != pane_index).map(|(_, v)| v).min().unwrap_or(&0);
+        
+        
+        let mut is_dir_size_bigger: bool = false;
         if is_file(&path) {
             println!("Dropped path is a file");
             let directory = path.parent().unwrap_or(Path::new(""));
@@ -128,6 +139,16 @@ impl Pane {
             _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
             let file_index = get_file_index(&_file_paths, &path);
 
+            let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+            is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
+                true
+            } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+                true
+            } else {
+                _file_paths.len() >= *longest_file_length
+            };
+            println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+
             if let Some(file_index) = file_index {
                 println!("File index: {}", file_index);
                 initial_index = file_index;
@@ -135,7 +156,17 @@ impl Pane {
                 
                 // self.slider_values[pane_index] = file_index as u16;
                 // self.panes[pane_index].slider_value = file_index as u16;
-                self.slider_value = file_index as u16;
+                let current_slider_value = file_index as u16;
+                println!("current_slider_value: {:?}", current_slider_value);
+                if is_slider_dual {
+                    *slider_value = current_slider_value;
+                    self.slider_value = current_slider_value;
+                } else {
+                    if is_dir_size_bigger {
+                        *slider_value = current_slider_value;
+                    }
+                }
+                println!("slider_value: {:?}", *slider_value);
             } else {
                 println!("File index not found");
                 return;
@@ -144,21 +175,48 @@ impl Pane {
         } else if is_directory(&path) {
             println!("Dropped path is a directory");
             self.directory_path = Some(path.to_string_lossy().to_string());
-            _file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
-            initial_index = 0;
-            // self.current_image_index = 0;
+            //_file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
+            _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
             
-            // self.slider_values[pane_index] = 0;
-            // self.panes[pane_index].slider_value = 0;
-            self.slider_value = 0;
+            initial_index = 0;
+            // Display the first 100 paths
+            /*for path in _file_paths.iter().take(100) {
+                println!("{}", path.display());
+            }*/
+
+            
+            let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+            is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
+                true
+            } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+                true
+            } else {
+                _file_paths.len() >= *longest_file_length
+            };
+            println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+            let current_slider_value = 0;
+            println!("current_slider_value: {:?}", current_slider_value);
+            if is_slider_dual {
+                *slider_value = current_slider_value;
+                self.slider_value = current_slider_value;
+            } else {
+                if is_dir_size_bigger {
+                    *slider_value = current_slider_value;
+                }
+            }
+            println!("slider_value: {:?}", *slider_value);
         } else {
             println!("Dropped path does not exist or cannot be accessed");
             // Handle the case where the path does not exist or cannot be accessed
             return;
         }
 
+        // Sort
+        //alphanumeric_sort::sort_path_slice(&mut _file_paths);
+
         // Debug print the files
-        for path in _file_paths.iter().take(20) {
+        //for path in _file_paths.iter().take(20) {
+        for path in _file_paths.iter() {
             println!("{}", path.display());
         }
 
@@ -170,15 +228,32 @@ impl Pane {
         // Instantiate a new image cache and load the initial images
         let mut img_cache =  image_cache::ImageCache::new(
             _file_paths,
-            2,
+            //2,
+            5,
+            //100,
             initial_index,
         ).unwrap();
         img_cache.load_initial_images().unwrap();
+        img_cache.print_cache();
         
 
-        let loaded_image = img_cache.get_current_image().unwrap().to_vec();
+        let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
         let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
         self.current_image = handle;
+
+        let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+        
+        println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+        let current_slider_value = initial_index as u16;
+        println!("current_slider_value: {:?}", current_slider_value);
+        if is_slider_dual {
+            //*slider_value = current_slider_value;
+        } else {
+            if is_dir_size_bigger {
+                *slider_value = current_slider_value;
+            }
+        }
+        println!("slider_value: {:?}", *slider_value);
 
         let file_paths = img_cache.image_paths.clone();
         println!("file_paths.len() {:?}", file_paths.len());
@@ -217,7 +292,8 @@ impl Pane {
                     // self.slider_values[0],
                     self.slider_value,
                     -1,
-                    Message::SliderChanged
+                    Message::SliderChanged,
+                    Message::SliderReleased
                 )
                 .width(Length::Fill)
                 ]
@@ -265,7 +341,8 @@ impl Pane {
                     0..= (self.img_cache.num_files - 1) as u16,
                     self.slider_value,
                     0, // this needs to pane_index instead of 0
-                    Message::SliderChanged
+                    Message::SliderChanged,
+                    Message::SliderReleased
                 )
                 .width(Length::Fill)
                 ]
@@ -280,6 +357,32 @@ impl Pane {
         };
         img
     }
+}
+
+pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
+    let mut max_dir_size = 0;
+    let mut max_dir_size_index = 0;
+    println!("get_master_slider_value - panes.len(): {:?}", panes.len());
+    for (i, pane) in panes.iter().enumerate() {
+        if pane.dir_loaded {
+            if pane.img_cache.num_files > max_dir_size {
+                max_dir_size = pane.img_cache.num_files;
+                max_dir_size_index = i;
+            }
+        }
+    }
+
+    // If the directory size of the pane of max_dir_size_index and the pane of last_opened_pane is the same, 
+    // select (prioritize) the last_opened_pane's current_index
+    if pane_layout == &PaneLayout::DualPane && !is_slider_dual &&
+        panes[max_dir_size_index].img_cache.num_files == panes[last_opened_pane].img_cache.num_files {
+        return panes[last_opened_pane].img_cache.current_index as usize;
+    }
+
+    let pane = &panes[max_dir_size_index];
+    ////(pane.img_cache.current_index as usize) + pane.img_cache.current_offset as usize
+    ////(pane.img_cache.current_index as isize + pane.img_cache.current_offset) as usize
+    pane.img_cache.current_index as usize
 }
 
 pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
@@ -311,7 +414,8 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
                 0..= (panes[0].img_cache.num_files - 1) as u16,
                 panes[0].slider_value,
                 0,
-                Message::SliderChanged
+                Message::SliderChanged,
+                Message::SliderReleased
             )
             .width(Length::Fill)
             ]
@@ -335,7 +439,8 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
                 0..= (panes[1].img_cache.num_files - 1) as u16,
                 panes[1].slider_value,
                 1,
-                Message::SliderChanged
+                Message::SliderChanged,
+                Message::SliderReleased
             )
             .width(Length::Fill)
             ]

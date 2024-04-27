@@ -1,9 +1,10 @@
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::thread;
-use std::time::Duration;
+//use std::thread;
+//use std::time::Duration;
 use tokio::io::AsyncReadExt;
+
 
 use rfd;
 use crate::image_cache::LoadOperation;
@@ -81,8 +82,8 @@ pub async fn pick_file() -> Result<String, Error> {
 
 
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
-    let duration = Duration::from_millis(50);
-    thread::sleep(duration);
+    //let duration = Duration::from_millis(1);
+    //thread::sleep(duration);
     Ok((None, Some(operation)))
 }
 
@@ -112,7 +113,8 @@ pub fn get_file_paths(directory_path: &Path) -> Vec<PathBuf> {
         }
     }
 
-    file_paths.sort();
+    //file_paths.sort();
+    alphanumeric_sort::sort_path_slice(&mut file_paths);
     file_paths
 }
 use std::ffi::OsStr;
@@ -132,6 +134,7 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
         }
     }
 
-    image_paths.sort();
+    //image_paths.sort();
+    alphanumeric_sort::sort_path_slice(&mut image_paths);
     image_paths
 }

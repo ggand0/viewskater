@@ -781,8 +781,8 @@ where
 fn is_cursor_within_bounds<Message>(
     layout: Layout<'_>,
     cursor: Cursor,
-    pane_index: usize,
-    split_state: &mut SplitState,
+    _pane_index: usize,
+    _split_state: &mut SplitState,
 ) -> bool {
     println!("Processing layout");
     if let Some(container_layout) = layout.children().next() {
