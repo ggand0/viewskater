@@ -175,7 +175,9 @@ impl Pane {
         } else if is_directory(&path) {
             println!("Dropped path is a directory");
             self.directory_path = Some(path.to_string_lossy().to_string());
-            _file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
+            //_file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
+            _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
+            
             initial_index = 0;
             // Display the first 100 paths
             /*for path in _file_paths.iter().take(100) {
@@ -213,7 +215,8 @@ impl Pane {
         //alphanumeric_sort::sort_path_slice(&mut _file_paths);
 
         // Debug print the files
-        for path in _file_paths.iter().take(20) {
+        //for path in _file_paths.iter().take(20) {
+        for path in _file_paths.iter() {
             println!("{}", path.display());
         }
 
