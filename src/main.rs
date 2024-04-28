@@ -892,19 +892,9 @@ impl Application for DataViewer {
 fn main() -> iced::Result {
     env_logger::init();
     use iced::window;
-
-    // let app_icon_data = include_bytes!("../icon_v0.png"); // Replace with your icon path
-
-    // Load the image using the image crate
-    // self.current_images = vec![iced::widget::image::Handle::from_memory(vec![])
-    // let app_icon_image = iced::widget::image::Handle::from_memory(app_icon_data);
-    // let icon = window::icon::Icon::from(app_icon_image);
-    // let icon = window::Icon::from_rgba(app_icon_data.to_vec(), 64, 64);
-
-    // let icon =  iced::window::icon::from_file("../icon_v0.png");
     
-    // let icon =  iced::window::icon::from_file("v2.png");
-    let icon =  iced::window::icon::from_file("icon.ico");
+    //let icon =  iced::window::icon::from_file("icon.ico");
+    let icon =  iced::window::icon::from_file("icon.png");
     match icon {
         Ok(icon) => {
             info!("Icon loaded successfully");
