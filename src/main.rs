@@ -1,3 +1,6 @@
+
+#![windows_subsystem = "windows"]
+
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
@@ -892,6 +895,7 @@ impl Application for DataViewer {
 fn main() -> iced::Result {
     env_logger::init();
     use iced::window;
+
     
     //let icon =  iced::window::icon::from_file("icon.ico");
     let icon =  iced::window::icon::from_file("icon.png");
