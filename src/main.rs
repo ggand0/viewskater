@@ -1,3 +1,6 @@
+
+#![windows_subsystem = "windows"]
+
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
@@ -889,12 +892,30 @@ impl Application for DataViewer {
     }
 }
 
+
+// Include the icon image data at compile time
+static ICON: &[u8] = if cfg!(target_os = "windows") {
+    include_bytes!("../assets/icon_512.png")
+} else if cfg!(target_os = "macos") {
+    include_bytes!("../assets/icon_512.png")
+} else {
+    include_bytes!("../assets/icon_48.png")
+};
+
+
 fn main() -> iced::Result {
     env_logger::init();
     use iced::window;
-    
-    //let icon =  iced::window::icon::from_file("icon.ico");
-    let icon =  iced::window::icon::from_file("icon.png");
+
+    /*use image::io::Reader as ImageReader;
+    let icon_data = ImageReader::new(std::io::Cursor::new(ICON))
+        .with_guessed_format()
+        .unwrap()
+        .decode()
+        .unwrap()
+        .to_rgba8();*/
+    let icon = iced::window::icon::from_file_data(ICON, Option::None);
+
     match icon {
         Ok(icon) => {
             info!("Icon loaded successfully");

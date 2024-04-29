@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Visual data viewer for people working with large data."
 
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 iced_native = "0.10"
@@ -16,6 +17,7 @@ num-traits = "0.2"
 cargo-bundle = "0.6.0"
 #natord = "1.0.9"
 alphanumeric-sort = "1.5.3"
+image = "0.23"
 
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
@@ -50,6 +52,13 @@ iced_aw = { version = "0.7.0", features = [
     "icon_text"
 ] }
 iced_widget = { package = "iced_widget", version = "0.1.1" }
+
+[build-dependencies]
+winres = "0.1.12"
+
+[package.metadata.winres]
+OriginalFilename = "view_skater.exe"
+FileDescription = "Visual data viewer for people working with large data."
 
 #iced = {version = "0.10", features = ["image", "tokio", "svg", "lazy"]}
 ##iced_aw = { version = "0.7.0", features = [
