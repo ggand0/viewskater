@@ -893,10 +893,15 @@ impl Application for DataViewer {
 }
 
 use image::io::Reader as ImageReader;
-static ICON: &[u8] = include_bytes!("../assets/icon_128.png");
-//static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
-//const ICON_HEIGHT: u32 = 512;
-//const ICON_WIDTH: u32 = 512;
+//static ICON: &[u8] = include_bytes!("../assets/icon_128.png");
+static ICON: &[u8] = if cfg!(target_os = "windows") {
+    include_bytes!("../assets/icon_512.png")
+} else if cfg!(target_os = "macos") {
+    include_bytes!("../assets/icon_512.png")
+} else {
+    include_bytes!("../assets/icon_48.png")
+};
+
 
 fn main() -> iced::Result {
     env_logger::init();
