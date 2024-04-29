@@ -892,8 +892,8 @@ impl Application for DataViewer {
     }
 }
 
-use image::io::Reader as ImageReader;
-//static ICON: &[u8] = include_bytes!("../assets/icon_128.png");
+
+// Include the icon image data at compile time
 static ICON: &[u8] = if cfg!(target_os = "windows") {
     include_bytes!("../assets/icon_512.png")
 } else if cfg!(target_os = "macos") {
@@ -907,28 +907,15 @@ fn main() -> iced::Result {
     env_logger::init();
     use iced::window;
 
-    
-    //let icon =  iced::window::icon::from_file("icon.ico");
-    //let icon =  iced::window::icon::from_file("icon.png");
-
-    //let icon_data = iced::widget::image::Handle::from_memory(ICON).data;
+    /*use image::io::Reader as ImageReader;
     let icon_data = ImageReader::new(std::io::Cursor::new(ICON))
         .with_guessed_format()
         .unwrap()
         .decode()
         .unwrap()
-        .to_rgba8();
-
-    //let icon = iced::window::icon::from_rgba(icon_data.to_vec(), icon_data.width(), icon_data.height());
-    //let icon = iced::window::icon::from_rgba(ICON.to_owned().into(), 512, 512);
-    //let icon = iced::window::icon::from_rgba(include_bytes!("../assets/icon_512.png").to_owned().into(), 512, 512);
-    //let icon = iced::window::icon::from_file_data(include_bytes!("../assets/icon_512.png"), Some(image::image::ImageFormat::Png));
-
-    //let icon = iced::window::icon::from_file_data(include_bytes!("../assets/icon_512.png"), Option::None);
+        .to_rgba8();*/
     let icon = iced::window::icon::from_file_data(ICON, Option::None);
 
-    //let icon = iced::window::icon::from_rgba(ICON.to_owned().into(), 64, 64);
-    //let icon = iced::window::icon::from_rgba(include_bytes!("../assets/icon_512.png").as_bytes().to_vec(), icon_data.width(), icon_data.height());
     match icon {
         Ok(icon) => {
             info!("Icon loaded successfully");
