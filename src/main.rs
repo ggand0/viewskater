@@ -450,8 +450,10 @@ impl Application for DataViewer {
             PaneLayout::SinglePane => {
                 if self.panes[0].dir_loaded {
                     // return string here
-                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
                     //self.title.clone()
+                    //self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
+                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| String::from("Unknown"))
                 } else {
                     self.title.clone()
                 }
