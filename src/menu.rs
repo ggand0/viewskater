@@ -228,7 +228,12 @@ pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
                 Some("Toggle Slider".into()),
                 app.is_slider_dual,
                 Message::ToggleSliderType
-            )])
+            )]),
+            menu_tree!(row!(toggler(
+                Some("Toggle Footer".into()),
+                app.show_footer,
+                Message::ToggleFooter
+            )))
         ],
     );
 

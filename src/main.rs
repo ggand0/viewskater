@@ -56,6 +56,7 @@ mod pane;
 use crate::pane::get_master_slider_value;
 mod ui_builder;
 mod viewer;
+//mod footer;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -83,6 +84,7 @@ pub struct DataViewer {
     hor_divider_position: Option<u16>,
     //pane_count: usize,
     is_slider_dual: bool,
+    show_footer: bool,
     pane_layout: PaneLayout,
     last_opened_pane: isize,
     panes: Vec<pane::Pane>,             // Each pane has its own image cache
@@ -103,6 +105,7 @@ impl Default for DataViewer {
             hor_divider_position: None,
             //pane_count: 2,
             is_slider_dual: false,
+            show_footer: true,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
             panes: vec![pane::Pane::default()],
@@ -134,6 +137,7 @@ pub enum Message {
     ResetSplit(u16),
     ToggleSliderType(bool),
     TogglePaneLayout(PaneLayout),
+    ToggleFooter(bool),
     PaneSelected(usize, bool),
 }
 
@@ -412,6 +416,10 @@ impl DataViewer {
         
         self.pane_layout = pane_layout;
     }
+
+    fn toggle_footer(&mut self) {
+        self.show_footer = !self.show_footer;
+    }
 }
 
 
@@ -433,6 +441,7 @@ impl Application for DataViewer {
                 hor_divider_position: None,
                 //pane_count: 2,
                 is_slider_dual: false,
+                show_footer: true,
                 pane_layout: PaneLayout::SinglePane,
                 last_opened_pane: 0,
                 panes: vec![pane::Pane::default()],
@@ -547,6 +556,9 @@ impl Application for DataViewer {
             Message::TogglePaneLayout(pane_layout) => {
                 self.toggle_pane_layout(pane_layout);
                 //Command::none()
+            },
+            Message::ToggleFooter(_bool) => {
+                self.toggle_footer();
             },
             Message::PaneSelected(pane_index, is_selected) => {
                 self.panes[pane_index].is_selected = is_selected;

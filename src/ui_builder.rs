@@ -28,7 +28,7 @@ use iced::alignment::Horizontal;
 use iced_aw::menu::{CloseCondition, ItemHeight, ItemWidth, PathHighlight};
 use iced_aw::menu_bar;
 use crate::dualslider::dualslider::DualSlider;
-use crate::footer::footer;
+//use crate::footer::footer;
 
 //use crate::split::split::{Axis, Split};
 use crate::pane;
@@ -94,7 +94,9 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                 _app.panes[0].img_cache.current_index + 1,
                 _app.panes[0].img_cache.num_files
             );
-            let footer = get_footer(String::from(footer_text));
+            let footer = if _app.show_footer {
+                get_footer(String::from(footer_text)) 
+                } else { container(text(String::from(""))).height(0) };
 
             // let first_img: iced::widget::Container<Message> = _app.panes[0].build_ui();
             let first_img: iced::widget::Container<Message>  = if _app.panes[0].dir_loaded {
@@ -115,7 +117,7 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                     )
                     .width(Length::Fill),
 
-                    footer,
+                    footer
                     ]
                 )
             } else {
