@@ -19,14 +19,16 @@ use other_os::*;
 use macos::*;
 
 use iced::widget::{
-    container, row, column, horizontal_space, text
+    container, row, column, horizontal_space, text, Text
 };
 //use iced::widget::{Image, Container};
 use iced::widget::Container;
 use iced::{Length, Color, alignment};
+use iced::alignment::Horizontal;
 use iced_aw::menu::{CloseCondition, ItemHeight, ItemWidth, PathHighlight};
 use iced_aw::menu_bar;
 use crate::dualslider::dualslider::DualSlider;
+use crate::footer::footer;
 
 //use crate::split::split::{Axis, Split};
 use crate::pane;
@@ -62,18 +64,25 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
     };
     let top_bar = container(r).width(Length::Fill).style(top_bar_style);
 
+    let footer = container(text(String::from("footer text"))
+        .style(Color::from([0.5, 0.5, 0.5])).size(16) )
+        .width(Length::Fill)
+        .height(16).style(top_bar_style)
+        .align_x(Horizontal::Right);
+
 
     let container_all;
     match _app.pane_layout {
         PaneLayout::SinglePane => {
-            
             // let first_img: iced::widget::Container<Message> = _app.panes[0].build_ui();
             let first_img: iced::widget::Container<Message>  = if _app.panes[0].dir_loaded {
                 container(column![
                     //Image::new(_app.panes[0].current_image.clone())
                     viewer::Viewer::new(_app.panes[0].current_image.clone())
+                    //viewer::Viewer::new(handle=_app.panes[0].current_image.clone(), height=600.0)
                     .width(Length::Fill)
                     .height(Length::Fill),
+                    //.height(Length::Fixed(600.0)),
                     DualSlider::new(
                         0..= (_app.panes[0].img_cache.num_files - 1) as u16,
                         // _app.slider_values[0],
@@ -82,7 +91,9 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                         Message::SliderChanged,
                         Message::SliderReleased
                     )
-                    .width(Length::Fill)
+                    .width(Length::Fill),
+
+                    footer,
                     ]
                 )
             } else {
@@ -93,13 +104,15 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                 
                 ])
             };
+
             container_all = container(
                 column![
                     top_bar,
-                    first_img,
+                    first_img
+                    .width(Length::Fill)
                 ]
             )
-            .center_y();
+            //.center_y();
         }
         PaneLayout::DualPane => {
             if _app.is_slider_dual {
@@ -140,7 +153,10 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                     )
                     .center_y();
                 } else {
-                    container_all = container(column![top_bar, panes].spacing(25)).center_y();
+                    container_all = container(column![
+                        top_bar,
+                        panes,
+                    ].spacing(25)).center_y();
                 }
                     
             }
