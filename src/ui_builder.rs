@@ -37,6 +37,17 @@ use crate::menu;
 use crate::{Message, PaneLayout, DataViewer};
 use crate::viewer;
 
+fn get_footer(footer_text: String) -> Container<'static, Message> {
+    container(text(String::from(footer_text))
+        .style(Color::from([0.8, 0.8, 0.8])).size(14) )
+        //.style(Color::from_rgb8(220, 220, 220)).size(14) )
+        .width(Length::Fill)
+        .height(24)
+        .padding(5)
+        //.style(top_bar_style)
+        .align_x(Horizontal::Right)
+}
+
 
 //panes: &[Pane], ver_divider_position: Option<u16>, slider_value: u16, pane_layout: PaneLayout
 pub fn build_ui(_app: &DataViewer) -> Container<Message> {
@@ -64,16 +75,27 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
     };
     let top_bar = container(r).width(Length::Fill).style(top_bar_style);
 
-    let footer = container(text(String::from("footer text"))
-        .style(Color::from([0.5, 0.5, 0.5])).size(16) )
+    /*let footer = container(text(String::from("footer text"))
+        .style(Color::from([0.8, 0.8, 0.8])).size(14) )
+        //.style(Color::from_rgb8(220, 220, 220)).size(14) )
         .width(Length::Fill)
-        .height(16).style(top_bar_style)
-        .align_x(Horizontal::Right);
+        .height(24)
+        .padding(5)
+        //.style(top_bar_style)
+        .align_x(Horizontal::Right);*/
 
 
     let container_all;
     match _app.pane_layout {
         PaneLayout::SinglePane => {
+            // Create a footer text from the "current_index/total_files" info
+            let footer_text = format!(
+                "{}/{}",
+                _app.panes[0].img_cache.current_index + 1,
+                _app.panes[0].img_cache.num_files
+            );
+            let footer = get_footer(String::from(footer_text));
+
             // let first_img: iced::widget::Container<Message> = _app.panes[0].build_ui();
             let first_img: iced::widget::Container<Message>  = if _app.panes[0].dir_loaded {
                 container(column![
