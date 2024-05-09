@@ -37,7 +37,7 @@ use crate::menu;
 use crate::{Message, PaneLayout, DataViewer};
 use crate::viewer;
 
-fn get_footer(footer_text: String) -> Container<'static, Message> {
+pub fn get_footer(footer_text: String) -> Container<'static, Message> {
     container(text(String::from(footer_text))
         .style(Color::from([0.8, 0.8, 0.8])).size(14) )
         //.style(Color::from_rgb8(220, 220, 220)).size(14) )
@@ -74,15 +74,6 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
         ..Default::default()
     };
     let top_bar = container(r).width(Length::Fill).style(top_bar_style);
-
-    /*let footer = container(text(String::from("footer text"))
-        .style(Color::from([0.8, 0.8, 0.8])).size(14) )
-        //.style(Color::from_rgb8(220, 220, 220)).size(14) )
-        .width(Length::Fill)
-        .height(24)
-        .padding(5)
-        //.style(top_bar_style)
-        .align_x(Horizontal::Right);*/
 
 
     let container_all;
@@ -141,7 +132,8 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
         PaneLayout::DualPane => {
             if _app.is_slider_dual {
                 //let panes = _app.build_ui_dual_pane_slider2();
-                let panes = pane::build_ui_dual_pane_slider2(&_app.panes, _app.ver_divider_position);
+                let panes = pane::build_ui_dual_pane_slider2(
+                    &_app.panes, _app.ver_divider_position, _app.show_footer);
                 container_all = container(
                     column![
                         top_bar,
@@ -152,6 +144,23 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
             } else {
                 //let panes = _app.build_ui_dual_pane_slider1();
                 let panes = pane::build_ui_dual_pane_slider1(&_app.panes, _app.ver_divider_position);
+
+                let footer_texts = vec![
+                    format!(
+                        "{}/{}",
+                        _app.panes[0].img_cache.current_index + 1,
+                        _app.panes[0].img_cache.num_files
+                    ),
+                    format!(
+                        "{}/{}",
+                        _app.panes[1].img_cache.current_index + 1,
+                        _app.panes[1].img_cache.num_files
+                    )
+                ];
+                let footer = row![
+                    get_footer(footer_texts[0].clone()),
+                    get_footer(footer_texts[1].clone())
+                ];
 
                 let max_num_files = _app.panes.iter().fold(0, |max, pane| {
                     if pane.img_cache.num_files > max {
@@ -173,7 +182,20 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                     );
                 
                     container_all = container(
-                        column![top_bar, panes, h_slider].spacing(25),
+                        if _app.show_footer {
+                            column![
+                                top_bar,
+                                panes,
+                                h_slider,
+                                footer,
+                            ]//.spacing(25)
+                        } else {
+                            column![
+                                top_bar,
+                                panes,
+                                h_slider,
+                            ]//.spacing(25)
+                        }
                     )
                     .center_y();
                 } else {
