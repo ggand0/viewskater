@@ -22,8 +22,9 @@ use macos::*;
 
 use iced::event::Event;
 use iced::subscription::{self, Subscription};
-use iced::keyboard;
+use iced::{keyboard, clipboard};
 use iced::{Element, Length, Application, Theme, Settings, Command};
+use iced::font::{self, Font};
 
 use std::path::PathBuf;
 use log::{debug, info, warn, error};
@@ -121,6 +122,7 @@ impl Default for DataViewer {
 pub enum Message {
     Debug(String),
     Nothing,
+    FontLoaded(Result<(), font::Error>),
     OpenFolder,
     OpenFile,
     FileDropped(isize, String),
@@ -139,6 +141,7 @@ pub enum Message {
     TogglePaneLayout(PaneLayout),
     ToggleFooter(bool),
     PaneSelected(usize, bool),
+    CopyFilename,
 }
 
 impl DataViewer {
@@ -449,7 +452,9 @@ impl Application for DataViewer {
                 skate_left: false,
                 update_counter: 0,
             },
-            Command::none()
+            Command::batch(vec![
+                font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded),
+            ])
         )
 
     }
@@ -501,6 +506,9 @@ impl Application for DataViewer {
                 self.title = s;
                 //Command::none()
             }
+            Message::FontLoaded(_) => {
+                //Command::none()
+            }
             Message::OpenFolder => {
                 return Command::perform(file_io::pick_folder(), |result| {
                     Message::FolderOpened(result)
@@ -543,6 +551,19 @@ impl Application for DataViewer {
                         //Command::none()
                     }
                 }
+            },
+            Message::CopyFilename => {
+                println!("{}", self.title.as_str());
+                //if let Some(filename) = get_filename(self.title.as_str()) {
+                    if let Some(filename) = file_io::get_filename(self.title().as_str()) {
+                    println!("Filename: {}", filename);
+
+                    // to_owned vs to_string
+                    return clipboard::write::<Message>(filename.to_string());
+                }
+                
+                // works
+                //return clipboard::write::<Message>("debug debug".to_string());
             }
             Message::OnVerResize(position) => { self.ver_divider_position = Some(position); },//Command::none() },
             Message::OnHorResize(position) => { self.hor_divider_position = Some(position); },//Command::none() },
@@ -935,6 +956,7 @@ fn main() -> iced::Result {
             info!("Icon loaded successfully");
             let settings = Settings {
                 window: window::Settings {
+                    //fonts: vec!(include_bytes!("../assets/fonts/icons.ttf")).as_slice().into(),
                     icon: Some(icon),
                     ..Default::default()
                 },
