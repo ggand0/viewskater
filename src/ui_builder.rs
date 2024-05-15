@@ -19,11 +19,11 @@ use other_os::*;
 use macos::*;
 
 use iced::widget::{
-    container, row, column, horizontal_space, text, Text, button
+    container, row, column, horizontal_space, text, Text, button, Button
 };
 //use iced::widget::{Image, Container};
 use iced::widget::Container;
-use iced::{Length, Color, alignment, Element};
+use iced::{Length, Color, alignment, Element, theme, Theme};
 use iced::alignment::{Horizontal, Vertical};
 use iced::font::{self, Font};
 use iced_aw::menu::{CloseCondition, ItemHeight, ItemWidth, PathHighlight};
@@ -41,25 +41,36 @@ use crate::{Message, PaneLayout, DataViewer};
 use crate::viewer;
 
 
-// Fonts
-
-
-/*fn icon(unicode: char) -> Text<'static> {
-    const ICONS: Font = Font::with_name("vs-icons");
-
-    //text(unicode.to_string())
-    text(unicode)
-        .font(ICONS)
-        //.width(20)
-        //.height(14)
-        .horizontal_alignment(alignment::Horizontal::Center)
-        .vertical_alignment(alignment::Vertical::Center)
+struct CustomButtonStyle {
+    theme: theme::Button,
 }
 
-fn copy_icon() -> Text<'static> {
-    icon('\u{F0C5}')
-}*/
+impl CustomButtonStyle {
+    pub fn new(theme: theme::Button) -> Self {
+        Self { theme }
+    }
+}
 
+impl button::StyleSheet for CustomButtonStyle {
+    type Style = Theme;
+
+    fn active(&self, style: &Self::Style) -> button::Appearance {
+        let mut appearance = style.active(&self.theme);
+        //appearance.border_radius = 25.0.into();
+        appearance.background = Some(Color::from_rgb(0.1, 0.1, 0.1).into());
+
+        appearance
+    }
+
+    fn hovered(&self, _style: &Self::Style) -> button::Appearance {
+        button::Appearance {
+            background: Some(Color::from_rgba8(20, 148, 163, 1.0).into()),
+            //border_radius: 5.0,
+            text_color: Color::WHITE,
+            ..button::Appearance::default()
+        }
+    }
+}
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
     const ICON_FONT: Font = Font::with_name("viewskater-fonts");
 
@@ -84,17 +95,17 @@ fn image_icon<'a, Message>() -> Element<'a, Message> {
 }
 
 pub fn get_footer(footer_text: String) -> Container<'static, Message> {
-    //let copy_button = button(text(String::from("Copy")).size(16)).on_press(Message::CopyFilename);
-    ////let copy_button = button(text(String::from("Copy")).size(12)).on_press(Message::CopyFilename).padding(2); // kind of workds
-    //let copy_button = button(text(String::from("Copy"))).on_press(Message::CopyFilename);
+    let copy_button = button(copy_icon())
+        .style(theme::Button::Custom(Box::new(
+            CustomButtonStyle::new(theme::Button::Primary),
+        )))
+        .on_press(Message::CopyFilename).padding(2);
 
-    //let copy_button = button(text(String::from("Copy")).size(12)).on_press(Message::CopyFilename).padding(2); // kind of workds
-    //let copy_button = button(copy_icon()).on_press(Message::CopyFilename).padding(2);
-    //let copy_button = button(copy_icon().size(24)).on_press(Message::CopyFilename).padding(1);
-    let copy_button = button(copy_icon()).on_press(Message::CopyFilename).padding(2);
-    //let copy_button = button(icon_text(icons::icon_to_char(Icon::Person)).size(12)).on_press(Message::CopyFilename).padding(2);
-
-    let copy_filename_button = button(file_icon()).on_press(Message::CopyFilename).padding(2);
+    let copy_filename_button = button(file_icon())
+        .style(theme::Button::Custom(Box::new(
+                CustomButtonStyle::new(theme::Button::Primary),
+        )))
+        .on_press(Message::CopyFilename).padding(2);
     let copy_filepath_button = button(folder_icon()).on_press(Message::CopyFilename).padding(2);
     let copy_image_button = button(image_icon()).on_press(Message::CopyFilename).padding(2);
 
@@ -119,7 +130,6 @@ pub fn get_footer(footer_text: String) -> Container<'static, Message> {
     //.align_y(Vertical::Center)
     //.center_y()
 }
-
 
 
 //panes: &[Pane], ver_divider_position: Option<u16>, slider_value: u16, pane_layout: PaneLayout
