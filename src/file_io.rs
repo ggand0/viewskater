@@ -17,6 +17,13 @@ pub enum Error {
     // IO(io::ErrorKind)
 }
 
+pub fn get_filepath(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .parent()
+        .and_then(|os_str| os_str.to_str())
+        .map(|s| s.to_string())
+}
+
 pub fn get_filename(path: &str) -> Option<String> {
     std::path::Path::new(path)
         .file_name()

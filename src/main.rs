@@ -141,7 +141,8 @@ pub enum Message {
     TogglePaneLayout(PaneLayout),
     ToggleFooter(bool),
     PaneSelected(usize, bool),
-    CopyFilename,
+    CopyFilename(usize),
+    CopyFilePath(usize),
 }
 
 impl DataViewer {
@@ -555,18 +556,44 @@ impl Application for DataViewer {
                     }
                 }
             },
-            Message::CopyFilename => {
-                println!("{}", self.title.as_str());
-                //if let Some(filename) = get_filename(self.title.as_str()) {
-                    if let Some(filename) = file_io::get_filename(self.title().as_str()) {
+            Message::CopyFilename(pane_index) => {
+                // Get the image path of the specified pane
+                //let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
+                let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
+
+                /*if let Some(filename) = file_io::get_filename(img_path) {
                     println!("Filename: {}", filename);
 
                     // to_owned vs to_string
                     return clipboard::write::<Message>(filename.to_string());
+                }*/
+                if let Some(img_path) = img_path {
+                    if let Some(filename) = file_io::get_filename(&img_path) {
+                        println!("Filename: {}", filename);
+                        return clipboard::write::<Message>(filename.to_string());
+                    }
                 }
                 
                 // works
                 //return clipboard::write::<Message>("debug debug".to_string());
+            }
+            Message::CopyFilePath(pane_index) => {
+                // Get the image path of the specified pane
+                let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
+
+                /*if let Some(path) = img_path {
+                    println!("Path: {}", path);
+                    return clipboard::write::<Message>(path.to_string());
+                }*/
+                if let Some(img_path) = img_path {
+                    //println!("Path: {}", img_path);
+                    //return clipboard::write::<Message>(img_path.to_string());
+                    if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
+                        let full_path = format!("{}/{}", dir_path, img_path);
+                        println!("Full Path: {}", full_path);
+                        return clipboard::write::<Message>(full_path);
+                    }
+                }
             }
             Message::OnVerResize(position) => { self.ver_divider_position = Some(position); },//Command::none() },
             Message::OnHorResize(position) => { self.hor_divider_position = Some(position); },//Command::none() },

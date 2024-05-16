@@ -93,26 +93,42 @@ fn folder_icon<'a, Message>() -> Element<'a, Message> {
 fn image_icon<'a, Message>() -> Element<'a, Message> {
     icon('\u{F1C5}')
 }
+fn file_copy_icon<'a, Message>() -> Element<'a, Message> {
+    icon('\u{E804}')
+}
+fn folder_copy_icon<'a, Message>() -> Element<'a, Message> {
+    icon('\u{E805}')
+}
 
-pub fn get_footer(footer_text: String) -> Container<'static, Message> {
+//pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message> {
+pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message> {
     let copy_button = button(copy_icon())
         .style(theme::Button::Custom(Box::new(
             CustomButtonStyle::new(theme::Button::Primary),
         )))
-        .on_press(Message::CopyFilename).padding(2);
-
-    let copy_filename_button = button(file_icon())
+        .on_press(Message::CopyFilename(pane_index)).padding(2);
+    let copy_image_button = button(file_copy_icon())
         .style(theme::Button::Custom(Box::new(
-                CustomButtonStyle::new(theme::Button::Primary),
+            CustomButtonStyle::new(theme::Button::Primary),
         )))
-        .on_press(Message::CopyFilename).padding(2);
-    let copy_filepath_button = button(folder_icon()).on_press(Message::CopyFilename).padding(2);
-    let copy_image_button = button(image_icon()).on_press(Message::CopyFilename).padding(2);
+        .on_press(Message::CopyFilename(pane_index)).padding(2);
+
+    let copy_filename_button: iced_widget::Button<'_, Message> = button(file_copy_icon()) //: Element<Message> 
+        .style(theme::Button::Custom(Box::new(
+            CustomButtonStyle::new(theme::Button::Primary),
+        )))
+        .on_press(Message::CopyFilename(pane_index)).padding(2).into();
+    let copy_filepath_button: iced_widget::Button<'_, Message> = button(folder_copy_icon())
+        .style(theme::Button::Custom(Box::new(
+            CustomButtonStyle::new(theme::Button::Primary),
+        )))
+        .on_press(Message::CopyFilePath(pane_index)).padding(2).into();
+    
 
     container(row![
             //copy_button,
+            copy_filepath_button,
             copy_filename_button,
-            //copy_filepath_button,
             //copy_image_button,
             text(String::from(footer_text))
                 .font(Font {
@@ -180,7 +196,7 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                 _app.panes[0].img_cache.num_files
             );
             let footer = if _app.show_footer {
-                    get_footer(String::from(footer_text)) 
+                    get_footer(String::from(footer_text), 0) 
                 } else { container(text(String::from(""))).height(0) };
             
 
@@ -253,8 +269,8 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                     )
                 ];
                 let footer = row![
-                    get_footer(footer_texts[0].clone()),
-                    get_footer(footer_texts[1].clone())
+                    get_footer(footer_texts[0].clone(), 0),
+                    get_footer(footer_texts[1].clone(), 1)
                 ];
 
                 let max_num_files = _app.panes.iter().fold(0, |max, pane| {

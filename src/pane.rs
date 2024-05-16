@@ -402,8 +402,8 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
         )
     ];
     let footers = vec![
-        get_footer(footer_texts[0].clone()),
-        get_footer(footer_texts[1].clone())
+        get_footer(footer_texts[0].clone(), 0),
+        get_footer(footer_texts[1].clone(), 1)
     ];
 
     Split::new(
@@ -434,8 +434,8 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
         )
     ];
     let footers = vec![
-        get_footer(footer_texts[0].clone()),
-        get_footer(footer_texts[1].clone())
+        get_footer(footer_texts[0].clone(), 0),
+        get_footer(footer_texts[1].clone(), 1)
     ];
 
     let first_img: iced::widget::Container<Message> = if panes[0].dir_loaded {
@@ -454,7 +454,7 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
                     Message::SliderReleased
                 )
                 .width(Length::Fill),
-                get_footer(footer_texts[0].clone())
+                get_footer(footer_texts[0].clone(), 0)
             ]} else { column![
                 //Image::new(panes[0].current_image.clone())
                 viewer::Viewer::new(panes[0].current_image.clone())
@@ -493,7 +493,7 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
                     Message::SliderReleased
                 )
                 .width(Length::Fill),
-                get_footer(footer_texts[1].clone())
+                get_footer(footer_texts[1].clone(), 1)
             ]} else { column![
                 viewer::Viewer::new(panes[1].current_image.clone())
                 .width(Length::Fill)
