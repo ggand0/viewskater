@@ -453,7 +453,10 @@ impl Application for DataViewer {
                 update_counter: 0,
             },
             Command::batch(vec![
-                font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded),
+                font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded), // icon font
+                //font::load(include_bytes!("../assets/fonts/Iosevka-Regular.ttc").as_slice()).map(Message::FontLoaded),  // footer digit font
+                font::load(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf").as_slice()).map(Message::FontLoaded),  // footer digit font
+                font::load(include_bytes!("../assets/fonts/Roboto-Regular.ttf").as_slice()).map(Message::FontLoaded),   // UI font
             ])
         )
 
@@ -875,7 +878,7 @@ impl Application for DataViewer {
 
         //self.update_counter += 1;
         //if self.skate_right && self.are_all_images_cached() {
-            if self.skate_right {
+        if self.skate_right {
             println!("skae_right: {}", self.skate_right);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
@@ -894,7 +897,6 @@ impl Application for DataViewer {
         } else {
             println!("no skate mode detected");
             let command = Command::none();
-            //self.panes[0].img_cache.print_cache();
             command
         }
 
@@ -903,19 +905,14 @@ impl Application for DataViewer {
 
     fn view(&self) -> Element<Message> {
         let container_all = ui_builder::build_ui(&self);
-
         container_all
         .height(Length::Fill)
         .width(Length::Fill)
         .center_x()
-        // .title(format!("{}", current_image_path.display()))
-        //.title(current_image_path.to_string_lossy().to_string())
         .into()
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        // subscription::events().map(Message::Event)
-
         Subscription::batch(vec![
             subscription::events().map(Message::Event),
         ])
@@ -942,13 +939,6 @@ fn main() -> iced::Result {
     env_logger::init();
     use iced::window;
 
-    /*use image::io::Reader as ImageReader;
-    let icon_data = ImageReader::new(std::io::Cursor::new(ICON))
-        .with_guessed_format()
-        .unwrap()
-        .decode()
-        .unwrap()
-        .to_rgba8();*/
     let icon = iced::window::icon::from_file_data(ICON, Option::None);
 
     match icon {
@@ -956,9 +946,14 @@ fn main() -> iced::Result {
             info!("Icon loaded successfully");
             let settings = Settings {
                 window: window::Settings {
-                    //fonts: vec!(include_bytes!("../assets/fonts/icons.ttf")).as_slice().into(),
                     icon: Some(icon),
                     ..Default::default()
+                },
+                default_font: Font {
+                    family:  iced::font::Family::Name("Roboto"),
+                    weight: iced::font::Weight::Normal,
+                    stretch: iced::font::Stretch::Normal,
+                    monospaced: true,
                 },
                 ..Settings::default()
             };
@@ -969,8 +964,4 @@ fn main() -> iced::Result {
             DataViewer::run(Settings::default())
         }
     }
-
-
-    // DataViewer::run(Settings::default())
-    
 }

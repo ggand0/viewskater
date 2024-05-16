@@ -115,6 +115,15 @@ pub fn get_footer(footer_text: String) -> Container<'static, Message> {
             //copy_filepath_button,
             //copy_image_button,
             text(String::from(footer_text))
+                .font(Font {
+                    //family:  iced::font::Family::Monospace,
+                    //family:  iced::font::Family::Name("Roboto"),
+                    family: iced::font::Family::Name("Iosevka"),
+                    weight: iced::font::Weight::Normal,
+                    stretch: iced::font::Stretch::Normal,
+                    //style: Normal,
+                    monospaced: true,
+                })
                 .style(Color::from([0.8, 0.8, 0.8])).size(14) 
                 //.style(Color::from_rgb8(220, 220, 220)).size(14) )
         ].align_items(alignment::Alignment::Center)
@@ -162,15 +171,16 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
     let container_all;
     match _app.pane_layout {
         PaneLayout::SinglePane => {
+            let num_digits = _app.panes[0].img_cache.num_files.to_string().len();
+
             // Create a footer text from the "current_index/total_files" info
             let footer_text = format!(
-                "{}/{}",
+                "{:>num_digits$}/{:>num_digits$}",
                 _app.panes[0].img_cache.current_index + 1,
                 _app.panes[0].img_cache.num_files
             );
-            
             let footer = if _app.show_footer {
-                get_footer(String::from(footer_text)) 
+                    get_footer(String::from(footer_text)) 
                 } else { container(text(String::from(""))).height(0) };
             
 
