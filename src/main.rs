@@ -358,6 +358,135 @@ impl DataViewer {
         }*/
     }
 
+
+    //fn handle_key_event(key_code: keyboard::KeyCode) {
+    fn handle_key_pressed_event(&mut self, key_code: keyboard::KeyCode, modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
+        let mut commands = Vec::new();
+        match key_code {
+            keyboard::KeyCode::Tab => {
+                println!("Tab pressed");
+            }
+
+            keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
+                    debug!("No panes selected");
+                    //Command::none();
+                }
+
+                if modifiers.shift() {
+                    println!("SKATE_LEFT: true");
+                    self.skate_left = true;
+                } else {
+                    println!("SKATE_LEFT: false");
+                    self.skate_left = false;
+                    /*if self.are_all_images_cached_prev() {
+                        self.init_image_loaded(); // [false, false]
+                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                        return command;
+                    } else {
+                        println!("not are_all_images_cached()");
+                        //Command::none()
+                    }*/
+                    self.init_image_loaded(); // [false, false]
+                    let command = move_left_all(
+                        &mut self.panes, &mut self.slider_value,
+                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                    commands.push(command);
+                }
+                
+            }
+            keyboard::KeyCode::Right | keyboard::KeyCode::D => {
+                debug!("ArrowRight pressed");
+                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
+                    debug!("No panes selected");
+                    //Command::none();
+                }
+
+                if modifiers.shift() {
+                    println!("SKATE_RIGHT: true");
+                    self.skate_right = true;
+                    
+                } else {
+                    println!("SKATE_RIGHT: false");
+                    self.skate_right = false;
+
+                    /*if self.are_all_images_cached() {
+                        self.init_image_loaded(); // [false, false]
+                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                        return command;
+                    } else {
+                        println!("not are_all_images_cached()");
+                        //Command::none()
+                    }*/
+                    self.init_image_loaded(); // [false, false]
+                    let command = move_right_all(
+                        &mut self.panes, &mut self.slider_value,
+                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                    commands.push(command);
+                }
+            }
+
+            _ => {}
+        }
+
+        commands
+    }
+
+    fn handle_key_released_event(&mut self, key_code: keyboard::KeyCode, modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
+        let mut commands = Vec::new();
+
+        match key_code {
+            keyboard::KeyCode::Tab => {
+                println!("Tab released");
+                //Command::perform(async {}, |_| Message::TabReleased)
+                
+            }
+            keyboard::KeyCode::Enter | keyboard::KeyCode::NumpadEnter => {
+                println!("Enter key released!");
+                
+            }
+            keyboard::KeyCode::Escape => {
+                println!("Escape key released!");
+                
+            }
+            keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+                println!("Left key or 'A' key released!");
+                debug!("ArrowLeft released, SKATE_LEFT: false");
+                self.skate_left = false;
+
+                // Reset panes' image loading queues
+                for pane in self.panes.iter_mut() {
+                    pane.img_cache.reset_image_load_queue();
+                    pane.img_cache.reset_image_being_loaded_queue();
+
+                    //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
+                    //pane.img_cache.current_offset_accumulated = 0;
+                }
+                
+            }
+            keyboard::KeyCode::Right | keyboard::KeyCode::D => {
+                println!("Right key or 'D' key released!");
+                //Command::perform(async {}, |_| Message::RightReleased)
+
+                self.skate_right = false;
+                // Reset panes' image loading queues
+                for pane in self.panes.iter_mut() {
+                    pane.img_cache.reset_image_load_queue();
+                    pane.img_cache.reset_image_being_loaded_queue();
+
+                    //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
+                    //pane.img_cache.current_offset_accumulated = 0;
+                }
+                
+            }
+            _ => {},
+        }
+
+        commands
+    }
+
+
+
     // UI
     fn toggle_slider_type(&mut self) {
         /*match self.slider_type {
@@ -787,113 +916,24 @@ impl Application for DataViewer {
                     }
                 }
 
-                Event::Keyboard(keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::Tab,
-                    modifiers: _,
-                }) => {
-                    debug!("Tab pressed");
-                    //Command::none()
-                }
-
-                Event::Keyboard(keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::Right,
-                    //modifiers: _,
-                    modifiers,
-                }) => {
-
-                    debug!("ArrowRight pressed");
-                    if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
-                        debug!("No panes selected");
-                        //Command::none();
-                    }
-
-                    if modifiers.shift() {
-                        println!("SKATE_RIGHT: true");
-                        self.skate_right = true;
+                Event::Keyboard(keyboard::Event::KeyPressed { key_code, modifiers, .. }) => {
+                    let commands = self.handle_key_pressed_event(key_code, modifiers);
+                    if commands.is_empty() {
+                        
                     } else {
-                        println!("SKATE_RIGHT: false");
-                        self.skate_right = false;
-
-                        /*if self.are_all_images_cached() {
-                            self.init_image_loaded(); // [false, false]
-                            let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
-                            return command;
-                        } else {
-                            println!("not are_all_images_cached()");
-                            //Command::none()
-                        }*/
-                        self.init_image_loaded(); // [false, false]
-                        let command = move_right_all(
-                            &mut self.panes, &mut self.slider_value,
-                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                        return command;
+                        return Command::batch(commands);
                     }
                 }
-                Event::Keyboard(keyboard::Event::KeyReleased {
-                    key_code: keyboard::KeyCode::Right,
-                    modifiers: _,
-                }) => {
-                    println!("ArrowRight released, SKATE_RIGHT: false");
-                    self.skate_right = false;
 
-                    // Reset panes' image loading queues
-                    for pane in self.panes.iter_mut() {
-                        pane.img_cache.reset_image_load_queue();
-                        pane.img_cache.reset_image_being_loaded_queue();
-
-                        //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
-                        //pane.img_cache.current_offset_accumulated = 0;
-                    }
-                    //Command::none()
-                }
-                Event::Keyboard(keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::Left,
-                    modifiers,
-                }) => {
-                    if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
-                        debug!("No panes selected");
-                        //Command::none();
-                    }
-
-                    if modifiers.shift() {
-                        println!("SKATE_LEFT: true");
-                        self.skate_left = true;
+                Event::Keyboard(keyboard::Event::KeyReleased { key_code, modifiers, .. }) => {
+                    let commands = self.handle_key_released_event(key_code, modifiers);
+                    if commands.is_empty() {
+                        
                     } else {
-                        println!("SKATE_LEFT: false");
-                        self.skate_left = false;
-                        /*if self.are_all_images_cached_prev() {
-                            self.init_image_loaded(); // [false, false]
-                            let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
-                            return command;
-                        } else {
-                            println!("not are_all_images_cached()");
-                            //Command::none()
-                        }*/
-                        self.init_image_loaded(); // [false, false]
-                        let command = move_left_all(
-                            &mut self.panes, &mut self.slider_value,
-                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                        return command;
+                        return Command::batch(commands);
                     }
-                    
                 }
-                Event::Keyboard(keyboard::Event::KeyReleased {
-                    key_code: keyboard::KeyCode::Left,
-                    modifiers: _,
-                }) => {
-                    debug!("ArrowLeft released, SKATE_LEFT: false");
-                    self.skate_left = false;
 
-                    // Reset panes' image loading queues
-                    for pane in self.panes.iter_mut() {
-                        pane.img_cache.reset_image_load_queue();
-                        pane.img_cache.reset_image_being_loaded_queue();
-
-                        //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
-                        //pane.img_cache.current_offset_accumulated = 0;
-                    }
-                    //Command::none()
-                }
 
                 _ => return Command::none(),
                 //_ => command,
