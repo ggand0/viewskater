@@ -368,7 +368,9 @@ impl DataViewer {
 
             keyboard::KeyCode::Key1 => {
                 println!("Key1 pressed");
-                self.panes[0].is_selected = !self.panes[0].is_selected;
+                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
+                    self.panes[0].is_selected = !self.panes[0].is_selected;
+                }
 
                 // If alt is pressed, load a file into pane0
                 if modifiers.alt() {
@@ -386,7 +388,9 @@ impl DataViewer {
             keyboard::KeyCode::Key2 => {
                 println!("Key2 pressed");
                 if self.pane_layout == PaneLayout::DualPane {
-                    self.panes[1].is_selected = !self.panes[1].is_selected;
+                    if self.is_slider_dual {
+                        self.panes[1].is_selected = !self.panes[1].is_selected;
+                    }
                 
                     // If alt is pressed, load a file into pane1
                     if modifiers.alt() {
@@ -395,8 +399,6 @@ impl DataViewer {
                             Message::FolderOpened(result, 1)
                         }));
                     }
-
-                    
                 }
 
                 // If ctrl is pressed, switch to dual pane layout
