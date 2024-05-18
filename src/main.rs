@@ -123,11 +123,11 @@ pub enum Message {
     Debug(String),
     Nothing,
     FontLoaded(Result<(), font::Error>),
-    OpenFolder,
-    OpenFile,
+    OpenFolder(usize),
+    OpenFile(usize),
     FileDropped(isize, String),
     Close,
-    FolderOpened(Result<String, Error>),
+    FolderOpened(Result<String, Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     Event(Event),
@@ -359,12 +359,52 @@ impl DataViewer {
     }
 
 
-    //fn handle_key_event(key_code: keyboard::KeyCode) {
     fn handle_key_pressed_event(&mut self, key_code: keyboard::KeyCode, modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
         let mut commands = Vec::new();
         match key_code {
             keyboard::KeyCode::Tab => {
                 println!("Tab pressed");
+            }
+
+            keyboard::KeyCode::Key1 => {
+                println!("Key1 pressed");
+                self.panes[0].is_selected = !self.panes[0].is_selected;
+
+                // If alt is pressed, load a file into pane0
+                if modifiers.alt() {
+                    println!("Key1 Shift pressed");
+                    commands.push(Command::perform(file_io::pick_file(), move |result| {
+                        Message::FolderOpened(result, 0)
+                    }));
+                }
+
+                // If ctrl is pressed, switch to single pane layout
+                if modifiers.control() {
+                    self.toggle_pane_layout(PaneLayout::SinglePane);
+                }
+            }
+            keyboard::KeyCode::Key2 => {
+                println!("Key2 pressed");
+                if self.pane_layout == PaneLayout::DualPane {
+                    self.panes[1].is_selected = !self.panes[1].is_selected;
+                
+                    // If alt is pressed, load a file into pane1
+                    if modifiers.alt() {
+                        println!("Key2 Shift pressed");
+                        commands.push(Command::perform(file_io::pick_file(), move |result| {
+                            Message::FolderOpened(result, 1)
+                        }));
+                    }
+
+                    
+                }
+
+                // If ctrl is pressed, switch to dual pane layout
+                if modifiers.control() {
+                    println!("Key2 Ctrl pressed");
+                    self.toggle_pane_layout(PaneLayout::DualPane);
+                    //commands.push(Command::perform(Message::TogglePaneLayout(PaneLayout::DualPane), |_| Message::Nothing));
+                }
             }
 
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
@@ -642,14 +682,14 @@ impl Application for DataViewer {
             Message::FontLoaded(_) => {
                 //Command::none()
             }
-            Message::OpenFolder => {
-                return Command::perform(file_io::pick_folder(), |result| {
-                    Message::FolderOpened(result)
+            Message::OpenFolder(pane_index) => {
+                return Command::perform(file_io::pick_folder(), move |result| {
+                    Message::FolderOpened(result, pane_index)
                 });
             }
-            Message::OpenFile => {
-                return Command::perform(file_io::pick_file(), |result| {
-                    Message::FolderOpened(result)
+            Message::OpenFile(pane_index) => {
+                return Command::perform(file_io::pick_file(), move |result| {
+                    Message::FolderOpened(result, pane_index)
                 });
             }
             Message::FileDropped(pane_index, dropped_path) => {
@@ -671,11 +711,11 @@ impl Application for DataViewer {
                 }
                 //Command::none()
             }
-            Message::FolderOpened(result) => {
+            Message::FolderOpened(result, pane_index) => {
                 match result {
                     Ok(dir) => {
                         debug!("Folder opened: {}", dir);
-                        self.initialize_dir_path(PathBuf::from(dir), 0);
+                        self.initialize_dir_path(PathBuf::from(dir), pane_index);
 
                         //Command::none()
                     }

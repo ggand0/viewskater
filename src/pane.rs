@@ -406,10 +406,14 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
         get_footer(footer_texts[1].clone(), 1)
     ];
 
+    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
+    //let is_selected: &mut Vec<bool> = &mut panes.iter().map(|pane| pane.is_selected).collect();
+    //let is_selected: &Vec<bool> = &panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(
         false,
         first_img,
         second_img,
+        is_selected,
         ver_divider_position,
         Axis::Vertical,
         Message::OnVerResize,
@@ -517,10 +521,16 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
         ])
     };
 
+    //let is_selected: &mut Vec<bool> = &mut panes.iter().map(|pane| pane.is_selected).collect();
+    //let is_selected: &Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
+    //let is_selected: &Vec<bool> = &panes.iter().map(|pane| pane.is_selected).collect();
+
+    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(
         true,
         first_img,
         second_img,
+        is_selected,
         ver_divider_position,
         Axis::Vertical,
         Message::OnVerResize,

@@ -190,8 +190,8 @@ fn sub_menu<'a>(
 fn build_menu_items_v1<'a>() -> Vec<MenuTree<'a, Message, iced::Renderer>> {
     let menu_items = vec![
         // labeled_button(label, Message::OpenFolder(label.into()))
-        labeled_button(&String::from("Open Folder"), Message::OpenFolder ),
-        labeled_button(&String::from("Open File"), Message::OpenFile ),
+        labeled_button(&String::from("Open Folder"), Message::OpenFolder(0) ),
+        labeled_button(&String::from("Open File"), Message::OpenFile(0) ),
         labeled_button(&String::from("Close"), Message::Close ),
         
     ];

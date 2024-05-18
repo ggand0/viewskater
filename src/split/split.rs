@@ -71,6 +71,9 @@ where
     first: Element<'a, Message, Renderer>,
     /// The second element of the [`Split`].
     second: Element<'a, Message, Renderer>,
+
+    is_selected: Vec<bool>,
+
     /// The position of the divider.
     divider_position: Option<u16>,
     divider_init_position: Option<u16>,
@@ -124,6 +127,7 @@ where
         enable_pane_selection: bool,
         first: A,
         second: B,
+        is_selected: Vec<bool>,
         divider_position: Option<u16>,
         axis: Axis,
         on_resize: F,
@@ -148,6 +152,7 @@ where
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into(),
+            is_selected: is_selected,
             divider_position,
             divider_init_position: divider_position,
             axis,
@@ -699,7 +704,8 @@ where
 
         // Draw pane selection status; if selected, draw a border around the pane
         if self.enable_pane_selection {
-            if split_state.panes_seleced[0] {
+            //if split_state.panes_seleced[0] {
+            if self.is_selected[0] {
                 renderer.fill_quad(
                     renderer::Quad {
                         bounds: first_layout.bounds(),
@@ -710,7 +716,8 @@ where
                     Color::TRANSPARENT,
                 );
             }
-            if split_state.panes_seleced[1] {
+            //if split_state.panes_seleced[1] {
+            if self.is_selected[1] {
                 renderer.fill_quad(
                     renderer::Quad {
                         bounds: second_layout.bounds(),
