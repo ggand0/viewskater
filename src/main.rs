@@ -364,6 +364,14 @@ impl DataViewer {
         match key_code {
             keyboard::KeyCode::Tab => {
                 println!("Tab pressed");
+                // toggle footer
+                self.toggle_footer();
+            }
+
+            keyboard::KeyCode::Space | keyboard::KeyCode::B => {
+                println!("Space pressed");
+                // Toggle slider type
+                self.toggle_slider_type();
             }
 
             keyboard::KeyCode::Key1 => {
