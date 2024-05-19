@@ -97,7 +97,7 @@ pub struct DataViewer {
 impl Default for DataViewer {
     fn default() -> Self {
         Self {
-            title: String::from("View Skater"),
+            title: String::from("ViewSkater"),
             directory_path: None,
             current_image_index: 0,
             slider_value: 0,
@@ -147,7 +147,7 @@ pub enum Message {
 
 impl DataViewer {
     fn reset_state(&mut self) {
-        self.title = String::from("View Skater");
+        self.title = String::from("ViewSkater");
         self.directory_path = None;
         self.current_image_index = 0;
         self.slider_value = 0;
@@ -615,7 +615,7 @@ impl Application for DataViewer {
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         (
             Self {
-                title: String::from("View Skater"),
+                title: String::from("ViewSkater"),
                 directory_path: None,
                 current_image_index: 0,
                 slider_value: 0,
