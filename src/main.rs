@@ -417,6 +417,22 @@ impl DataViewer {
                 }
             }
 
+            keyboard::KeyCode::C | keyboard::KeyCode::W => {
+                // Close the selected panes
+                if modifiers.control() {
+                    for pane in self.panes.iter_mut() {
+                        if pane.is_selected {
+                            pane.reset_state();
+                        }
+                    }
+                }
+            }
+
+            keyboard::KeyCode::Q => {
+                // Terminate the app
+                std::process::exit(0);
+            }
+
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
