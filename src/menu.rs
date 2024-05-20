@@ -108,10 +108,11 @@ fn text_button <'a>(
         .size(text_size)
         .width(Length::Fill)
         .height(Length::Fill)
-        .vertical_alignment(alignment::Vertical::Center))
-        .padding([4, 8])
-        .style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
-        .on_press(msg)
+        .vertical_alignment(alignment::Vertical::Center)
+    )
+    .padding([4, 8])
+    .style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
+    .on_press(msg)
 }
 
 fn labeled_button<'a>(label: &str, text_size: u16, msg: Message) -> button::Button<'a, Message, iced::Renderer> {
@@ -155,6 +156,7 @@ pub fn sub_menu_msg<'a>(
                     .size(14)
                     .width(Length::Fill)
                     .height(Length::Fill)
+                    //.horizontal_alignment(alignment::Horizontal::Left)
                     .vertical_alignment(alignment::Vertical::Center),
                 arrow
             ]
@@ -232,9 +234,11 @@ pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
         vec![
             menu_tree!(
                 text_button("Single Pane (Ctrl+1)", 14, Message::TogglePaneLayout(PaneLayout::SinglePane))
+                .width(Length::Fill)
             ),
             menu_tree!(
                 text_button("Dual Pane (Ctrl+2)", 14, Message::TogglePaneLayout(PaneLayout::DualPane))
+                .width(Length::Fill)
             ),
 
         ],
@@ -252,14 +256,14 @@ pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
                     app.is_slider_dual,
                     Message::ToggleSliderType,
                 )
-            ]),
+            ].padding([4, 8])),
             menu_tree!(row!(
                 toggler::Toggler::new(
                     Some("Toggle Footer (Tab)".into()),
                     app.show_footer,
                     Message::ToggleFooter,
                 )
-            ))
+            ).padding([4, 8]))
         ],
     );
 

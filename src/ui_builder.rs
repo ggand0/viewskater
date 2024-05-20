@@ -161,7 +161,8 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
 pub fn build_ui(_app: &DataViewer) -> Container<Message> {
 
     let mb =  { menu_bar!(menu::menu_1(_app), menu::menu_3(_app))
-        .item_width(ItemWidth::Uniform(200))
+        //.item_width(ItemWidth::Uniform(200))
+        .item_width(ItemWidth::Uniform(180))
         //.item_height(ItemHeight::Uniform(27)) }
         .item_height(ItemHeight::Uniform(27)) }
         .spacing(4.0)
