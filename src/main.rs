@@ -51,6 +51,10 @@ mod dualslider {
     pub mod dualslider;
     pub mod style;
 }
+mod toggler {
+    pub mod toggler;
+    pub mod style;
+}
 //use dualslider::dualslider::DualSlider;
 
 mod pane;
@@ -127,6 +131,7 @@ pub enum Message {
     OpenFile(usize),
     FileDropped(isize, String),
     Close,
+    Quit,
     FolderOpened(Result<String, Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
@@ -381,7 +386,7 @@ impl DataViewer {
                 }
 
                 // If alt is pressed, load a file into pane0
-                if modifiers.alt() {
+                if modifiers.alt() && modifiers.control() {
                     println!("Key1 Shift pressed");
                     commands.push(Command::perform(file_io::pick_file(), move |result| {
                         Message::FolderOpened(result, 0)
@@ -401,7 +406,7 @@ impl DataViewer {
                     }
                 
                     // If alt is pressed, load a file into pane1
-                    if modifiers.alt() {
+                    if modifiers.alt() && modifiers.control() {
                         println!("Key2 Shift pressed");
                         commands.push(Command::perform(file_io::pick_file(), move |result| {
                             Message::FolderOpened(result, 1)
@@ -736,6 +741,9 @@ impl Application for DataViewer {
                     debug!("img_cache.image_paths.len(): {}", img_cache.image_paths.len());
                 }
                 //Command::none()
+            }
+            Message::Quit => {
+                std::process::exit(0);
             }
             Message::FolderOpened(result, pane_index) => {
                 match result {
