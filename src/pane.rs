@@ -1,15 +1,11 @@
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
-    pub use iced_aw;
-    pub use iced_widget;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
     pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
-    pub use iced_widget_custom as iced_widget;
 }
 
 #[cfg(target_os = "linux")]
@@ -18,26 +14,20 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-// mod image_cache;
-//use crate::image_cache::ImageCache;
+
 use crate::image_cache;
 use crate::ui_builder::get_footer;
-
 use crate::Message;
-
 use std::path::Path;
 use std::path::PathBuf;
 
-// mod utils;
 use crate::file_io;
-//use crate::file_io::{async_load_image, empty_async_block, is_file, is_directory, get_file_paths, get_file_index, Error};
-use crate::file_io::{is_file, is_directory, get_file_paths, get_file_index};
+use crate::file_io::{is_file, is_directory, get_file_index};
 
 use iced::widget::{
     //container, row, column, slider, horizontal_space, text
-    container, row, column, text
+    container, column, text
 };
-use iced::widget::Image;
 use iced::{Element, Length};
 use crate::dualslider::dualslider::DualSlider;
 use crate::menu::PaneLayout;
@@ -53,13 +43,6 @@ pub enum PaneMessage {
 
 #[derive(Clone)]
 pub struct Pane {
-    /*dir_loaded: vec![false; 2],
-    img_caches: vec![image_cache::ImageCache::default(), image_cache::ImageCache::default()],
-    current_images: Vec::new(),
-    image_load_state: vec![true; 2],
-    slider_values: vec![0; 2],
-    prev_slider_values: vec![0; 2],*/
-
     pub directory_path: Option<String>,
     pub dir_loaded: bool,
     pub img_cache: image_cache::ImageCache,
@@ -91,6 +74,7 @@ impl Default for Pane {
 }
 
 impl Pane {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             directory_path: None,
@@ -215,11 +199,6 @@ impl Pane {
         // Sort
         //alphanumeric_sort::sort_path_slice(&mut _file_paths);
 
-        // Debug print the files
-        //for path in _file_paths.iter().take(20) {
-        for path in _file_paths.iter() {
-            ////println!("{}", path.display());
-        }
 
         println!("File paths: {}", _file_paths.len());
         // self.dir_loaded[pane_index] = true;
@@ -265,49 +244,10 @@ impl Pane {
         
     }
 
+    #[allow(dead_code)]
     pub fn update(&mut self, message: PaneMessage) {
         match message {
         }
-    }
-
-    // pub fn view(&self) -> iced::Element<PaneMessage> {    
-    // }
-
-    pub fn build_ui(&self) -> iced::widget::Container<Message> {
-        let img: iced::widget::Container<Message>  = if self.dir_loaded {
-            container(column![
-                Image::new(self.current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                //slider(0..= (self.img_caches[0].num_files-1) as u16, self.slider_values[0], Message::SliderChanged)
-                /*slider(
-                    0..= (self.img_caches[0].num_files - 1) as u16,
-                    self.slider_values[0],
-                    |value| {
-                        let pane_index = 0; // Replace this with the desired pane index
-                        Message::SliderChanged((pane_index, value))
-                    }
-                )*/
-                DualSlider::new(
-                    0..= (self.img_cache.num_files - 1) as u16,
-                    // self.slider_values[0],
-                    self.slider_value,
-                    -1,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill)
-                ]
-            )
-        } else {
-            container(column![
-            text(String::from(""))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            
-            ])
-        };
-        img
     }
 
     pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {
@@ -328,36 +268,6 @@ impl Pane {
         };
         img
     }
-
-    /*pub fn build_ui_dual_pane_slider2(&self) -> iced::widget::Container<Message> {
-        let img: iced::widget::Container<Message>  = if self.dir_loaded {
-            container(column![
-                container(
-                Image::new(self.current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill)),
-                
-
-                DualSlider::new(
-                    0..= (self.img_cache.num_files - 1) as u16,
-                    self.slider_value,
-                    0, // this needs to pane_index instead of 0
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill)
-                ]
-            )
-        } else {
-            container(column![
-            text(String::from(""))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            
-            ])
-        };
-        img
-    }*/
 }
 
 pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
@@ -389,7 +299,7 @@ pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slid
 pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
     let first_img: iced::widget::Container<Message>  = panes[0].build_ui_dual_pane_slider1();
     let second_img: iced::widget::Container<Message> = panes[1].build_ui_dual_pane_slider1();
-    let footer_texts = vec![
+    /*let footer_texts = vec![
         format!(
             "{}/{}",
             panes[0].img_cache.current_index + 1,
@@ -400,15 +310,9 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
             panes[1].img_cache.current_index + 1,
             panes[1].img_cache.num_files
         )
-    ];
-    let footers = vec![
-        get_footer(footer_texts[0].clone(), 0),
-        get_footer(footer_texts[1].clone(), 1)
-    ];
+    ];*/
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    //let is_selected: &mut Vec<bool> = &mut panes.iter().map(|pane| pane.is_selected).collect();
-    //let is_selected: &Vec<bool> = &panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(
         false,
         first_img,
@@ -436,10 +340,6 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
             panes[1].img_cache.current_index + 1,
             panes[1].img_cache.num_files
         )
-    ];
-    let footers = vec![
-        get_footer(footer_texts[0].clone(), 0),
-        get_footer(footer_texts[1].clone(), 1)
     ];
 
     let first_img: iced::widget::Container<Message> = if panes[0].dir_loaded {
@@ -520,10 +420,6 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
                 .height(Length::Fill),
         ])
     };
-
-    //let is_selected: &mut Vec<bool> = &mut panes.iter().map(|pane| pane.is_selected).collect();
-    //let is_selected: &Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    //let is_selected: &Vec<bool> = &panes.iter().map(|pane| pane.is_selected).collect();
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(

@@ -1,11 +1,7 @@
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-//use std::thread;
-//use std::time::Duration;
 use tokio::io::AsyncReadExt;
-
-
 use rfd;
 use crate::image_cache::LoadOperation;
 
@@ -14,15 +10,8 @@ pub enum Error {
     DialogClosed,
     InvalidSelection,
     InvalidExtension,
-    // IO(io::ErrorKind)
 }
 
-pub fn get_filepath(path: &str) -> Option<String> {
-    std::path::Path::new(path)
-        .parent()
-        .and_then(|os_str| os_str.to_str())
-        .map(|s| s.to_string())
-}
 
 pub fn get_filename(path: &str) -> Option<String> {
     std::path::Path::new(path)
@@ -38,7 +27,6 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
         Ok(mut file) => {
             let mut buffer = Vec::new();
             if file.read_to_end(&mut buffer).await.is_ok() {
-                // Ok(Some(buffer))
                 Ok((Some(buffer), Some(operation) ))
             } else {
                 Err(std::io::ErrorKind::InvalidData)
@@ -96,8 +84,6 @@ pub async fn pick_file() -> Result<String, Error> {
 
 
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
-    //let duration = Duration::from_millis(1);
-    //thread::sleep(duration);
     Ok((None, Some(operation)))
 }
 
@@ -127,7 +113,6 @@ pub fn get_file_paths(directory_path: &Path) -> Vec<PathBuf> {
         }
     }
 
-    //file_paths.sort();
     alphanumeric_sort::sort_path_slice(&mut file_paths);
     file_paths
 }
@@ -148,7 +133,7 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
         }
     }
 
-    //image_paths.sort();
+    // Sort paths like Nautilus file viewer. `image_paths.sort()` does not work as expected
     alphanumeric_sort::sort_path_slice(&mut image_paths);
     image_paths
 }

@@ -1,16 +1,17 @@
 
 #![windows_subsystem = "windows"]
 
+#[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
-    pub use iced_aw;
+    //pub use iced_aw;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
     pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
+    //pub use iced_aw_custom as iced_aw;
 }
 
 #[cfg(target_os = "linux")]
@@ -27,6 +28,7 @@ use iced::{Element, Length, Application, Theme, Settings, Command};
 use iced::font::{self, Font};
 
 use std::path::PathBuf;
+#[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
 // #[macro_use]
@@ -519,7 +521,8 @@ impl DataViewer {
         commands
     }
 
-    fn handle_key_released_event(&mut self, key_code: keyboard::KeyCode, modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
+    fn handle_key_released_event(&mut self, key_code: keyboard::KeyCode, _modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
+        #[allow(unused_mut)]
         let mut commands = Vec::new();
 
         match key_code {

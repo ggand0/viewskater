@@ -19,16 +19,17 @@ use other_os::*;
 use macos::*;
 
 use iced::widget::{
-    container, row, column, horizontal_space, text, Text, button, Button
+    container, row, column, horizontal_space, text, button
 };
 //use iced::widget::{Image, Container};
 use iced::widget::Container;
 use iced::{Length, Color, alignment, Element, theme, Theme};
+
+#[allow(unused_imports)]
 use iced::alignment::{Horizontal, Vertical};
-use iced::font::{self, Font};
+use iced::font::Font;
 use iced_aw::menu::{CloseCondition, ItemHeight, ItemWidth, PathHighlight};
 use iced_aw::menu_bar;
-use iced_aw::{graphics::icons, Icon};
 use crate::dualslider::dualslider::DualSlider;
 //use crate::footer::footer;
 
@@ -80,16 +81,20 @@ fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
         //.height(16)
         .into()
 }
+#[allow(dead_code)]
 fn copy_icon<'a, Message>() -> Element<'a, Message> {
     //icon('\u{0f0c5}')
     icon('\u{F0C5}')
 }
+#[allow(dead_code)]
 fn file_icon<'a, Message>() -> Element<'a, Message> {
     icon('\u{E800}')
 }
+#[allow(dead_code)]
 fn folder_icon<'a, Message>() -> Element<'a, Message> {
     icon('\u{F114}')
 }
+#[allow(dead_code)]
 fn image_icon<'a, Message>() -> Element<'a, Message> {
     icon('\u{F1C5}')
 }
@@ -102,7 +107,7 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message> {
 
 //pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message> {
 pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message> {
-    let copy_button = button(copy_icon())
+    /*let copy_button = button(copy_icon())
         .style(theme::Button::Custom(Box::new(
             CustomButtonStyle::new(theme::Button::Primary),
         )))
@@ -111,7 +116,7 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
         .style(theme::Button::Custom(Box::new(
             CustomButtonStyle::new(theme::Button::Primary),
         )))
-        .on_press(Message::CopyFilename(pane_index)).padding(2);
+        .on_press(Message::CopyFilename(pane_index)).padding(2);*/
 
     let copy_filename_button: iced_widget::Button<'_, Message> = button(file_copy_icon()) //: Element<Message> 
         .style(theme::Button::Custom(Box::new(

@@ -1,15 +1,12 @@
+#[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
-    pub use iced_aw;
-    pub use iced_widget;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
     pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
-    pub use iced_widget_custom as iced_widget;
 }
 
 #[cfg(target_os = "linux")]
@@ -24,7 +21,9 @@ use std::path::PathBuf;
 use std::io;
 //use tokio::io::AsyncReadExt;
 use std::collections::VecDeque;
-//use std::time::Instant;
+use std::time::Instant;
+
+#[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
 
@@ -538,6 +537,7 @@ pub fn load_all_images_in_queue(img_cache: &mut ImageCache) -> Vec<Command<<Data
 
 //fn get_loading_commands_slider(pane: &mut pane::Pane, img_cache: &mut ImageCache, pane_index: usize, pos: usize) -> Vec<Command<<DataViewer as iced::Application>::Message>> {
 fn get_loading_commands_slider(pane: &mut pane::Pane, pane_index: usize, pos: usize) -> Vec<Command<<DataViewer as iced::Application>::Message>> {
+    #[allow(unused_mut)]
     let mut img_cache = &mut pane.img_cache;
     let mut commands = Vec::new();
     let cache_index = pane_index;
@@ -584,6 +584,13 @@ fn get_loading_commands_slider(pane: &mut pane::Pane, pane_index: usize, pos: us
             img_cache.current_index = img_cache.image_paths.len() - 1;
             //img_cache.current_offset = img_cache.cache_count as isize - 1;
             img_cache.current_offset = img_cache.cache_count as isize;
+
+            // I get runtime error here. Maybe handle the case where the image is not cached
+            /*if img_cache.cached_images[img_cache.cache_count].is_none() {
+                let current_image = img_cache.load_image(img_cache.current_index)?;
+                img_cache.cached_images[img_cache.cache_count] = Some(current_image);
+            }*/
+
             pane.current_image = iced::widget::image::Handle::from_memory(
                 img_cache.get_initial_image().unwrap().to_vec());
         }
@@ -692,7 +699,7 @@ pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos
     } else{
         let mut commands = Vec::new();
         let pane = &mut panes[pane_index as usize];
-        let img_cache = &mut pane.img_cache;
+        let _img_cache = &mut pane.img_cache;
 
         if pane.dir_loaded {
             let local_commands = get_loading_commands_slider(pane, pane_index as usize, pos);
@@ -799,6 +806,8 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
 }
 
 fn is_pane_cached_next(pane: pane::Pane, _index: usize, _is_slider_dual: bool) -> bool {
+    println!("pane.is_selected: {}, pane.dir_loaded: {}, pane.img_cache.is_next_cache_index_within_bounds(): {}, pane.img_cache.loading_queue.len(): {}, pane.img_cache.being_loaded_queue.len(): {}",
+        pane.is_selected, pane.dir_loaded, pane.img_cache.is_next_cache_index_within_bounds(), pane.img_cache.loading_queue.len(), pane.img_cache.being_loaded_queue.len());
     pane.is_selected && pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
         pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3
 }
@@ -863,7 +872,15 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
+
+            let start_time = Instant::now();
+            
             let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+            let end_time = Instant::now();
+            let elapsed_time = end_time.duration_since(start_time);
+            println!("image::Handle CREATION Elapsed time: {:?}", elapsed_time);
+
+
             pane.current_image = handle;
 
             img_cache.current_offset += 1;
