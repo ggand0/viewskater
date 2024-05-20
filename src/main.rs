@@ -1076,8 +1076,14 @@ impl Application for DataViewer {
     }
 
     fn theme(&self) -> Self::Theme {
-        Theme::Dark
-        // Theme::default()
+        //Theme::Dark
+        iced::Theme::custom(
+            //"Custom Theme".into(),
+            iced::theme::Palette {
+                primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
+                ..iced::Theme::Dark.palette()
+            }
+        )
     }
 }
 
