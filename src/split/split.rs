@@ -39,8 +39,6 @@ use iced_widget::{
 };
 
 use std::time::{Duration, Instant};
-
-//use crate::split::style::{Appearance, StyleSheet};
 use crate::split::style::StyleSheet;
 
 /// A split can divide the available space by half to display two different elements.
@@ -539,7 +537,6 @@ where
         let fmi = first_mouse_interaction
             .max(second_mouse_interaction)
             .max(divider_mouse_interaction);
-        // println!("Mouse interaction: {:?}", fmi);
         fmi
     }
 
@@ -697,14 +694,11 @@ where
                 border_width: 0.0,//divider_style.divider_border_width,
                 border_color: divider_style.divider_border_color,
             },
-            //divider_style.divider_background,
-            // Color::BLACK
             Color::from_rgb(0.2, 0.2, 0.2)
         );
 
         // Draw pane selection status; if selected, draw a border around the pane
         if self.enable_pane_selection {
-            //if split_state.panes_seleced[0] {
             if self.is_selected[0] {
                 renderer.fill_quad(
                     renderer::Quad {
@@ -716,7 +710,6 @@ where
                     Color::TRANSPARENT,
                 );
             }
-            //if split_state.panes_seleced[1] {
             if self.is_selected[1] {
                 renderer.fill_quad(
                     renderer::Quad {

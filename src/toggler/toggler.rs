@@ -1,20 +1,4 @@
 //! Show toggle controls using togglers.
-/*use crate::core::alignment;
-use crate::core::event;
-use crate::core::layout;
-use crate::core::mouse;
-use crate::core::renderer;
-use crate::core::text;
-use crate::core::touch;
-use crate::core::widget::Tree;
-use crate::core::{
-    Alignment, Clipboard, Element, Event, Layout, Length, Pixels, Rectangle,
-    Shell, Widget,
-};
-use crate::{Row, Text};
-
-pub use crate::style::toggler::{Appearance, StyleSheet};*/
-
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
@@ -52,7 +36,6 @@ use iced_widget::{
     },
     Container, Row
 };
-//use iced_widget::core::alignment;
 
 use crate::toggler::style::StyleSheet;
 
