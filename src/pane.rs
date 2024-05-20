@@ -21,6 +21,7 @@ use macos::*;
 // mod image_cache;
 //use crate::image_cache::ImageCache;
 use crate::image_cache;
+use crate::ui_builder::get_footer;
 
 use crate::Message;
 
@@ -34,7 +35,7 @@ use crate::file_io::{is_file, is_directory, get_file_paths, get_file_index};
 
 use iced::widget::{
     //container, row, column, slider, horizontal_space, text
-    container, column, text
+    container, row, column, text
 };
 use iced::widget::Image;
 use iced::{Element, Length};
@@ -217,7 +218,7 @@ impl Pane {
         // Debug print the files
         //for path in _file_paths.iter().take(20) {
         for path in _file_paths.iter() {
-            println!("{}", path.display());
+            ////println!("{}", path.display());
         }
 
         println!("File paths: {}", _file_paths.len());
@@ -328,7 +329,7 @@ impl Pane {
         img
     }
 
-    pub fn build_ui_dual_pane_slider2(&self) -> iced::widget::Container<Message> {
+    /*pub fn build_ui_dual_pane_slider2(&self) -> iced::widget::Container<Message> {
         let img: iced::widget::Container<Message>  = if self.dir_loaded {
             container(column![
                 container(
@@ -356,7 +357,7 @@ impl Pane {
             ])
         };
         img
-    }
+    }*/
 }
 
 pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
@@ -388,10 +389,31 @@ pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slid
 pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
     let first_img: iced::widget::Container<Message>  = panes[0].build_ui_dual_pane_slider1();
     let second_img: iced::widget::Container<Message> = panes[1].build_ui_dual_pane_slider1();
+    let footer_texts = vec![
+        format!(
+            "{}/{}",
+            panes[0].img_cache.current_index + 1,
+            panes[0].img_cache.num_files
+        ),
+        format!(
+            "{}/{}",
+            panes[1].img_cache.current_index + 1,
+            panes[1].img_cache.num_files
+        )
+    ];
+    let footers = vec![
+        get_footer(footer_texts[0].clone(), 0),
+        get_footer(footer_texts[1].clone(), 1)
+    ];
+
+    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
+    //let is_selected: &mut Vec<bool> = &mut panes.iter().map(|pane| pane.is_selected).collect();
+    //let is_selected: &Vec<bool> = &panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(
         false,
         first_img,
         second_img,
+        is_selected,
         ver_divider_position,
         Axis::Vertical,
         Message::OnVerResize,
@@ -402,23 +424,55 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
     .into()
 }
 
-pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
+pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u16>, show_footer: bool) -> Element<Message> {
+    let footer_texts = vec![
+        format!(
+            "{}/{}",
+            panes[0].img_cache.current_index + 1,
+            panes[0].img_cache.num_files
+        ),
+        format!(
+            "{}/{}",
+            panes[1].img_cache.current_index + 1,
+            panes[1].img_cache.num_files
+        )
+    ];
+    let footers = vec![
+        get_footer(footer_texts[0].clone(), 0),
+        get_footer(footer_texts[1].clone(), 1)
+    ];
+
     let first_img: iced::widget::Container<Message> = if panes[0].dir_loaded {
-        container(column![
-            // NOTE: Wrapping the image in a container messes up the layout
-            //Image::new(panes[0].current_image.clone())
-            viewer::Viewer::new(panes[0].current_image.clone())
-            .width(Length::Fill)
-            .height(Length::Fill),
-            DualSlider::new(
-                0..= (panes[0].img_cache.num_files - 1) as u16,
-                panes[0].slider_value,
-                0,
-                Message::SliderChanged,
-                Message::SliderReleased
-            )
-            .width(Length::Fill)
-            ]
+        container(
+            if show_footer { column![
+                // NOTE: Wrapping the image in a container messes up the layout
+                //Image::new(panes[0].current_image.clone())
+                viewer::Viewer::new(panes[0].current_image.clone())
+                .width(Length::Fill)
+                .height(Length::Fill),
+                DualSlider::new(
+                    0..= (panes[0].img_cache.num_files - 1) as u16,
+                    panes[0].slider_value,
+                    0,
+                    Message::SliderChanged,
+                    Message::SliderReleased
+                )
+                .width(Length::Fill),
+                get_footer(footer_texts[0].clone(), 0)
+            ]} else { column![
+                //Image::new(panes[0].current_image.clone())
+                viewer::Viewer::new(panes[0].current_image.clone())
+                .width(Length::Fill)
+                .height(Length::Fill),
+                DualSlider::new(
+                    0..= (panes[0].img_cache.num_files - 1) as u16,
+                    panes[0].slider_value,
+                    0,
+                    Message::SliderChanged,
+                    Message::SliderReleased
+                )
+                .width(Length::Fill),
+            ]}
         )
     } else {
         container(column![
@@ -429,21 +483,35 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
     };
 
     let second_img: iced::widget::Container<Message> = if panes[1].dir_loaded {
-        container(column![
-            // NOTE: Wrapping the image in a container messes up the layout
-            // Image::new(panes[1].current_image.clone())
-            viewer::Viewer::new(panes[1].current_image.clone())
-            .width(Length::Fill)
-            .height(Length::Fill),
-            DualSlider::new(
-                0..= (panes[1].img_cache.num_files - 1) as u16,
-                panes[1].slider_value,
-                1,
-                Message::SliderChanged,
-                Message::SliderReleased
-            )
-            .width(Length::Fill)
-            ]
+        container(
+            if show_footer { column![
+                // NOTE: Wrapping the image in a container messes up the layout
+                viewer::Viewer::new(panes[1].current_image.clone())
+                .width(Length::Fill)
+                .height(Length::Fill),
+                DualSlider::new(
+                    0..= (panes[1].img_cache.num_files - 1) as u16,
+                    panes[1].slider_value,
+                    1,
+                    Message::SliderChanged,
+                    Message::SliderReleased
+                )
+                .width(Length::Fill),
+                get_footer(footer_texts[1].clone(), 1)
+            ]} else { column![
+                viewer::Viewer::new(panes[1].current_image.clone())
+                .width(Length::Fill)
+                .height(Length::Fill),
+                DualSlider::new(
+                    0..= (panes[1].img_cache.num_files - 1) as u16,
+                    panes[1].slider_value,
+                    1,
+                    Message::SliderChanged,
+                    Message::SliderReleased
+                )
+                .width(Length::Fill),
+            ]}
+
         )
     } else {
         container(column![
@@ -453,10 +521,16 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
         ])
     };
 
+    //let is_selected: &mut Vec<bool> = &mut panes.iter().map(|pane| pane.is_selected).collect();
+    //let is_selected: &Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
+    //let is_selected: &Vec<bool> = &panes.iter().map(|pane| pane.is_selected).collect();
+
+    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(
         true,
         first_img,
         second_img,
+        is_selected,
         ver_divider_position,
         Axis::Vertical,
         Message::OnVerResize,

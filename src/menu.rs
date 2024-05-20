@@ -42,7 +42,8 @@ use macos::*;
 
 
 use iced::widget::{
-    row, button, text, svg, toggler
+    row, button, text, svg,
+    //toggler, Toggler
 };
 use iced::alignment;
 use iced::{Element, Length, Color, theme};
@@ -51,6 +52,7 @@ use iced_aw::menu::menu_tree::MenuTree;
 use iced_aw::{helpers::menu_tree, menu_tree};
 
 use crate::{Message, DataViewer};
+use crate::toggler::toggler;
 
 // use iced::widget::container;
 //use iced::Theme;
@@ -96,9 +98,27 @@ fn base_button<'a>(
         .on_press(msg)
 }
 
-fn labeled_button<'a>(label: &str, msg: Message) -> button::Button<'a, Message, iced::Renderer> {
+// text_button where the content is just text
+fn text_button <'a>(
+    label: &str,
+    text_size: u16,
+    msg: Message
+) -> button::Button<'a, Message, iced::Renderer> {
+    button(text(label)
+        .size(text_size)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .vertical_alignment(alignment::Vertical::Center)
+    )
+    .padding([4, 8])
+    .style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
+    .on_press(msg)
+}
+
+fn labeled_button<'a>(label: &str, text_size: u16, msg: Message) -> button::Button<'a, Message, iced::Renderer> {
     base_button(
         text(label)
+            //.size(text_size)
             .width(Length::Fill)
             .height(Length::Fill)
             .vertical_alignment(alignment::Vertical::Center),
@@ -109,8 +129,9 @@ fn labeled_button<'a>(label: &str, msg: Message) -> button::Button<'a, Message, 
 /*fn debug_button<'a>(label: &str) -> button::Button<'a, Message, iced::Renderer> {
     labeled_button(label, Message::Debug(label.into()))
 }*/
-fn nothing_button<'a>(label: &str) -> button::Button<'a, Message, iced::Renderer> {
-    labeled_button(label, Message::Nothing)
+fn nothing_button<'a>(label: &str, text_size: u16) -> button::Button<'a, Message, iced::Renderer> {
+    //labeled_button(label, text_size, Message::Nothing)
+    text_button(label, text_size, Message::Nothing)
 }
 
 pub fn sub_menu_msg<'a>(
@@ -132,8 +153,10 @@ pub fn sub_menu_msg<'a>(
         base_button(
             row![
                 text(label)
+                    .size(14)
                     .width(Length::Fill)
                     .height(Length::Fill)
+                    //.horizontal_alignment(alignment::Horizontal::Left)
                     .vertical_alignment(alignment::Vertical::Center),
                 arrow
             ]
@@ -190,14 +213,15 @@ fn sub_menu<'a>(
 fn build_menu_items_v1<'a>() -> Vec<MenuTree<'a, Message, iced::Renderer>> {
     let menu_items = vec![
         // labeled_button(label, Message::OpenFolder(label.into()))
-        labeled_button(&String::from("Open Folder"), Message::OpenFolder ),
-        labeled_button(&String::from("Open File"), Message::OpenFile ),
-        labeled_button(&String::from("Close"), Message::Close ),
-        
+        text_button(&String::from("Open Folder (Alt+1 or 2)"), 14, Message::OpenFolder(0) ),
+        text_button(&String::from("Open File (Alt+Ctrl+1 or 2)"), 14, Message::OpenFile(0) ),
+        text_button(&String::from("Close (Ctrl+W)"), 14, Message::Close ),
+        text_button(&String::from("Quit (Ctrl+Q)"), 14, Message::Quit ),
     ];
     menu_items.into_iter().map(|item| menu_tree!(item.width(Length::Fill).height(Length::Fill))).collect()
 }
 
+//Toggler::new(label, is_checked, f, text_size)
 
 pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
     // Other menu items...
@@ -209,26 +233,37 @@ pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
         Message::Nothing,
         vec![
             menu_tree!(
-                labeled_button("Single Pane", Message::TogglePaneLayout(PaneLayout::SinglePane))
+                text_button("Single Pane (Ctrl+1)", 14, Message::TogglePaneLayout(PaneLayout::SinglePane))
+                .width(Length::Fill)
             ),
             menu_tree!(
-                labeled_button("Dual Pane", Message::TogglePaneLayout(PaneLayout::DualPane))
+                text_button("Dual Pane (Ctrl+2)", 14, Message::TogglePaneLayout(PaneLayout::DualPane))
+                .width(Length::Fill)
             ),
 
         ],
     );
 
     let root = menu_tree(
-        nothing_button("Controls"),
+        nothing_button("Controls", 16),
         vec![
             // Other menu items...
             // separator(),
             pane_layout_submenu,
-            menu_tree!(row![toggler(
-                Some("Toggle Slider".into()),
-                app.is_slider_dual,
-                Message::ToggleSliderType
-            )])
+            menu_tree!(row![
+                toggler::Toggler::new(
+                    Some("Toggle Slider (Space)".into()),
+                    app.is_slider_dual,
+                    Message::ToggleSliderType,
+                )
+            ].padding([4, 8])),
+            menu_tree!(row!(
+                toggler::Toggler::new(
+                    Some("Toggle Footer (Tab)".into()),
+                    app.show_footer,
+                    Message::ToggleFooter,
+                )
+            ).padding([4, 8]))
         ],
     );
 
@@ -238,10 +273,10 @@ pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
 pub fn menu_1<'a>(_app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
     let c = build_menu_items_v1();
     let root = menu_tree(
-        nothing_button("File"),
+        nothing_button("File", 16),
         c
-    )
-    .width(110);
+    );
+    //.width(110);
 
     root
 }

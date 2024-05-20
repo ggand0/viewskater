@@ -17,6 +17,20 @@ pub enum Error {
     // IO(io::ErrorKind)
 }
 
+pub fn get_filepath(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .parent()
+        .and_then(|os_str| os_str.to_str())
+        .map(|s| s.to_string())
+}
+
+pub fn get_filename(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .map(|s| s.to_string())
+}
+
 pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
     let file_path = path.as_ref();
 

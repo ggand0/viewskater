@@ -22,8 +22,9 @@ use macos::*;
 
 use iced::event::Event;
 use iced::subscription::{self, Subscription};
-use iced::keyboard;
+use iced::{keyboard, clipboard};
 use iced::{Element, Length, Application, Theme, Settings, Command};
+use iced::font::{self, Font};
 
 use std::path::PathBuf;
 use log::{debug, info, warn, error};
@@ -50,12 +51,17 @@ mod dualslider {
     pub mod dualslider;
     pub mod style;
 }
+mod toggler {
+    pub mod toggler;
+    pub mod style;
+}
 //use dualslider::dualslider::DualSlider;
 
 mod pane;
 use crate::pane::get_master_slider_value;
 mod ui_builder;
 mod viewer;
+//mod footer;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -83,6 +89,7 @@ pub struct DataViewer {
     hor_divider_position: Option<u16>,
     //pane_count: usize,
     is_slider_dual: bool,
+    show_footer: bool,
     pane_layout: PaneLayout,
     last_opened_pane: isize,
     panes: Vec<pane::Pane>,             // Each pane has its own image cache
@@ -94,7 +101,7 @@ pub struct DataViewer {
 impl Default for DataViewer {
     fn default() -> Self {
         Self {
-            title: String::from("View Skater"),
+            title: String::from("ViewSkater"),
             directory_path: None,
             current_image_index: 0,
             slider_value: 0,
@@ -103,6 +110,7 @@ impl Default for DataViewer {
             hor_divider_position: None,
             //pane_count: 2,
             is_slider_dual: false,
+            show_footer: true,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
             panes: vec![pane::Pane::default()],
@@ -118,11 +126,13 @@ impl Default for DataViewer {
 pub enum Message {
     Debug(String),
     Nothing,
-    OpenFolder,
-    OpenFile,
+    FontLoaded(Result<(), font::Error>),
+    OpenFolder(usize),
+    OpenFile(usize),
     FileDropped(isize, String),
     Close,
-    FolderOpened(Result<String, Error>),
+    Quit,
+    FolderOpened(Result<String, Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     Event(Event),
@@ -134,12 +144,15 @@ pub enum Message {
     ResetSplit(u16),
     ToggleSliderType(bool),
     TogglePaneLayout(PaneLayout),
+    ToggleFooter(bool),
     PaneSelected(usize, bool),
+    CopyFilename(usize),
+    CopyFilePath(usize),
 }
 
 impl DataViewer {
     fn reset_state(&mut self) {
-        self.title = String::from("View Skater");
+        self.title = String::from("ViewSkater");
         self.directory_path = None;
         self.current_image_index = 0;
         self.slider_value = 0;
@@ -350,6 +363,217 @@ impl DataViewer {
         }*/
     }
 
+
+    fn handle_key_pressed_event(&mut self, key_code: keyboard::KeyCode, modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
+        let mut commands = Vec::new();
+        match key_code {
+            keyboard::KeyCode::Tab => {
+                println!("Tab pressed");
+                // toggle footer
+                self.toggle_footer();
+            }
+
+            keyboard::KeyCode::Space | keyboard::KeyCode::B => {
+                println!("Space pressed");
+                // Toggle slider type
+                self.toggle_slider_type();
+            }
+
+            keyboard::KeyCode::Key1 => {
+                println!("Key1 pressed");
+                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
+                    self.panes[0].is_selected = !self.panes[0].is_selected;
+                }
+
+                // If alt+ctrl is pressed, load a file into pane0
+                if modifiers.alt() && modifiers.control() {
+                    println!("Key1 Shift pressed");
+                    commands.push(Command::perform(file_io::pick_file(), move |result| {
+                        Message::FolderOpened(result, 0)
+                    }));
+                }
+
+                // If alt is pressed, load a folder into pane0
+                if modifiers.alt() {
+                    println!("Key1 Alt pressed");
+                    commands.push(Command::perform(file_io::pick_folder(), move |result| {
+                        Message::FolderOpened(result, 0)
+                    }));
+                }
+
+                // If ctrl is pressed, switch to single pane layout
+                if modifiers.control() {
+                    self.toggle_pane_layout(PaneLayout::SinglePane);
+                }
+            }
+            keyboard::KeyCode::Key2 => {
+                println!("Key2 pressed");
+                if self.pane_layout == PaneLayout::DualPane {
+                    if self.is_slider_dual {
+                        self.panes[1].is_selected = !self.panes[1].is_selected;
+                    }
+                
+                    // If alt+ctrl is pressed, load a file into pane1
+                    if modifiers.alt() && modifiers.control() {
+                        println!("Key2 Shift pressed");
+                        commands.push(Command::perform(file_io::pick_file(), move |result| {
+                            Message::FolderOpened(result, 1)
+                        }));
+                    }
+
+                    // If alt is pressed, load a folder into pane1
+                    if modifiers.alt() {
+                        println!("Key2 Alt pressed");
+                        commands.push(Command::perform(file_io::pick_folder(), move |result| {
+                            Message::FolderOpened(result, 1)
+                        }));
+                    }
+                }
+
+                // If ctrl is pressed, switch to dual pane layout
+                if modifiers.control() {
+                    println!("Key2 Ctrl pressed");
+                    self.toggle_pane_layout(PaneLayout::DualPane);
+                    //commands.push(Command::perform(Message::TogglePaneLayout(PaneLayout::DualPane), |_| Message::Nothing));
+                }
+            }
+
+            keyboard::KeyCode::C | keyboard::KeyCode::W => {
+                // Close the selected panes
+                if modifiers.control() {
+                    for pane in self.panes.iter_mut() {
+                        if pane.is_selected {
+                            pane.reset_state();
+                        }
+                    }
+                }
+            }
+
+            keyboard::KeyCode::Q => {
+                // Terminate the app
+                std::process::exit(0);
+            }
+
+            keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
+                    debug!("No panes selected");
+                    //Command::none();
+                }
+
+                if modifiers.shift() {
+                    println!("SKATE_LEFT: true");
+                    self.skate_left = true;
+                } else {
+                    println!("SKATE_LEFT: false");
+                    self.skate_left = false;
+                    /*if self.are_all_images_cached_prev() {
+                        self.init_image_loaded(); // [false, false]
+                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                        return command;
+                    } else {
+                        println!("not are_all_images_cached()");
+                        //Command::none()
+                    }*/
+                    self.init_image_loaded(); // [false, false]
+                    let command = move_left_all(
+                        &mut self.panes, &mut self.slider_value,
+                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                    commands.push(command);
+                }
+                
+            }
+            keyboard::KeyCode::Right | keyboard::KeyCode::D => {
+                debug!("ArrowRight pressed");
+                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
+                    debug!("No panes selected");
+                    //Command::none();
+                }
+
+                if modifiers.shift() {
+                    println!("SKATE_RIGHT: true");
+                    self.skate_right = true;
+                    
+                } else {
+                    println!("SKATE_RIGHT: false");
+                    self.skate_right = false;
+
+                    /*if self.are_all_images_cached() {
+                        self.init_image_loaded(); // [false, false]
+                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
+                        return command;
+                    } else {
+                        println!("not are_all_images_cached()");
+                        //Command::none()
+                    }*/
+                    self.init_image_loaded(); // [false, false]
+                    let command = move_right_all(
+                        &mut self.panes, &mut self.slider_value,
+                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                    commands.push(command);
+                }
+            }
+
+            _ => {}
+        }
+
+        commands
+    }
+
+    fn handle_key_released_event(&mut self, key_code: keyboard::KeyCode, modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
+        let mut commands = Vec::new();
+
+        match key_code {
+            keyboard::KeyCode::Tab => {
+                println!("Tab released");
+                //Command::perform(async {}, |_| Message::TabReleased)
+                
+            }
+            keyboard::KeyCode::Enter | keyboard::KeyCode::NumpadEnter => {
+                println!("Enter key released!");
+                
+            }
+            keyboard::KeyCode::Escape => {
+                println!("Escape key released!");
+                
+            }
+            keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+                println!("Left key or 'A' key released!");
+                debug!("ArrowLeft released, SKATE_LEFT: false");
+                self.skate_left = false;
+
+                // Reset panes' image loading queues
+                for pane in self.panes.iter_mut() {
+                    pane.img_cache.reset_image_load_queue();
+                    pane.img_cache.reset_image_being_loaded_queue();
+
+                    //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
+                    //pane.img_cache.current_offset_accumulated = 0;
+                }
+                
+            }
+            keyboard::KeyCode::Right | keyboard::KeyCode::D => {
+                println!("Right key or 'D' key released!");
+                //Command::perform(async {}, |_| Message::RightReleased)
+
+                self.skate_right = false;
+                // Reset panes' image loading queues
+                for pane in self.panes.iter_mut() {
+                    pane.img_cache.reset_image_load_queue();
+                    pane.img_cache.reset_image_being_loaded_queue();
+
+                    //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
+                    //pane.img_cache.current_offset_accumulated = 0;
+                }
+                
+            }
+            _ => {},
+        }
+
+        commands
+    }
+
+
+
     // UI
     fn toggle_slider_type(&mut self) {
         /*match self.slider_type {
@@ -412,6 +636,10 @@ impl DataViewer {
         
         self.pane_layout = pane_layout;
     }
+
+    fn toggle_footer(&mut self) {
+        self.show_footer = !self.show_footer;
+    }
 }
 
 
@@ -424,7 +652,7 @@ impl Application for DataViewer {
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         (
             Self {
-                title: String::from("View Skater"),
+                title: String::from("ViewSkater"),
                 directory_path: None,
                 current_image_index: 0,
                 slider_value: 0,
@@ -433,6 +661,7 @@ impl Application for DataViewer {
                 hor_divider_position: None,
                 //pane_count: 2,
                 is_slider_dual: false,
+                show_footer: true,
                 pane_layout: PaneLayout::SinglePane,
                 last_opened_pane: 0,
                 panes: vec![pane::Pane::default()],
@@ -440,7 +669,12 @@ impl Application for DataViewer {
                 skate_left: false,
                 update_counter: 0,
             },
-            Command::none()
+            Command::batch(vec![
+                font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded), // icon font
+                //font::load(include_bytes!("../assets/fonts/Iosevka-Regular.ttc").as_slice()).map(Message::FontLoaded),  // footer digit font
+                font::load(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf").as_slice()).map(Message::FontLoaded),  // footer digit font
+                font::load(include_bytes!("../assets/fonts/Roboto-Regular.ttf").as_slice()).map(Message::FontLoaded),   // UI font
+            ])
         )
 
     }
@@ -450,8 +684,10 @@ impl Application for DataViewer {
             PaneLayout::SinglePane => {
                 if self.panes[0].dir_loaded {
                     // return string here
-                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
                     //self.title.clone()
+                    //self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
+                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| String::from("Unknown"))
                 } else {
                     self.title.clone()
                 }
@@ -490,14 +726,17 @@ impl Application for DataViewer {
                 self.title = s;
                 //Command::none()
             }
-            Message::OpenFolder => {
-                return Command::perform(file_io::pick_folder(), |result| {
-                    Message::FolderOpened(result)
+            Message::FontLoaded(_) => {
+                //Command::none()
+            }
+            Message::OpenFolder(pane_index) => {
+                return Command::perform(file_io::pick_folder(), move |result| {
+                    Message::FolderOpened(result, pane_index)
                 });
             }
-            Message::OpenFile => {
-                return Command::perform(file_io::pick_file(), |result| {
-                    Message::FolderOpened(result)
+            Message::OpenFile(pane_index) => {
+                return Command::perform(file_io::pick_file(), move |result| {
+                    Message::FolderOpened(result, pane_index)
                 });
             }
             Message::FileDropped(pane_index, dropped_path) => {
@@ -519,17 +758,59 @@ impl Application for DataViewer {
                 }
                 //Command::none()
             }
-            Message::FolderOpened(result) => {
+            Message::Quit => {
+                std::process::exit(0);
+            }
+            Message::FolderOpened(result, pane_index) => {
                 match result {
                     Ok(dir) => {
                         debug!("Folder opened: {}", dir);
-                        self.initialize_dir_path(PathBuf::from(dir), 0);
+                        self.initialize_dir_path(PathBuf::from(dir), pane_index);
 
                         //Command::none()
                     }
                     Err(err) => {
                         debug!("Folder open failed: {:?}", err);
                         //Command::none()
+                    }
+                }
+            },
+            Message::CopyFilename(pane_index) => {
+                // Get the image path of the specified pane
+                //let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
+                let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
+
+                /*if let Some(filename) = file_io::get_filename(img_path) {
+                    println!("Filename: {}", filename);
+
+                    // to_owned vs to_string
+                    return clipboard::write::<Message>(filename.to_string());
+                }*/
+                if let Some(img_path) = img_path {
+                    if let Some(filename) = file_io::get_filename(&img_path) {
+                        println!("Filename: {}", filename);
+                        return clipboard::write::<Message>(filename.to_string());
+                    }
+                }
+                
+                // works
+                //return clipboard::write::<Message>("debug debug".to_string());
+            }
+            Message::CopyFilePath(pane_index) => {
+                // Get the image path of the specified pane
+                let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
+
+                /*if let Some(path) = img_path {
+                    println!("Path: {}", path);
+                    return clipboard::write::<Message>(path.to_string());
+                }*/
+                if let Some(img_path) = img_path {
+                    //println!("Path: {}", img_path);
+                    //return clipboard::write::<Message>(img_path.to_string());
+                    if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
+                        let full_path = format!("{}/{}", dir_path, img_path);
+                        println!("Full Path: {}", full_path);
+                        return clipboard::write::<Message>(full_path);
                     }
                 }
             }
@@ -545,6 +826,9 @@ impl Application for DataViewer {
             Message::TogglePaneLayout(pane_layout) => {
                 self.toggle_pane_layout(pane_layout);
                 //Command::none()
+            },
+            Message::ToggleFooter(_bool) => {
+                self.toggle_footer();
             },
             Message::PaneSelected(pane_index, is_selected) => {
                 self.panes[pane_index].is_selected = is_selected;
@@ -722,113 +1006,24 @@ impl Application for DataViewer {
                     }
                 }
 
-                Event::Keyboard(keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::Tab,
-                    modifiers: _,
-                }) => {
-                    debug!("Tab pressed");
-                    //Command::none()
-                }
-
-                Event::Keyboard(keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::Right,
-                    //modifiers: _,
-                    modifiers,
-                }) => {
-
-                    debug!("ArrowRight pressed");
-                    if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
-                        debug!("No panes selected");
-                        //Command::none();
-                    }
-
-                    if modifiers.shift() {
-                        println!("SKATE_RIGHT: true");
-                        self.skate_right = true;
+                Event::Keyboard(keyboard::Event::KeyPressed { key_code, modifiers, .. }) => {
+                    let commands = self.handle_key_pressed_event(key_code, modifiers);
+                    if commands.is_empty() {
+                        
                     } else {
-                        println!("SKATE_RIGHT: false");
-                        self.skate_right = false;
-
-                        /*if self.are_all_images_cached() {
-                            self.init_image_loaded(); // [false, false]
-                            let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
-                            return command;
-                        } else {
-                            println!("not are_all_images_cached()");
-                            //Command::none()
-                        }*/
-                        self.init_image_loaded(); // [false, false]
-                        let command = move_right_all(
-                            &mut self.panes, &mut self.slider_value,
-                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                        return command;
+                        return Command::batch(commands);
                     }
                 }
-                Event::Keyboard(keyboard::Event::KeyReleased {
-                    key_code: keyboard::KeyCode::Right,
-                    modifiers: _,
-                }) => {
-                    println!("ArrowRight released, SKATE_RIGHT: false");
-                    self.skate_right = false;
 
-                    // Reset panes' image loading queues
-                    for pane in self.panes.iter_mut() {
-                        pane.img_cache.reset_image_load_queue();
-                        pane.img_cache.reset_image_being_loaded_queue();
-
-                        //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
-                        //pane.img_cache.current_offset_accumulated = 0;
-                    }
-                    //Command::none()
-                }
-                Event::Keyboard(keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::Left,
-                    modifiers,
-                }) => {
-                    if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
-                        debug!("No panes selected");
-                        //Command::none();
-                    }
-
-                    if modifiers.shift() {
-                        println!("SKATE_LEFT: true");
-                        self.skate_left = true;
+                Event::Keyboard(keyboard::Event::KeyReleased { key_code, modifiers, .. }) => {
+                    let commands = self.handle_key_released_event(key_code, modifiers);
+                    if commands.is_empty() {
+                        
                     } else {
-                        println!("SKATE_LEFT: false");
-                        self.skate_left = false;
-                        /*if self.are_all_images_cached_prev() {
-                            self.init_image_loaded(); // [false, false]
-                            let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
-                            return command;
-                        } else {
-                            println!("not are_all_images_cached()");
-                            //Command::none()
-                        }*/
-                        self.init_image_loaded(); // [false, false]
-                        let command = move_left_all(
-                            &mut self.panes, &mut self.slider_value,
-                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                        return command;
+                        return Command::batch(commands);
                     }
-                    
                 }
-                Event::Keyboard(keyboard::Event::KeyReleased {
-                    key_code: keyboard::KeyCode::Left,
-                    modifiers: _,
-                }) => {
-                    debug!("ArrowLeft released, SKATE_LEFT: false");
-                    self.skate_left = false;
 
-                    // Reset panes' image loading queues
-                    for pane in self.panes.iter_mut() {
-                        pane.img_cache.reset_image_load_queue();
-                        pane.img_cache.reset_image_being_loaded_queue();
-
-                        //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
-                        //pane.img_cache.current_offset_accumulated = 0;
-                    }
-                    //Command::none()
-                }
 
                 _ => return Command::none(),
                 //_ => command,
@@ -840,7 +1035,7 @@ impl Application for DataViewer {
 
         //self.update_counter += 1;
         //if self.skate_right && self.are_all_images_cached() {
-            if self.skate_right {
+        if self.skate_right {
             println!("skae_right: {}", self.skate_right);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
@@ -859,7 +1054,6 @@ impl Application for DataViewer {
         } else {
             println!("no skate mode detected");
             let command = Command::none();
-            //self.panes[0].img_cache.print_cache();
             command
         }
 
@@ -868,27 +1062,28 @@ impl Application for DataViewer {
 
     fn view(&self) -> Element<Message> {
         let container_all = ui_builder::build_ui(&self);
-
         container_all
         .height(Length::Fill)
         .width(Length::Fill)
         .center_x()
-        // .title(format!("{}", current_image_path.display()))
-        //.title(current_image_path.to_string_lossy().to_string())
         .into()
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        // subscription::events().map(Message::Event)
-
         Subscription::batch(vec![
             subscription::events().map(Message::Event),
         ])
     }
 
     fn theme(&self) -> Self::Theme {
-        Theme::Dark
-        // Theme::default()
+        //Theme::Dark
+        iced::Theme::custom(
+            //"Custom Theme".into(),
+            iced::theme::Palette {
+                primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
+                ..iced::Theme::Dark.palette()
+            }
+        )
     }
 }
 
@@ -907,13 +1102,6 @@ fn main() -> iced::Result {
     env_logger::init();
     use iced::window;
 
-    /*use image::io::Reader as ImageReader;
-    let icon_data = ImageReader::new(std::io::Cursor::new(ICON))
-        .with_guessed_format()
-        .unwrap()
-        .decode()
-        .unwrap()
-        .to_rgba8();*/
     let icon = iced::window::icon::from_file_data(ICON, Option::None);
 
     match icon {
@@ -924,6 +1112,12 @@ fn main() -> iced::Result {
                     icon: Some(icon),
                     ..Default::default()
                 },
+                default_font: Font {
+                    family:  iced::font::Family::Name("Roboto"),
+                    weight: iced::font::Weight::Normal,
+                    stretch: iced::font::Stretch::Normal,
+                    monospaced: true,
+                },
                 ..Settings::default()
             };
             DataViewer::run(settings)
@@ -933,8 +1127,4 @@ fn main() -> iced::Result {
             DataViewer::run(Settings::default())
         }
     }
-
-
-    // DataViewer::run(Settings::default())
-    
 }
