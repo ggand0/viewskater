@@ -385,10 +385,18 @@ impl DataViewer {
                     self.panes[0].is_selected = !self.panes[0].is_selected;
                 }
 
-                // If alt is pressed, load a file into pane0
+                // If alt+ctrl is pressed, load a file into pane0
                 if modifiers.alt() && modifiers.control() {
                     println!("Key1 Shift pressed");
                     commands.push(Command::perform(file_io::pick_file(), move |result| {
+                        Message::FolderOpened(result, 0)
+                    }));
+                }
+
+                // If alt is pressed, load a folder into pane0
+                if modifiers.alt() {
+                    println!("Key1 Alt pressed");
+                    commands.push(Command::perform(file_io::pick_folder(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
                 }
@@ -405,10 +413,18 @@ impl DataViewer {
                         self.panes[1].is_selected = !self.panes[1].is_selected;
                     }
                 
-                    // If alt is pressed, load a file into pane1
+                    // If alt+ctrl is pressed, load a file into pane1
                     if modifiers.alt() && modifiers.control() {
                         println!("Key2 Shift pressed");
                         commands.push(Command::perform(file_io::pick_file(), move |result| {
+                            Message::FolderOpened(result, 1)
+                        }));
+                    }
+
+                    // If alt is pressed, load a folder into pane1
+                    if modifiers.alt() {
+                        println!("Key2 Alt pressed");
+                        commands.push(Command::perform(file_io::pick_folder(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
                     }
