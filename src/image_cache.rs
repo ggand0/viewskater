@@ -863,31 +863,33 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
         pane.img_cache.print_queue();
         println!("IS_NEXT_IMG_LOADED1: move_right_all - pane {} - is_next_image_loaded {}", cache_index, pane.is_next_image_loaded);
 
-        if !pane.is_cached_next() {
-            // If this pane already reaches the edge, mark is_next_image_loaded as true
-            if pane.img_cache.current_index == pane.img_cache.image_paths.len() - 1 {
-                pane.is_next_image_loaded = true;
-            }
-
-            continue;
-        }
-        //let is_cached_next = is_pane_cached_next(&pane, cache_index, is_slider_dual);
-        commands.extend(pane.load_next_images(cache_index));
-
         /*if !pane.is_cached_next() {
             // If this pane already reaches the edge, mark is_next_image_loaded as true
             if pane.img_cache.current_index == pane.img_cache.image_paths.len() - 1 {
                 pane.is_next_image_loaded = true;
             }
-
             continue;
+        }
+
+        if !pane.is_next_image_loaded {
+            commands.extend(pane.load_next_images(cache_index));
+
+            // Render the next one right away by setting a new handle (next image) to the current_image
+            // Avoid loading around the edges
+            // Only render if it's not been rendered yet
+            pane.set_next_image(pane_layout, is_slider_dual);
+            // current_index gets incremented here, offset gets incremented as well
         }*/
 
-        // Render the next one right away by setting a new handle (next image) to the current_image
-        // Avoid loading around the edges
-        // Only render if it's not been rendered yet
-        //if !pane.is_next_image_loaded && img_cache.is_some_at_index(
-        pane.set_next_image(pane_layout, is_slider_dual);
+        if !pane.is_next_image_loaded {
+            let did_render_happen: bool = pane.set_next_image(pane_layout, is_slider_dual);
+
+            if did_render_happen {
+                commands.extend(pane.load_next_images(cache_index));
+            }
+        }
+
+
 
         println!("IS_NEXT_IMG_LOADED2: move_right_all - pane {} - is_next_image_loaded {}", cache_index, pane.is_next_image_loaded);
     }

@@ -118,15 +118,14 @@ impl Pane {
         
         println!("is_selected: {}, dir_loaded: {}, is_next_image_loaded: {}, img_cache.is_next_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
             self.is_selected, self.dir_loaded, self.is_next_image_loaded, self.img_cache.is_next_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
-            
+
         self.is_selected && self.dir_loaded && self.img_cache.is_next_cache_index_within_bounds() &&
             self.img_cache.loading_queue.len() < 3 && self.img_cache.being_loaded_queue.len() < 3
     }
 
     //pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<<DataViewer as iced::Application>::Message>>{
     pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<Message>>{
-        //let mut commands: Vec<Command> = Vec::new();
-        let mut commands = Vec::new();
+        /*let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
 
         // If there are images to load and the current index is not the last index
@@ -159,14 +158,53 @@ impl Pane {
             commands.push(Command::none())
         }
 
+        commands*/
+
+
+
+        let mut commands = Vec::new();
+        let img_cache = &mut self.img_cache;
+        let current_index_before_render = img_cache.current_index - 1;
+
+        // If there are images to load and the current index is not the last index
+        if img_cache.image_paths.len() > 0 && current_index_before_render < img_cache.image_paths.len() - 1 {
+            let next_image_index_to_load = current_index_before_render as isize + img_cache.cache_count as isize;
+            assert!(next_image_index_to_load >= 0);
+            let next_image_index_to_load_usize = next_image_index_to_load as usize;
+
+            println!("LOADING NEXT: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
+                next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
+
+            if img_cache.is_image_index_within_bounds(next_image_index_to_load) {
+                // TODO: organize this better
+                if next_image_index_to_load_usize < img_cache.image_paths.len() &&
+                ( current_index_before_render >= img_cache.cache_count &&
+                    current_index_before_render <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
+                    img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
+                } else if img_cache.current_index-1 < img_cache.cache_count {
+                    let prev_image_index_to_load = current_index_before_render as isize - img_cache.cache_count as isize + 1;
+                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, prev_image_index_to_load)));
+                } else {
+                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
+                }
+            }
+            img_cache.print_queue();
+
+            let command = load_image_by_operation(img_cache);
+            commands.push(command);
+        } else {
+            commands.push(Command::none())
+        }
+
         commands
     }
 
-    pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) {
+    pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
+        let mut did_render_happen = false;
 
-        //if !&self.is_next_image_loaded && img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize
-        if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize
+        //if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize
+        if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
         ) {
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
             println!("RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
@@ -186,6 +224,7 @@ impl Pane {
 
             // Since the next image is loaded and rendered, mark the is_next_image_loaded flag
             self.is_next_image_loaded = true;
+            did_render_happen = true;
 
             // NEW: handle current_index here without performing LoadingOperation::ShiftPrevious
             println!("(img_cache.image_paths.len()-1) - img_cache.cache_count -1 = {}", (img_cache.image_paths.len()-1) - img_cache.cache_count -1);
@@ -200,6 +239,8 @@ impl Pane {
                 self.slider_value = img_cache.current_index as u16;
             }
         }
+
+        did_render_happen
     }
 
     // Allowing for the sake of `is_dir_size_bigger`
