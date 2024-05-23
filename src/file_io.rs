@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
+use std::ffi::OsStr;
 use rfd;
 use crate::image_cache::LoadOperation;
 
@@ -99,24 +100,6 @@ pub fn get_file_index(files: &[PathBuf], file: &PathBuf) -> Option<usize> {
     let file_name = file.file_name()?;
     files.iter().position(|f| f.file_name() == Some(file_name))
 }
-
-pub fn get_file_paths(directory_path: &Path) -> Vec<PathBuf> {
-    let mut file_paths: Vec<PathBuf> = Vec::new();
-
-    if let Ok(paths) = fs::read_dir(directory_path) {
-        for entry in paths {
-            if let Ok(entry) = entry {
-                // Use the join method to get the full path
-                let file_path = directory_path.join(entry.file_name());
-                file_paths.push(file_path);
-            }
-        }
-    }
-
-    alphanumeric_sort::sort_path_slice(&mut file_paths);
-    file_paths
-}
-use std::ffi::OsStr;
 
 pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
     let mut image_paths: Vec<PathBuf> = Vec::new();
