@@ -47,7 +47,8 @@ pub struct Pane {
     pub dir_loaded: bool,
     pub img_cache: image_cache::ImageCache,
     pub current_image: iced::widget::image::Handle,
-    pub image_load_state: bool,
+    pub is_next_image_loaded: bool, // whether the next image in cache is loaded
+    pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
     pub slider_value: u16,
     pub prev_slider_value: u16,
 
@@ -63,7 +64,8 @@ impl Default for Pane {
             dir_loaded: false,
             img_cache: image_cache::ImageCache::default(),
             current_image: iced::widget::image::Handle::from_memory(vec![]),
-            image_load_state: true,
+            is_next_image_loaded: true,
+            is_prev_image_loaded: true,
             slider_value: 0,
             prev_slider_value: 0,
             id: 0,
@@ -81,7 +83,8 @@ impl Pane {
             dir_loaded: false,
             img_cache: image_cache::ImageCache::default(),
             current_image: iced::widget::image::Handle::from_memory(vec![]),
-            image_load_state: true,
+            is_next_image_loaded: true,
+            is_prev_image_loaded: true,
             slider_value: 0,
             prev_slider_value: 0,
             id: 0,
@@ -95,7 +98,7 @@ impl Pane {
         self.dir_loaded = false;
         self.img_cache = image_cache::ImageCache::default();
         self.current_image = iced::widget::image::Handle::from_memory(vec![]);
-        self.image_load_state = true;
+        self.is_next_image_loaded = true;
         self.slider_value = 0;
         self.prev_slider_value = 0;
     }
@@ -299,18 +302,6 @@ pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slid
 pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
     let first_img: iced::widget::Container<Message>  = panes[0].build_ui_dual_pane_slider1();
     let second_img: iced::widget::Container<Message> = panes[1].build_ui_dual_pane_slider1();
-    /*let footer_texts = vec![
-        format!(
-            "{}/{}",
-            panes[0].img_cache.current_index + 1,
-            panes[0].img_cache.num_files
-        ),
-        format!(
-            "{}/{}",
-            panes[1].img_cache.current_index + 1,
-            panes[1].img_cache.num_files
-        )
-    ];*/
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(

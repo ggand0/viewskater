@@ -59,6 +59,7 @@ use crate::split::style::StyleSheet;
 /// let split = Split::new(first, second, Some(300), Axis::Vertical, Message::Resized);
 /// ```
 #[allow(missing_debug_implementations)]
+#[allow(dead_code)]
 pub struct Split<'a, Message, Renderer>
 where
     Renderer: core::Renderer,

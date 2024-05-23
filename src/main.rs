@@ -167,92 +167,6 @@ impl DataViewer {
         self.update_counter = 0;
     }
 
-    // Function to initialize image_load_state for all panes
-    fn init_image_loaded(&mut self) {
-        for pane in self.panes.iter_mut() {
-            if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
-                if pane.is_selected && pane.dir_loaded {
-                    pane.image_load_state = false;
-                }
-            } else {
-                pane.image_load_state = false;
-            }
-        }
-    }
-
-    // Function to mark an image as loaded for a specific pane
-    fn mark_image_loaded(&mut self, pane_index: usize) {
-        if let Some(pane) = self.panes.get_mut(pane_index) {
-            pane.image_load_state = true;
-        }
-    }
-
-    // Function to check if all images are loaded for all panes
-    fn are_all_images_loaded(&self) -> bool {
-        //self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
-
-        if self.is_slider_dual {
-            self.panes
-            .iter()
-            .filter(|pane| pane.is_selected)  // Filter only selected panes
-            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
-        } else {
-            //self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
-            self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded ))
-        }
-    }
-
-    fn are_all_images_cached(&self) -> bool {
-        if self.is_slider_dual {
-            self.panes
-            .iter()
-            .filter(|pane| pane.is_selected)  // Filter only selected panes
-            .all(|pane| pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
-            pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
-        } else {
-            /*println!("self.panes[0].img_cache.get_next_cache_index(): {}", self.panes[0].img_cache.get_next_cache_index());
-            println!("self.panes[0].img_cache.get_next_cache_index_within_bounds(): {}", self.panes[0].img_cache.is_next_cache_index_within_bounds());
-            self.panes[0].img_cache.print_queue();
-            self.panes[0].img_cache.print_cache();*/
-            self.panes.iter().all(|pane|
-                pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
-                pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
-        }
-    }
-
-    fn are_all_images_cached_prev(&self) -> bool {
-        if self.is_slider_dual {
-            self.panes
-            .iter()
-            .filter(|pane| pane.is_selected)  // Filter only selected panes
-            .all(|pane| pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds() &&
-            pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
-        } else {
-            self.panes.iter().all(|pane|
-                pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds() &&
-                pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3)
-        }
-    }
-
-    fn are_all_images_loaded_index(&self, next_index: usize) -> bool {
-        if self.is_slider_dual {
-            self.panes
-            .iter()
-            .filter(|pane| pane.is_selected)  // Filter only selected panes
-            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
-        } else {
-            //self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
-            self.panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.img_cache.is_next_image_loaded(next_index)))
-        }
-    }
-
-    fn are_all_images_loaded_in_selected(&self) -> bool {
-        self.panes
-            .iter()
-            .filter(|pane| pane.is_selected)  // Filter only selected panes
-            .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.image_load_state))
-    }
-
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
         debug!("last_opened_pane: {}", self.last_opened_pane);
         //self.panes[pane_index].initialize_dir_path(path);
@@ -476,7 +390,7 @@ impl DataViewer {
                         println!("not are_all_images_cached()");
                         //Command::none()
                     }*/
-                    self.init_image_loaded(); // [false, false]
+                    //self.init_image_loaded(); // [false, false]
                     let command = move_left_all(
                         &mut self.panes, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
@@ -507,7 +421,7 @@ impl DataViewer {
                         println!("not are_all_images_cached()");
                         //Command::none()
                     }*/
-                    self.init_image_loaded(); // [false, false]
+                    //self.init_image_loaded(); // [false, false]
                     let command = move_right_all(
                         &mut self.panes, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
@@ -594,7 +508,9 @@ impl DataViewer {
             for pane in self.panes.iter_mut() {
                 pane.is_selected_cache = pane.is_selected;
                 pane.is_selected = true;
-                pane.image_load_state = true;
+                //pane.image_load_state = true;
+                pane.is_next_image_loaded = false;
+                pane.is_prev_image_loaded = false;
             }
 
             // Set the slider value to the first pane's current index
@@ -875,12 +791,6 @@ impl Application for DataViewer {
                                 }
                             }
                         }
-
-                        // debug!("image load state: {:?}", self.image_load_state);
-                        for pane in self.panes.iter() {
-                            debug!("pane.image_load_state: {:?}", pane.image_load_state);
-                        }
-
                         //Command::none()
                     }
                     Err(err) => {
@@ -1042,7 +952,7 @@ impl Application for DataViewer {
             println!("skae_right: {}", self.skate_right);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
-            self.init_image_loaded(); // [false, false]
+            //self.init_image_loaded(); // [false, false]
             let command = move_right_all(
                 &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
             command
@@ -1050,7 +960,7 @@ impl Application for DataViewer {
             println!("skae_left: {}", self.skate_left);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
-            self.init_image_loaded(); // [false, false]
+            //self.init_image_loaded(); // [false, false]
             let command = move_left_all(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
             println!("command: {:?}", command);
             command
