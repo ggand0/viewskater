@@ -125,7 +125,7 @@ impl Pane {
 
     //pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<<DataViewer as iced::Application>::Message>>{
     pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<Message>>{
-        /*let mut commands = Vec::new();
+        let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
 
         // If there are images to load and the current index is not the last index
@@ -158,11 +158,11 @@ impl Pane {
             commands.push(Command::none())
         }
 
-        commands*/
+        commands
 
 
 
-        let mut commands = Vec::new();
+        /*let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
         let current_index_before_render = img_cache.current_index - 1;
 
@@ -196,7 +196,7 @@ impl Pane {
             commands.push(Command::none())
         }
 
-        commands
+        commands*/
     }
 
     pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
