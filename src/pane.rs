@@ -125,7 +125,9 @@ impl Pane {
 
     //pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<<DataViewer as iced::Application>::Message>>{
     pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<Message>>{
-        let mut commands = Vec::new();
+        // NOTE: BEFORE the call of this method, current_index and current_offset got incremented in set_next_image()
+
+        /*let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
 
         // If there are images to load and the current index is not the last index
@@ -158,17 +160,17 @@ impl Pane {
             commands.push(Command::none())
         }
 
-        commands
+        commands*/
 
 
 
-        /*let mut commands = Vec::new();
+        let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
         let current_index_before_render = img_cache.current_index - 1;
 
         // If there are images to load and the current index is not the last index
         if img_cache.image_paths.len() > 0 && current_index_before_render < img_cache.image_paths.len() - 1 {
-            let next_image_index_to_load = current_index_before_render as isize + img_cache.cache_count as isize;
+            let next_image_index_to_load = current_index_before_render as isize + img_cache.cache_count as isize + 1;
             assert!(next_image_index_to_load >= 0);
             let next_image_index_to_load_usize = next_image_index_to_load as usize;
 
@@ -181,13 +183,16 @@ impl Pane {
                 ( current_index_before_render >= img_cache.cache_count &&
                     current_index_before_render <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
                     img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
-                } else if img_cache.current_index-1 < img_cache.cache_count {
+                    
+                } else if current_index_before_render < img_cache.cache_count {
                     let prev_image_index_to_load = current_index_before_render as isize - img_cache.cache_count as isize + 1;
                     img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, prev_image_index_to_load)));
                 } else {
                     img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
                 }
             }
+
+            println!("LOADING QUEUED:");
             img_cache.print_queue();
 
             let command = load_image_by_operation(img_cache);
@@ -196,7 +201,7 @@ impl Pane {
             commands.push(Command::none())
         }
 
-        commands*/
+        commands
     }
 
     pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
@@ -211,13 +216,7 @@ impl Pane {
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
-
-            let start_time = Instant::now();
-            
             let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
-            let end_time = Instant::now();
-            let elapsed_time = end_time.duration_since(start_time);
-            println!("image::Handle CREATION Elapsed time: {:?}", elapsed_time);
 
             self.current_image = handle;
             img_cache.current_offset += 1;
@@ -227,21 +226,124 @@ impl Pane {
             did_render_happen = true;
 
             // NEW: handle current_index here without performing LoadingOperation::ShiftPrevious
-            println!("(img_cache.image_paths.len()-1) - img_cache.cache_count -1 = {}", (img_cache.image_paths.len()-1) - img_cache.cache_count -1);
+            //println!("(img_cache.image_paths.len()-1) - img_cache.cache_count -1 = {}", (img_cache.image_paths.len()-1) - img_cache.cache_count -1);
             if img_cache.current_index < img_cache.image_paths.len() - 1 {
                 img_cache.current_index += 1;
             }
-            println!("RENDERED NEXT: current_index: {}, current_offset: {}",
-                img_cache.current_index, img_cache.current_offset);
+            //println!("RENDERED NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
             
             if *pane_layout == PaneLayout::DualPane && is_slider_dual {
-                println!("dualpane && is_slider_dual slider update");
+                //println!("dualpane && is_slider_dual slider update");
                 self.slider_value = img_cache.current_index as u16;
             }
         }
 
         did_render_happen
     }
+
+    pub fn load_prev_images(&mut self, cache_index: usize) -> Vec<Command<Message>> {
+        let mut commands = Vec::new();
+        let img_cache = &mut self.img_cache;
+
+        /*if img_cache.current_index > 0 {
+            let prev_image_index_to_load: isize = img_cache.current_index as isize  - img_cache.cache_count as isize  - 1;
+            println!("LOADING PREV: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
+                prev_image_index_to_load, img_cache.current_index, img_cache.current_offset);
+
+            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) {
+                // TODO: organize this better
+                if prev_image_index_to_load >= 0 &&
+                (img_cache.current_index >= img_cache.cache_count &&
+                img_cache.current_index <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
+                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
+
+                } else if img_cache.current_index > (img_cache.image_paths.len()-1) - img_cache.cache_count -1 {
+                    let next_image_index_to_load = img_cache.current_index as isize - img_cache.cache_count as isize - 1;
+                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, next_image_index_to_load)));
+                } else {
+                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
+                }
+            }
+            img_cache.print_queue();
+            
+            let command = load_image_by_operation(img_cache);
+            commands.push(command);
+        } else {
+            commands.push(Command::none())
+        }*/
+
+        let current_index_before_render = img_cache.current_index + 1;
+        if img_cache.current_index > 0 {
+            let prev_image_index_to_load: isize = current_index_before_render as isize  - img_cache.cache_count as isize  - 1;
+            println!("LOADING PREV: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
+                prev_image_index_to_load, img_cache.current_index, img_cache.current_offset);
+
+            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) {
+                // TODO: organize this better
+                if prev_image_index_to_load >= 0 &&
+                (current_index_before_render >= img_cache.cache_count &&
+                    current_index_before_render <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
+                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
+
+                } else if current_index_before_render > (img_cache.image_paths.len()-1) - img_cache.cache_count -1 {
+                    let next_image_index_to_load = current_index_before_render as isize - img_cache.cache_count as isize - 1;
+                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, next_image_index_to_load)));
+                } else {
+                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
+                }
+            }
+            img_cache.print_queue();
+            
+            let command = load_image_by_operation(img_cache);
+            commands.push(command);
+        } else {
+            commands.push(Command::none())
+        }
+
+        commands
+    }
+
+    pub fn set_prev_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
+        let img_cache = &mut self.img_cache;
+        let mut did_render_happen = false;
+
+        // Render the previous one right away
+        // Avoid loading around the edges
+        if !self.is_prev_image_loaded && img_cache.cache_count as isize + img_cache.current_offset > 0 &&
+            img_cache.is_some_at_index( (img_cache.cache_count as isize + img_cache.current_offset) as usize) {
+
+            let next_image_index_to_render = img_cache.cache_count as isize + (img_cache.current_offset - 1);
+            println!("RENDERING PREV: next_image_index_to_render: {} current_index: {}, current_offset: {}",
+                next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
+
+            if img_cache.is_image_index_within_bounds(next_image_index_to_render) {
+                let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
+                let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+                self.current_image = handle;
+                img_cache.current_offset -= 1;
+                // Since the prev image is loaded and rendered, mark the is_prev_image_loaded flag
+                self.is_prev_image_loaded = true;
+
+                //println!("(img_cache.image_paths.len()-1) - img_cache.cache_count -1 = {}", (img_cache.image_paths.len()-1) - img_cache.cache_count -1);
+                //println!("img_cache.current_index <= img_cache.cache_count: {}", img_cache.current_index <= img_cache.cache_count);
+
+                if img_cache.current_index > 0 {
+                    img_cache.current_index -= 1;
+                }
+                println!("RENDERED PREV: current_index: {}, current_offset: {}",
+                img_cache.current_index, img_cache.current_offset);
+
+                if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+                    self.slider_value = img_cache.current_index as u16;
+                }
+
+                did_render_happen = true;
+            }
+        }
+
+        did_render_happen
+    }
+
 
     // Allowing for the sake of `is_dir_size_bigger`
     #[allow(unused_assignments)]
@@ -416,7 +518,7 @@ impl Pane {
 pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = 0;
-    println!("get_master_slider_value - panes.len(): {:?}", panes.len());
+    //println!("get_master_slider_value - panes.len(): {:?}", panes.len());
     for (i, pane) in panes.iter().enumerate() {
         if pane.dir_loaded {
             if pane.img_cache.num_files > max_dir_size {
