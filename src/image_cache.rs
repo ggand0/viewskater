@@ -36,27 +36,66 @@ use crate::menu::PaneLayout;
 
 #[derive(Debug, Clone)]
 pub enum LoadOperation {
-    LoadNext((usize, usize)),       // Includes the target index
+    /*LoadNext((usize, usize,)),       // Includes the target index
+    ShiftNext((usize, isize)),
+    LoadPrevious((usize, usize)),   // Includes the target index
+    ShiftPrevious((usize, isize)),
+    LoadPos((usize, usize, usize)), // Load an image at a specific position of the cache*/
+    LoadNext((usize, usize,)),       // Includes the target index
     ShiftNext((usize, isize)),
     LoadPrevious((usize, usize)),   // Includes the target index
     ShiftPrevious((usize, isize)),
     LoadPos((usize, usize, usize)), // Load an image at a specific position of the cache
 }
 
+#[derive(PartialEq, Debug)]
+pub enum LoadOperationType {
+    LoadNext,
+    ShiftNext,
+    LoadPrevious,
+    ShiftPrevious,
+    LoadPos,
+}
+
 impl LoadOperation {
-    pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<bool, std::io::Error>> {
+    pub fn load_fn(&self) -> Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>, usize) -> Result<bool, std::io::Error>> {
         match self {
-            LoadOperation::LoadNext(..) => Box::new(|cache, new_image| cache.move_next(new_image)),
+            /*LoadOperation::LoadNext(..) => Box::new(|cache, new_image| cache.move_next(new_image)),
             LoadOperation::ShiftNext(..) => Box::new(|cache, new_image| cache.move_next_edge(new_image)),
             LoadOperation::LoadPrevious(..) => Box::new(|cache, new_image| cache.move_prev(new_image)),
-            LoadOperation::ShiftPrevious(..) => Box::new(|cache, new_image| cache.move_prev_edge(new_image)),
+            LoadOperation::ShiftPrevious(..) => Box::new(|cache, new_image| cache.move_prev_edge(new_image)),*/
+            LoadOperation::LoadNext(..) => {
+                Box::new(|cache, new_image, image_index| cache.move_next(new_image, image_index))
+            },
+            LoadOperation::ShiftNext(..) => Box::new(|cache, new_image, image_index| cache.move_next_edge(new_image, image_index)),
+            LoadOperation::LoadPrevious(..) => Box::new(|cache, new_image, image_index| cache.move_prev(new_image, image_index)),
+            LoadOperation::ShiftPrevious(..) => Box::new(|cache, new_image, image_index| cache.move_prev_edge(new_image, image_index)),
             LoadOperation::LoadPos(..) => {
+                /*let pos = match self {
+                    LoadOperation::LoadPos((_, _, pos)) => *pos,
+                    _ => 0, // Default value if the variant pattern doesn't match
+                };
+                Box::new(move |cache, new_image| cache.load_pos(new_image, pos))*/
+
                 let pos = match self {
                     LoadOperation::LoadPos((_, _, pos)) => *pos,
                     _ => 0, // Default value if the variant pattern doesn't match
                 };
-                Box::new(move |cache, new_image| cache.load_pos(new_image, pos))
+                /*let image_index = match self {
+                    LoadOperation::LoadPos((_, img_index, _)) => *img_index,
+                    _ => 0, // Default value if the variant pattern doesn't match
+                };*/
+                Box::new(move |cache, new_image, image_index| cache.load_pos(new_image, pos, image_index))
             },
+        }
+    }
+    pub fn operation_type(&self) -> LoadOperationType {
+        match self {
+            LoadOperation::LoadNext(..) => LoadOperationType::LoadNext,
+            LoadOperation::ShiftNext(..) => LoadOperationType::ShiftNext,
+            LoadOperation::LoadPrevious(..) => LoadOperationType::LoadPrevious,
+            LoadOperation::ShiftPrevious(..) => LoadOperationType::ShiftPrevious,
+            LoadOperation::LoadPos(..) => LoadOperationType::LoadPos,
         }
     }
 }
@@ -71,10 +110,11 @@ pub struct ImageCache {
     pub current_offset: isize,
     pub cache_count: usize,                             // Number of images to cache in advance
     cached_images: Vec<Option<Vec<u8>>>,                // Changed cached_images to store Option<Vec<u8>> for better handling
-    pub cached_image_indices: Vec<usize>,               // Indices of cached images (index of the image_paths array)
+    pub cached_image_indices: Vec<isize>,               // Indices of cached images (index of the image_paths array)
     pub cache_states: Vec<bool>,                        // Cache states
     pub loading_queue: VecDeque<LoadOperation>,
     pub being_loaded_queue: VecDeque<LoadOperation>,    // Queue of image indices being loaded
+    pub out_of_order_images: Vec<(usize, Vec<u8>)>,     // Store out-of-order images (used in Message::ImageLoaded)
 }
 
 impl ImageCache {
@@ -89,7 +129,8 @@ impl ImageCache {
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
             cache_states: Vec::new(),
-            cached_image_indices: Vec::new(),
+            cached_image_indices: vec![-1; cache_count * 2 + 1],
+            out_of_order_images: Vec::new(),
         })
     }
 
@@ -102,7 +143,7 @@ impl ImageCache {
         for (index, image_option) in self.cached_images.iter().enumerate() {
             match image_option {
                 Some(image_bytes) => {
-                    let image_info = format!("Image {} - Size: {} bytes", index, image_bytes.len());
+                    let image_info = format!("Image {} - Index {} - Size: {} bytes", index, self.cached_image_indices[index], image_bytes.len());
                     println!("{}", image_info);
                 }
                 None => {
@@ -110,6 +151,12 @@ impl ImageCache {
                     println!("{}", no_image_info);
                 }
             }
+        }
+    }
+    pub fn print_cache_index(&self) {
+        for (index, cache_index) in self.cached_image_indices.iter().enumerate() {
+            let index_info = format!("Index {} - Cache Index: {}", index, cache_index);
+            println!("{}", index_info);
         }
     }
 
@@ -134,6 +181,37 @@ impl ImageCache {
 
     pub fn reset_image_being_loaded_queue(&mut self) {
         self.being_loaded_queue.clear();
+    }
+
+    // Search for and remove the specific image from the out_of_order_images Vec
+    pub fn pop_out_of_order_image(&mut self, target_index: usize) -> Option<Vec<u8>> {
+        if let Some(pos) = self.out_of_order_images.iter().position(|&(index, _)| index == target_index) {
+            Some(self.out_of_order_images.remove(pos).1)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_next_image_to_load(&self) -> usize {
+        //let next_image_index = (self.current_index + self.cache_count ) as usize;
+        let next_image_index = (self.current_index as isize + (self.cache_count as isize -  self.current_offset) as isize) as usize + 1;
+
+        /*if next_image_index < self.image_paths.len() {
+            next_image_index
+        } else {
+            self.image_paths.len()
+        }*/
+        next_image_index
+    }
+    pub fn get_prev_image_to_load(&self) -> usize {
+        //let prev_image_index = self.current_index as isize + self.current_offset - 1;
+        //let prev_image_index = self.current_index - self.cache_count - 1;
+        let prev_image_index = self.current_index - self.cache_count ;
+        if prev_image_index >= 0 {
+            prev_image_index as usize
+        } else {
+            0
+        }
     }
 
     pub fn is_next_image_loaded(&self, next_image_index: usize) -> bool {
@@ -247,6 +325,7 @@ impl ImageCache {
             // cache[i] = file_paths.get(cache_index).cloned();
             let image = self.load_image(cache_index as usize)?;
             self.cached_images[i] = Some(image);
+            self.cached_image_indices[i] = cache_index;
         }
 
         // Display information about each image
@@ -261,6 +340,12 @@ impl ImageCache {
                     debug!("{}", no_image_info);
                 }
             }
+        }
+
+        // Display the indices
+        for (index, cache_index) in self.cached_image_indices.iter().enumerate() {
+            let index_info = format!("Index {} - Cache Index: {}", index, cache_index);
+            debug!("{}", index_info);
         }
 
         self.num_files = self.image_paths.len();
@@ -367,7 +452,7 @@ impl ImageCache {
         }
     }
 
-    pub fn move_next(&mut self, new_image: Option<Vec<u8>> ) -> Result<bool, io::Error> {
+    pub fn move_next(&mut self, new_image: Option<Vec<u8>>, _image_index: usize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             // Move to the next image
             ////self.current_index += 1;
@@ -378,7 +463,7 @@ impl ImageCache {
         }
     }
 
-    pub fn move_next_edge(&mut self, _new_image: Option<Vec<u8>>) -> Result<bool, io::Error> {
+    pub fn move_next_edge(&mut self, _new_image: Option<Vec<u8>>, _image_index: usize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             // v2
             //self.current_offset += 1;
@@ -390,7 +475,7 @@ impl ImageCache {
         }
     }
 
-    pub fn move_prev(&mut self, new_image: Option<Vec<u8>>) -> Result<bool, io::Error> {
+    pub fn move_prev(&mut self, new_image: Option<Vec<u8>>, _image_index: usize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
             //self.current_index -= 1; // shuold this be after the cache shift?
             self.shift_cache_right(new_image);
@@ -401,7 +486,7 @@ impl ImageCache {
         }
     }
 
-    pub fn move_prev_edge(&mut self, _new_image: Option<Vec<u8>>) -> Result<bool, io::Error> {
+    pub fn move_prev_edge(&mut self, _new_image: Option<Vec<u8>>, _image_index: usize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
             // v2
             //self.current_offset -= 1;
@@ -427,6 +512,11 @@ impl ImageCache {
         self.cached_images.remove(0);
         self.cached_images.push(new_image);
 
+        // also update indices
+        self.cached_image_indices.remove(0);
+        let next_index = self.cached_image_indices[self.cached_image_indices.len()-1] + 1;
+        self.cached_image_indices.push(next_index);
+
         //self.current_offset -= 1;
         // If we just decrement the offset, we can't address a case like this,
         // where the next image hasn't been loaded yet. 
@@ -449,9 +539,10 @@ impl ImageCache {
         println!("shift_cache_left - current_offset: {}", self.current_offset);
     }
 
-    fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize) -> Result<bool, io::Error> {
+    fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize, image_index: usize) -> Result<bool, io::Error> {
         // If `pos` is at the center of the cache return true to reload the current_image
         self.cached_images[pos] = new_image;
+        self.cached_image_indices[pos] = image_index as isize;
         self.print_cache();
         //Ok(())
 
@@ -727,6 +818,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
                 img_cache.current_offset = 0;
             }
             img_cache.cached_images[target_index] = Some(image);
+            img_cache.cached_image_indices[target_index] = pos as isize;
 
             img_cache.current_index = pos;
             //img_cache.current_offset = 0;
@@ -863,6 +955,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         println!("move_right_all() - PROCESSING pane_index: {}, current_index: {}, current_offset: {}", cache_index, pane.img_cache.current_index, pane.img_cache.current_offset);
         pane.img_cache.print_cache();
+        //pane.img_cache.print_cache_index();
         pane.img_cache.print_queue();
         println!("==============================");
 

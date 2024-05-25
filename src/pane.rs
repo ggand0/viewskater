@@ -170,7 +170,11 @@ impl Pane {
 
         // If there are images to load and the current index is not the last index
         if img_cache.image_paths.len() > 0 && current_index_before_render < img_cache.image_paths.len() - 1 {
-            let next_image_index_to_load = current_index_before_render as isize + img_cache.cache_count as isize + 1;
+            // Get the index of next image: consider the current_offset
+            ////let next_image_index_to_load = current_index_before_render as isize + img_cache.cache_count as isize + 1;
+            //let next_image_index_to_load = img_cache.current_index as isize + (img_cache.cache_count as isize -  img_cache.current_offset) as isize + 1;
+            let next_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset + img_cache.cache_count as isize + 1;
+
             assert!(next_image_index_to_load >= 0);
             let next_image_index_to_load_usize = next_image_index_to_load as usize;
 
@@ -178,8 +182,8 @@ impl Pane {
                 next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_load) {
-                // TODO: organize this better
-                if next_image_index_to_load_usize < img_cache.image_paths.len() &&
+                // TODO: BUGS HERE? need to consider offset
+                /*if next_image_index_to_load_usize < img_cache.image_paths.len() &&
                 ( current_index_before_render >= img_cache.cache_count &&
                     current_index_before_render <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
                     img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
@@ -189,7 +193,14 @@ impl Pane {
                     img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, prev_image_index_to_load)));
                 } else {
                     img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
+                }*/
+                
+                if next_image_index_to_load_usize >= img_cache.num_files {
+                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
+                } else {
+                    img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
                 }
+
             }
 
             println!("LOADING QUEUED:");
