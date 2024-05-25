@@ -195,7 +195,7 @@ impl Pane {
                     img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
                 }*/
                 
-                if next_image_index_to_load_usize >= img_cache.num_files {
+                if next_image_index_to_load_usize >= img_cache.num_files || img_cache.current_offset < 0 {
                     img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
                 } else {
                     img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
@@ -314,7 +314,7 @@ impl Pane {
             if img_cache.is_image_index_within_bounds(prev_image_index_to_load) && img_cache.is_next_image_index_in_queue(cache_index, prev_image_index_to_load) {
                 //if next_image_index_to_load_usize >= img_cache.num_files {
                 //if prev_image_index_to_load > img_cache.cache_count as isize {
-                if prev_image_index_to_load >= 0 {
+                if prev_image_index_to_load >= 0 || img_cache.current_offset > 0 {
                     img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
                 } else {
                     img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));

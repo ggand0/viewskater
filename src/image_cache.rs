@@ -200,6 +200,21 @@ impl ImageCache {
         });
     }
 
+    pub fn is_load_next_items_in_queue(&self) -> bool {
+        self.loading_queue.iter().any(|op| match op {
+            LoadOperation::LoadNext(..) => true,
+            LoadOperation::ShiftNext(..) => true,
+            _ => false,
+        })
+    }
+    pub fn is_load_previous_items_in_queue(&self) -> bool {
+        self.loading_queue.iter().any(|op| match op {
+            LoadOperation::LoadPrevious(..) => true,
+            LoadOperation::ShiftPrevious(..) => true,
+            _ => false,
+        })
+    }
+
     // Search for and remove the specific image from the out_of_order_images Vec
     pub fn pop_out_of_order_image(&mut self, target_index: usize) -> Option<Vec<u8>> {
         if let Some(pos) = self.out_of_order_images.iter().position(|&(index, _)| index == target_index) {
@@ -1016,7 +1031,22 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
             println!("move_right_all() - pane_index: {}, setting next image...", cache_index);
             let did_render_happen: bool = pane.set_next_image(pane_layout, is_slider_dual);
 
-            if did_render_happen && pane.img_cache.current_offset >= 0 {
+            /*//if did_render_happen && pane.img_cache.current_offset < 0 {
+            if did_render_happen {
+                // Update the current_image
+                //pane.current_image = iced::widget::image::Handle::from_memory(pane.img_cache.get_initial_image().unwrap().to_vec());
+                let loaded_image = pane.img_cache.get_initial_image().unwrap().to_vec();
+                let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+                pane.current_image = handle;
+
+                // Just call shiftnext instead
+                //pane.img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
+                //let command = load_image_by_operation(pane.img_cache);
+                //commands.push(command)
+            }*/
+
+            //if did_render_happen && pane.img_cache.current_offset >= 0 {
+            if did_render_happen {
                 println!("move_right_all() - pane_index: {}, render happened, current_index: {}, current_offset: {}",
                     cache_index, pane.img_cache.current_index, pane.img_cache.current_offset);
                 println!("move_right_all() - pane_index: {}, loading next images...", cache_index);
@@ -1068,7 +1098,8 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
         if !pane.is_prev_image_loaded {
             let did_render_happen: bool = pane.set_prev_image(pane_layout, is_slider_dual);
 
-            if did_render_happen && pane.img_cache.current_offset <= 0 {
+            //if did_render_happen && pane.img_cache.current_offset <= 0 {
+            if did_render_happen {
                 commands.extend(pane.load_prev_images(cache_index));
             }
         }
