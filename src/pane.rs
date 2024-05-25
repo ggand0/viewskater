@@ -181,7 +181,7 @@ impl Pane {
             println!("LOADING NEXT: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
                 next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
 
-            if img_cache.is_image_index_within_bounds(next_image_index_to_load) {
+            if img_cache.is_image_index_within_bounds(next_image_index_to_load) && img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load) {
                 // TODO: BUGS HERE? need to consider offset
                 /*if next_image_index_to_load_usize < img_cache.image_paths.len() &&
                 ( current_index_before_render >= img_cache.cache_count &&
@@ -223,7 +223,7 @@ impl Pane {
         if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
         ) {
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
-            println!("RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
+            println!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
@@ -247,6 +247,7 @@ impl Pane {
                 //println!("dualpane && is_slider_dual slider update");
                 self.slider_value = img_cache.current_index as u16;
             }
+            println!("END RENDERING NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
         }
 
         did_render_happen
@@ -310,7 +311,7 @@ impl Pane {
                 }
             }*/
 
-            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) {
+            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) && img_cache.is_next_image_index_in_queue(cache_index, prev_image_index_to_load) {
                 //if next_image_index_to_load_usize >= img_cache.num_files {
                 //if prev_image_index_to_load > img_cache.cache_count as isize {
                 if prev_image_index_to_load >= 0 {
@@ -349,6 +350,9 @@ impl Pane {
                 let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
                 self.current_image = handle;
                 img_cache.current_offset -= 1;
+
+                assert!(img_cache.current_offset >= -5);
+
                 // Since the prev image is loaded and rendered, mark the is_prev_image_loaded flag
                 self.is_prev_image_loaded = true;
 

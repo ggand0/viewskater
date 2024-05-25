@@ -183,6 +183,23 @@ impl ImageCache {
         self.being_loaded_queue.clear();
     }
 
+    pub fn reset_load_next_queue_items(&mut self) {
+        // Discard all queue items that are LoadNext or ShiftNext
+        self.loading_queue.retain(|op| match op {
+            LoadOperation::LoadNext(..) => false,
+            LoadOperation::ShiftNext(..) => false,
+            _ => true,
+        });
+    }
+    pub fn reset_load_previous_queue_items(&mut self) {
+        // Discard all queue items that are LoadPrevious or ShiftPrevious
+        self.loading_queue.retain(|op| match op {
+            LoadOperation::LoadPrevious(..) => false,
+            LoadOperation::ShiftPrevious(..) => false,
+            _ => true,
+        });
+    }
+
     // Search for and remove the specific image from the out_of_order_images Vec
     pub fn pop_out_of_order_image(&mut self, target_index: usize) -> Option<Vec<u8>> {
         if let Some(pos) = self.out_of_order_images.iter().position(|&(index, _)| index == target_index) {
@@ -503,6 +520,11 @@ impl ImageCache {
         // Shift the elements in cached_images to the right
         self.cached_images.pop(); // Remove the last (rightmost) element
         self.cached_images.insert(0, new_image);
+
+        // also update indices
+        self.cached_image_indices.pop();
+        let prev_index = self.cached_image_indices[0] - 1;
+        self.cached_image_indices.insert(0, prev_index);
 
         self.current_offset += 1;
         println!("shift_cache_right - current_offset: {}", self.current_offset);
@@ -976,6 +998,10 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
             pane.set_next_image(pane_layout, is_slider_dual);
             // current_index gets incremented here, offset gets incremented as well
         }*/
+        if pane.img_cache.out_of_order_images.len() > 0 {
+            println!("move_right_all() - pane_index: {}, out_of_order_images.len(): {:?}", cache_index, pane.img_cache.out_of_order_images.len());
+            continue;
+        }
 
         if !pane.is_cached_next() {
             println!("move_right_all() - pane_index: {}, not cached next, skipping...", cache_index);
@@ -990,7 +1016,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
             println!("move_right_all() - pane_index: {}, setting next image...", cache_index);
             let did_render_happen: bool = pane.set_next_image(pane_layout, is_slider_dual);
 
-            if did_render_happen {
+            if did_render_happen && pane.img_cache.current_offset >= 0 {
                 println!("move_right_all() - pane_index: {}, render happened, current_index: {}, current_offset: {}",
                     cache_index, pane.img_cache.current_index, pane.img_cache.current_offset);
                 println!("move_right_all() - pane_index: {}, loading next images...", cache_index);
@@ -1025,6 +1051,11 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
         println!("move_left_all_new - cache_index: {}, is_pane_cached_prev: {}", cache_index, is_pane_cached_prev(pane.clone(), cache_index, is_slider_dual));
         println!("current_index: {}, current_offset: {}", pane.img_cache.current_index, pane.img_cache.current_offset);
         pane.img_cache.print_cache();
+
+        if pane.img_cache.out_of_order_images.len() > 0 {
+            println!("move_left_all() - pane_index: {}, out_of_order_images.len(): {:?}", cache_index, pane.img_cache.out_of_order_images.len());
+            continue;
+        }
         
         if !is_pane_cached_prev(pane.clone(), cache_index, is_slider_dual) {
             // If this pane already reaches the edge, mark is_next_image_loaded as true
@@ -1037,7 +1068,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
         if !pane.is_prev_image_loaded {
             let did_render_happen: bool = pane.set_prev_image(pane_layout, is_slider_dual);
 
-            if did_render_happen {
+            if did_render_happen && pane.img_cache.current_offset <= 0 {
                 commands.extend(pane.load_prev_images(cache_index));
             }
         }

@@ -291,9 +291,8 @@ impl DataViewer {
                     }
                 }
             } else {
-                //if target_index > cache.num_files - cache.cache_count as isize || target_index < cache.cache_count as isize{
-                
-                println!("$$$$$$$$$$IMAGE LOADED: OUT OF ORDER$$$$$$$$$$");
+
+                /*println!("$$$$$$$$$$IMAGE LOADED: OUT OF ORDER$$$$$$$$$$");
                 println!("target_image_to_load_usize: {}, target_index: {}", target_image_to_load_usize, target_index);
                 println!("cache.current_index: {}, cache.current_offset: {}", cache.current_index, cache.current_offset);
                 
@@ -330,7 +329,7 @@ impl DataViewer {
                     cache.out_of_order_images.push((target_index as usize, image_data.unwrap()));
                     println!("out_of_order_images len: {}", cache.out_of_order_images.len());
                 }
-                println!("$$$$$$$$$$IMAGE LOADED: OUT OF ORDER$$$$$$$$$$");
+                println!("$$$$$$$$$$IMAGE LOADED: OUT OF ORDER$$$$$$$$$$");*/
             }
 
             println!("IMAGE LOADED: cache_index: {}, current_offset: {}",
@@ -454,7 +453,22 @@ impl DataViewer {
             }
 
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
-                self.skate_right = false;
+                if self.skate_right {
+                    println!("**********SKATE_LEFT: SWITCHED: skate_right was true**********");
+                    self.skate_right = false;
+
+                    // Discard all queue items that are LoadNext or ShiftNext
+                    for pane in self.panes.iter_mut() {
+                        pane.img_cache.reset_load_next_queue_items();
+                    }
+                }
+                
+                // initialize panes' is_next_image_loaded
+                /*for pane in self.panes.iter_mut() {
+                    pane.is_next_image_loaded = false;
+                }*/
+
+
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
                     //Command::none();
@@ -484,7 +498,17 @@ impl DataViewer {
             }
             keyboard::KeyCode::Right | keyboard::KeyCode::D => {
                 debug!("ArrowRight pressed");
-                self.skate_left = false;
+                if self.skate_left {
+                    println!("**********SKATE_RIGHT: SWITCHED: skate_left was true**********");
+                    self.skate_left = false;
+
+                    // Discard all queue items that are LoadPrevious or ShiftPrevious
+                    for pane in self.panes.iter_mut() {
+                        pane.img_cache.reset_load_previous_queue_items();
+                    }
+                }
+
+
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
                     //Command::none();
@@ -1035,7 +1059,7 @@ impl Application for DataViewer {
         //self.update_counter += 1;
         //if self.skate_right && self.are_all_images_cached() {
         if self.skate_right {
-            println!("skae_right: {}", self.skate_right);
+            println!("SKATE_RIGHT CONTINUOUS: {}", self.skate_right);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             //self.init_image_loaded(); // [false, false]
