@@ -284,12 +284,18 @@ impl Pane {
         }*/
 
         let current_index_before_render = img_cache.current_index + 1;
-        if img_cache.current_index > 0 {
-            let prev_image_index_to_load: isize = current_index_before_render as isize  - img_cache.cache_count as isize  - 1;
-            println!("LOADING PREV: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
+        if img_cache.current_index >= 0 {
+            //let prev_image_index_to_load: isize = current_index_before_render as isize  - img_cache.cache_count as isize  - 1;
+
+            //let next_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset + img_cache.cache_count as isize + 1;
+            //let prev_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset - img_cache.cache_count as isize - 1;
+
+            //let prev_image_index_to_load = (img_cache.current_index as isize + ((img_cache.cache_count as isize) + img_cache.current_offset) as isize) - 1;
+            let prev_image_index_to_load = (img_cache.current_index as isize + (-(img_cache.cache_count as isize) - img_cache.current_offset) as isize) - 1;
+            println!("LOADING PREV: prev_image_index_to_load: {}, current_index: {}, current_offset: {}",
                 prev_image_index_to_load, img_cache.current_index, img_cache.current_offset);
 
-            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) {
+            /*if img_cache.is_image_index_within_bounds(prev_image_index_to_load) {
                 // TODO: organize this better
                 if prev_image_index_to_load >= 0 &&
                 (current_index_before_render >= img_cache.cache_count &&
@@ -302,7 +308,18 @@ impl Pane {
                 } else {
                     img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
                 }
+            }*/
+
+            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) {
+                //if next_image_index_to_load_usize >= img_cache.num_files {
+                //if prev_image_index_to_load > img_cache.cache_count as isize {
+                if prev_image_index_to_load >= 0 {
+                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
+                } else {
+                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
+                }
             }
+
             img_cache.print_queue();
             
             let command = load_image_by_operation(img_cache);

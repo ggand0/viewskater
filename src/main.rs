@@ -220,7 +220,7 @@ impl DataViewer {
         _img_cache: &mut Option<&mut ImageCache>,
         image_data: Option<Vec<u8>>,
         //load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<bool, std::io::Error>>,
-        load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>, usize) -> Result<bool, std::io::Error>>,
+        load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error>>,
         operation_type: image_cache::LoadOperationType,
     ) {
         //let mut pane = &mut self.panes[c_index];
@@ -256,9 +256,18 @@ impl DataViewer {
                 //println!("IMAGE LOADED: prev_image_to_load: {}, target_index: {}", prev_image_to_load, target_index);
                 cache.get_prev_image_to_load() as isize
             } else {
-                -1
+                -99
             };
             let target_image_to_load_usize = target_image_to_load as usize;
+
+            /*let is_matched = if operation_type == image_cache::LoadOperationType::LoadNext {
+                target_image_to_load == target_index + 1
+            } else if operation_type == image_cache::LoadOperationType::LoadPrevious {
+                target_image_to_load == target_index - 1
+            } else {
+                false
+            };*/
+            let is_matched = target_image_to_load == target_index;
             
             
             println!("IMAGE LOADED: target_image_to_load: {}, target_index: {}", target_image_to_load, target_index);
@@ -268,8 +277,8 @@ impl DataViewer {
             ////if target_image_to_load == -1 || (target_image_to_load_usize == target_index as usize
             ////    || target_index > cache.num_files as isize - cache.cache_count as isize || target_index < cache.cache_count as isize
             let last_index = cache.cached_image_indices[cache.cached_image_indices.len() - 1];
-            if target_image_to_load == -1 || target_index == last_index + 1 {
-                match load_fn(cache, image_data, target_index as usize) {
+            if target_image_to_load == -99 || is_matched {
+                match load_fn(cache, image_data, target_index) {
                     Ok(reload_current_image) => {
                         if reload_current_image {
                             let loaded_image = cache.get_initial_image().unwrap().to_vec();
@@ -299,7 +308,7 @@ impl DataViewer {
 
                     // Load the image from out_of_order_images
                     //let image_data_buffered = cache.out_of_order_images.remove(target_index as usize);//.unwrap();
-                    match load_fn(cache, Some(image_data_buffered), target_index as usize) {
+                    match load_fn(cache, Some(image_data_buffered), target_index) {
                         Ok(reload_current_image) => {
                             if reload_current_image {
                                 //let mut pane = &mut self.panes[c_index];
@@ -445,6 +454,7 @@ impl DataViewer {
             }
 
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+                self.skate_right = false;
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
                     //Command::none();
@@ -474,6 +484,7 @@ impl DataViewer {
             }
             keyboard::KeyCode::Right | keyboard::KeyCode::D => {
                 debug!("ArrowRight pressed");
+                self.skate_left = false;
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
                     //Command::none();
