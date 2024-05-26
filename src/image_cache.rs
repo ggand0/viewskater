@@ -48,7 +48,7 @@ pub enum LoadOperation {
     LoadPos((usize, usize, usize)), // Load an image at a specific position of the cache
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum LoadOperationType {
     LoadNext,
     ShiftNext,
@@ -265,6 +265,69 @@ impl ImageCache {
             LoadOperation::ShiftPrevious((_c_index, img_index)) => img_index != &next_image_index,
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         })
+    }
+
+    pub fn is_operation_blocking(&self, operation: LoadOperationType) -> bool {
+        match operation {
+            LoadOperationType::LoadNext => {
+                if self.current_offset == -(self.cache_count as isize) {
+                    return true;
+                }
+            }
+            LoadOperationType::LoadPrevious => {
+                if self.current_offset == self.cache_count as isize {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// If there are certain loading operations in the queue and the new loading op would cause bugs, return true
+    /// e.g. When current_offset==5 and LoadPrevious op is at the head of the queue(queue.front()),
+    /// the new op is LoadNext: this would make current_offset==6 and cache would be out of bounds
+    pub fn is_blocking_loading_ops_in_queue(&self, loading_operation: LoadOperation) -> bool {
+        match loading_operation {
+            LoadOperation::LoadNext((_cache_index, _target_index)) => {
+                if self.current_offset == -(self.cache_count as isize) {
+                    return true;
+                }
+                if self.current_offset == self.cache_count as isize {
+                    if let Some(op) = self.being_loaded_queue.front() {
+                        match op {
+                            LoadOperation::LoadPrevious((_c_index, _img_index)) => {
+                                return true;
+                            }
+                            LoadOperation::ShiftPrevious((_c_index, _img_index)) => {
+                                return true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            LoadOperation::LoadPrevious((_cache_index, _target_index)) => {
+                if self.current_offset == self.cache_count as isize {
+                    return true;
+                }
+                if self.current_offset == -(self.cache_count as isize) {
+                    if let Some(op) = self.being_loaded_queue.front() {
+                        match op {
+                            LoadOperation::LoadNext((_c_index, _img_index)) => {
+                                return true;
+                            }
+                            LoadOperation::ShiftNext((_c_index, _img_index)) => {
+                                return true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        false
     }
 
     pub fn is_some_at_index(&self, index: usize) -> bool {

@@ -238,9 +238,15 @@ impl DataViewer {
         //img_cache.replace(&mut self.panes[c_index].img_cache);
         img_cache.replace(&mut pane.img_cache);
         let cache_index = c_index;
+
         
         if let Some(cache) = img_cache.as_mut() {
             let _ = cache.being_loaded_queue.pop_front();
+
+            if cache.is_operation_blocking(operation_type.clone()) {
+                // If the operation is blocking, skip the operation
+                return;
+            }
 
             // Check if the next image that is supposed to be loaded matches target_index
             // If not, add image_data to out_of_order_images
@@ -278,6 +284,13 @@ impl DataViewer {
             ////    || target_index > cache.num_files as isize - cache.cache_count as isize || target_index < cache.cache_count as isize
             let last_index = cache.cached_image_indices[cache.cached_image_indices.len() - 1];
             if target_image_to_load == -99 || is_matched {
+                // If somehow the LoadNext is called when current_offset is at the right end, skip loading
+                // The same goes for LoadPrevious
+                if (operation_type == image_cache::LoadOperationType::LoadNext || operation_type == image_cache::LoadOperationType::ShiftNext) && cache.current_offset > cache.cache_count as isize ||
+                (operation_type == image_cache::LoadOperationType::LoadPrevious || operation_type == image_cache::LoadOperationType::ShiftPrevious) && cache.current_offset < -(cache.cache_count as isize) {
+                    return;
+                }
+
                 match load_fn(cache, image_data, target_index) {
                     Ok(reload_current_image) => {
                         if reload_current_image {
@@ -457,10 +470,13 @@ impl DataViewer {
                     println!("**********SKATE_LEFT: SWITCHED: skate_right was true**********");
                     self.skate_right = false;
 
+                    /*
                     // Discard all queue items that are LoadNext or ShiftNext
                     for pane in self.panes.iter_mut() {
                         pane.img_cache.reset_load_next_queue_items();
-                    }
+                    } */
+
+                    // If there's LoadNext or ShiftNext items in queue, wait it out
                 }
                 
                 // initialize panes' is_next_image_loaded

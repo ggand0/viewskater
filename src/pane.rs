@@ -180,8 +180,13 @@ impl Pane {
 
             println!("LOADING NEXT: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
                 next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
+                
+            println!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize))));
 
-            if img_cache.is_image_index_within_bounds(next_image_index_to_load) && img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load) {
+            if img_cache.is_image_index_within_bounds(next_image_index_to_load) &&
+                img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load) &&
+                !img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)))
+            {
                 // TODO: BUGS HERE? need to consider offset
                 /*if next_image_index_to_load_usize < img_cache.image_paths.len() &&
                 ( current_index_before_render >= img_cache.cache_count &&
@@ -311,7 +316,12 @@ impl Pane {
                 }
             }*/
 
-            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) && img_cache.is_next_image_index_in_queue(cache_index, prev_image_index_to_load) {
+            println!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize))));
+
+            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) && 
+                img_cache.is_next_image_index_in_queue(cache_index, prev_image_index_to_load) &&
+                !img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)))
+            {
                 //if next_image_index_to_load_usize >= img_cache.num_files {
                 //if prev_image_index_to_load > img_cache.cache_count as isize {
                 if prev_image_index_to_load >= 0 || img_cache.current_offset > 0 {
