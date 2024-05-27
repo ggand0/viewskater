@@ -317,6 +317,11 @@ impl ImageCache {
         false
     }
 
+    pub fn is_operation_in_queues(&self, operation: LoadOperationType) -> bool {
+        self.loading_queue.iter().any(|op| op.operation_type() == operation) ||
+        self.being_loaded_queue.iter().any(|op| op.operation_type() == operation)
+    }
+
     pub fn is_some_at_index(&self, index: usize) -> bool {
         // Using pattern matching to check if element is None
         if let Some(image_data_option) = self.cached_images.get(index) {
@@ -1050,6 +1055,15 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
 
         if !pane.is_cached_next() {
             println!("move_right_all() - pane_index: {}, not cached next, skipping...", cache_index);
+            // Since user tries to move the next image but image is not cached, enqueue loading the next image
+            // Only do this when the loading queues don't have "Next" operations
+            if !pane.img_cache.is_operation_in_queues(LoadOperationType::LoadNext) ||
+                !pane.img_cache.is_operation_in_queues(LoadOperationType::ShiftNext)
+            {
+                commands.extend(pane.load_next_images(cache_index));
+            }
+
+
             // If this pane already reaches the edge, mark is_next_image_loaded as true
             if pane.img_cache.current_index == pane.img_cache.image_paths.len() - 1 {
                 pane.is_next_image_loaded = true;
@@ -1103,6 +1117,14 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_l
         }
         
         if !is_pane_cached_prev(pane.clone(), cache_index, is_slider_dual) {
+            // Since user tries to move the next image but image is not cached, enqueue loading the next image
+            // Only do this when the loading queues don't have "Prev" operations
+            if !pane.img_cache.is_operation_in_queues(LoadOperationType::LoadPrevious) ||
+                !pane.img_cache.is_operation_in_queues(LoadOperationType::ShiftPrevious)
+            {
+                commands.extend(pane.load_prev_images(cache_index));
+            }
+
             // If this pane already reaches the edge, mark is_next_image_loaded as true
             if pane.img_cache.current_index == 0 {
                 pane.is_prev_image_loaded = true;
