@@ -38,8 +38,6 @@ use crate::viewer;
 use crate::image_cache::LoadOperation;
 use iced::Command;
 use crate::image_cache::load_image_by_operation;
-use std::time::Instant;
-use crate::DataViewer;
 
 
 // ref: https://github.com/iced-rs/iced/blob/master/examples/todos/src/main.rs
@@ -110,12 +108,6 @@ impl Pane {
     }
 
     pub fn is_cached_next(&self) -> bool {
-        /*println!("pane.is_selected: {}, pane.dir_loaded: {}, pane.img_cache.is_next_cache_index_within_bounds(): {}, pane.img_cache.loading_queue.len(): {}, pane.img_cache.being_loaded_queue.len(): {}",
-            pane.is_selected, pane.dir_loaded, pane.img_cache.is_next_cache_index_within_bounds(), pane.img_cache.loading_queue.len(), pane.img_cache.being_loaded_queue.len());
-
-        pane.is_selected && pane.dir_loaded && pane.img_cache.is_next_cache_index_within_bounds() &&
-            pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3*/
-        
         println!("is_selected: {}, dir_loaded: {}, is_next_image_loaded: {}, img_cache.is_next_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
             self.is_selected, self.dir_loaded, self.is_next_image_loaded, self.img_cache.is_next_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
@@ -126,44 +118,6 @@ impl Pane {
     //pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<<DataViewer as iced::Application>::Message>>{
     pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<Message>>{
         // NOTE: BEFORE the call of this method, current_index and current_offset got incremented in set_next_image()
-
-        /*let mut commands = Vec::new();
-        let img_cache = &mut self.img_cache;
-
-        // If there are images to load and the current index is not the last index
-        if img_cache.image_paths.len() > 0 && img_cache.current_index < img_cache.image_paths.len() - 1 {
-            let next_image_index_to_load = img_cache.current_index as isize + img_cache.cache_count as isize + 1;
-            assert!(next_image_index_to_load >= 0);
-            let next_image_index_to_load_usize = next_image_index_to_load as usize;
-
-            println!("LOADING NEXT: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
-                next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
-
-            if img_cache.is_image_index_within_bounds(next_image_index_to_load) {
-                // TODO: organize this better
-                if next_image_index_to_load_usize < img_cache.image_paths.len() &&
-                ( img_cache.current_index >= img_cache.cache_count &&
-                img_cache.current_index <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
-                    img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
-                } else if img_cache.current_index < img_cache.cache_count {
-                    let prev_image_index_to_load = img_cache.current_index as isize - img_cache.cache_count as isize + 1;
-                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, prev_image_index_to_load)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
-                }
-            }
-            img_cache.print_queue();
-
-            let command = load_image_by_operation(img_cache);
-            commands.push(command);
-        } else {
-            commands.push(Command::none())
-        }
-
-        commands*/
-
-
-
         let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
         let current_index_before_render = img_cache.current_index - 1;
@@ -171,8 +125,6 @@ impl Pane {
         // If there are images to load and the current index is not the last index
         if img_cache.image_paths.len() > 0 && current_index_before_render < img_cache.image_paths.len() - 1 {
             // Get the index of next image: consider the current_offset
-            ////let next_image_index_to_load = current_index_before_render as isize + img_cache.cache_count as isize + 1;
-            //let next_image_index_to_load = img_cache.current_index as isize + (img_cache.cache_count as isize -  img_cache.current_offset) as isize + 1;
             let next_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset + img_cache.cache_count as isize + 1;
 
             assert!(next_image_index_to_load >= 0);
@@ -180,26 +132,13 @@ impl Pane {
 
             println!("LOADING NEXT: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
                 next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
-                
+
             println!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize))));
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_load) &&
                 img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load) &&
                 !img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)))
             {
-                // TODO: BUGS HERE? need to consider offset
-                /*if next_image_index_to_load_usize < img_cache.image_paths.len() &&
-                ( current_index_before_render >= img_cache.cache_count &&
-                    current_index_before_render <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
-                    img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
-                    
-                } else if current_index_before_render < img_cache.cache_count {
-                    let prev_image_index_to_load = current_index_before_render as isize - img_cache.cache_count as isize + 1;
-                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, prev_image_index_to_load)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
-                }*/
-                
                 if next_image_index_to_load_usize >= img_cache.num_files || img_cache.current_offset < 0 {
                     img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
                 } else {
@@ -224,7 +163,6 @@ impl Pane {
         let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
 
-        //if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize
         if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
         ) {
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
@@ -242,11 +180,9 @@ impl Pane {
             did_render_happen = true;
 
             // NEW: handle current_index here without performing LoadingOperation::ShiftPrevious
-            //println!("(img_cache.image_paths.len()-1) - img_cache.cache_count -1 = {}", (img_cache.image_paths.len()-1) - img_cache.cache_count -1);
             if img_cache.current_index < img_cache.image_paths.len() - 1 {
                 img_cache.current_index += 1;
             }
-            //println!("RENDERED NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
             
             if *pane_layout == PaneLayout::DualPane && is_slider_dual {
                 //println!("dualpane && is_slider_dual slider update");
@@ -262,82 +198,27 @@ impl Pane {
         let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
 
-        /*if img_cache.current_index > 0 {
-            let prev_image_index_to_load: isize = img_cache.current_index as isize  - img_cache.cache_count as isize  - 1;
-            println!("LOADING PREV: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
-                prev_image_index_to_load, img_cache.current_index, img_cache.current_offset);
+        let prev_image_index_to_load = (img_cache.current_index as isize + (-(img_cache.cache_count as isize) - img_cache.current_offset) as isize) - 1;
+        println!("LOADING PREV: prev_image_index_to_load: {}, current_index: {}, current_offset: {}",
+            prev_image_index_to_load, img_cache.current_index, img_cache.current_offset);
 
-            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) {
-                // TODO: organize this better
-                if prev_image_index_to_load >= 0 &&
-                (img_cache.current_index >= img_cache.cache_count &&
-                img_cache.current_index <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
-                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
+        println!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize))));
 
-                } else if img_cache.current_index > (img_cache.image_paths.len()-1) - img_cache.cache_count -1 {
-                    let next_image_index_to_load = img_cache.current_index as isize - img_cache.cache_count as isize - 1;
-                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, next_image_index_to_load)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
-                }
+        if img_cache.is_image_index_within_bounds(prev_image_index_to_load) && 
+            img_cache.is_next_image_index_in_queue(cache_index, prev_image_index_to_load) &&
+            !img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)))
+        {
+            if prev_image_index_to_load >= 0 || img_cache.current_offset > 0 {
+                img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
+            } else {
+                img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
             }
-            img_cache.print_queue();
-            
-            let command = load_image_by_operation(img_cache);
-            commands.push(command);
-        } else {
-            commands.push(Command::none())
-        }*/
-
-        let current_index_before_render = img_cache.current_index + 1;
-        if img_cache.current_index >= 0 {
-            //let prev_image_index_to_load: isize = current_index_before_render as isize  - img_cache.cache_count as isize  - 1;
-
-            //let next_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset + img_cache.cache_count as isize + 1;
-            //let prev_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset - img_cache.cache_count as isize - 1;
-
-            //let prev_image_index_to_load = (img_cache.current_index as isize + ((img_cache.cache_count as isize) + img_cache.current_offset) as isize) - 1;
-            let prev_image_index_to_load = (img_cache.current_index as isize + (-(img_cache.cache_count as isize) - img_cache.current_offset) as isize) - 1;
-            println!("LOADING PREV: prev_image_index_to_load: {}, current_index: {}, current_offset: {}",
-                prev_image_index_to_load, img_cache.current_index, img_cache.current_offset);
-
-            /*if img_cache.is_image_index_within_bounds(prev_image_index_to_load) {
-                // TODO: organize this better
-                if prev_image_index_to_load >= 0 &&
-                (current_index_before_render >= img_cache.cache_count &&
-                    current_index_before_render <= (img_cache.image_paths.len()-1) - img_cache.cache_count) {
-                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
-
-                } else if current_index_before_render > (img_cache.image_paths.len()-1) - img_cache.cache_count -1 {
-                    let next_image_index_to_load = current_index_before_render as isize - img_cache.cache_count as isize - 1;
-                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, next_image_index_to_load)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
-                }
-            }*/
-
-            println!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize))));
-
-            if img_cache.is_image_index_within_bounds(prev_image_index_to_load) && 
-                img_cache.is_next_image_index_in_queue(cache_index, prev_image_index_to_load) &&
-                !img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)))
-            {
-                //if next_image_index_to_load_usize >= img_cache.num_files {
-                //if prev_image_index_to_load > img_cache.cache_count as isize {
-                if prev_image_index_to_load >= 0 || img_cache.current_offset > 0 {
-                    img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
-                }
-            }
-
-            img_cache.print_queue();
-            
-            let command = load_image_by_operation(img_cache);
-            commands.push(command);
-        } else {
-            commands.push(Command::none())
         }
+
+        img_cache.print_queue();
+        
+        let command = load_image_by_operation(img_cache);
+        commands.push(command);
 
         commands
     }
@@ -365,9 +246,6 @@ impl Pane {
 
                 // Since the prev image is loaded and rendered, mark the is_prev_image_loaded flag
                 self.is_prev_image_loaded = true;
-
-                //println!("(img_cache.image_paths.len()-1) - img_cache.cache_count -1 = {}", (img_cache.image_paths.len()-1) - img_cache.cache_count -1);
-                //println!("img_cache.current_index <= img_cache.cache_count: {}", img_cache.current_index <= img_cache.cache_count);
 
                 if img_cache.current_index > 0 {
                     img_cache.current_index -= 1;

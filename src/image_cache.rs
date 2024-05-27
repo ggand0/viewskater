@@ -225,23 +225,10 @@ impl ImageCache {
     }
 
     pub fn get_next_image_to_load(&self) -> usize {
-        //let next_image_index = (self.current_index + self.cache_count ) as usize;
         let next_image_index = (self.current_index as isize + (self.cache_count as isize -  self.current_offset) as isize) as usize + 1;
-
-        /*if next_image_index < self.image_paths.len() {
-            next_image_index
-        } else {
-            self.image_paths.len()
-        }*/
         next_image_index
     }
     pub fn get_prev_image_to_load(&self) -> usize {
-        //let prev_image_index = (self.current_index + self.cache_count ) as usize;
-
-        //let prev_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset - img_cache.cache_count as isize - 1;
-        //let prev_image_index = (self.current_index as isize + (self.cache_count as isize +  self.current_offset) as isize) as usize - 1;
-
-        //let prev_image_index_to_load = (self.current_index as isize + ((self.cache_count as isize) + self.current_offset) as isize) - 1;
         let prev_image_index_to_load = (self.current_index as isize + (-(self.cache_count as isize) - self.current_offset) as isize) - 1;
         prev_image_index_to_load as usize
     }
@@ -1049,33 +1036,13 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
     if are_all_next_images_loaded(panes, is_slider_dual) {
         init_is_next_image_loaded(panes, pane_layout, is_slider_dual);
     }
-
     
     let mut commands = Vec::new();
     for (cache_index, pane) in panes.iter_mut().enumerate() {
         println!("move_right_all() - PROCESSING pane_index: {}, current_index: {}, current_offset: {}", cache_index, pane.img_cache.current_index, pane.img_cache.current_offset);
         pane.img_cache.print_cache();
-        //pane.img_cache.print_cache_index();
         pane.img_cache.print_queue();
         println!("==============================");
-
-        /*if !pane.is_cached_next() {
-            // If this pane already reaches the edge, mark is_next_image_loaded as true
-            if pane.img_cache.current_index == pane.img_cache.image_paths.len() - 1 {
-                pane.is_next_image_loaded = true;
-            }
-            continue;
-        }
-
-        if !pane.is_next_image_loaded {
-            commands.extend(pane.load_next_images(cache_index));
-
-            // Render the next one right away by setting a new handle (next image) to the current_image
-            // Avoid loading around the edges
-            // Only render if it's not been rendered yet
-            pane.set_next_image(pane_layout, is_slider_dual);
-            // current_index gets incremented here, offset gets incremented as well
-        }*/
         if pane.img_cache.out_of_order_images.len() > 0 {
             println!("move_right_all() - pane_index: {}, out_of_order_images.len(): {:?}", cache_index, pane.img_cache.out_of_order_images.len());
             continue;
@@ -1094,21 +1061,6 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16,
             println!("move_right_all() - pane_index: {}, setting next image...", cache_index);
             let did_render_happen: bool = pane.set_next_image(pane_layout, is_slider_dual);
 
-            /*//if did_render_happen && pane.img_cache.current_offset < 0 {
-            if did_render_happen {
-                // Update the current_image
-                //pane.current_image = iced::widget::image::Handle::from_memory(pane.img_cache.get_initial_image().unwrap().to_vec());
-                let loaded_image = pane.img_cache.get_initial_image().unwrap().to_vec();
-                let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
-                pane.current_image = handle;
-
-                // Just call shiftnext instead
-                //pane.img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
-                //let command = load_image_by_operation(pane.img_cache);
-                //commands.push(command)
-            }*/
-
-            //if did_render_happen && pane.img_cache.current_offset >= 0 {
             if did_render_happen {
                 println!("move_right_all() - pane_index: {}, render happened, current_index: {}, current_offset: {}",
                     cache_index, pane.img_cache.current_index, pane.img_cache.current_offset);

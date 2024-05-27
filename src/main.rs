@@ -229,13 +229,7 @@ impl DataViewer {
         // TODO: Refactor this function
         // This looks better but I get borrow checker err later
         //let mut img_cache = Some(&mut self.panes[c_index].img_cache);
-        
         let mut img_cache = None;
-        //let mut cache_index = 0;
-
-        //println!("IMAGE LOADED: c_index: {}", c_index);
-        ////self.mark_image_loaded(c_index);
-        //img_cache.replace(&mut self.panes[c_index].img_cache);
         img_cache.replace(&mut pane.img_cache);
         let cache_index = c_index;
 
@@ -252,27 +246,14 @@ impl DataViewer {
             // If not, add image_data to out_of_order_images
             // If it does not match and if the matching image is in out_of_order_images, load it
             // If it matches, load `image_data`
-            //let next_image_to_load = cache.get_next_cache_index(); // next_image_to_load: 7, target_index: 4308
             let target_image_to_load: isize = if operation_type == image_cache::LoadOperationType::LoadNext {
-                //let next_image_to_load = cache.get_next_image_to_load();
-                //println!("IMAGE LOADED: next_image_to_load: {}, target_index: {}", next_image_to_load, target_index);
                 cache.get_next_image_to_load() as isize
             } else if operation_type == image_cache::LoadOperationType::LoadPrevious {
-                //let prev_image_to_load = cache.get_prev_image_to_load();
-                //println!("IMAGE LOADED: prev_image_to_load: {}, target_index: {}", prev_image_to_load, target_index);
                 cache.get_prev_image_to_load() as isize
             } else {
                 -99
             };
             let target_image_to_load_usize = target_image_to_load as usize;
-
-            /*let is_matched = if operation_type == image_cache::LoadOperationType::LoadNext {
-                target_image_to_load == target_index + 1
-            } else if operation_type == image_cache::LoadOperationType::LoadPrevious {
-                target_image_to_load == target_index - 1
-            } else {
-                false
-            };*/
             let is_matched = target_image_to_load == target_index;
             
             
@@ -349,29 +330,6 @@ impl DataViewer {
                 cache_index, cache.current_offset);
         }
 
-
-        
-    
-        // TODO: run this block right after user interactions
-        // ref: https://stackoverflow.com/questions/63643732/variable-does-not-need-to-be-mutable-but-it-does
-        /*let mut pane = &mut self.panes[cache_index];
-        let loaded_image = pane.img_cache.get_current_image().unwrap().to_vec();
-        let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
-        pane.current_image = handle;
-
-    
-        // Update slider values => 
-        if self.is_slider_dual {
-            pane.slider_value = pane.img_cache.current_index as u16;
-        } else {
-            //debug!("self.slider_value: {}", self.slider_value);
-            if self.are_all_images_loaded() {
-                // Set the smaller index for slider value
-                let min_index = self.panes.iter().map(|pane| pane.img_cache.current_index).min().unwrap();
-                self.slider_value = min_index as u16;
-            }
-            //debug!("self.slider_value: {}", self.slider_value);
-        }*/
     }
 
 
@@ -469,21 +427,7 @@ impl DataViewer {
                 if self.skate_right {
                     println!("**********SKATE_LEFT: SWITCHED: skate_right was true**********");
                     self.skate_right = false;
-
-                    /*
-                    // Discard all queue items that are LoadNext or ShiftNext
-                    for pane in self.panes.iter_mut() {
-                        pane.img_cache.reset_load_next_queue_items();
-                    } */
-
-                    // If there's LoadNext or ShiftNext items in queue, wait it out
                 }
-                
-                // initialize panes' is_next_image_loaded
-                /*for pane in self.panes.iter_mut() {
-                    pane.is_next_image_loaded = false;
-                }*/
-
 
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
@@ -496,15 +440,7 @@ impl DataViewer {
                 } else {
                     println!("SKATE_LEFT: false");
                     self.skate_left = false;
-                    /*if self.are_all_images_cached_prev() {
-                        self.init_image_loaded(); // [false, false]
-                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
-                        return command;
-                    } else {
-                        println!("not are_all_images_cached()");
-                        //Command::none()
-                    }*/
-                    //self.init_image_loaded(); // [false, false]
+
                     let command = move_left_all(
                         &mut self.panes, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
@@ -538,15 +474,6 @@ impl DataViewer {
                     println!("SKATE_RIGHT: false");
                     self.skate_right = false;
 
-                    /*if self.are_all_images_cached() {
-                        self.init_image_loaded(); // [false, false]
-                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
-                        return command;
-                    } else {
-                        println!("not are_all_images_cached()");
-                        //Command::none()
-                    }*/
-                    //self.init_image_loaded(); // [false, false]
                     let command = move_right_all(
                         &mut self.panes, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
@@ -587,9 +514,6 @@ impl DataViewer {
                 for pane in self.panes.iter_mut() {
                     pane.img_cache.reset_image_load_queue();
                     pane.img_cache.reset_image_being_loaded_queue();
-
-                    //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
-                    //pane.img_cache.current_offset_accumulated = 0;
                 }
                 
             }
@@ -602,9 +526,6 @@ impl DataViewer {
                 for pane in self.panes.iter_mut() {
                     pane.img_cache.reset_image_load_queue();
                     pane.img_cache.reset_image_being_loaded_queue();
-
-                    //pane.img_cache.current_offset += pane.img_cache.current_offset_accumulated;
-                    //pane.img_cache.current_offset_accumulated = 0;
                 }
                 
             }
@@ -618,16 +539,6 @@ impl DataViewer {
 
     // UI
     fn toggle_slider_type(&mut self) {
-        /*match self.slider_type {
-            SliderType::Single => {
-                self.slider_type = SliderType::Dual;
-            },
-            SliderType::Dual => self.slider_type = SliderType::Single,
-        }*/
-        
-        // binary ver
-        //self.is_slider_dual = !self.is_slider_dual;
-
         // When toggling from dual to single, reset pane.is_selected to true
         if self.is_slider_dual {
             for pane in self.panes.iter_mut() {
@@ -933,32 +844,7 @@ impl Application for DataViewer {
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    /*if value == self.prev_slider_value + 1 {
-                        // Value changed by +1
-                        // Call a function or perform an action for this case
-                        //self.move_right_all()
-                        println!("slider - move_right_all");
-                        //let command = move_right_all(&mut self.panes);
-                        let command = move_right_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
-                        return command;
-    
-                    } else if value == self.prev_slider_value.saturating_sub(1) {
-                        // Value changed by -1
-                        // Call a different function or perform an action for this case
-                        println!("slider - move_left_all");
-                        //move_left_all(&mut self.panes)
-                        let command = move_left_all_new(&mut self.panes, &mut self.slider_value, self.is_slider_dual);
-                        return command;
-                    } else {
-                        // Value changed by more than 1 or it's the initial change
-                        // Call another function or handle this case differently
-                        //self.update_pos(pane_index, value as usize);
-                        println!("slider - update_pos");
-                        update_pos(&mut self.panes, pane_index, value as usize);
-                        //Command::none()
-                    }*/
                     println!("slider - update_pos");
-                    //update_pos(&mut self.panes, pane_index, value as usize);
                     return update_pos(&mut self.panes, pane_index as isize, value as usize);
 
                 } else {
@@ -968,34 +854,10 @@ impl Application for DataViewer {
                     let pane_index = pane_index as usize;
 
                     debug!("pane_index {} slider value: {}", pane_index, value);
-                    // self.prev_slider_values[pane_index] = self.slider_values[pane_index];
                     pane.prev_slider_value = pane.slider_value;
-                    // self.slider_values[pane_index] = value;
                     pane.slider_value = value;
                     debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
                     debug!("pane_index {} slider value: {}", pane_index, pane.slider_value);
-                    
-                    // if value == self.prev_slider_values[pane_index] + 1 {
-                    /*if value == pane.prev_slider_value + 1 {
-                        debug!("move_right_index");
-                        // Value changed by +1
-                        // Call a function or perform an action for this case
-                        //move_right_index(&mut self.panes, pane_index)
-                        return move_right_index_new(&mut self.panes, pane_index);
-
-                    // } else if value == self.prev_slider_values[pane_index].saturating_sub(1) {
-                    } else if value == pane.prev_slider_value.saturating_sub(1) {
-                        // Value changed by -1
-                        // Call a different function or perform an action for this case
-                        debug!("move_left_index");
-                        return move_left_index_new(&mut self.panes, pane_index);
-                    } else {
-                        // Value changed by more than 1 or it's the initial change
-                        // Call another function or handle this case differently
-                        debug!("update_pos");
-                        update_pos(&mut self.panes, pane_index_org, value as usize);
-                        //Command::none()
-                    }*/
 
                     return update_pos(&mut self.panes, pane_index as isize, value as usize);
                 }
