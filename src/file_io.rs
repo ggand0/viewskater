@@ -4,7 +4,14 @@ use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
 use std::ffi::OsStr;
 use rfd;
+use futures::future::join_all;
 use crate::image_cache::LoadOperation;
+use image::io::Reader as ImageReader;
+use image::{DynamicImage, ImageOutputFormat};
+use tokio::fs::File;
+use tokio::time::Instant;
+use futures::FutureExt;
+
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -36,6 +43,126 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
         Err(e) => Err(e.kind()),
     }
 }
+
+/*async fn load_image_async(path: &str) -> image::DynamicImage {
+    let start_time = Instant::now();
+    println!("Starting to load image from: {}", path);
+
+    let mut file = File::open(path).await.unwrap();
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).await.unwrap();
+    let image = image::load_from_memory(&buf).unwrap();
+
+    let duration = start_time.elapsed();
+    println!("Finished loading image from: {} in {:?}", path, duration);
+
+    image
+}
+
+pub async fn load_images_async(paths: Vec<&str>) -> Vec<image::DynamicImage> {
+    let futures = paths.into_iter().map(|path| load_image_async(path));
+    let results = join_all(futures).await;
+    results
+}*/
+
+
+
+// v1
+/*async fn load_image_async(path: &str) -> Result<DynamicImage, std::io::ErrorKind> {
+    let mut file = File::open(path).await.map_err(|e| e.kind())?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).await.map_err(|e| e.kind())?;
+    let image = image::load_from_memory(&buf).map_err(|_| std::io::ErrorKind::InvalidData)?;
+    Ok(image)
+}
+
+pub async fn load_images_async(paths: Vec<&str>, load_operation: LoadOperation) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
+    let futures = paths.into_iter().map(|path| load_image_async(path));
+    let results = join_all(futures).await;
+
+    let mut images = Vec::new();
+    for result in results {
+        match result {
+            Ok(image) => {
+                let mut buf = Vec::new();
+                image.write_to(&mut buf, ImageOutputFormat::Png).map_err(|_| std::io::ErrorKind::InvalidData)?;
+                images.push(Some(buf));
+            }
+            Err(_) => images.push(None),
+        }
+    }
+
+    Ok((images, Some(load_operation)))
+}*/
+
+// v2
+/*async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let mut file = File::open(path).await.map_err(|e| e.kind())?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).await.map_err(|e| e.kind())?;
+        let image = image::load_from_memory(&buf).map_err(|_| std::io::ErrorKind::InvalidData)?;
+
+        let mut img_buf = Vec::new();
+        image.write_to(&mut img_buf, ImageOutputFormat::Png).map_err(|_| std::io::ErrorKind::InvalidData)?;
+        Ok(Some(img_buf))
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn load_images_async(paths: Vec<Option<&str>>, load_operation: LoadOperation) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
+    let futures = paths.into_iter().map(load_image_async);
+    let results = join_all(futures).await;
+
+    let mut images = Vec::new();
+    for result in results {
+        match result {
+            Ok(image_data) => images.push(image_data),
+            Err(_) => images.push(None),
+        }
+    }
+
+    Ok((images, Some(load_operation)))
+}*/
+
+async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let mut file = File::open(path).await.map_err(|e| e.kind())?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).await.map_err(|e| e.kind())?;
+        let image = image::load_from_memory(&buf).map_err(|_| std::io::ErrorKind::InvalidData)?;
+
+        let mut img_buf = Vec::new();
+        image.write_to(&mut img_buf, ImageOutputFormat::Png).map_err(|_| std::io::ErrorKind::InvalidData)?;
+        Ok(Some(img_buf))
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadOperation) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
+    let futures = paths.into_iter().map(|path| {
+        let future = async move {
+            let path_str = path.as_deref();
+            load_image_async(path_str).await
+        };
+        future
+    });
+    let results = join_all(futures).await;
+
+    let mut images = Vec::new();
+    for result in results {
+        match result {
+            Ok(image_data) => images.push(image_data),
+            Err(_) => images.push(None),
+        }
+    }
+
+    Ok((images, Some(load_operation)))
+}
+
+
 
 pub async fn pick_folder() -> Result<String, Error> {
     // let handle = rfd::AsyncFileDialog::new().set_title("Open Folder with images").pick_folder().await
@@ -86,6 +213,10 @@ pub async fn pick_file() -> Result<String, Error> {
 
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
     Ok((None, Some(operation)))
+}
+
+pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
+    Ok((vec![None; count], Some(operation)))
 }
 
 pub fn is_file(path: &Path) -> bool {

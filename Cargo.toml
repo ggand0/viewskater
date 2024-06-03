@@ -18,6 +18,7 @@ cargo-bundle = "0.6.0"
 #natord = "1.0.9"
 alphanumeric-sort = "1.5.3"
 image = "0.23"
+futures = "0.3"
 
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
