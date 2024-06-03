@@ -35,7 +35,7 @@ use crate::menu::PaneLayout;
 use crate::split::split::{Axis, Split};
 use crate::viewer;
 
-use crate::image_cache::LoadOperation;
+use crate::image_cache::{ImageCache, LoadOperation};
 use iced::Command;
 use crate::image_cache::load_image_by_operation;
 
@@ -49,7 +49,7 @@ pub enum PaneMessage {
 pub struct Pane {
     pub directory_path: Option<String>,
     pub dir_loaded: bool,
-    pub img_cache: image_cache::ImageCache,
+    pub img_cache: ImageCache,
     pub current_image: iced::widget::image::Handle,
     pub is_next_image_loaded: bool, // whether the next image in cache is loaded
     pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
@@ -66,7 +66,7 @@ impl Default for Pane {
         Self {
             directory_path: None,
             dir_loaded: false,
-            img_cache: image_cache::ImageCache::default(),
+            img_cache: ImageCache::default(),
             current_image: iced::widget::image::Handle::from_memory(vec![]),
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
@@ -85,7 +85,7 @@ impl Pane {
         Self {
             directory_path: None,
             dir_loaded: false,
-            img_cache: image_cache::ImageCache::default(),
+            img_cache: ImageCache::default(),
             current_image: iced::widget::image::Handle::from_memory(vec![]),
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
@@ -100,23 +100,23 @@ impl Pane {
     pub fn reset_state(&mut self) {
         self.directory_path = None;
         self.dir_loaded = false;
-        self.img_cache = image_cache::ImageCache::default();
+        self.img_cache = ImageCache::default();
         self.current_image = iced::widget::image::Handle::from_memory(vec![]);
         self.is_next_image_loaded = true;
         self.slider_value = 0;
         self.prev_slider_value = 0;
     }
 
-    pub fn is_cached_next(&self) -> bool {
+    pub fn is_pane_cached_next(&self) -> bool {
         println!("is_selected: {}, dir_loaded: {}, is_next_image_loaded: {}, img_cache.is_next_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
             self.is_selected, self.dir_loaded, self.is_next_image_loaded, self.img_cache.is_next_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
         self.is_selected && self.dir_loaded && self.img_cache.is_next_cache_index_within_bounds() &&
             self.img_cache.loading_queue.len() < 3 && self.img_cache.being_loaded_queue.len() < 3
     }
+    
 
-    //pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<<DataViewer as iced::Application>::Message>>{
-    pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<Message>>{
+    /*pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<Message>>{
         // NOTE: BEFORE the call of this method, current_index and current_offset got incremented in set_next_image()
         let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
@@ -157,7 +157,7 @@ impl Pane {
         }
 
         commands
-    }
+    }*/
 
     pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
@@ -371,7 +371,7 @@ impl Pane {
         self.dir_loaded = true;
 
         // Instantiate a new image cache and load the initial images
-        let mut img_cache =  image_cache::ImageCache::new(
+        let mut img_cache =  ImageCache::new(
             _file_paths,
             //2,
             5,
@@ -433,6 +433,20 @@ impl Pane {
         };
         img
     }
+}
+
+pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> isize {
+    let mut max_dir_size = 0;
+    let mut max_dir_size_index = -1;
+    for (i, pane) in panes.iter().enumerate() {
+        if pane.dir_loaded {
+            if pane.img_cache.num_files > max_dir_size {
+                max_dir_size = pane.img_cache.num_files;
+                max_dir_size_index = i as isize;
+            }
+        }
+    }
+    max_dir_size_index
 }
 
 pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {

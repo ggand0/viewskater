@@ -36,9 +36,8 @@ extern crate log;
 
 mod image_cache;
 use crate::image_cache::ImageCache;
-use image_cache::LoadOperation;
-use image_cache::{move_right_all, move_left_all,
-    update_pos, load_remaining_images};
+use crate::image_cache::{LoadOperation, LoadOperationType};
+use crate::image_cache::{move_right_all, move_left_all, update_pos, load_remaining_images};
 mod file_io;
 use file_io::Error;
 
@@ -63,7 +62,7 @@ mod pane;
 use crate::pane::get_master_slider_value;
 mod ui_builder;
 mod viewer;
-//mod footer;
+mod loading_status;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -72,11 +71,6 @@ pub enum MenuItem {
     Close,
     Help
 }
-
-/*enum SliderType {
-    Single,
-    Dual,
-}*/
 
 
 // Define the application state
@@ -95,6 +89,7 @@ pub struct DataViewer {
     pane_layout: PaneLayout,
     last_opened_pane: isize,
     panes: Vec<pane::Pane>,             // Each pane has its own image cache
+    loading_status: loading_status::LoadingStatus, // global loading status for all panes
     skate_right: bool,
     skate_left: bool,
     update_counter: u32,
@@ -116,6 +111,7 @@ impl Default for DataViewer {
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
             panes: vec![pane::Pane::default()],
+            loading_status: loading_status::LoadingStatus::default(),
             skate_right: false,
             skate_left: false,
             update_counter: 0,
@@ -141,6 +137,7 @@ pub enum Message {
     // ImageLoaded(Result<(), std::io::ErrorKind>),// std::io::Error doesn't seem to be clonable
     // ImageLoaded(Result<Option<Vec<u8>>, std::io::ErrorKind>),
     ImageLoaded(Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind>),
+    ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     OnVerResize(u16),
     OnHorResize(u16),
     ResetSplit(u16),
@@ -163,6 +160,7 @@ impl DataViewer {
         for pane in self.panes.iter_mut() {
             pane.reset_state();
         }
+        self.loading_status = loading_status::LoadingStatus::default();
         self.skate_right = false;
         self.update_counter = 0;
     }
@@ -202,29 +200,169 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
     }
 
-    /*fn handle_next_out_of_order_image(&mut self, c_index: usize,
-        target_index: isize,
-        _img_cache: &mut Option<&mut ImageCache>,
-        image_data: Option<Vec<u8>>,
-        //load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<(), std::io::Error>>,
-        load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<bool, std::io::Error>>) {
 
+    /*fn handle_load_operation_all(
+            &mut self,
+            c_index: isize,
+            target_indices: Vec<isize>,
+            image_data: Vec<Option<Vec<u8>>>,
+            load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error>>,
+            operation_type: LoadOperationType,
+        ) {
+            // Get all image_cache from self.panes that have dir_loaded and is_selected
+            let mut img_caches: Vec<ImageCache> = Vec::new();
+            let _ = self.loading_status.being_loaded_queue.pop_front();
+            for (pane_index, pane) in self.panes.iter_mut().enumerate() {
+                if !pane.dir_loaded || !pane.is_selected {
+                    continue;
+                }
+
+                let cache = &mut pane.img_cache;
+                let target_index = target_indices[pane_index];
+
+                if cache.is_operation_blocking(operation_type.clone()) {
+                    // If the operation is blocking, skip the operation
+                    return;
+                }
+    
+                // Check if the next image that is supposed to be loaded matches target_index
+                // If not, add image_data to out_of_order_images
+                // If it does not match and if the matching image is in out_of_order_images, load it
+                // If it matches, load `image_data`
+                let target_image_to_load: isize = if operation_type == LoadOperationType::LoadNext {
+                    cache.get_next_image_to_load() as isize
+                } else if operation_type == LoadOperationType::LoadPrevious {
+                    cache.get_prev_image_to_load() as isize
+                } else {
+                    -99
+                };
+                let target_image_to_load_usize = target_image_to_load as usize;
+                let is_matched = target_image_to_load == target_index;
+                
+                
+                println!("IMAGE LOADED: target_image_to_load: {}, target_index: {}", target_image_to_load, target_index);
+                println!("load_operation: {:?}", operation_type);
+                // [1] LOADNEXT
+                // 1. If it matches, load `image_data`
+                let last_index = cache.cached_image_indices[cache.cached_image_indices.len() - 1];
+                if target_image_to_load == -99 || is_matched {
+                    // If somehow the LoadNext is called when current_offset is at the right end, skip loading
+                    // The same goes for LoadPrevious
+                    if (operation_type == LoadOperationType::LoadNext || operation_type == LoadOperationType::ShiftNext) && cache.current_offset > cache.cache_count as isize ||
+                    (operation_type == LoadOperationType::LoadPrevious || operation_type == LoadOperationType::ShiftPrevious) && cache.current_offset < -(cache.cache_count as isize) {
+                        return;
+                    }
+    
+                    match load_fn(cache, image_data[pane_index], target_index) {
+                        Ok(reload_current_image) => {
+                            if reload_current_image {
+                                let loaded_image = cache.get_initial_image().unwrap().to_vec();
+                                let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+                                pane.current_image = handle;
+                            }
+                        }
+                        Err(error) => {
+                            eprintln!("Error loading image: {}", error);
+                        }
+                    }
+                } else {
+                }
+    
+                println!("IMAGE LOADED: cache_index: {}, current_offset: {}",
+                    -1, cache.current_offset);
+            }
         }*/
-
+    
+        fn handle_load_operation_all(
+            &mut self,
+            c_index: isize,
+            target_indices: Vec<isize>,
+            image_data: Vec<Option<Vec<u8>>>,
+            load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error>>,
+            operation_type: LoadOperationType,
+        ) {
+            // Get all image_cache from self.panes that have dir_loaded and is_selected
+            let mut img_caches: Vec<ImageCache> = Vec::new();
+            let _ = self.loading_status.being_loaded_queue.pop_front();
+        
+            // Convert `load_fn` to an `Option` to allow calling `take()` to consume it
+            let mut load_fn = Some(load_fn);
+        
+            for (pane_index, pane) in self.panes.iter_mut().enumerate() {
+                if !pane.dir_loaded || !pane.is_selected {
+                    continue;
+                }
+        
+                let cache = &mut pane.img_cache;
+                let target_index = target_indices[pane_index];
+        
+                if cache.is_operation_blocking(operation_type.clone()) {
+                    // If the operation is blocking, skip the operation
+                    return;
+                }
+        
+                // Check if the next image that is supposed to be loaded matches target_index
+                // If not, add image_data to out_of_order_images
+                // If it does not match and if the matching image is in out_of_order_images, load it
+                // If it matches, load `image_data`
+                let target_image_to_load: isize = if operation_type == LoadOperationType::LoadNext {
+                    cache.get_next_image_to_load() as isize
+                } else if operation_type == LoadOperationType::LoadPrevious {
+                    cache.get_prev_image_to_load() as isize
+                } else {
+                    -99
+                };
+                let target_image_to_load_usize = target_image_to_load as usize;
+                let is_matched = target_image_to_load == target_index;
+                
+                println!("IMAGE LOADED: target_image_to_load: {}, target_index: {}", target_image_to_load, target_index);
+                println!("load_operation: {:?}", operation_type);
+                
+                // [1] LOADNEXT
+                // 1. If it matches, load `image_data`
+                let last_index = cache.cached_image_indices[cache.cached_image_indices.len() - 1];
+                if target_image_to_load == -99 || is_matched {
+                    // If somehow the LoadNext is called when current_offset is at the right end, skip loading
+                    // The same goes for LoadPrevious
+                    if (operation_type == LoadOperationType::LoadNext || operation_type == LoadOperationType::ShiftNext) && cache.current_offset > cache.cache_count as isize ||
+                    (operation_type == LoadOperationType::LoadPrevious || operation_type == LoadOperationType::ShiftPrevious) && cache.current_offset < -(cache.cache_count as isize) {
+                        return;
+                    }
+        
+                    if let Some(load_fn) = load_fn.take() {
+                        match load_fn(cache, image_data[pane_index].clone(), target_index) {
+                            Ok(reload_current_image) => {
+                                if reload_current_image {
+                                    let loaded_image = cache.get_initial_image().unwrap().to_vec();
+                                    let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+                                    pane.current_image = handle;
+                                }
+                            }
+                            Err(error) => {
+                                eprintln!("Error loading image: {}", error);
+                            }
+                        }
+                    }
+                }
+        
+                println!("IMAGE LOADED: cache_index: {}, current_offset: {}", -1, cache.current_offset);
+            }
+        }
+        
         
 
     fn handle_load_operation(
         &mut self,
-        c_index: usize,
+        c_index: isize,
         target_index: isize,
         _img_cache: &mut Option<&mut ImageCache>,
         image_data: Option<Vec<u8>>,
         //load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>) -> Result<bool, std::io::Error>>,
         load_fn: Box<dyn FnOnce(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error>>,
-        operation_type: image_cache::LoadOperationType,
+        operation_type: LoadOperationType,
     ) {
         //let mut pane = &mut self.panes[c_index];
-        let pane = &mut self.panes[c_index];
+        let pane = &mut self.panes[c_index as usize];
 
         // TODO: Refactor this function
         // This looks better but I get borrow checker err later
@@ -246,9 +384,9 @@ impl DataViewer {
             // If not, add image_data to out_of_order_images
             // If it does not match and if the matching image is in out_of_order_images, load it
             // If it matches, load `image_data`
-            let target_image_to_load: isize = if operation_type == image_cache::LoadOperationType::LoadNext {
+            let target_image_to_load: isize = if operation_type == LoadOperationType::LoadNext {
                 cache.get_next_image_to_load() as isize
-            } else if operation_type == image_cache::LoadOperationType::LoadPrevious {
+            } else if operation_type == LoadOperationType::LoadPrevious {
                 cache.get_prev_image_to_load() as isize
             } else {
                 -99
@@ -267,8 +405,8 @@ impl DataViewer {
             if target_image_to_load == -99 || is_matched {
                 // If somehow the LoadNext is called when current_offset is at the right end, skip loading
                 // The same goes for LoadPrevious
-                if (operation_type == image_cache::LoadOperationType::LoadNext || operation_type == image_cache::LoadOperationType::ShiftNext) && cache.current_offset > cache.cache_count as isize ||
-                (operation_type == image_cache::LoadOperationType::LoadPrevious || operation_type == image_cache::LoadOperationType::ShiftPrevious) && cache.current_offset < -(cache.cache_count as isize) {
+                if (operation_type == LoadOperationType::LoadNext || operation_type == LoadOperationType::ShiftNext) && cache.current_offset > cache.cache_count as isize ||
+                (operation_type == LoadOperationType::LoadPrevious || operation_type == LoadOperationType::ShiftPrevious) && cache.current_offset < -(cache.cache_count as isize) {
                     return;
                 }
 
@@ -475,7 +613,7 @@ impl DataViewer {
                     self.skate_right = false;
 
                     let command = move_right_all(
-                        &mut self.panes, &mut self.slider_value,
+                        &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
                     commands.push(command);
                 }
@@ -620,6 +758,7 @@ impl Application for DataViewer {
                 pane_layout: PaneLayout::SinglePane,
                 last_opened_pane: 0,
                 panes: vec![pane::Pane::default()],
+                loading_status: loading_status::LoadingStatus::default(),
                 skate_right: false,
                 skate_left: false,
                 update_counter: 0,
@@ -810,21 +949,27 @@ impl Application for DataViewer {
                         if let Some(op) = operation {
                             match op {
                                 // I've realized that _target_index is not used but we do need to check the index
-                                LoadOperation::LoadNext((c_index, target_index)) => {
+                                LoadOperation::LoadNext((c_index, target_indices)) => {
 
-                                    self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    //self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+
+                                    // convert target_indices to Vec<isize>
+                                    //let target_indices_isize = target_indices.iter().map(|&x| x as isize).collect::<Vec<isize>>();
+
+                                    //self.handle_load_operation_all(c_index  as isize, target_indices, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::LoadPrevious((c_index, target_index)) => {
-                                    self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    self.handle_load_operation(c_index as isize, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                 }
-                                LoadOperation::ShiftNext((c_index, target_index)) => {
-                                    self.handle_load_operation(c_index, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                LoadOperation::ShiftNext((c_index, target_indices)) => {
+                                    //self.handle_load_operation(c_index, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    //self.handle_load_operation_all(c_index as isize, target_indices, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::ShiftPrevious((c_index, target_index)) => {
-                                    self.handle_load_operation(c_index, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    self.handle_load_operation(c_index as isize, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::LoadPos((c_index, target_index, _pos)) => {
-                                    self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    self.handle_load_operation(c_index as isize, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                 }
                             }
                         }
@@ -836,6 +981,46 @@ impl Application for DataViewer {
                     }
                 }
 
+            }
+            Message::ImagesLoaded(result) => {
+                match result {
+                    Ok((image_data, operation)) => {
+                        if let Some(op) = operation {
+                            match op {
+                                // I've realized that _target_index is not used but we do need to check the index
+                                LoadOperation::LoadNext((c_index, ref target_indices)) => {
+
+                                    //self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+
+                                    // convert target_indices to Vec<isize>
+                                    let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
+
+                                    self.handle_load_operation_all(c_index  as isize, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                }
+                                LoadOperation::LoadPrevious((c_index, target_index)) => {
+                                    //self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+
+                                }
+                                LoadOperation::ShiftNext((c_index, ref target_indices)) => {
+                                    //self.handle_load_operation(c_index, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    self.handle_load_operation_all(c_index as isize, target_indices.clone(), image_data, op.load_fn(), op.operation_type());
+                                }
+                                LoadOperation::ShiftPrevious((c_index, target_index)) => {
+                                    //self.handle_load_operation(c_index as isize, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                }
+                                LoadOperation::LoadPos((c_index, target_index, _pos)) => {
+                                    //self.handle_load_operation(c_index as isize, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    
+                                }
+                            }
+                        }
+                        //Command::none()
+                    }
+                    Err(err) => {
+                        debug!("Image load failed: {:?}", err);
+                        //Command::none()
+                    }
+                }
             }
 
             Message::SliderChanged(pane_index, value) => {
@@ -934,21 +1119,17 @@ impl Application for DataViewer {
             
         }
 
-        //self.update_counter += 1;
-        //if self.skate_right && self.are_all_images_cached() {
         if self.skate_right {
             println!("SKATE_RIGHT CONTINUOUS: {}", self.skate_right);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
-            //self.init_image_loaded(); // [false, false]
             let command = move_right_all(
-                &mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                &mut self.panes, &mut self.loading_status, &mut self.slider_value, &self.pane_layout, self.is_slider_dual,self.last_opened_pane as usize);
             command
         } else if self.skate_left {
             println!("skae_left: {}", self.skate_left);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
-            //self.init_image_loaded(); // [false, false]
             let command = move_left_all(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
             println!("command: {:?}", command);
             command
