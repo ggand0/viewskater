@@ -30,6 +30,11 @@ impl LoadingStatus {
         
     }
 
+    pub fn print_queue(&self) {
+        println!("loading_queue: {:?}", self.loading_queue);
+        println!("being_loaded_queue: {:?}", self.being_loaded_queue);
+    }
+
     pub fn enqueue_image_load(&mut self, operation: LoadOperation) {
         // Push the operation into the loading queue
         self.loading_queue.push_back(operation);

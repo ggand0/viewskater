@@ -699,6 +699,7 @@ pub fn load_image_by_index(img_cache: &mut ImageCache, target_index: usize, oper
 // for v3 (async multiple panes)
 // NOTE: This function returns a command object but does not execute it
 pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewer as iced::Application>::Message> {
+    
     if !img_cache.loading_queue.is_empty() {
         if let Some(operation) = img_cache.loading_queue.pop_front() {
             img_cache.enqueue_image_being_loaded(operation.clone());
@@ -796,6 +797,7 @@ pub fn load_images_by_indices(panes: &mut Vec<Pane>, target_indices: Vec<isize>,
             }
         }
     }*/
+    println!("load_images_by_indices");
     let mut paths = Vec::new();
 
     for (pane_index, pane) in panes.iter_mut().enumerate() {
@@ -816,6 +818,10 @@ pub fn load_images_by_indices(panes: &mut Vec<Pane>, target_indices: Vec<isize>,
             }
         }
     }
+    // show all paths
+    for (i, path) in paths.iter().enumerate() {
+        println!("path[{}]: {:?}", i, path);
+    }
 
     if !paths.is_empty() {
         let images_loading_task = load_images_async(paths, operation);
@@ -825,8 +831,10 @@ pub fn load_images_by_indices(panes: &mut Vec<Pane>, target_indices: Vec<isize>,
     }
 }
 pub fn load_images_by_operation(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingStatus) -> Command<<DataViewer as iced::Application>::Message> {
+    println!("load_images_by_operation");
     if !loading_status.loading_queue.is_empty() {
         if let Some(operation) = loading_status.loading_queue.pop_front() {
+            println!("load_images_by_operation - operation: {:?}", operation);
             loading_status.enqueue_image_being_loaded(operation.clone());
             match operation {
                 LoadOperation::LoadNext((cache_index, ref target_indicies)) => {
@@ -1291,6 +1299,12 @@ pub fn load_next_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingS
             target_indices.push(target_index as isize);
         }
     }
+    // print out target_indices all with a for loop
+    for (i, target_index) in target_indices.iter().enumerate() {
+        println!("target_indices[{}]: {}", i, target_index);
+    }
+
+
 
     // v1: Get a representative pane to consider loading conditions; get the one with largest dir size
     let pane_with_largest_dir_size = get_pane_with_largest_dir_size(panes);
@@ -1340,13 +1354,15 @@ pub fn load_next_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingS
         let img_cache = &mut panes[pane_with_largest_dir_size as usize].img_cache;
 
         if next_image_index_to_load_usize >= num_files || current_offset < 0 {
-            img_cache.enqueue_image_load(LoadOperation::ShiftNext((-1, target_indices)));
+            //img_cache.enqueue_image_load(LoadOperation::ShiftNext((-1, target_indices)));
+            loading_status.enqueue_image_load(LoadOperation::ShiftNext((-1, target_indices)));
         } else {
-            img_cache.enqueue_image_load(load_next_operation);
+            //img_cache.enqueue_image_load(load_next_operation);
+            loading_status.enqueue_image_load(load_next_operation);
         }
 
         println!("LOADING QUEUED:");
-        img_cache.print_queue();
+        loading_status.print_queue();
     }
 
     let command = load_images_by_operation(panes, loading_status);
