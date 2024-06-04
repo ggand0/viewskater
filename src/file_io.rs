@@ -11,6 +11,7 @@ use image::{DynamicImage, ImageOutputFormat};
 use tokio::fs::File;
 use tokio::time::Instant;
 use futures::FutureExt;
+//use tokio::time::Instant;
 
 
 #[derive(Debug, Clone)]
@@ -126,7 +127,11 @@ pub async fn load_images_async(paths: Vec<Option<&str>>, load_operation: LoadOpe
     Ok((images, Some(load_operation)))
 }*/
 
-async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
+
+
+
+
+/*async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
     if let Some(path) = path {
         let mut file = File::open(path).await.map_err(|e| e.kind())?;
         let mut buf = Vec::new();
@@ -139,9 +144,29 @@ async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io
     } else {
         Ok(None)
     }
+}*/
+
+async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let file_path = Path::new(path);
+        match File::open(file_path).await {
+            Ok(mut file) => {
+                let mut buffer = Vec::new();
+                if file.read_to_end(&mut buffer).await.is_ok() {
+                    Ok(Some(buffer))
+                } else {
+                    Err(std::io::ErrorKind::InvalidData)
+                }
+            }
+            Err(e) => Err(e.kind()),
+        }
+    } else {
+        Ok(None)
+    }
 }
 
 pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadOperation) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
+    let start = Instant::now();
     let futures = paths.into_iter().map(|path| {
         let future = async move {
             let path_str = path.as_deref();
@@ -150,6 +175,8 @@ pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadO
         future
     });
     let results = join_all(futures).await;
+    let duration = start.elapsed();
+    println!("Finished loading images in {:?}", duration);
 
     let mut images = Vec::new();
     for result in results {
