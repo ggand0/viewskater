@@ -1416,6 +1416,8 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
         let did_render_happen: bool = set_next_image_all(panes, pane_layout, is_slider_dual);
 
         if did_render_happen {
+            loading_status.is_next_image_loaded = true;
+            
             println!("move_right_all() - loading next images...");
             commands.push(load_next_images_all(panes, loading_status, pane_layout, is_slider_dual));
         }
@@ -1490,10 +1492,23 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingSt
         }
 
         if did_render_happen {
+            loading_status.is_prev_image_loaded = true;
+
             println!("move_left_all() - loading prev images...");
             commands.push(load_prev_images_all(panes, loading_status, pane_layout, is_slider_dual));
         }
     }
+
+    /*
+    let did_new_render_happen = are_all_next_images_loaded(panes, is_slider_dual, loading_status);
+
+    // Update master slider when !is_slider_dual
+    if did_new_render_happen && !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
+        // Use the current_index of the pane with largest dir size
+        *slider_value = (get_master_slider_value(panes, pane_layout, is_slider_dual, last_opened_pane)) as u16;
+    }
+    */
+
     let did_new_render_happen = are_all_prev_images_loaded(panes, is_slider_dual, loading_status);
 
     // Update master slider when !is_slider_dual
