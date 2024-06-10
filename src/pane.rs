@@ -97,6 +97,15 @@ impl Pane {
         }
     }
 
+    /// One liner print function
+    pub fn print_state(&self) {
+        // Pane state
+        println!("directory_path: {:?}, dir_loaded: {:?}, current_image: {:?}, is_next_image_loaded: {:?}, is_prev_image_loaded: {:?}, slider_value: {:?}, prev_slider_value: {:?}",
+            self.directory_path, self.dir_loaded, self.current_image, self.is_next_image_loaded, self.is_prev_image_loaded, self.slider_value, self.prev_slider_value);
+        // Pane's image cache state
+        self.img_cache.print_state();
+    }
+
     pub fn reset_state(&mut self) {
         self.directory_path = None;
         self.dir_loaded = false;
@@ -112,6 +121,14 @@ impl Pane {
             self.is_selected, self.dir_loaded, self.is_next_image_loaded, self.img_cache.is_next_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
         self.is_selected && self.dir_loaded && self.img_cache.is_next_cache_index_within_bounds() &&
+            self.img_cache.loading_queue.len() < 3 && self.img_cache.being_loaded_queue.len() < 3
+    }
+
+    pub fn is_pane_cached_prev(&self) -> bool {
+        println!("is_selected: {}, dir_loaded: {}, is_prev_image_loaded: {}, img_cache.is_prev_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
+            self.is_selected, self.dir_loaded, self.is_prev_image_loaded, self.img_cache.is_prev_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
+
+        self.is_selected && self.dir_loaded && self.img_cache.is_prev_cache_index_within_bounds() &&
             self.img_cache.loading_queue.len() < 3 && self.img_cache.being_loaded_queue.len() < 3
     }
     
@@ -194,7 +211,7 @@ impl Pane {
         did_render_happen
     }
 
-    pub fn load_prev_images(&mut self, cache_index: usize) -> Vec<Command<Message>> {
+    /*pub fn load_prev_images(&mut self, cache_index: usize) -> Vec<Command<Message>> {
         let mut commands = Vec::new();
         let img_cache = &mut self.img_cache;
 
@@ -221,7 +238,7 @@ impl Pane {
         commands.push(command);
 
         commands
-    }
+    }*/
 
     pub fn set_prev_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
@@ -229,7 +246,8 @@ impl Pane {
 
         // Render the previous one right away
         // Avoid loading around the edges
-        if !self.is_prev_image_loaded && img_cache.cache_count as isize + img_cache.current_offset > 0 &&
+        ////if !self.is_prev_image_loaded && img_cache.cache_count as isize + img_cache.current_offset > 0 &&
+        if img_cache.cache_count as isize + img_cache.current_offset > 0 &&
             img_cache.is_some_at_index( (img_cache.cache_count as isize + img_cache.current_offset) as usize) {
 
             let next_image_index_to_render = img_cache.cache_count as isize + (img_cache.current_offset - 1);

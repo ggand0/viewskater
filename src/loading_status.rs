@@ -90,18 +90,18 @@ impl LoadingStatus {
         self.loading_queue.iter().all(|op| match op {
             //LoadOperation::LoadNext((_c_index, img_index)) => img_index != &next_index_usize,
             LoadOperation::LoadNext((_c_index, img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
             //LoadOperation::ShiftNext((_c_index, img_index)) => img_index != &next_image_index,
             LoadOperation::ShiftNext((_c_index, img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => img_index != &next_image_index,
+            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         }) && self.being_loaded_queue.iter().all(|op| match op {
             //LoadOperation::LoadNext((_c_index, img_index)) => img_index != &next_index_usize,
             LoadOperation::LoadNext((_c_index, img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
             //LoadOperation::ShiftNext((_c_index, img_index)) => img_index != &next_image_index,
             LoadOperation::ShiftNext((_c_index, img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => img_index != &next_image_index,
+            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         })
     }
@@ -111,14 +111,14 @@ impl LoadingStatus {
         let flag = self.loading_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
+            LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
+            LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => { false },
         }) && self.being_loaded_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
+            LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
+            LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => { false },
         });
         flag

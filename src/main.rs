@@ -506,7 +506,7 @@ impl DataViewer {
                     self.skate_left = false;
 
                     let command = move_left_all(
-                        &mut self.panes, &mut self.slider_value,
+                        &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
                     commands.push(command);
                 }
@@ -885,14 +885,14 @@ impl Application for DataViewer {
                                     //self.handle_load_operation_all(c_index  as isize, target_indices, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::LoadPrevious((c_index, target_index)) => {
-                                    self.handle_load_operation(c_index as isize, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    //self.handle_load_operation(c_index as isize, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::ShiftNext((c_index, target_indices)) => {
                                     //self.handle_load_operation(c_index, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                     //self.handle_load_operation_all(c_index as isize, target_indices, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::ShiftPrevious((c_index, target_index)) => {
-                                    self.handle_load_operation(c_index as isize, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    //self.handle_load_operation(c_index as isize, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::LoadPos((c_index, target_index, _pos)) => {
                                     self.handle_load_operation(c_index as isize, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
@@ -924,16 +924,19 @@ impl Application for DataViewer {
 
                                     self.handle_load_operation_all(c_index  as isize, target_indices_isize, image_data, op.load_fn(), op.operation_type());
                                 }
-                                LoadOperation::LoadPrevious((c_index, target_index)) => {
+                                LoadOperation::LoadPrevious((c_index, ref target_indices)) => {
                                     //self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
-
+                                    let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
+                                    self.handle_load_operation_all(c_index  as isize, target_indices_isize, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::ShiftNext((c_index, ref target_indices)) => {
                                     //self.handle_load_operation(c_index, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                     self.handle_load_operation_all(c_index as isize, target_indices.clone(), image_data, op.load_fn(), op.operation_type());
                                 }
-                                LoadOperation::ShiftPrevious((c_index, target_index)) => {
+                                LoadOperation::ShiftPrevious((c_index, ref target_indices)) => {
                                     //self.handle_load_operation(c_index as isize, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
+                                    let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
+                                    self.handle_load_operation_all(c_index  as isize, target_indices_isize, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::LoadPos((c_index, target_index, _pos)) => {
                                     //self.handle_load_operation(c_index as isize, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
@@ -1057,7 +1060,7 @@ impl Application for DataViewer {
             println!("skae_left: {}", self.skate_left);
             println!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
-            let command = move_left_all(&mut self.panes, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+            let command = move_left_all(&mut self.panes, &mut self.loading_status, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
             println!("command: {:?}", command);
             command
         } else {

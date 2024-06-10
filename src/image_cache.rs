@@ -41,8 +41,8 @@ use crate::pane::{Pane, get_pane_with_largest_dir_size};
 pub enum LoadOperation {
     LoadNext((isize, Vec<isize>)),       // Includes the target index
     ShiftNext((isize, Vec<isize>)),
-    LoadPrevious((usize, usize)),   // Includes the target index
-    ShiftPrevious((usize, isize)),
+    LoadPrevious((isize, Vec<isize>)),   // Includes the target index
+    ShiftPrevious((isize, Vec<isize>)),
     LoadPos((usize, usize, usize)), // Load an image at a specific position of the cache
 }
 
@@ -117,6 +117,10 @@ impl ImageCache {
             cached_image_indices: vec![-1; cache_count * 2 + 1],
             out_of_order_images: Vec::new(),
         })
+    }
+
+    pub fn print_state(&self) {
+        println!("current_index: {}, current_offset: {}", self.current_index, self.current_offset);
     }
 
     pub fn print_queue(&self) {
@@ -226,15 +230,15 @@ impl ImageCache {
         let next_index_usize = next_image_index as usize;
         self.loading_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
             LoadOperation::ShiftNext((_c_index, img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => img_index != &next_image_index,
+            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         }) && self.being_loaded_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, img_index)) => img_index != &next_index_usize,
+            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
             LoadOperation::ShiftNext((_c_index, img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => img_index != &next_image_index,
+            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         })
     }
@@ -242,14 +246,14 @@ impl ImageCache {
         let flag = self.loading_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
+            LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
+            LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => { false },
         }) && self.being_loaded_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
+            LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
+            LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => { false },
         });
         flag
@@ -675,7 +679,8 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
                     Command::none()
                 }
                 LoadOperation::LoadPrevious((_cache_index, target_index)) => {
-                    load_image_by_index(img_cache, target_index, operation)
+                    //load_image_by_index(img_cache, target_index, operation)
+                    Command::none()
                 }
                 LoadOperation::ShiftNext((_cache_index, _target_index)) => {
                     //let empty_async_block = empty_async_block(operation);
@@ -683,8 +688,9 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
                     Command::none()
                 }
                 LoadOperation::ShiftPrevious((_cache_index, _target_index)) => {
-                    let empty_async_block = empty_async_block(operation);
-                    Command::perform(empty_async_block, Message::ImageLoaded)
+                    //let empty_async_block = empty_async_block(operation);
+                    //Command::perform(empty_async_block, Message::ImageLoaded)
+                    Command::none()
                 }
                 LoadOperation::LoadPos((_cache_index, target_index, _pos)) => {
                     load_image_by_index(img_cache, target_index, operation)
@@ -742,19 +748,18 @@ pub fn load_images_by_operation(panes: &mut Vec<pane::Pane>, loading_status: &mu
                 LoadOperation::LoadNext((cache_index, ref target_indicies)) => {
                     load_images_by_indices(panes, target_indicies.clone(), operation)
                 }
-                LoadOperation::LoadPrevious((cache_index, target_index)) => {
-                    //load_images_by_indices(target_index, operation)
-                    Command::none()
+                LoadOperation::LoadPrevious((cache_index, ref target_indicies)) => {
+                    load_images_by_indices(panes, target_indicies.clone(), operation)
                 }
                 LoadOperation::ShiftNext((cache_index, ref _target_indicies)) => {
                     //let empty_async_block = empty_async_block(operation);
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
                     Command::perform(empty_async_block, Message::ImagesLoaded)
                 }
-                LoadOperation::ShiftPrevious((cache_index, _target_index)) => {
-                    //let empty_async_block = empty_async_block(operation);
-                    //Command::perform(empty_async_block, Message::ImageLoaded)
-                    Command::none()
+                LoadOperation::ShiftPrevious((cache_index,  ref _target_indicies)) => {
+                    let empty_async_block = empty_async_block_vec(operation, panes.len());
+                    Command::perform(empty_async_block, Message::ImagesLoaded)
+                    //Command::none()
                 }
                 LoadOperation::LoadPos((cache_index, target_index, _pos)) => {
                     //load_images_by_indices(target_index, operation)
@@ -1080,7 +1085,7 @@ fn init_is_prev_image_loaded(panes: &mut Vec<pane::Pane>, _pane_layout: &PaneLay
 
 
 // Function to check if all images are loaded for all panes
-fn are_all_next_images_loaded(panes: &mut Vec<pane::Pane>, is_slider_dual: bool) -> bool {
+/*fn are_all_next_images_loaded(panes: &mut Vec<pane::Pane>, is_slider_dual: bool) -> bool {
     if is_slider_dual {
         panes
         .iter()
@@ -1098,6 +1103,26 @@ fn are_all_prev_images_loaded(panes: &mut Vec<pane::Pane>, is_slider_dual: bool)
         .all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.is_prev_image_loaded))
     } else {
         panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.is_prev_image_loaded))
+    }
+}*/
+fn are_all_next_images_loaded(panes: &mut Vec<pane::Pane>, is_slider_dual: bool, loading_status: &mut LoadingStatus) -> bool {
+    if is_slider_dual {
+        panes
+        .iter()
+        .filter(|pane| pane.is_selected)  // Filter only selected panes
+        .all(|pane| !pane.dir_loaded || (pane.dir_loaded && loading_status.is_next_image_loaded))
+    } else {
+        panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && loading_status.is_next_image_loaded))
+    }
+}
+fn are_all_prev_images_loaded(panes: &mut Vec<pane::Pane>, is_slider_dual: bool, loading_status: &mut LoadingStatus) -> bool {
+    if is_slider_dual {
+        panes
+        .iter()
+        .filter(|pane| pane.is_selected)  // Filter only selected panes
+        .all(|pane| !pane.dir_loaded || (pane.dir_loaded && loading_status.is_prev_image_loaded))
+    } else {
+        panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && loading_status.is_prev_image_loaded))
     }
 }
 
@@ -1122,6 +1147,36 @@ pub fn set_next_image_all(panes: &mut Vec<pane::Pane>, _pane_layout: &PaneLayout
         let render_happened = pane.set_next_image(_pane_layout, is_slider_dual);
         if render_happened {
             did_render_happen = true;
+        }
+    }
+
+    did_render_happen
+}
+
+pub fn set_prev_image_all(panes: &mut Vec<pane::Pane>, _pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {//, loaindg_status: &mut LoadingStatus
+    let mut did_render_happen = false;
+    println!("set_prev_image_all0");
+
+    // First, check if the prev images of all panes are loaded.
+    // If not, assume they haven't been loaded yet and wait for the next render cycle.
+    // use if img_cache.is_some_at_index
+    for (cache_index, pane) in panes.iter_mut().enumerate() {
+        let img_cache = &mut pane.img_cache;
+        img_cache.print_cache();
+        if !img_cache.is_some_at_index(0) {
+            return false;
+        }
+    }
+    println!("set_prev_image_all1");
+
+    // Set the prev image for all panes
+    for (cache_index, pane) in panes.iter_mut().enumerate() {
+        let img_cache = &mut pane.img_cache;
+
+        let render_happened = pane.set_prev_image(_pane_layout, is_slider_dual);
+        if render_happened {
+            did_render_happen = true;
+            println!("set_prev_image_all2");
         }
     }
 
@@ -1211,6 +1266,95 @@ pub fn load_next_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingS
     command
 }
 
+pub fn load_prev_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingStatus, _pane_layout: &PaneLayout, is_slider_dual: bool) -> Command<Message> {
+    let mut commands: Vec<Command<Message>> = Vec::new();
+    let mut target_indices = Vec::new();
+
+    // Get target_indices of all panes
+    for (cache_index, pane) in panes.iter_mut().enumerate() {
+        let cache = &mut pane.img_cache;
+        if !pane.is_selected || !pane.dir_loaded {
+            target_indices.push(-1);
+        } else {
+            //let target_index = cache.current_index as isize - cache.current_offset + cache.cache_count as isize + 1;
+            // let prev_image_index_to_load = (img_cache.current_index as isize + (-(img_cache.cache_count as isize) - img_cache.current_offset) as isize) - 1;
+
+            //let target_index = cache.current_index as isize - cache.current_offset - cache.cache_count as isize - 1;
+            let target_index = (cache.current_index as isize + (-(cache.cache_count as isize) - cache.current_offset) as isize) - 1;
+
+            //assert!(target_index >= 0);
+            if target_index < 0 {
+                return Command::none();
+            }
+            target_indices.push(target_index as isize);
+        }
+    }
+    // print out target_indices all with a for loop
+    for (i, target_index) in target_indices.iter().enumerate() {
+        println!("target_indices[{}]: {}", i, target_index);
+    }
+
+    // v1: Get a representative pane to consider loading conditions; get the one with largest dir size
+    let pane_with_largest_dir_size = get_pane_with_largest_dir_size(panes);
+    if pane_with_largest_dir_size == -1 {
+        return Command::none();
+    }
+
+    let current_index_before_render;
+    let prev_image_indices_to_load;
+    let prev_image_index_to_load;
+    let is_image_index_within_bounds;
+    let num_files;
+    let current_offset;
+
+    {
+        let img_cache = &panes[pane_with_largest_dir_size as usize].img_cache;
+        current_index_before_render = img_cache.current_index + 1;
+
+        // If there are images to load and the current index is not the first index
+        if img_cache.image_paths.len() > 0 && current_index_before_render > 0 {
+            prev_image_indices_to_load = panes.iter().map(|pane| {
+                let cache = &pane.img_cache;
+                if !pane.is_selected || !pane.dir_loaded {
+                    -1
+                } else {
+                    cache.current_index as isize - cache.current_offset - cache.cache_count as isize - 1
+                }
+            }).collect::<Vec<_>>();
+
+            prev_image_index_to_load = prev_image_indices_to_load[pane_with_largest_dir_size as usize];
+            is_image_index_within_bounds = img_cache.is_image_index_within_bounds(prev_image_index_to_load);
+            num_files = img_cache.num_files;
+            current_offset = img_cache.current_offset;
+        } else {
+            return Command::none();
+        }
+    }
+
+    let prev_image_index_to_load_usize = prev_image_index_to_load as usize;
+    let load_prev_operation = LoadOperation::LoadPrevious((-1, prev_image_indices_to_load.clone()));
+    if is_image_index_within_bounds &&
+        loading_status.are_next_image_indices_in_queue(prev_image_indices_to_load.clone()) &&
+        !loading_status.is_blocking_loading_ops_in_queue(panes, load_prev_operation.clone())
+    {
+        let img_cache = &mut panes[pane_with_largest_dir_size as usize].img_cache;
+
+        if prev_image_index_to_load_usize < 0 || current_offset > 0 {
+            //img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((-1, target_indices)));
+            loading_status.enqueue_image_load(LoadOperation::ShiftPrevious((-1, target_indices)));
+        } else {
+            //img_cache.enqueue_image_load(load_prev_operation);
+            loading_status.enqueue_image_load(load_prev_operation);
+        }
+
+        println!("LOADING QUEUED:");
+        loading_status.print_queue();
+    }
+
+    let command = load_images_by_operation(panes, loading_status);
+    command
+}
+
 
 
 
@@ -1225,9 +1369,15 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
     pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> Command<Message> {
     println!("##########MOVE_RIGHT_ALL() CALL##########");
 
+    for pane in panes.iter_mut() {
+        pane.print_state();
+    }
+    println!("move_right_all() - loading_status.is_next_image_loaded: {:?}", loading_status.is_next_image_loaded);
+
     // If all panes have been rendered, start rendering the next image; reset is_next_image_loaded
-    if are_all_next_images_loaded(panes, is_slider_dual) {
+    if are_all_next_images_loaded(panes, is_slider_dual, loading_status) {
         init_is_next_image_loaded(panes, pane_layout, is_slider_dual);
+        loading_status.is_next_image_loaded = false;
     }
 
     let mut commands = Vec::new();
@@ -1256,6 +1406,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
         for (cache_index, pane) in panes.iter_mut().enumerate() {
             if pane.img_cache.current_index == pane.img_cache.image_paths.len() - 1 {
                 pane.is_next_image_loaded = true;
+                loading_status.is_next_image_loaded = true;
             }
         }
     }
@@ -1271,7 +1422,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
     }
 
     
-    let did_new_render_happen = are_all_next_images_loaded(panes, is_slider_dual);
+    let did_new_render_happen = are_all_next_images_loaded(panes, is_slider_dual, loading_status);
 
     // Update master slider when !is_slider_dual
     if did_new_render_happen && !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
@@ -1282,52 +1433,68 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
     Command::batch(commands)
 }
 
-pub fn move_left_all(panes: &mut Vec<pane::Pane>, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize
+pub fn are_panes_cached_prev(panes: &mut Vec<pane::Pane>, _pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
+    panes
+    .iter()
+    .filter(|pane| pane.is_selected)  // Filter only selected panes
+    .all(|pane| pane.is_pane_cached_prev())
+}
+
+pub fn move_left_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingStatus, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize
 ) -> Command<Message> {
-    let mut commands = Vec::new();
+    println!("##########MOVE_LEFT_ALL() CALL##########");
+    let mut commands: Vec<Command<Message>> = Vec::new();
+    
 
     // If all panes have been rendered, start rendering the next(prev) image; reset is_next_image_loaded
-    if are_all_prev_images_loaded(panes, is_slider_dual) {
+    if are_all_prev_images_loaded(panes, is_slider_dual, loading_status) {
+        println!("move_left_all() - all prev images loaded");
+        for pane in panes.iter_mut() {
+            pane.print_state();
+        }
         init_is_prev_image_loaded(panes, pane_layout, is_slider_dual);
+        loading_status.is_prev_image_loaded = false;
     }
 
-    for (cache_index, pane) in panes.iter_mut().enumerate() {
-        println!("move_left_all_new - cache_index: {}, is_pane_cached_prev: {}", cache_index, is_pane_cached_prev(pane.clone(), cache_index, is_slider_dual));
-        println!("current_index: {}, current_offset: {}", pane.img_cache.current_index, pane.img_cache.current_offset);
-        pane.img_cache.print_cache();
+    let mut commands = Vec::new();
+    println!("move_left_all() - PROCESSING");
+    if loading_status.out_of_order_images.len() > 0 {
+        println!("move_left_all() - out_of_order_images.len(): {:?}", loading_status.out_of_order_images.len());
+    }
 
-        if pane.img_cache.out_of_order_images.len() > 0 {
-            println!("move_left_all() - pane_index: {}, out_of_order_images.len(): {:?}", cache_index, pane.img_cache.out_of_order_images.len());
-            continue;
+    if !are_panes_cached_prev(panes, pane_layout, is_slider_dual) {
+        println!("move_left_all() - not all panes cached prev, skipping...");
+        // Since user tries to move the next image but image is not cached, enqueue loading the next image
+        // Only do this when the loading queues don't have "Prev" operations
+        if !loading_status.is_operation_in_queues(LoadOperationType::LoadPrevious) ||
+            !loading_status.is_operation_in_queues(LoadOperationType::ShiftPrevious)
+        {
+            commands.push(load_prev_images_all(panes, loading_status, pane_layout, is_slider_dual));
         }
-        
-        if !is_pane_cached_prev(pane.clone(), cache_index, is_slider_dual) {
-            // Since user tries to move the next image but image is not cached, enqueue loading the next image
-            // Only do this when the loading queues don't have "Prev" operations
-            if !pane.img_cache.is_operation_in_queues(LoadOperationType::LoadPrevious) ||
-                !pane.img_cache.is_operation_in_queues(LoadOperationType::ShiftPrevious)
-            {
-                commands.extend(pane.load_prev_images(cache_index));
-            }
-
-            // If this pane already reaches the edge, mark is_next_image_loaded as true
+        // If panes already reached the edge, mark their is_next_image_loaded as true
+        // We already picked the pane with the largest dir size, so we don't have to worry about the rest
+        for (cache_index, pane) in panes.iter_mut().enumerate() {
             if pane.img_cache.current_index == 0 {
                 pane.is_prev_image_loaded = true;
-            }
-            continue;
-        }
-        
-        if !pane.is_prev_image_loaded {
-            let did_render_happen: bool = pane.set_prev_image(pane_layout, is_slider_dual);
-
-            //if did_render_happen && pane.img_cache.current_offset <= 0 {
-            if did_render_happen {
-                commands.extend(pane.load_prev_images(cache_index));
+                loading_status.is_prev_image_loaded = true;
             }
         }
     }
 
-    let did_new_render_happen = are_all_prev_images_loaded(panes, is_slider_dual);
+    println!("move_left_all() - loading_status.is_prev_image_loaded: {}", loading_status.is_prev_image_loaded);
+    if !loading_status.is_prev_image_loaded {
+        println!("move_left_all() - setting prev image...");
+        let did_render_happen: bool = set_prev_image_all(panes, pane_layout, is_slider_dual);
+        for pane in panes.iter_mut() {
+            pane.print_state();
+        }
+
+        if did_render_happen {
+            println!("move_left_all() - loading prev images...");
+            commands.push(load_prev_images_all(panes, loading_status, pane_layout, is_slider_dual));
+        }
+    }
+    let did_new_render_happen = are_all_prev_images_loaded(panes, is_slider_dual, loading_status);
 
     // Update master slider when !is_slider_dual
     if did_new_render_happen && !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
