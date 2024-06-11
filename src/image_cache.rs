@@ -1284,9 +1284,12 @@ pub fn load_prev_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingS
 
             //assert!(target_index >= 0);
             if target_index < 0 {
-                return Command::none();
+                //return Command::none();
+                //let command = enqueue_image_load
+                target_indices.push(-2);
+            } else {
+                target_indices.push(target_index as isize);
             }
-            target_indices.push(target_index as isize);
         }
     }
     // print out target_indices all with a for loop
@@ -1301,8 +1304,8 @@ pub fn load_prev_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingS
     }
 
     let current_index_before_render;
-    let prev_image_indices_to_load;
-    let prev_image_index_to_load;
+    let prev_image_indices_to_load: Vec<isize>;
+    let prev_image_index_to_load: isize;
     let is_image_index_within_bounds;
     let num_files;
     let current_offset;
@@ -1313,7 +1316,7 @@ pub fn load_prev_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingS
 
         // If there are images to load and the current index is not the first index
         if img_cache.image_paths.len() > 0 && current_index_before_render > 0 {
-            prev_image_indices_to_load = panes.iter().map(|pane| {
+            /*prev_image_indices_to_load = panes.iter().map(|pane| {
                 let cache = &pane.img_cache;
                 if !pane.is_selected || !pane.dir_loaded {
                     -1
@@ -1322,7 +1325,8 @@ pub fn load_prev_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingS
                 }
             }).collect::<Vec<_>>();
 
-            prev_image_index_to_load = prev_image_indices_to_load[pane_with_largest_dir_size as usize];
+            prev_image_index_to_load = prev_image_indices_to_load[pane_with_largest_dir_size as usize];*/
+            prev_image_index_to_load = target_indices[pane_with_largest_dir_size as usize];
             is_image_index_within_bounds = img_cache.is_image_index_within_bounds(prev_image_index_to_load);
             num_files = img_cache.num_files;
             current_offset = img_cache.current_offset;
@@ -1332,14 +1336,18 @@ pub fn load_prev_images_all(panes: &mut Vec<Pane>, loading_status: &mut LoadingS
     }
 
     let prev_image_index_to_load_usize = prev_image_index_to_load as usize;
-    let load_prev_operation = LoadOperation::LoadPrevious((-1, prev_image_indices_to_load.clone()));
+    //let load_prev_operation = LoadOperation::LoadPrevious((-1, prev_image_indices_to_load.clone()));
+    let load_prev_operation = LoadOperation::LoadPrevious((-1, target_indices.clone()));
+
+
     if is_image_index_within_bounds &&
-        loading_status.are_next_image_indices_in_queue(prev_image_indices_to_load.clone()) &&
+        //loading_status.are_next_image_indices_in_queue(prev_image_indices_to_load.clone()) &&
+        loading_status.are_next_image_indices_in_queue(target_indices.clone()) &&
         !loading_status.is_blocking_loading_ops_in_queue(panes, load_prev_operation.clone())
     {
         let img_cache = &mut panes[pane_with_largest_dir_size as usize].img_cache;
 
-        if prev_image_index_to_load_usize < 0 || current_offset > 0 {
+        if prev_image_index_to_load < 0 || current_offset > 0 {
             //img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((-1, target_indices)));
             loading_status.enqueue_image_load(LoadOperation::ShiftPrevious((-1, target_indices)));
         } else {
@@ -1417,7 +1425,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
 
         if did_render_happen {
             loading_status.is_next_image_loaded = true;
-            
+
             println!("move_right_all() - loading next images...");
             commands.push(load_next_images_all(panes, loading_status, pane_layout, is_slider_dual));
         }
