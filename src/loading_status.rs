@@ -137,10 +137,11 @@ impl LoadingStatus {
     /// e.g. When current_offset==5 and LoadPrevious op is at the head of the queue(queue.front()),
     /// the new op is LoadNext: this would make current_offset==6 and cache would be out of bounds
     //pub fn is_blocking_loading_ops_in_queue(&self, img_caches: Vec<ImageCache>, loading_operation: LoadOperation) -> bool {
-        pub fn is_blocking_loading_ops_in_queue(&self, panes: &mut Vec<Pane>, loading_operation: LoadOperation) -> bool {
+    //pub fn is_blocking_loading_ops_in_queue(&self, panes: &mut Vec<Pane>, loading_operation: LoadOperation) -> bool {
+    pub fn is_blocking_loading_ops_in_queue(&self, panes: &mut Vec<&mut Pane>, loading_operation: LoadOperation) -> bool {
         for pane in panes {
             let img_cache = &pane.img_cache;
-            if img_cache.is_blocking_loading_ops_in_queue(loading_operation.clone()) {
+            if img_cache.is_blocking_loading_ops_in_queue(loading_operation.clone(), self) {
                 return true;
             }
         }

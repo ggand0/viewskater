@@ -202,7 +202,8 @@ impl DataViewer {
 
     fn handle_load_operation_all(
         &mut self,
-        c_index: isize,
+        //c_index: isize,
+        pane_indices: &Vec<usize>,
         target_indices: Vec<isize>,
         image_data: Vec<Option<Vec<u8>>>,
         mut load_fn: Box<dyn FnMut(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error>>,
@@ -211,8 +212,21 @@ impl DataViewer {
         // Get all image_cache from self.panes that have dir_loaded and is_selected
         let mut img_caches: Vec<ImageCache> = Vec::new();
         let _ = self.loading_status.being_loaded_queue.pop_front();
-    
+
+        // Collect the target panes based on pane_indices
+        let mut panes_to_load: Vec<&mut pane::Pane> = Vec::new();
         for (pane_index, pane) in self.panes.iter_mut().enumerate() {
+            if !pane.dir_loaded || !pane.is_selected {
+                continue;
+            }
+            if pane_indices.contains(&pane_index) {
+                panes_to_load.push(pane);
+            }
+        }
+
+        println!("panes_to_load.len(): {}", panes_to_load.len());
+    
+        for (pane_index, pane) in panes_to_load.iter_mut().enumerate() {
             if !pane.dir_loaded || !pane.is_selected {
                 continue;
             }
@@ -231,6 +245,8 @@ impl DataViewer {
             // If not, add image_data to out_of_order_images
             // If it does not match and if the matching image is in out_of_order_images, load it
             // If it matches, load `image_data`
+
+            // TODO: also consider ShiftNext?
             let target_image_to_load: isize = if operation_type == LoadOperationType::LoadNext {
                 cache.get_next_image_to_load() as isize
             } else if operation_type == LoadOperationType::LoadPrevious {
@@ -603,6 +619,9 @@ impl DataViewer {
 
     // UI
     fn toggle_slider_type(&mut self) {
+
+        
+
         // When toggling from dual to single, reset pane.is_selected to true
         if self.is_slider_dual {
             for pane in self.panes.iter_mut() {
@@ -616,7 +635,9 @@ impl DataViewer {
             // Set the slider value to the first pane's current index
             //self.slider_value = self.panes[0].img_cache.current_index as u16;
 
-            self.slider_value = get_master_slider_value(&self.panes, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+            ////self.slider_value = get_master_slider_value(&self.panes, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+            let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
+            self.slider_value = get_master_slider_value(&mut panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
         } else {
             // Single to dual slider: give slider.value to each slider
             for pane in self.panes.iter_mut() {
@@ -631,6 +652,7 @@ impl DataViewer {
 
     fn toggle_pane_layout(&mut self, pane_layout: PaneLayout) {
         
+        
         match pane_layout {
             PaneLayout::SinglePane => {
                 // self.img_caches.resize(1, Default::default()); // Resize to hold 1 image cache
@@ -640,9 +662,10 @@ impl DataViewer {
 
                 if self.pane_layout == PaneLayout::DualPane {
                     // Reset the slider value to the first pane's current index
-                    //self.slider_value = self.panes[0].img_cache.current_index as u16;
-                    self.slider_value = get_master_slider_value(
-                        &self.panes, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+                    
+                    ////self.slider_value = get_master_slider_value(&self.panes, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+                    let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
+                    self.slider_value = get_master_slider_value(&mut panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
                     self.panes[0].is_selected = true;
                 }
             }
@@ -914,29 +937,29 @@ impl Application for DataViewer {
                         if let Some(op) = operation {
                             match op {
                                 // I've realized that _target_index is not used but we do need to check the index
-                                LoadOperation::LoadNext((c_index, ref target_indices)) => {
-                                    println!("ImagesLoaded: LoadNext: c_index: {}, target_indices: {:?}", c_index, target_indices);
+                                LoadOperation::LoadNext((ref pane_indices, ref target_indices)) => {
+                                    //println!("ImagesLoaded: LoadNext: c_index: {}, target_indices: {:?}", c_index, target_indices);
 
                                     //self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
 
                                     // convert target_indices to Vec<isize>
                                     let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
 
-                                    self.handle_load_operation_all(c_index  as isize, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                    self.handle_load_operation_all(pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
                                 }
-                                LoadOperation::LoadPrevious((c_index, ref target_indices)) => {
+                                LoadOperation::LoadPrevious((ref pane_indices, ref target_indices)) => {
                                     //self.handle_load_operation(c_index, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                     let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
-                                    self.handle_load_operation_all(c_index  as isize, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                    self.handle_load_operation_all(pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
                                 }
-                                LoadOperation::ShiftNext((c_index, ref target_indices)) => {
+                                LoadOperation::ShiftNext((ref pane_indices, ref target_indices)) => {
                                     //self.handle_load_operation(c_index, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
-                                    self.handle_load_operation_all(c_index as isize, target_indices.clone(), image_data, op.load_fn(), op.operation_type());
+                                    self.handle_load_operation_all(pane_indices, target_indices.clone(), image_data, op.load_fn(), op.operation_type());
                                 }
-                                LoadOperation::ShiftPrevious((c_index, ref target_indices)) => {
+                                LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
                                     //self.handle_load_operation(c_index as isize, target_index, &mut img_cache, image_data, op.load_fn(), op.operation_type());
                                     let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
-                                    self.handle_load_operation_all(c_index  as isize, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                    self.handle_load_operation_all(pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
                                 }
                                 LoadOperation::LoadPos((c_index, target_index, _pos)) => {
                                     //self.handle_load_operation(c_index as isize, target_index as isize, &mut img_cache, image_data, op.load_fn(), op.operation_type());

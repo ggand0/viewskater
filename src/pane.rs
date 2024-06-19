@@ -120,6 +120,7 @@ impl Pane {
         println!("is_selected: {}, dir_loaded: {}, is_next_image_loaded: {}, img_cache.is_next_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
             self.is_selected, self.dir_loaded, self.is_next_image_loaded, self.img_cache.is_next_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
+        // May need to consider whether current_index reached the end of the list
         self.is_selected && self.dir_loaded && self.img_cache.is_next_cache_index_within_bounds() &&
             self.img_cache.loading_queue.len() < 3 && self.img_cache.being_loaded_queue.len() < 3
     }
@@ -179,6 +180,9 @@ impl Pane {
     pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
+
+        // Print out cache status
+        img_cache.print_cache();
 
         if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
         ) {
@@ -453,7 +457,8 @@ impl Pane {
     }
 }
 
-pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> isize {
+//pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> isize {
+pub fn get_pane_with_largest_dir_size(panes: &mut Vec<&mut Pane>) -> isize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = -1;
     for (i, pane) in panes.iter().enumerate() {
@@ -467,7 +472,8 @@ pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> isize {
     max_dir_size_index
 }
 
-pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
+//pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
+pub fn get_master_slider_value(panes: &[&mut Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = 0;
     //println!("get_master_slider_value - panes.len(): {:?}", panes.len());
@@ -482,10 +488,11 @@ pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slid
 
     // If the directory size of the pane of max_dir_size_index and the pane of last_opened_pane is the same, 
     // select (prioritize) the last_opened_pane's current_index
-    if pane_layout == &PaneLayout::DualPane && !is_slider_dual &&
+    // TODO: ADDRESS THIS PART
+    /*if pane_layout == &PaneLayout::DualPane && !is_slider_dual &&
         panes[max_dir_size_index].img_cache.num_files == panes[last_opened_pane].img_cache.num_files {
         return panes[last_opened_pane].img_cache.current_index as usize;
-    }
+    }*/
 
     let pane = &panes[max_dir_size_index];
     ////(pane.img_cache.current_index as usize) + pane.img_cache.current_offset as usize
