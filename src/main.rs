@@ -37,7 +37,9 @@ extern crate log;
 mod image_cache;
 use crate::image_cache::ImageCache;
 use crate::image_cache::{LoadOperation, LoadOperationType};
-use crate::image_cache::{move_right_all, move_left_all, update_pos, load_remaining_images};
+
+mod navigation;
+use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
 mod file_io;
 use file_io::Error;
 
