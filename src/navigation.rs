@@ -411,17 +411,21 @@ pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
 }
 
 pub fn load_next_images_all(panes: &mut Vec<&mut Pane>, pane_indices: Vec<usize>, loading_status: &mut LoadingStatus, _pane_layout: &PaneLayout, is_slider_dual: bool) -> Command<Message> {
-    let target_indices = get_target_indices(panes);
+    let target_indices = get_target_indices_for_next(panes);
 
     if target_indices.is_empty() {
         return Command::none();
     }
 
-    if let Some((next_image_indices_to_load, is_image_index_within_bounds)) = calculate_loading_conditions(panes) {
+    if let Some((next_image_indices_to_load, is_image_index_within_bounds, any_out_of_bounds)) = calculate_loading_conditions_for_next(panes, &target_indices) {
         let load_next_operation = LoadOperation::LoadNext((pane_indices.clone(), next_image_indices_to_load.clone()));
 
         if should_enqueue_loading(is_image_index_within_bounds, &loading_status, &next_image_indices_to_load, &load_next_operation, panes) {
-            enqueue_loading_operations(panes, pane_indices, target_indices, loading_status, load_next_operation);
+            if any_out_of_bounds {
+                loading_status.enqueue_image_load(LoadOperation::ShiftNext((pane_indices, target_indices)));
+            } else {
+                loading_status.enqueue_image_load(load_next_operation);
+            }
             return load_images_by_operation(panes, loading_status);
         }
     }
@@ -429,18 +433,22 @@ pub fn load_next_images_all(panes: &mut Vec<&mut Pane>, pane_indices: Vec<usize>
     Command::none()
 }
 
-fn calculate_loading_conditions(panes: &Vec<&mut Pane>) -> Option<(Vec<isize>, bool)> {
+fn calculate_loading_conditions_for_next(panes: &Vec<&mut Pane>, target_indices: &Vec<isize>) -> Option<(Vec<isize>, bool, bool)> {
     let mut next_image_indices_to_load = Vec::new();
     let mut is_image_index_within_bounds = false;
+    let mut any_out_of_bounds = false;
 
-    for pane in panes.iter() {
+    for (i, pane) in panes.iter().enumerate() {
         let img_cache = &pane.img_cache;
         let current_index_before_render = img_cache.current_index - 1;
 
         if img_cache.image_paths.len() > 0 && current_index_before_render < img_cache.image_paths.len() - 1 {
-            let next_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset + img_cache.cache_count as isize + 1;
+            let next_image_index_to_load = target_indices[i];
             if img_cache.is_image_index_within_bounds(next_image_index_to_load) {
                 is_image_index_within_bounds = true;
+            }
+            if next_image_index_to_load as usize >= img_cache.num_files || img_cache.current_offset < 0 {
+                any_out_of_bounds = true;
             }
             next_image_indices_to_load.push(next_image_index_to_load);
         } else {
@@ -451,27 +459,27 @@ fn calculate_loading_conditions(panes: &Vec<&mut Pane>) -> Option<(Vec<isize>, b
     if next_image_indices_to_load.is_empty() {
         None
     } else {
-        Some((next_image_indices_to_load, is_image_index_within_bounds))
+        Some((next_image_indices_to_load, is_image_index_within_bounds, any_out_of_bounds))
     }
 }
 
-/*fn should_enqueue_loading(is_image_index_within_bounds: bool, loading_status: &LoadingStatus, next_image_indices_to_load: &Vec<isize>, load_next_operation: &LoadOperation, panes: &mut Vec<&mut Pane>) -> bool {
+/*fn should_enqueue_loading(is_image_index_within_bounds: bool, loading_status: &LoadingStatus, image_indices_to_load: &Vec<isize>, load_operation: &LoadOperation, panes: &mut Vec<&mut Pane>) -> bool {
     is_image_index_within_bounds &&
-        loading_status.are_next_image_indices_in_queue(next_image_indices_to_load.clone()) &&
-        !loading_status.is_blocking_loading_ops_in_queue(panes, load_next_operation.clone())
+        loading_status.are_next_image_indices_in_queue(image_indices_to_load.clone()) &&
+        !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation.clone())
 }*/
 
-fn enqueue_loading_operations(
+fn enqueue_loading_operations_for_next(
     panes: &mut Vec<&mut Pane>,
     pane_indices: Vec<usize>,
     target_indices: Vec<isize>,
     loading_status: &mut LoadingStatus,
-    load_next_operation: LoadOperation
+    load_operation: LoadOperation
 ) {
-    loading_status.enqueue_image_load(load_next_operation);
+    loading_status.enqueue_image_load(load_operation);
 }
 
-fn get_target_indices(panes: &mut Vec<&mut Pane>) -> Vec<isize> {
+fn get_target_indices_for_next(panes: &mut Vec<&mut Pane>) -> Vec<isize> {
     panes.iter_mut().map(|pane| {
         if !pane.is_selected || !pane.dir_loaded {
             -1
