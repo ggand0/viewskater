@@ -1,4 +1,4 @@
-use crate::image_cache::{ImageCache, LoadOperation, LoadOperationType};
+use crate::image_cache::{LoadOperation, LoadOperationType};
 use std::collections::VecDeque;
 use crate::pane::Pane;
 
@@ -89,19 +89,19 @@ impl LoadingStatus {
         let next_index_usize = next_image_index as usize;
         self.loading_queue.iter().all(|op| match op {
             //LoadOperation::LoadNext((_c_index, img_index)) => img_index != &next_index_usize,
-            LoadOperation::LoadNext((_c_index, img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
+            LoadOperation::LoadNext((_c_index, _img_indices)) => { false },
+            LoadOperation::LoadPrevious((_c_index, _img_index)) => { false },
             //LoadOperation::ShiftNext((_c_index, img_index)) => img_index != &next_image_index,
-            LoadOperation::ShiftNext((_c_index, img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
+            LoadOperation::ShiftNext((_c_index, _img_indices)) => { false },
+            LoadOperation::ShiftPrevious((_c_index, _img_index)) => { false },
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         }) && self.being_loaded_queue.iter().all(|op| match op {
             //LoadOperation::LoadNext((_c_index, img_index)) => img_index != &next_index_usize,
-            LoadOperation::LoadNext((_c_index, img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
+            LoadOperation::LoadNext((_c_index, _img_indices)) => { false },
+            LoadOperation::LoadPrevious((_c_index, _img_index)) => { false },
             //LoadOperation::ShiftNext((_c_index, img_index)) => img_index != &next_image_index,
-            LoadOperation::ShiftNext((_c_index, img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
+            LoadOperation::ShiftNext((_c_index, _img_indices)) => { false },
+            LoadOperation::ShiftPrevious((_c_index, _img_index)) => { false },
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         })
     }
@@ -113,13 +113,13 @@ impl LoadingStatus {
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, img_index, _pos)) => { false },
+            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => { false },
         }) && self.being_loaded_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, img_index, _pos)) => { false },
+            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => { false },
         });
         flag
     }

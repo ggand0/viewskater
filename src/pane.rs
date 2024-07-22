@@ -15,7 +15,7 @@ use other_os::*;
 use macos::*;
 
 
-use crate::image_cache;
+//use crate::image_cache;
 use crate::ui_builder::get_footer;
 use crate::Message;
 use std::path::Path;
@@ -35,9 +35,7 @@ use crate::menu::PaneLayout;
 use crate::split::split::{Axis, Split};
 use crate::viewer;
 
-use crate::image_cache::{ImageCache, LoadOperation};
-use iced::Command;
-use crate::image_cache::load_image_by_operation;
+use crate::image_cache::ImageCache;
 
 
 // ref: https://github.com/iced-rs/iced/blob/master/examples/todos/src/main.rs
@@ -457,7 +455,7 @@ impl Pane {
     }
 }
 
-//pub fn get_pane_with_largest_dir_size(panes: &[Pane]) -> isize {
+#[allow(dead_code)]
 pub fn get_pane_with_largest_dir_size(panes: &mut Vec<&mut Pane>) -> isize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = -1;
@@ -472,11 +470,10 @@ pub fn get_pane_with_largest_dir_size(panes: &mut Vec<&mut Pane>) -> isize {
     max_dir_size_index
 }
 
-//pub fn get_master_slider_value(panes: &[Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
-pub fn get_master_slider_value(panes: &[&mut Pane], pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> usize {
+pub fn get_master_slider_value(panes: &[&mut Pane], 
+    _pane_layout: &PaneLayout, _is_slider_dual: bool, _last_opened_pane: usize) -> usize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = 0;
-    //println!("get_master_slider_value - panes.len(): {:?}", panes.len());
     for (i, pane) in panes.iter().enumerate() {
         if pane.dir_loaded {
             if pane.img_cache.num_files > max_dir_size {
@@ -489,6 +486,7 @@ pub fn get_master_slider_value(panes: &[&mut Pane], pane_layout: &PaneLayout, is
     // If the directory size of the pane of max_dir_size_index and the pane of last_opened_pane is the same, 
     // select (prioritize) the last_opened_pane's current_index
     // TODO: ADDRESS THIS PART
+    // TODO: Maybe implement a similar function specifically for getting the slider value on file open
     /*if pane_layout == &PaneLayout::DualPane && !is_slider_dual &&
         panes[max_dir_size_index].img_cache.num_files == panes[last_opened_pane].img_cache.num_files {
         return panes[last_opened_pane].img_cache.current_index as usize;

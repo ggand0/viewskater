@@ -19,7 +19,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::io;
 use std::collections::VecDeque;
-use std::io::{Error, ErrorKind};
 
 #[allow(unused_imports)]
 use std::time::Instant;
@@ -30,11 +29,9 @@ use log::{debug, info, warn, error};
 
 use crate::{DataViewer,Message};
 use iced::Command;
-use crate::file_io::{async_load_image, empty_async_block, load_images_async, empty_async_block_vec};
-use crate::pane::{self, get_master_slider_value};
-use crate::menu::PaneLayout;
+use crate::file_io::{async_load_image, load_images_async, empty_async_block_vec};
 use crate::loading_status::LoadingStatus;
-use crate::pane::{Pane, get_pane_with_largest_dir_size};   
+use crate::pane::Pane;   
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -229,16 +226,16 @@ impl ImageCache {
     pub fn is_next_image_index_in_queue(&self, _cache_index: usize, next_image_index: isize) -> bool {
         let next_index_usize = next_image_index as usize;
         self.loading_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
-            LoadOperation::ShiftNext((_c_index, img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
+            LoadOperation::LoadNext((_c_index, _img_indices)) => { false },
+            LoadOperation::LoadPrevious((_c_index, _img_index)) => { false },
+            LoadOperation::ShiftNext((_c_index, _img_indices)) => { false },
+            LoadOperation::ShiftPrevious((_c_index, _img_index)) => { false },
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         }) && self.being_loaded_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, img_index)) => { false },
-            LoadOperation::ShiftNext((_c_index, img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, img_index)) => { false },
+            LoadOperation::LoadNext((_c_index, _img_indices)) => { false },
+            LoadOperation::LoadPrevious((_c_index, _img_index)) => { false },
+            LoadOperation::ShiftNext((_c_index, _img_indices)) => { false },
+            LoadOperation::ShiftPrevious((_c_index, _img_index)) => { false },
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         })
     }
@@ -248,13 +245,13 @@ impl ImageCache {
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, img_index, _pos)) => { false },
+            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => { false },
         }) && self.being_loaded_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, img_index, _pos)) => { false },
+            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => { false },
         });
         flag
     }
@@ -336,7 +333,7 @@ impl ImageCache {
         // Using pattern matching to check if element is None
         if let Some(image_data_option) = self.cached_images.get(index) {
             //println!("is_some_at_index - index: {}, cached_images.len(): {}", index, self.cached_images.len());
-            if let Some(image_data) = image_data_option {
+            if let Some(_image_data) = image_data_option {
                 //println!("is_some_at_index - image_data.len(): {}", image_data.len());
                 true
             } else {
@@ -679,11 +676,11 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
             img_cache.enqueue_image_being_loaded(operation.clone());
             match operation {
                 // LoadNext => covewred in load_images_by_operation()
-                LoadOperation::LoadNext((_cache_index, target_index)) => {
+                LoadOperation::LoadNext((_cache_index, _target_index)) => {
                     //load_image_by_index(img_cache, target_index, operation)
                     Command::none()
                 }
-                LoadOperation::LoadPrevious((_cache_index, target_index)) => {
+                LoadOperation::LoadPrevious((_cache_index, _target_index)) => {
                     //load_image_by_index(img_cache, target_index, operation)
                     Command::none()
                 }
@@ -752,23 +749,23 @@ pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut
             println!("load_images_by_operation - operation: {:?}", operation);
             loading_status.enqueue_image_being_loaded(operation.clone());
             match operation {
-                LoadOperation::LoadNext((ref pane_indices, ref target_indicies)) => {
+                LoadOperation::LoadNext((ref _pane_indices, ref target_indicies)) => {
                     load_images_by_indices(panes, target_indicies.clone(), operation)
                 }
-                LoadOperation::LoadPrevious((ref pane_indices, ref target_indicies)) => {
+                LoadOperation::LoadPrevious((ref _pane_indices, ref target_indicies)) => {
                     load_images_by_indices(panes, target_indicies.clone(), operation)
                 }
-                LoadOperation::ShiftNext((ref pane_indices, ref _target_indicies)) => {
+                LoadOperation::ShiftNext((ref _pane_indices, ref _target_indicies)) => {
                     //let empty_async_block = empty_async_block(operation);
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
                     Command::perform(empty_async_block, Message::ImagesLoaded)
                 }
-                LoadOperation::ShiftPrevious((ref pane_indices,  ref _target_indicies)) => {
+                LoadOperation::ShiftPrevious((ref _pane_indices,  ref _target_indicies)) => {
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
                     Command::perform(empty_async_block, Message::ImagesLoaded)
                     //Command::none()
                 }
-                LoadOperation::LoadPos((ref pane_indices, target_index, _pos)) => {
+                LoadOperation::LoadPos((ref _pane_indices, _target_index, _pos)) => {
                     //load_images_by_indices(target_index, operation)
                     Command::none()
                 }
@@ -796,17 +793,5 @@ pub fn load_all_images_in_queue(img_cache: &mut ImageCache) -> Vec<Command<<Data
         vec![Command::none()]
     }
 }
-
-
-
-fn is_pane_cached_prev(pane: pane::Pane, _index: usize, _is_slider_dual: bool) -> bool {
-    //println!("pane.is_selected: {}, pane.dir_loaded: {}, pane.img_cache.is_prev_cache_index_within_bounds(): {}, pane.img_cache.loading_queue.len(): {}, pane.img_cache.being_loaded_queue.len(): {}",
-    //    pane.is_selected, pane.dir_loaded, pane.img_cache.is_prev_cache_index_within_bounds(), pane.img_cache.loading_queue.len(), pane.img_cache.being_loaded_queue.len());
-    pane.is_selected && pane.dir_loaded && pane.img_cache.is_prev_cache_index_within_bounds() &&
-        pane.img_cache.loading_queue.len() < 3 && pane.img_cache.being_loaded_queue.len() < 3
-}
-
-
-
 
 

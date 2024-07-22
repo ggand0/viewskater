@@ -6,12 +6,8 @@ use std::ffi::OsStr;
 use rfd;
 use futures::future::join_all;
 use crate::image_cache::LoadOperation;
-use image::io::Reader as ImageReader;
-use image::{DynamicImage, ImageOutputFormat};
 use tokio::fs::File;
 use tokio::time::Instant;
-use futures::FutureExt;
-//use tokio::time::Instant;
 
 
 #[derive(Debug, Clone)]
@@ -136,7 +132,7 @@ pub async fn pick_file() -> Result<String, Error> {
     }
 }
 
-
+#[allow(dead_code)]
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
     Ok((None, Some(operation)))
 }
