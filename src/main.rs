@@ -29,7 +29,9 @@ use iced::font::{self, Font};
 
 use std::path::PathBuf;
 #[allow(unused_imports)]
-use log::{debug, info, warn, error};
+use log::{Level, debug, info, warn, error};
+use env_logger::{fmt::Color, Builder};
+use std::io::Write;
 
 // #[macro_use]
 extern crate log;
@@ -58,7 +60,6 @@ mod toggler {
     pub mod toggler;
     pub mod style;
 }
-//use dualslider::dualslider::DualSlider;
 
 mod pane;
 use crate::pane::get_master_slider_value;
@@ -75,8 +76,6 @@ pub enum MenuItem {
 }
 
 
-// Define the application state
-// #[derive(Default)]
 pub struct DataViewer {
     title: String,
     directory_path: Option<String>,
@@ -85,7 +84,6 @@ pub struct DataViewer {
     prev_slider_value: u16,             // for master slider
     ver_divider_position: Option<u16>,
     hor_divider_position: Option<u16>,
-    //pane_count: usize,
     is_slider_dual: bool,
     show_footer: bool,
     pane_layout: PaneLayout,
@@ -107,7 +105,6 @@ impl Default for DataViewer {
             prev_slider_value: 0,
             ver_divider_position: None,
             hor_divider_position: None,
-            //pane_count: 2,
             is_slider_dual: false,
             show_footer: true,
             pane_layout: PaneLayout::SinglePane,
@@ -121,7 +118,6 @@ impl Default for DataViewer {
     }
 }
 
-// Define application messages
 #[derive(Debug, Clone)]
 pub enum Message {
     Debug(String),
@@ -136,8 +132,6 @@ pub enum Message {
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     Event(Event),
-    // ImageLoaded(Result<(), std::io::ErrorKind>),// std::io::Error doesn't seem to be clonable
-    // ImageLoaded(Result<Option<Vec<u8>>, std::io::ErrorKind>),
     ImageLoaded(Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     OnVerResize(u16),
@@ -1111,9 +1105,39 @@ static ICON: &[u8] = if cfg!(target_os = "windows") {
 
 
 fn main() -> iced::Result {
-    env_logger::init();
-    use iced::window;
+    //env_logger::init();
+    // Create a logger builder
+    /*Builder::new()
+        .format(|buf, record| {
+            writeln!(buf, "{}", record.args()) // Only print the log message
+        })
+        .init();*/
 
+    Builder::from_default_env()
+        .format(|buf, record| {
+            let level_color = match record.level() {
+                Level::Trace => Color::White,
+                Level::Debug => Color::Blue,
+                Level::Info => Color::Green,
+                Level::Warn => Color::Yellow,
+                Level::Error => Color::Red,
+            };
+            let mut level_style = buf.style();
+            level_style.set_color(level_color);
+
+            writeln!(buf,
+                //"{} {} {}", record.level(), record.target(), record.args()
+                "{} {}", level_style.value(record.level()), record.args()
+            )
+        })
+        .init();
+
+    info!("This is an info message.");
+    debug!("This is a debug message.");
+    error!("This is an error message.");
+
+
+    use iced::window;
     let icon = iced::window::icon::from_file_data(ICON, Option::None);
 
     match icon {
