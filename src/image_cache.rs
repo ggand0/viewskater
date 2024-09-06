@@ -117,12 +117,12 @@ impl ImageCache {
     }
 
     pub fn print_state(&self) {
-        println!("current_index: {}, current_offset: {}", self.current_index, self.current_offset);
+        debug!("current_index: {}, current_offset: {}", self.current_index, self.current_offset);
     }
 
     pub fn print_queue(&self) {
-        println!("loading_queue: {:?}", self.loading_queue);
-        println!("being_loaded_queue: {:?}", self.being_loaded_queue);
+        debug!("loading_queue: {:?}", self.loading_queue);
+        debug!("being_loaded_queue: {:?}", self.being_loaded_queue);
     }
 
     pub fn print_cache(&self) {
@@ -130,11 +130,11 @@ impl ImageCache {
             match image_option {
                 Some(image_bytes) => {
                     let image_info = format!("Image {} - Index {} - Size: {} bytes", index, self.cached_image_indices[index], image_bytes.len());
-                    println!("{}", image_info);
+                    debug!("{}", image_info);
                 }
                 None => {
                     let no_image_info = format!("No image at index {}", index);
-                    println!("{}", no_image_info);
+                    debug!("{}", no_image_info);
                 }
             }
         }
@@ -142,7 +142,7 @@ impl ImageCache {
     pub fn print_cache_index(&self) {
         for (index, cache_index) in self.cached_image_indices.iter().enumerate() {
             let index_info = format!("Index {} - Cache Index: {}", index, cache_index);
-            println!("{}", index_info);
+            debug!("{}", index_info);
         }
     }
 
@@ -288,7 +288,7 @@ impl ImageCache {
                     }
 
                     if let Some(op) = loading_status.being_loaded_queue.front() {
-                        println!("is_blocking_loading_ops_in_queue - op: {:?}", op);
+                        debug!("is_blocking_loading_ops_in_queue - op: {:?}", op);
                         match op {
                             LoadOperation::LoadPrevious((_c_index, _img_index)) => {
                                 return true;
@@ -332,9 +332,9 @@ impl ImageCache {
     pub fn is_some_at_index(&self, index: usize) -> bool {
         // Using pattern matching to check if element is None
         if let Some(image_data_option) = self.cached_images.get(index) {
-            //println!("is_some_at_index - index: {}, cached_images.len(): {}", index, self.cached_images.len());
+            //debug!("is_some_at_index - index: {}, cached_images.len(): {}", index, self.cached_images.len());
             if let Some(_image_data) = image_data_option {
-                //println!("is_some_at_index - image_data.len(): {}", image_data.len());
+                //debug!("is_some_at_index - image_data.len(): {}", image_data.len());
                 true
             } else {
                 false
@@ -347,7 +347,7 @@ impl ImageCache {
     pub fn is_cache_index_within_bounds(&self, index: usize) -> bool {
         //(0..self.cached_images.len()).contains(&index)
         if !(0..self.cached_images.len()).contains(&index) {
-            println!("is_cache_index_within_bounds - index: {}, cached_images.len(): {}", index, self.cached_images.len());
+            debug!("is_cache_index_within_bounds - index: {}, cached_images.len(): {}", index, self.cached_images.len());
             return false;
         }
 
@@ -367,7 +367,7 @@ impl ImageCache {
         if prev_image_index_to_render < 0 {
             return false;
         }
-        println!("is_prev_cache_index_within_bounds - prev_image_index_to_render: {}", prev_image_index_to_render);
+        debug!("is_prev_cache_index_within_bounds - prev_image_index_to_render: {}", prev_image_index_to_render);
         self.print_cache();
         self.is_cache_index_within_bounds(prev_image_index_to_render as usize)
     }
@@ -405,11 +405,11 @@ impl ImageCache {
             start_index = self.current_index as isize - self.cache_count as isize;
             end_index = self.current_index as isize + self.cache_count as isize + 1;
         }
-        println!("start_index: {}, end_index: {}, current_offset: {}", start_index, end_index, self.current_offset);
+        debug!("start_index: {}, end_index: {}, current_offset: {}", start_index, end_index, self.current_offset);
         
         // Fill in the cache array with image paths
         for (i, cache_index) in (start_index..end_index).enumerate() {
-            println!("i: {}, cache_index: {}", i, cache_index);
+            debug!("i: {}, cache_index: {}", i, cache_index);
             if cache_index < 0 {
                 continue;
             }
@@ -513,7 +513,7 @@ impl ImageCache {
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
-                //println!()
+                //debug!()
                 Err(io::Error::new(
                     io::ErrorKind::Other,
                     "Image data is not cached",
@@ -528,7 +528,7 @@ impl ImageCache {
     }
 
     pub fn get_image_by_index(&self, index: usize) -> Result<&Vec<u8>, io::Error> {
-        println!("current index: {}, cached_images.len(): {}", self.current_index, self.cached_images.len());
+        debug!("current index: {}, cached_images.len(): {}", self.current_index, self.cached_images.len());
         if let Some(image_data_option) = self.cached_images.get(index) {
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
@@ -563,7 +563,7 @@ impl ImageCache {
             // v2
             //self.current_offset += 1;
             //self.current_index += 1;
-            println!("move_next_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
+            debug!("move_next_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
             Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
@@ -587,7 +587,7 @@ impl ImageCache {
             //self.current_offset -= 1;
             //self.current_index -= 1;
 
-            println!("move_prev_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
+            debug!("move_prev_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
             Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
@@ -605,7 +605,7 @@ impl ImageCache {
         self.cached_image_indices.insert(0, prev_index);
 
         self.current_offset += 1;
-        println!("shift_cache_right - current_offset: {}", self.current_offset);
+        debug!("shift_cache_right - current_offset: {}", self.current_offset);
     }
 
     fn shift_cache_left(&mut self, new_image: Option<Vec<u8>>) {
@@ -636,7 +636,7 @@ impl ImageCache {
         */
 
         self.current_offset -= 1;
-        println!("shift_cache_left - current_offset: {}", self.current_offset);
+        debug!("shift_cache_left - current_offset: {}", self.current_offset);
     }
 
     fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize, image_index: isize) -> Result<bool, io::Error> {
@@ -708,7 +708,7 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
 
 //pub fn load_images_by_indices(panes: &mut Vec<Pane>, target_indices: Vec<isize>, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
 pub fn load_images_by_indices(panes: &mut Vec<&mut Pane>, target_indices: Vec<isize>, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
-    println!("load_images_by_indices");
+    debug!("load_images_by_indices");
     let mut paths = Vec::new();
 
     for (pane_index, pane) in panes.iter_mut().enumerate() {
@@ -731,7 +731,7 @@ pub fn load_images_by_indices(panes: &mut Vec<&mut Pane>, target_indices: Vec<is
     }
     // show all paths
     for (i, path) in paths.iter().enumerate() {
-        println!("path[{}]: {:?}", i, path);
+        debug!("path[{}]: {:?}", i, path);
     }
 
     if !paths.is_empty() {
@@ -743,10 +743,10 @@ pub fn load_images_by_indices(panes: &mut Vec<&mut Pane>, target_indices: Vec<is
 }
 
 pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Command<<DataViewer as iced::Application>::Message> {
-    println!("load_images_by_operation");
+    debug!("load_images_by_operation");
     if !loading_status.loading_queue.is_empty() {
         if let Some(operation) = loading_status.loading_queue.pop_front() {
-            println!("load_images_by_operation - operation: {:?}", operation);
+            debug!("load_images_by_operation - operation: {:?}", operation);
             loading_status.enqueue_image_being_loaded(operation.clone());
             match operation {
                 LoadOperation::LoadNext((ref _pane_indices, ref target_indicies)) => {

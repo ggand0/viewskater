@@ -40,6 +40,9 @@ use iced_widget::{
 use std::time::{Duration, Instant};
 use crate::split::style::StyleSheet;
 
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
+
 /// A split can divide the available space by half to display two different elements.
 /// It can split horizontally or vertically.
 ///
@@ -279,11 +282,11 @@ where
         viewport: &Rectangle,
     ) -> event::Status {
         // DEBUG
-        // println!("self.divider_position: {:?}", self.divider_position);
-        // println!("Cursor position: {:?}", cursor.position().unwrap_or_default());
+        // debug!("self.divider_position: {:?}", self.divider_position);
+        // debug!("Cursor position: {:?}", cursor.position().unwrap_or_default());
         for child_layout in layout.children() {
             let _bounds = child_layout.bounds();
-            // println!("cursor.is_over(bounds): {:?}", cursor.is_over(bounds));
+            // debug!("cursor.is_over(bounds): {:?}", cursor.is_over(bounds));
         }
 
         let split_state: &mut SplitState = state.state.downcast_mut();
@@ -370,21 +373,21 @@ where
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Event::Window(iced::window::Event::FileHovered(position)) => {
                 // Access the cursor position from the FileHovered event
-                // println!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
-                println!("FILEHOVER POSITION: {:?}", position);
+                // debug!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
+                debug!("FILEHOVER POSITION: {:?}", position);
             }
 
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Event::Window(iced::window::Event::FileDropped(paths, position)) => {
-                println!("FILEDROP POSITION: {:?}", position);
+                debug!("FILEDROP POSITION: {:?}", position);
                 let mut index = 0;
-                println!("layout children length: {}", layout.children().count());
+                debug!("layout children length: {}", layout.children().count());
                 for child_layout in layout.children() {
-                    // println!("Child layout: {:?}", child_layout);
+                    // debug!("Child layout: {:?}", child_layout);
                     let bounds = child_layout.bounds();
-                    println!("Child bounds: {:?}", bounds);
-                    // println!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
-                    // println!("Cursor position: {:?}", cursor.position());
+                    debug!("Child bounds: {:?}", bounds);
+                    // debug!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
+                    // debug!("Cursor position: {:?}", cursor.position());
 
                     // TODO: Implement enum LayoutItem { Pane, Divider }
                     /////// BEGIN HACK
@@ -395,7 +398,7 @@ where
                     /////// END HACK
             
                     let custom_position = Point::new(position.x as f32, position.y as f32);
-                    println!("custom_position, bounds.contains(custom_position: {:?}, {:?}", custom_position, bounds.contains(custom_position));
+                    debug!("custom_position, bounds.contains(custom_position: {:?}, {:?}", custom_position, bounds.contains(custom_position));
                     if bounds.contains(custom_position) {
                         shell.publish((self.on_drop)(index, paths[0].to_string_lossy().to_string()));
                         return event::Status::Captured;
@@ -408,20 +411,20 @@ where
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileHovered(_path)) => {
                 // Access the cursor position from the FileHovered event
-                println!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
+                debug!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
             }
     
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileDropped(path)) => {
                 let mut index = 0;
-                println!("layout children length: {}", layout.children().count());
+                debug!("layout children length: {}", layout.children().count());
                 for child_layout in layout.children() {
-                    println!("Child layout: {:?}", child_layout);
+                    debug!("Child layout: {:?}", child_layout);
                     let bounds = child_layout.bounds();
-                    println!("Child bounds: {:?}", bounds);
-                    println!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
+                    debug!("Child bounds: {:?}", bounds);
+                    debug!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
                     
-                    // println!("Cursor position: {:?}", cursor.position());
+                    // debug!("Cursor position: {:?}", cursor.position());
     
                     // TODO: Implement enum LayoutItem { Pane, Divider }
                     /////// BEGIN HACK
@@ -456,7 +459,7 @@ where
 
             Event::Mouse(mouse::Event::CursorMoved { position })
             | Event::Touch(touch::Event::FingerMoved { position, .. }) => {
-                // println!("CursorMoved Cursor position: {:?}", position);
+                // debug!("CursorMoved Cursor position: {:?}", position);
                 if split_state.dragging {
                     let position = match self.axis {
                         Axis::Horizontal => position.y,
@@ -513,7 +516,7 @@ where
             .bounds()
             .contains(cursor.position().unwrap_or_default())
         {
-            // println!("Mouse is over the divider, axis: {:?}", self.axis);
+            // debug!("Mouse is over the divider, axis: {:?}", self.axis);
             match self.axis {
                 Axis::Horizontal => mouse::Interaction::ResizingVertically,
                 Axis::Vertical => mouse::Interaction::ResizingHorizontally,
@@ -784,14 +787,14 @@ fn is_cursor_within_bounds<Message>(
     _pane_index: usize,
     _split_state: &mut SplitState,
 ) -> bool {
-    println!("Processing layout");
+    debug!("Processing layout");
     if let Some(container_layout) = layout.children().next() {
         if let Some(column_layout) = container_layout.children().next() {
             if let Some(image_layout) = column_layout.children().next() {
                 let image_bounds = image_layout.bounds();
 
                 if image_bounds.contains(cursor.position().unwrap_or_default()) {
-                    println!("Cursor is within the Image content bounds");
+                    debug!("Cursor is within the Image content bounds");
                     return true;
                 }
             }

@@ -289,7 +289,7 @@ pub fn build_ui(_app: &DataViewer) -> Container<Message> {
                 });
                 
                 if _app.panes[0].dir_loaded || _app.panes[1].dir_loaded {
-                    // println!("_app.slider_value at draw: {}", _app.slider_value);
+                    // debug!("_app.slider_value at draw: {}", _app.slider_value);
                 
                     let h_slider = DualSlider::new(
                         0..=(max_num_files - 1) as u16,

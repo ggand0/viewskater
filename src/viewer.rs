@@ -411,7 +411,7 @@ where
             height: image_size.height - 2.0 * padding,
         };
         let _padded_image_size = image_size - Size::new(2.0 * padding, 2.0 * padding);
-        //println!("image_size: {:?}, padded_image_size: {:?}", image_size, padded_image_size);
+        //debug!("image_size: {:?}, padded_image_size: {:?}", image_size, padded_image_size);
 
         let translation = {
             /*let image_top_left = Vector::new(

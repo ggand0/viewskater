@@ -37,6 +37,9 @@ use crate::viewer;
 
 use crate::image_cache::ImageCache;
 
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
+
 
 // ref: https://github.com/iced-rs/iced/blob/master/examples/todos/src/main.rs
 #[derive(Debug, Clone)]
@@ -98,7 +101,7 @@ impl Pane {
     /// One liner print function
     pub fn print_state(&self) {
         // Pane state
-        println!("directory_path: {:?}, dir_loaded: {:?}, current_image: {:?}, is_next_image_loaded: {:?}, is_prev_image_loaded: {:?}, slider_value: {:?}, prev_slider_value: {:?}",
+        debug!("directory_path: {:?}, dir_loaded: {:?}, current_image: {:?}, is_next_image_loaded: {:?}, is_prev_image_loaded: {:?}, slider_value: {:?}, prev_slider_value: {:?}",
             self.directory_path, self.dir_loaded, self.current_image, self.is_next_image_loaded, self.is_prev_image_loaded, self.slider_value, self.prev_slider_value);
         // Pane's image cache state
         self.img_cache.print_state();
@@ -115,7 +118,7 @@ impl Pane {
     }
 
     pub fn is_pane_cached_next(&self) -> bool {
-        println!("is_selected: {}, dir_loaded: {}, is_next_image_loaded: {}, img_cache.is_next_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
+        debug!("is_selected: {}, dir_loaded: {}, is_next_image_loaded: {}, img_cache.is_next_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
             self.is_selected, self.dir_loaded, self.is_next_image_loaded, self.img_cache.is_next_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
         // May need to consider whether current_index reached the end of the list
@@ -124,7 +127,7 @@ impl Pane {
     }
 
     pub fn is_pane_cached_prev(&self) -> bool {
-        println!("is_selected: {}, dir_loaded: {}, is_prev_image_loaded: {}, img_cache.is_prev_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
+        debug!("is_selected: {}, dir_loaded: {}, is_prev_image_loaded: {}, img_cache.is_prev_cache_index_within_bounds(): {}, img_cache.loading_queue.len(): {}, img_cache.being_loaded_queue.len(): {}",
             self.is_selected, self.dir_loaded, self.is_prev_image_loaded, self.img_cache.is_prev_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
         self.is_selected && self.dir_loaded && self.img_cache.is_prev_cache_index_within_bounds() &&
@@ -146,10 +149,10 @@ impl Pane {
             assert!(next_image_index_to_load >= 0);
             let next_image_index_to_load_usize = next_image_index_to_load as usize;
 
-            println!("LOADING NEXT: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
+            debug!("LOADING NEXT: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
                 next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
 
-            println!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize))));
+            debug!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize))));
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_load) &&
                 img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load) &&
@@ -163,7 +166,7 @@ impl Pane {
 
             }
 
-            println!("LOADING QUEUED:");
+            debug!("LOADING QUEUED:");
             img_cache.print_queue();
 
             let command = load_image_by_operation(img_cache);
@@ -185,7 +188,7 @@ impl Pane {
         if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
         ) {
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
-            println!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
+            debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
@@ -204,10 +207,10 @@ impl Pane {
             }
             
             if *pane_layout == PaneLayout::DualPane && is_slider_dual {
-                //println!("dualpane && is_slider_dual slider update");
+                //debug!("dualpane && is_slider_dual slider update");
                 self.slider_value = img_cache.current_index as u16;
             }
-            println!("END RENDERING NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
+            debug!("END RENDERING NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
         }
 
         did_render_happen
@@ -218,10 +221,10 @@ impl Pane {
         let img_cache = &mut self.img_cache;
 
         let prev_image_index_to_load = (img_cache.current_index as isize + (-(img_cache.cache_count as isize) - img_cache.current_offset) as isize) - 1;
-        println!("LOADING PREV: prev_image_index_to_load: {}, current_index: {}, current_offset: {}",
+        debug!("LOADING PREV: prev_image_index_to_load: {}, current_index: {}, current_offset: {}",
             prev_image_index_to_load, img_cache.current_index, img_cache.current_offset);
 
-        println!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize))));
+        debug!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize))));
 
         if img_cache.is_image_index_within_bounds(prev_image_index_to_load) && 
             img_cache.is_next_image_index_in_queue(cache_index, prev_image_index_to_load) &&
@@ -253,7 +256,7 @@ impl Pane {
             img_cache.is_some_at_index( (img_cache.cache_count as isize + img_cache.current_offset) as usize) {
 
             let next_image_index_to_render = img_cache.cache_count as isize + (img_cache.current_offset - 1);
-            println!("RENDERING PREV: next_image_index_to_render: {} current_index: {}, current_offset: {}",
+            debug!("RENDERING PREV: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_render) {
@@ -270,7 +273,7 @@ impl Pane {
                 if img_cache.current_index > 0 {
                     img_cache.current_index -= 1;
                 }
-                println!("RENDERED PREV: current_index: {}, current_offset: {}",
+                debug!("RENDERED PREV: current_index: {}, current_offset: {}",
                 img_cache.current_index, img_cache.current_offset);
 
                 if *pane_layout == PaneLayout::DualPane && is_slider_dual {
@@ -301,7 +304,7 @@ impl Pane {
         
         let mut is_dir_size_bigger: bool = false;
         if is_file(&path) {
-            println!("Dropped path is a file");
+            debug!("Dropped path is a file");
             let directory = path.parent().unwrap_or(Path::new(""));
             let dir = directory.to_string_lossy().to_string();
             self.directory_path = Some(dir);
@@ -317,17 +320,17 @@ impl Pane {
             } else {
                 _file_paths.len() >= *longest_file_length
             };
-            println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+            debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
 
             if let Some(file_index) = file_index {
-                println!("File index: {}", file_index);
+                debug!("File index: {}", file_index);
                 initial_index = file_index;
                 // self.current_image_index = file_index;
                 
                 // self.slider_values[pane_index] = file_index as u16;
                 // self.panes[pane_index].slider_value = file_index as u16;
                 let current_slider_value = file_index as u16;
-                println!("current_slider_value: {:?}", current_slider_value);
+                debug!("current_slider_value: {:?}", current_slider_value);
                 if is_slider_dual {
                     *slider_value = current_slider_value;
                     self.slider_value = current_slider_value;
@@ -336,14 +339,14 @@ impl Pane {
                         *slider_value = current_slider_value;
                     }
                 }
-                println!("slider_value: {:?}", *slider_value);
+                debug!("slider_value: {:?}", *slider_value);
             } else {
-                println!("File index not found");
+                debug!("File index not found");
                 return;
             }
 
         } else if is_directory(&path) {
-            println!("Dropped path is a directory");
+            debug!("Dropped path is a directory");
             self.directory_path = Some(path.to_string_lossy().to_string());
             //_file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
             _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
@@ -351,7 +354,7 @@ impl Pane {
             initial_index = 0;
             // Display the first 100 paths
             /*for path in _file_paths.iter().take(100) {
-                println!("{}", path.display());
+                debug!("{}", path.display());
             }*/
 
             
@@ -363,9 +366,9 @@ impl Pane {
             } else {
                 _file_paths.len() >= *longest_file_length
             };
-            println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+            debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
             let current_slider_value = 0;
-            println!("current_slider_value: {:?}", current_slider_value);
+            debug!("current_slider_value: {:?}", current_slider_value);
             if is_slider_dual {
                 *slider_value = current_slider_value;
                 self.slider_value = current_slider_value;
@@ -374,9 +377,9 @@ impl Pane {
                     *slider_value = current_slider_value;
                 }
             }
-            println!("slider_value: {:?}", *slider_value);
+            debug!("slider_value: {:?}", *slider_value);
         } else {
-            println!("Dropped path does not exist or cannot be accessed");
+            debug!("Dropped path does not exist or cannot be accessed");
             // Handle the case where the path does not exist or cannot be accessed
             return;
         }
@@ -385,7 +388,7 @@ impl Pane {
         //alphanumeric_sort::sort_path_slice(&mut _file_paths);
 
 
-        println!("File paths: {}", _file_paths.len());
+        debug!("File paths: {}", _file_paths.len());
         // self.dir_loaded[pane_index] = true;
         // self.panes[pane_index].dir_loaded = true;
         self.dir_loaded = true;
@@ -408,9 +411,9 @@ impl Pane {
 
         let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
         
-        println!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+        debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
         let current_slider_value = initial_index as u16;
-        println!("current_slider_value: {:?}", current_slider_value);
+        debug!("current_slider_value: {:?}", current_slider_value);
         if is_slider_dual {
             //*slider_value = current_slider_value;
         } else {
@@ -418,13 +421,13 @@ impl Pane {
                 *slider_value = current_slider_value;
             }
         }
-        println!("slider_value: {:?}", *slider_value);
+        debug!("slider_value: {:?}", *slider_value);
 
         let file_paths = img_cache.image_paths.clone();
-        println!("file_paths.len() {:?}", file_paths.len());
+        debug!("file_paths.len() {:?}", file_paths.len());
         
         self.img_cache = img_cache;
-        println!("img_cache.cache_count {:?}", self.img_cache.cache_count);
+        debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
         
         
     }

@@ -9,6 +9,9 @@ use crate::image_cache::LoadOperation;
 use tokio::fs::File;
 use tokio::time::Instant;
 
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
+
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -71,7 +74,7 @@ pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadO
     });
     let results = join_all(futures).await;
     let duration = start.elapsed();
-    println!("Finished loading images in {:?}", duration);
+    debug!("Finished loading images in {:?}", duration);
 
     let mut images = Vec::new();
     for result in results {

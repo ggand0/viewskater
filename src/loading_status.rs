@@ -1,6 +1,8 @@
 use crate::image_cache::{LoadOperation, LoadOperationType};
 use std::collections::VecDeque;
 use crate::pane::Pane;
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoadingStatus {
@@ -31,8 +33,8 @@ impl LoadingStatus {
     }
 
     pub fn print_queue(&self) {
-        println!("loading_queue: {:?}", self.loading_queue);
-        println!("being_loaded_queue: {:?}", self.being_loaded_queue);
+        debug!("loading_queue: {:?}", self.loading_queue);
+        debug!("being_loaded_queue: {:?}", self.being_loaded_queue);
     }
 
     pub fn enqueue_image_load(&mut self, operation: LoadOperation) {

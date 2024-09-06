@@ -34,6 +34,7 @@ use env_logger::{fmt::Color, Builder};
 use std::io::Write;
 
 // #[macro_use]
+
 extern crate log;
 
 mod image_cache;
@@ -163,14 +164,10 @@ impl DataViewer {
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
         debug!("last_opened_pane: {}", self.last_opened_pane);
-        //self.panes[pane_index].initialize_dir_path(path);
 
-        //let pane_slider_values = self.panes.iter().map(|pane| pane.slider_value).collect::<Vec<u16>>();
         let pane_file_lengths = self.panes.iter().map(|pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
         let pane = &mut self.panes[pane_index];
-        //self.panes[pane_index].initialize_dir_path(&self.panes, pane_index, path, self.is_slider_dual);
-        //pane.initialize_dir_path(panes, pane_index, path, self.is_slider_dual);
-        println!("pane_file_lengths: {:?}", pane_file_lengths);
+        debug!("pane_file_lengths: {:?}", pane_file_lengths);
         pane.initialize_dir_path(
             &self.pane_layout, &pane_file_lengths, pane_index, path, self.is_slider_dual, &mut self.slider_value);
 
@@ -220,14 +217,14 @@ impl DataViewer {
             }
         }
 
-        println!("panes_to_load.len(): {}", panes_to_load.len());
+        debug!("panes_to_load.len(): {}", panes_to_load.len());
     
         for (pane_index, pane) in panes_to_load.iter_mut().enumerate() {
             if !pane.dir_loaded || !pane.is_selected {
                 continue;
             }
     
-            println!("handle_load_operation_all0");
+            debug!("handle_load_operation_all0");
             let cache = &mut pane.img_cache;
             let target_index = target_indices[pane_index];
     
@@ -236,7 +233,7 @@ impl DataViewer {
                 return;
             }
     
-            println!("handle_load_operation_all1");
+            debug!("handle_load_operation_all1");
             // Check if the next image that is supposed to be loaded matches target_index
             // If not, add image_data to out_of_order_images
             // If it does not match and if the matching image is in out_of_order_images, load it
@@ -253,8 +250,8 @@ impl DataViewer {
             let _target_image_to_load_usize = target_image_to_load as usize;
             let is_matched = target_image_to_load == target_index;
     
-            println!("IMAGES LOADED: target_image_to_load: {}, target_index: {}", target_image_to_load, target_index);
-            println!("load_operation: {:?}", operation_type);
+            debug!("IMAGES LOADED: target_image_to_load: {}, target_index: {}", target_image_to_load, target_index);
+            debug!("load_operation: {:?}", operation_type);
     
             // [1] LOADNEXT
             // 1. If it matches, load `image_data`
@@ -267,7 +264,7 @@ impl DataViewer {
                     return;
                 }
     
-                println!("handle_load_operation_all2");
+                debug!("handle_load_operation_all2");
                 match load_fn(cache, image_data[pane_index].clone(), target_index) {
                     Ok(reload_current_image) => {
                         if reload_current_image {
@@ -277,12 +274,12 @@ impl DataViewer {
                         }
                     }
                     Err(error) => {
-                        eprintln!("Error loading image: {}", error);
+                        error!("Error loading image: {}", error);
                     }
                 }
             }
     
-            println!("IMAGES LOADED: cache_index: {}, current_offset: {}", -1, cache.current_offset);
+            debug!("IMAGES LOADED: cache_index: {}, current_offset: {}", -1, cache.current_offset);
         }
     }
     
@@ -333,8 +330,8 @@ impl DataViewer {
             let is_matched = target_image_to_load == target_index;
             
             
-            println!("IMAGE LOADED: target_image_to_load: {}, target_index: {}", target_image_to_load, target_index);
-            println!("load_operation: {:?}", operation_type);
+            debug!("IMAGE LOADED: target_image_to_load: {}, target_index: {}", target_image_to_load, target_index);
+            debug!("load_operation: {:?}", operation_type);
             // [1] LOADNEXT
             // 1. If it matches, load `image_data`
             ////if target_image_to_load == -1 || (target_image_to_load_usize == target_index as usize
@@ -357,14 +354,14 @@ impl DataViewer {
                         }
                     }
                     Err(error) => {
-                        eprintln!("Error loading image: {}", error);
+                        error!("Error loading image: {}", error);
                     }
                 }
             } else {
 
-                /*println!("$$$$$$$$$$IMAGE LOADED: OUT OF ORDER$$$$$$$$$$");
-                println!("target_image_to_load_usize: {}, target_index: {}", target_image_to_load_usize, target_index);
-                println!("cache.current_index: {}, cache.current_offset: {}", cache.current_index, cache.current_offset);
+                /*debug!("$$$$$$$$$$IMAGE LOADED: OUT OF ORDER$$$$$$$$$$");
+                debug!("target_image_to_load_usize: {}, target_index: {}", target_image_to_load_usize, target_index);
+                debug!("cache.current_index: {}, cache.current_offset: {}", cache.current_index, cache.current_offset);
                 
 
                 // 2-2. If it does not match and if the matching image is in out_of_order_images, load it
@@ -372,7 +369,7 @@ impl DataViewer {
                 //if let (image_index,image_data_buffered ) = cache.out_of_order_images.remove(next_image_to_load as usize) {
                 //if let Some((image_index,image_data_buffered )) = cache.pop_out_of_order_image(target_index as usize) {
                 if let Some(image_data_buffered ) = cache.pop_out_of_order_image(target_index as usize) {
-                    println!("IMAGE LOADED: OUT OF ORDER: out_of_order_images.pop: target_index: {}, target_image_to_load_usize: {}",
+                    debug!("IMAGE LOADED: OUT OF ORDER: out_of_order_images.pop: target_index: {}, target_image_to_load_usize: {}",
                         target_index, target_image_to_load_usize);
 
                     // Load the image from out_of_order_images
@@ -387,22 +384,22 @@ impl DataViewer {
                             }
                         }
                         Err(error) => {
-                            eprintln!("Error loading image: {}", error);
+                            edebug!("Error loading image: {}", error);
                         }
                     }
                 }
 
                 // 2-1. If it does not match, store image_data into out_of_order_images
                 if image_data.is_some() {
-                    println!("out_of_order_images.push: target_index: {}, target_image_to_load_usize: {}",
+                    debug!("out_of_order_images.push: target_index: {}, target_image_to_load_usize: {}",
                         target_index, target_image_to_load_usize);
                     cache.out_of_order_images.push((target_index as usize, image_data.unwrap()));
-                    println!("out_of_order_images len: {}", cache.out_of_order_images.len());
+                    debug!("out_of_order_images len: {}", cache.out_of_order_images.len());
                 }
-                println!("$$$$$$$$$$IMAGE LOADED: OUT OF ORDER$$$$$$$$$$");*/
+                debug!("$$$$$$$$$$IMAGE LOADED: OUT OF ORDER$$$$$$$$$$");*/
             }
 
-            println!("IMAGE LOADED: cache_index: {}, current_offset: {}",
+            debug!("IMAGE LOADED: cache_index: {}, current_offset: {}",
                 cache_index, cache.current_offset);
         }
 
@@ -413,26 +410,26 @@ impl DataViewer {
         let mut commands = Vec::new();
         match key_code {
             keyboard::KeyCode::Tab => {
-                println!("Tab pressed");
+                debug!("Tab pressed");
                 // toggle footer
                 self.toggle_footer();
             }
 
             keyboard::KeyCode::Space | keyboard::KeyCode::B => {
-                println!("Space pressed");
+                debug!("Space pressed");
                 // Toggle slider type
                 self.toggle_slider_type();
             }
 
             keyboard::KeyCode::Key1 => {
-                println!("Key1 pressed");
+                debug!("Key1 pressed");
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
                     self.panes[0].is_selected = !self.panes[0].is_selected;
                 }
 
                 // If alt+ctrl is pressed, load a file into pane0
                 if modifiers.alt() && modifiers.control() {
-                    println!("Key1 Shift pressed");
+                    debug!("Key1 Shift pressed");
                     commands.push(Command::perform(file_io::pick_file(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
@@ -440,7 +437,7 @@ impl DataViewer {
 
                 // If alt is pressed, load a folder into pane0
                 if modifiers.alt() {
-                    println!("Key1 Alt pressed");
+                    debug!("Key1 Alt pressed");
                     commands.push(Command::perform(file_io::pick_folder(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
@@ -452,7 +449,7 @@ impl DataViewer {
                 }
             }
             keyboard::KeyCode::Key2 => {
-                println!("Key2 pressed");
+                debug!("Key2 pressed");
                 if self.pane_layout == PaneLayout::DualPane {
                     if self.is_slider_dual {
                         self.panes[1].is_selected = !self.panes[1].is_selected;
@@ -460,7 +457,7 @@ impl DataViewer {
                 
                     // If alt+ctrl is pressed, load a file into pane1
                     if modifiers.alt() && modifiers.control() {
-                        println!("Key2 Shift pressed");
+                        debug!("Key2 Shift pressed");
                         commands.push(Command::perform(file_io::pick_file(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
@@ -468,7 +465,7 @@ impl DataViewer {
 
                     // If alt is pressed, load a folder into pane1
                     if modifiers.alt() {
-                        println!("Key2 Alt pressed");
+                        debug!("Key2 Alt pressed");
                         commands.push(Command::perform(file_io::pick_folder(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
@@ -477,7 +474,7 @@ impl DataViewer {
 
                 // If ctrl is pressed, switch to dual pane layout
                 if modifiers.control() {
-                    println!("Key2 Ctrl pressed");
+                    debug!("Key2 Ctrl pressed");
                     self.toggle_pane_layout(PaneLayout::DualPane);
                     //commands.push(Command::perform(Message::TogglePaneLayout(PaneLayout::DualPane), |_| Message::Nothing));
                 }
@@ -501,7 +498,7 @@ impl DataViewer {
 
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
                 if self.skate_right {
-                    println!("**********SKATE_LEFT: SWITCHED: skate_right was true**********");
+                    debug!("**********SKATE_LEFT: SWITCHED: skate_right was true**********");
                     self.skate_right = false;
                 }
 
@@ -511,10 +508,10 @@ impl DataViewer {
                 }
 
                 if modifiers.shift() {
-                    println!("SKATE_LEFT: true");
+                    debug!("SKATE_LEFT: true");
                     self.skate_left = true;
                 } else {
-                    println!("SKATE_LEFT: false");
+                    debug!("SKATE_LEFT: false");
                     self.skate_left = false;
 
                     let command = move_left_all(
@@ -527,7 +524,7 @@ impl DataViewer {
             keyboard::KeyCode::Right | keyboard::KeyCode::D => {
                 debug!("ArrowRight pressed");
                 if self.skate_left {
-                    println!("**********SKATE_RIGHT: SWITCHED: skate_left was true**********");
+                    debug!("**********SKATE_RIGHT: SWITCHED: skate_left was true**********");
                     self.skate_left = false;
 
                     // Discard all queue items that are LoadPrevious or ShiftPrevious
@@ -543,11 +540,11 @@ impl DataViewer {
                 }
 
                 if modifiers.shift() {
-                    println!("SKATE_RIGHT: true");
+                    debug!("SKATE_RIGHT: true");
                     self.skate_right = true;
                     
                 } else {
-                    println!("SKATE_RIGHT: false");
+                    debug!("SKATE_RIGHT: false");
                     self.skate_right = false;
 
                     let command = move_right_all(
@@ -569,20 +566,20 @@ impl DataViewer {
 
         match key_code {
             keyboard::KeyCode::Tab => {
-                println!("Tab released");
+                debug!("Tab released");
                 //Command::perform(async {}, |_| Message::TabReleased)
                 
             }
             keyboard::KeyCode::Enter | keyboard::KeyCode::NumpadEnter => {
-                println!("Enter key released!");
+                debug!("Enter key released!");
                 
             }
             keyboard::KeyCode::Escape => {
-                println!("Escape key released!");
+                debug!("Escape key released!");
                 
             }
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
-                println!("Left key or 'A' key released!");
+                debug!("Left key or 'A' key released!");
                 debug!("ArrowLeft released, SKATE_LEFT: false");
                 self.skate_left = false;
 
@@ -594,7 +591,7 @@ impl DataViewer {
                 
             }
             keyboard::KeyCode::Right | keyboard::KeyCode::D => {
-                println!("Right key or 'D' key released!");
+                debug!("Right key or 'D' key released!");
                 //Command::perform(async {}, |_| Message::RightReleased)
 
                 self.skate_right = false;
@@ -820,14 +817,14 @@ impl Application for DataViewer {
                 let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
 
                 /*if let Some(filename) = file_io::get_filename(img_path) {
-                    println!("Filename: {}", filename);
+                    debug!("Filename: {}", filename);
 
                     // to_owned vs to_string
                     return clipboard::write::<Message>(filename.to_string());
                 }*/
                 if let Some(img_path) = img_path {
                     if let Some(filename) = file_io::get_filename(&img_path) {
-                        println!("Filename: {}", filename);
+                        debug!("Filename: {}", filename);
                         return clipboard::write::<Message>(filename.to_string());
                     }
                 }
@@ -840,15 +837,15 @@ impl Application for DataViewer {
                 let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
 
                 /*if let Some(path) = img_path {
-                    println!("Path: {}", path);
+                    debug!("Path: {}", path);
                     return clipboard::write::<Message>(path.to_string());
                 }*/
                 if let Some(img_path) = img_path {
-                    //println!("Path: {}", img_path);
+                    //debug!("Path: {}", img_path);
                     //return clipboard::write::<Message>(img_path.to_string());
                     if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
                         let full_path = format!("{}/{}", dir_path, img_path);
-                        println!("Full Path: {}", full_path);
+                        debug!("Full Path: {}", full_path);
                         return clipboard::write::<Message>(full_path);
                     }
                 }
@@ -953,7 +950,7 @@ impl Application for DataViewer {
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    println!("slider - update_pos");
+                    debug!("slider - update_pos");
                     return update_pos(&mut self.panes, pane_index as isize, value as usize);
 
                 } else {
@@ -973,7 +970,7 @@ impl Application for DataViewer {
             }
 
             Message::SliderReleased(pane_index, value) => {
-                println!("slider released: pane_index: {}, value: {}", pane_index, value);
+                debug!("slider released: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
                     return load_remaining_images(
                         &mut self.panes, pane_index, value as usize);
@@ -1044,21 +1041,21 @@ impl Application for DataViewer {
         }
 
         if self.skate_right {
-            println!("SKATE_RIGHT CONTINUOUS: {}", self.skate_right);
-            println!("update_counter: {}", self.update_counter);
+            debug!("SKATE_RIGHT CONTINUOUS: {}", self.skate_right);
+            debug!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             let command = move_right_all(
                 &mut self.panes, &mut self.loading_status, &mut self.slider_value, &self.pane_layout, self.is_slider_dual,self.last_opened_pane as usize);
             command
         } else if self.skate_left {
-            println!("skae_left: {}", self.skate_left);
-            println!("update_counter: {}", self.update_counter);
+            debug!("skae_left: {}", self.skate_left);
+            debug!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             let command = move_left_all(&mut self.panes, &mut self.loading_status, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-            println!("command: {:?}", command);
+            debug!("command: {:?}", command);
             command
         } else {
-            println!("no skate mode detected");
+            debug!("no skate mode detected");
             let command = Command::none();
             command
         }
