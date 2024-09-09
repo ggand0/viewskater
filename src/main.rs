@@ -67,6 +67,8 @@ use crate::pane::get_master_slider_value;
 mod ui_builder;
 mod viewer;
 mod loading_status;
+mod loading;
+use loading::handle_load_operation_all;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -171,15 +173,6 @@ impl DataViewer {
         pane.initialize_dir_path(
             &self.pane_layout, &pane_file_lengths, pane_index, path, self.is_slider_dual, &mut self.slider_value);
 
-
-        // If the index is greater than or equal to the length of current_images,
-        // fill the vector with default handles until the desired index
-        // NOTE: I don't know if this is needed => turns out I do need it
-        let _default_handle = iced::widget::image::Handle::from_memory(vec![]);
-        /*if pane_index >= self.current_images.len() {
-            self.current_images.resize_with(pane_index + 1, || default_handle.clone());
-            self.img_caches.resize_with(pane_index + 1, || image_cache::ImageCache::default());
-        }*/
         debug!("pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
         if pane_index >= self.panes.len() {
             self.panes.resize_with(pane_index + 1, || pane::Pane::default());
@@ -187,13 +180,14 @@ impl DataViewer {
         }
 
         // Update the slider position
+        // NOTE: Do we need this?
         if !self.is_slider_dual && self.last_opened_pane == -1 {
             //self.slider_value = self.panes[pane_index].img_cache.current_index as u16;
         }
         self.last_opened_pane = pane_index as isize;
     }
 
-    fn handle_load_operation_all(
+    fn handle_load_operation_all_legacy(
         &mut self,
         //c_index: isize,
         pane_indices: &Vec<usize>,
@@ -612,9 +606,6 @@ impl DataViewer {
 
     // UI
     fn toggle_slider_type(&mut self) {
-
-        
-
         // When toggling from dual to single, reset pane.is_selected to true
         if self.is_slider_dual {
             for pane in self.panes.iter_mut() {
@@ -920,18 +911,56 @@ impl Application for DataViewer {
                                 LoadOperation::LoadNext((ref pane_indices, ref target_indices)) => {
                                     // convert target_indices to Vec<isize>
                                     let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
-                                    self.handle_load_operation_all(pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                    //self.handle_load_operation_all(
+                                    // pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+
+                                    loading::handle_load_operation_all(
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        pane_indices,
+                                        target_indices_isize,
+                                        image_data,
+                                        op.load_fn(),
+                                        op.operation_type(),
+                                    );
                                 }
                                 LoadOperation::LoadPrevious((ref pane_indices, ref target_indices)) => {
                                     let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
-                                    self.handle_load_operation_all(pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                    //self.handle_load_operation_all(pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                    loading::handle_load_operation_all(
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        pane_indices,
+                                        target_indices_isize,
+                                        image_data,
+                                        op.load_fn(),
+                                        op.operation_type(),
+                                    );
                                 }
                                 LoadOperation::ShiftNext((ref pane_indices, ref target_indices)) => {
-                                    self.handle_load_operation_all(pane_indices, target_indices.clone(), image_data, op.load_fn(), op.operation_type());
+                                    //self.handle_load_operation_all(pane_indices, target_indices.clone(), image_data, op.load_fn(), op.operation_type());
+                                    loading::handle_load_operation_all(
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        pane_indices,
+                                        target_indices.clone(),
+                                        image_data,
+                                        op.load_fn(),
+                                        op.operation_type(),
+                                    );
                                 }
                                 LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
                                     let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
-                                    self.handle_load_operation_all(pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                    //self.handle_load_operation_all(pane_indices, target_indices_isize, image_data, op.load_fn(), op.operation_type());
+                                    loading::handle_load_operation_all(
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        pane_indices,
+                                        target_indices_isize,
+                                        image_data,
+                                        op.load_fn(),
+                                        op.operation_type(),
+                                    );
                                 }
                                 LoadOperation::LoadPos((_c_index, _target_index, _pos)) => {
                                 }
