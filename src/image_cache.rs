@@ -345,12 +345,10 @@ impl ImageCache {
     }
 
     pub fn is_cache_index_within_bounds(&self, index: usize) -> bool {
-        //(0..self.cached_images.len()).contains(&index)
         if !(0..self.cached_images.len()).contains(&index) {
             debug!("is_cache_index_within_bounds - index: {}, cached_images.len(): {}", index, self.cached_images.len());
             return false;
         }
-
         self.is_some_at_index(index)
     }
 
@@ -416,7 +414,6 @@ impl ImageCache {
             if cache_index > self.image_paths.len() as isize - 1 {
                 break;
             }
-            // cache[i] = file_paths.get(cache_index).cloned();
             let image = self.load_image(cache_index as usize)?;
             self.cached_images[i] = Some(image);
             self.cached_image_indices[i] = cache_index;
@@ -462,7 +459,6 @@ impl ImageCache {
     }
     
     pub fn load_current_image(&mut self) -> Result<&Vec<u8>, io::Error> {
-        // let cache_index = self.current_index + self.cache_count;
         let cache_index = self.cache_count;
         debug!(" Current index: {}, Cache index: {}", self.current_index, cache_index);
         if self.cached_images[cache_index].is_none() {
@@ -513,7 +509,6 @@ impl ImageCache {
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
-                //debug!()
                 Err(io::Error::new(
                     io::ErrorKind::Other,
                     "Image data is not cached",
@@ -549,8 +544,11 @@ impl ImageCache {
 
     pub fn move_next(&mut self, new_image: Option<Vec<u8>>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
-            // Move to the next image
-            ////self.current_index += 1;
+            // I used to change the current_offset here, but now it's done right after the rendering.
+            // The same goes with other move functions.
+            //self.current_index += 1;
+            //self.current_offset += 1;
+
             self.shift_cache_left(new_image);
             Ok(false)
         } else {
@@ -560,9 +558,6 @@ impl ImageCache {
 
     pub fn move_next_edge(&mut self, _new_image: Option<Vec<u8>>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
-            // v2
-            //self.current_offset += 1;
-            //self.current_index += 1;
             debug!("move_next_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
             Ok(false)
         } else {
@@ -572,9 +567,7 @@ impl ImageCache {
 
     pub fn move_prev(&mut self, new_image: Option<Vec<u8>>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
-            //self.current_index -= 1; // shuold this be after the cache shift?
             self.shift_cache_right(new_image);
-            ////self.current_index -= 1;
             Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
@@ -583,10 +576,6 @@ impl ImageCache {
 
     pub fn move_prev_edge(&mut self, _new_image: Option<Vec<u8>>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
-            // v2
-            //self.current_offset -= 1;
-            //self.current_index -= 1;
-
             debug!("move_prev_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
             Ok(false)
         } else {
@@ -599,7 +588,7 @@ impl ImageCache {
         self.cached_images.pop(); // Remove the last (rightmost) element
         self.cached_images.insert(0, new_image);
 
-        // also update indices
+        // Update indices
         self.cached_image_indices.pop();
         let prev_index = self.cached_image_indices[0] - 1;
         self.cached_image_indices.insert(0, prev_index);
@@ -612,12 +601,11 @@ impl ImageCache {
         self.cached_images.remove(0);
         self.cached_images.push(new_image);
 
-        // also update indices
+        // Update indices
         self.cached_image_indices.remove(0);
         let next_index = self.cached_image_indices[self.cached_image_indices.len()-1] + 1;
         self.cached_image_indices.push(next_index);
 
-        //self.current_offset -= 1;
         // If we just decrement the offset, we can't address a case like this,
         // where the next image hasn't been loaded yet. 
         /*
@@ -644,7 +632,6 @@ impl ImageCache {
         self.cached_images[pos] = new_image;
         self.cached_image_indices[pos] = image_index as isize;
         self.print_cache();
-        //Ok(())
 
         if pos == self.cache_count {
             Ok(true)
@@ -670,28 +657,21 @@ pub fn load_image_by_index(img_cache: &mut ImageCache, target_index: usize, oper
 // for v3 (async multiple panes)
 // NOTE: This function returns a command object but does not execute it
 pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewer as iced::Application>::Message> {
-    
     if !img_cache.loading_queue.is_empty() {
         if let Some(operation) = img_cache.loading_queue.pop_front() {
             img_cache.enqueue_image_being_loaded(operation.clone());
             match operation {
-                // LoadNext => covewred in load_images_by_operation()
+                // NOTE: LoadNext and other operations are covered in load_images_by_operation()
                 LoadOperation::LoadNext((_cache_index, _target_index)) => {
-                    //load_image_by_index(img_cache, target_index, operation)
                     Command::none()
                 }
                 LoadOperation::LoadPrevious((_cache_index, _target_index)) => {
-                    //load_image_by_index(img_cache, target_index, operation)
                     Command::none()
                 }
                 LoadOperation::ShiftNext((_cache_index, _target_index)) => {
-                    //let empty_async_block = empty_async_block(operation);
-                    //Command::perform(empty_async_block, Message::ImageLoaded)
                     Command::none()
                 }
                 LoadOperation::ShiftPrevious((_cache_index, _target_index)) => {
-                    //let empty_async_block = empty_async_block(operation);
-                    //Command::perform(empty_async_block, Message::ImageLoaded)
                     Command::none()
                 }
                 LoadOperation::LoadPos((_cache_index, target_index, _pos)) => {
@@ -706,7 +686,7 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
     }
 }
 
-//pub fn load_images_by_indices(panes: &mut Vec<Pane>, target_indices: Vec<isize>, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
+
 pub fn load_images_by_indices(panes: &mut Vec<&mut Pane>, target_indices: Vec<isize>, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
     debug!("load_images_by_indices");
     let mut paths = Vec::new();
@@ -729,7 +709,8 @@ pub fn load_images_by_indices(panes: &mut Vec<&mut Pane>, target_indices: Vec<is
             }
         }
     }
-    // show all paths
+
+    // Debug print the paths
     for (i, path) in paths.iter().enumerate() {
         debug!("path[{}]: {:?}", i, path);
     }
@@ -756,17 +737,14 @@ pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut
                     load_images_by_indices(panes, target_indicies.clone(), operation)
                 }
                 LoadOperation::ShiftNext((ref _pane_indices, ref _target_indicies)) => {
-                    //let empty_async_block = empty_async_block(operation);
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
                     Command::perform(empty_async_block, Message::ImagesLoaded)
                 }
                 LoadOperation::ShiftPrevious((ref _pane_indices,  ref _target_indicies)) => {
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
                     Command::perform(empty_async_block, Message::ImagesLoaded)
-                    //Command::none()
                 }
                 LoadOperation::LoadPos((ref _pane_indices, _target_index, _pos)) => {
-                    //load_images_by_indices(target_index, operation)
                     Command::none()
                 }
             }
@@ -778,16 +756,12 @@ pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut
     }
 }
 
-
 pub fn load_all_images_in_queue(img_cache: &mut ImageCache) -> Vec<Command<<DataViewer as iced::Application>::Message>>{
     if !img_cache.loading_queue.is_empty() {
-        //let mut command = Command::none();
         let mut commands = Vec::new();
         for _ in 0..img_cache.loading_queue.len() {
-            //command = command.then(load_image_by_operation(img_cache));
             commands.push(load_image_by_operation(img_cache));
         }
-        //Command::batch(commands)
         commands
     } else {
         vec![Command::none()]

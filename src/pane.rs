@@ -100,10 +100,8 @@ impl Pane {
 
     /// One liner print function
     pub fn print_state(&self) {
-        // Pane state
         debug!("directory_path: {:?}, dir_loaded: {:?}, current_image: {:?}, is_next_image_loaded: {:?}, is_prev_image_loaded: {:?}, slider_value: {:?}, prev_slider_value: {:?}",
             self.directory_path, self.dir_loaded, self.current_image, self.is_next_image_loaded, self.is_prev_image_loaded, self.slider_value, self.prev_slider_value);
-        // Pane's image cache state
         self.img_cache.print_state();
     }
 
@@ -133,50 +131,6 @@ impl Pane {
         self.is_selected && self.dir_loaded && self.img_cache.is_prev_cache_index_within_bounds() &&
             self.img_cache.loading_queue.len() < 3 && self.img_cache.being_loaded_queue.len() < 3
     }
-    
-
-    /*pub fn load_next_images(&mut self, cache_index: usize) -> Vec<Command<Message>>{
-        // NOTE: BEFORE the call of this method, current_index and current_offset got incremented in set_next_image()
-        let mut commands = Vec::new();
-        let img_cache = &mut self.img_cache;
-        let current_index_before_render = img_cache.current_index - 1;
-
-        // If there are images to load and the current index is not the last index
-        if img_cache.image_paths.len() > 0 && current_index_before_render < img_cache.image_paths.len() - 1 {
-            // Get the index of next image: consider the current_offset
-            let next_image_index_to_load = img_cache.current_index as isize - img_cache.current_offset + img_cache.cache_count as isize + 1;
-
-            assert!(next_image_index_to_load >= 0);
-            let next_image_index_to_load_usize = next_image_index_to_load as usize;
-
-            debug!("LOADING NEXT: next_image_index_to_load: {}, current_index: {}, current_offset: {}",
-                next_image_index_to_load, img_cache.current_index, img_cache.current_offset);
-
-            debug!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize))));
-
-            if img_cache.is_image_index_within_bounds(next_image_index_to_load) &&
-                img_cache.is_next_image_index_in_queue(cache_index, next_image_index_to_load) &&
-                !img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)))
-            {
-                if next_image_index_to_load_usize >= img_cache.num_files || img_cache.current_offset < 0 {
-                    img_cache.enqueue_image_load(LoadOperation::ShiftNext((cache_index, next_image_index_to_load)));
-                } else {
-                    img_cache.enqueue_image_load(LoadOperation::LoadNext((cache_index, next_image_index_to_load_usize)));
-                }
-
-            }
-
-            debug!("LOADING QUEUED:");
-            img_cache.print_queue();
-
-            let command = load_image_by_operation(img_cache);
-            commands.push(command);
-        } else {
-            commands.push(Command::none())
-        }
-
-        commands
-    }*/
 
     pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
@@ -207,7 +161,6 @@ impl Pane {
             }
             
             if *pane_layout == PaneLayout::DualPane && is_slider_dual {
-                //debug!("dualpane && is_slider_dual slider update");
                 self.slider_value = img_cache.current_index as u16;
             }
             debug!("END RENDERING NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
@@ -215,35 +168,6 @@ impl Pane {
 
         did_render_happen
     }
-
-    /*pub fn load_prev_images(&mut self, cache_index: usize) -> Vec<Command<Message>> {
-        let mut commands = Vec::new();
-        let img_cache = &mut self.img_cache;
-
-        let prev_image_index_to_load = (img_cache.current_index as isize + (-(img_cache.cache_count as isize) - img_cache.current_offset) as isize) - 1;
-        debug!("LOADING PREV: prev_image_index_to_load: {}, current_index: {}, current_offset: {}",
-            prev_image_index_to_load, img_cache.current_index, img_cache.current_offset);
-
-        debug!("load_prev_images: is_blocking_loading_ops_in_queue: {}", img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize))));
-
-        if img_cache.is_image_index_within_bounds(prev_image_index_to_load) && 
-            img_cache.is_next_image_index_in_queue(cache_index, prev_image_index_to_load) &&
-            !img_cache.is_blocking_loading_ops_in_queue(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)))
-        {
-            if prev_image_index_to_load >= 0 || img_cache.current_offset > 0 {
-                img_cache.enqueue_image_load(LoadOperation::LoadPrevious((cache_index, prev_image_index_to_load as usize)));
-            } else {
-                img_cache.enqueue_image_load(LoadOperation::ShiftPrevious((cache_index, prev_image_index_to_load)));
-            }
-        }
-
-        img_cache.print_queue();
-        
-        let command = load_image_by_operation(img_cache);
-        commands.push(command);
-
-        commands
-    }*/
 
     pub fn set_prev_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
@@ -295,14 +219,8 @@ impl Pane {
         is_slider_dual: bool, slider_value: &mut u16) {
         let mut _file_paths: Vec<PathBuf> = Vec::new();
         let initial_index: usize;
-        
-        //let min_current_index_in_panes = panes.iter().map(|pane| pane.slider_value).min().unwrap_or(0);
-        //let min_current_index_in_panes = pane_slider_values.iter().min().unwrap_or(&0);
-        // min current slider value in panes except the current pane_index
-        //let min_current_index_in_panes = pane_slider_values.iter().enumerate().filter(|(i, _)| *i != pane_index).map(|(_, v)| v).min().unwrap_or(&0);
-        
-        
         let mut is_dir_size_bigger: bool = false;
+
         if is_file(&path) {
             debug!("Dropped path is a file");
             let directory = path.parent().unwrap_or(Path::new(""));
@@ -325,10 +243,6 @@ impl Pane {
             if let Some(file_index) = file_index {
                 debug!("File index: {}", file_index);
                 initial_index = file_index;
-                // self.current_image_index = file_index;
-                
-                // self.slider_values[pane_index] = file_index as u16;
-                // self.panes[pane_index].slider_value = file_index as u16;
                 let current_slider_value = file_index as u16;
                 debug!("current_slider_value: {:?}", current_slider_value);
                 if is_slider_dual {
@@ -350,7 +264,6 @@ impl Pane {
             self.directory_path = Some(path.to_string_lossy().to_string());
             //_file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
             _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
-            
             initial_index = 0;
             // Display the first 100 paths
             /*for path in _file_paths.iter().take(100) {
@@ -386,11 +299,7 @@ impl Pane {
 
         // Sort
         //alphanumeric_sort::sort_path_slice(&mut _file_paths);
-
-
         debug!("File paths: {}", _file_paths.len());
-        // self.dir_loaded[pane_index] = true;
-        // self.panes[pane_index].dir_loaded = true;
         self.dir_loaded = true;
 
         // Instantiate a new image cache and load the initial images
@@ -428,8 +337,6 @@ impl Pane {
         
         self.img_cache = img_cache;
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
-        
-        
     }
 
     #[allow(dead_code)]
@@ -496,8 +403,6 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     }*/
 
     let pane = &panes[max_dir_size_index];
-    ////(pane.img_cache.current_index as usize) + pane.img_cache.current_offset as usize
-    ////(pane.img_cache.current_index as isize + pane.img_cache.current_offset) as usize
     pane.img_cache.current_index as usize
 }
 
@@ -539,7 +444,6 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
         container(
             if show_footer { column![
                 // NOTE: Wrapping the image in a container messes up the layout
-                //Image::new(panes[0].current_image.clone())
                 viewer::Viewer::new(panes[0].current_image.clone())
                 .width(Length::Fill)
                 .height(Length::Fill),
@@ -553,7 +457,6 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
                 .width(Length::Fill),
                 get_footer(footer_texts[0].clone(), 0)
             ]} else { column![
-                //Image::new(panes[0].current_image.clone())
                 viewer::Viewer::new(panes[0].current_image.clone())
                 .width(Length::Fill)
                 .height(Length::Fill),

@@ -38,8 +38,7 @@ use std::io::Write;
 extern crate log;
 
 mod image_cache;
-use crate::image_cache::ImageCache;
-use crate::image_cache::{LoadOperation, LoadOperationType};
+use crate::image_cache::LoadOperation;
 
 mod navigation;
 use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
@@ -68,7 +67,6 @@ mod ui_builder;
 mod viewer;
 mod loading_status;
 mod loading;
-use loading::{handle_load_operation_all, handle_load_operation};
 
 
 #[derive(Debug, Clone, Copy)]
@@ -257,7 +255,6 @@ impl DataViewer {
                 if modifiers.control() {
                     debug!("Key2 Ctrl pressed");
                     self.toggle_pane_layout(PaneLayout::DualPane);
-                    //commands.push(Command::perform(Message::TogglePaneLayout(PaneLayout::DualPane), |_| Message::Nothing));
                 }
             }
 
@@ -314,7 +311,6 @@ impl DataViewer {
                     }
                 }
 
-
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
                     //Command::none();
@@ -323,7 +319,6 @@ impl DataViewer {
                 if modifiers.shift() {
                     debug!("SKATE_RIGHT: true");
                     self.skate_right = true;
-                    
                 } else {
                     debug!("SKATE_RIGHT: false");
                     self.skate_right = false;
@@ -373,8 +368,6 @@ impl DataViewer {
             }
             keyboard::KeyCode::Right | keyboard::KeyCode::D => {
                 debug!("Right key or 'D' key released!");
-                //Command::perform(async {}, |_| Message::RightReleased)
-
                 self.skate_right = false;
                 // Reset panes' image loading queues
                 for pane in self.panes.iter_mut() {
@@ -396,41 +389,30 @@ impl DataViewer {
             for pane in self.panes.iter_mut() {
                 pane.is_selected_cache = pane.is_selected;
                 pane.is_selected = true;
-                //pane.image_load_state = true;
                 pane.is_next_image_loaded = false;
                 pane.is_prev_image_loaded = false;
             }
 
-            // Set the slider value to the first pane's current index
-            //self.slider_value = self.panes[0].img_cache.current_index as u16;
-
-            ////self.slider_value = get_master_slider_value(&self.panes, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
             let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
             self.slider_value = get_master_slider_value(&mut panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
         } else {
             // Single to dual slider: give slider.value to each slider
             for pane in self.panes.iter_mut() {
-                //pane.slider_value = self.slider_value;
                 pane.slider_value = pane.img_cache.current_index as u16;
                 pane.is_selected = pane.is_selected_cache;
             }
         }
-
         self.is_slider_dual = !self.is_slider_dual;
     }
 
     fn toggle_pane_layout(&mut self, pane_layout: PaneLayout) {
         match pane_layout {
             PaneLayout::SinglePane => {
-                // self.img_caches.resize(1, Default::default()); // Resize to hold 1 image cache
                 self.panes.resize(1, Default::default());
                 debug!("self.panes.len(): {}", self.panes.len());
-                // self.dir_loaded[1] = false;
 
                 if self.pane_layout == PaneLayout::DualPane {
                     // Reset the slider value to the first pane's current index
-                    
-                    ////self.slider_value = get_master_slider_value(&self.panes, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
                     let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
                     self.slider_value = get_master_slider_value(&mut panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
                     self.panes[0].is_selected = true;
@@ -439,13 +421,10 @@ impl DataViewer {
             PaneLayout::DualPane => {
                 self.panes.resize(2, Default::default()); // Resize to hold 2 image caches
                 debug!("self.panes.len(): {}", self.panes.len());
-                //self.pane_layout = PaneLayout::SinglePane;
             }
         }
-        
         self.pane_layout = pane_layout;
     }
-
     fn toggle_footer(&mut self) {
         self.show_footer = !self.show_footer;
     }
@@ -493,9 +472,6 @@ impl Application for DataViewer {
         match self.pane_layout  {
             PaneLayout::SinglePane => {
                 if self.panes[0].dir_loaded {
-                    // return string here
-                    //self.title.clone()
-                    //self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].display().to_string()
                     self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string())
                     .unwrap_or_else(|| String::from("Unknown"))
                 } else {
@@ -529,16 +505,11 @@ impl Application for DataViewer {
     
     fn update(&mut self, message: Message) -> Command<Self::Message> {
         match message {
-            Message::Nothing => {
-                //Command::none()
-            }
+            Message::Nothing => {}
             Message::Debug(s) => {
                 self.title = s;
-                //Command::none()
             }
-            Message::FontLoaded(_) => {
-                //Command::none()
-            }
+            Message::FontLoaded(_) => {}
             Message::OpenFolder(pane_index) => {
                 return Command::perform(file_io::pick_folder(), move |result| {
                     Message::FolderOpened(result, pane_index)
@@ -553,12 +524,9 @@ impl Application for DataViewer {
                 debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
                 debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}", self.panes[pane_index as usize].dir_loaded, pane_index, self.last_opened_pane);
                 self.initialize_dir_path( PathBuf::from(dropped_path), pane_index as usize);
-                
-                //Command::none()
             }
             Message::Close => {
                 self.reset_state();
-                // self.current_image = iced::widget::image::Handle::from_memory(vec![]);
                 debug!("directory_path: {:?}", self.directory_path);
                 debug!("self.current_image_index: {}", self.current_image_index);
                 for (_cache_index, pane) in self.panes.iter_mut().enumerate() {
@@ -566,7 +534,6 @@ impl Application for DataViewer {
                     debug!("img_cache.current_index: {}", img_cache.current_index);
                     debug!("img_cache.image_paths.len(): {}", img_cache.image_paths.len());
                 }
-                //Command::none()
             }
             Message::Quit => {
                 std::process::exit(0);
@@ -576,47 +543,30 @@ impl Application for DataViewer {
                     Ok(dir) => {
                         debug!("Folder opened: {}", dir);
                         self.initialize_dir_path(PathBuf::from(dir), pane_index);
-
-                        //Command::none()
                     }
                     Err(err) => {
                         debug!("Folder open failed: {:?}", err);
-                        //Command::none()
                     }
                 }
             },
             Message::CopyFilename(pane_index) => {
                 // Get the image path of the specified pane
-                //let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
-                let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
-
-                /*if let Some(filename) = file_io::get_filename(img_path) {
-                    debug!("Filename: {}", filename);
-
-                    // to_owned vs to_string
-                    return clipboard::write::<Message>(filename.to_string());
-                }*/
+                let img_path = self.panes[pane_index].img_cache
+                    .image_paths[self.panes[pane_index].img_cache.current_index]
+                    .file_name().map(|name| name.to_string_lossy().to_string());
                 if let Some(img_path) = img_path {
                     if let Some(filename) = file_io::get_filename(&img_path) {
                         debug!("Filename: {}", filename);
                         return clipboard::write::<Message>(filename.to_string());
                     }
                 }
-                
-                // works
-                //return clipboard::write::<Message>("debug debug".to_string());
             }
             Message::CopyFilePath(pane_index) => {
                 // Get the image path of the specified pane
-                let img_path = self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string());
-
-                /*if let Some(path) = img_path {
-                    debug!("Path: {}", path);
-                    return clipboard::write::<Message>(path.to_string());
-                }*/
+                let img_path = self.panes[pane_index].img_cache
+                    .image_paths[self.panes[pane_index].img_cache.current_index]
+                    .file_name().map(|name| name.to_string_lossy().to_string());
                 if let Some(img_path) = img_path {
-                    //debug!("Path: {}", img_path);
-                    //return clipboard::write::<Message>(img_path.to_string());
                     if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
                         let full_path = format!("{}/{}", dir_path, img_path);
                         debug!("Full Path: {}", full_path);
@@ -624,35 +574,25 @@ impl Application for DataViewer {
                     }
                 }
             }
-            Message::OnVerResize(position) => { self.ver_divider_position = Some(position); },//Command::none() },
-            Message::OnHorResize(position) => { self.hor_divider_position = Some(position); },//Command::none() },
+            Message::OnVerResize(position) => { self.ver_divider_position = Some(position); },
+            Message::OnHorResize(position) => { self.hor_divider_position = Some(position); },
             Message::ResetSplit(_position) => {
-                self.ver_divider_position = None; //Command::none()
+                self.ver_divider_position = None;
             },
             Message::ToggleSliderType(_bool) => {
                 self.toggle_slider_type();
-                //Command::none()
             },
             Message::TogglePaneLayout(pane_layout) => {
                 self.toggle_pane_layout(pane_layout);
-                //Command::none()
             },
             Message::ToggleFooter(_bool) => {
                 self.toggle_footer();
             },
             Message::PaneSelected(pane_index, is_selected) => {
                 self.panes[pane_index].is_selected = is_selected;
-                /*if self.panes[pane_index].is_selected {
-                    self.panes[pane_index].is_selected = false;
-                } else {
-                    self.panes[pane_index].is_selected = true;
-                }*/
-
                 for (index, pane) in self.panes.iter_mut().enumerate() {
                     debug!("pane_index: {}, is_selected: {}", index, pane.is_selected);
                 }
-                
-                //Command::none()
             }
 
             Message::ImageLoaded (result) => {
@@ -666,7 +606,7 @@ impl Application for DataViewer {
                                 LoadOperation::ShiftNext((_c_index, _target_indices)) => {}
                                 LoadOperation::ShiftPrevious((_c_index, _target_index)) => {}
                                 LoadOperation::LoadPos((c_index, target_index, _pos)) => {
-                                    handle_load_operation(
+                                    loading::handle_load_operation(
                                         &mut self.panes, c_index as isize, target_index as isize, image_data, op.load_fn(), op.operation_type());
                                 }
                             }
@@ -752,7 +692,6 @@ impl Application for DataViewer {
 
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
-
                     let _pane_index_org = pane_index.clone();
                     let pane_index = pane_index as usize;
 
@@ -765,7 +704,6 @@ impl Application for DataViewer {
                     return update_pos(&mut self.panes, pane_index as isize, value as usize);
                 }
             }
-
             Message::SliderReleased(pane_index, value) => {
                 debug!("slider released: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
@@ -784,13 +722,9 @@ impl Application for DataViewer {
                     match self.pane_layout {
                         PaneLayout::SinglePane => {
                             debug!("File dropped: {:?}", dropped_paths.clone());
-
                             self.initialize_dir_path(dropped_paths[0].clone(), 0);
-                            
-                            //Command::none()
                         },
                         PaneLayout::DualPane => {
-                            //Command::none()
                         }
                     }
                 }
@@ -799,21 +733,15 @@ impl Application for DataViewer {
                     match self.pane_layout {
                         PaneLayout::SinglePane => {
                             debug!("File dropped: {:?}", dropped_path);
-
                             self.initialize_dir_path(dropped_path, 0);
-                            
-                            //Command::none()
                         },
-                        PaneLayout::DualPane => {
-                            //Command::none()
-                        }
+                        PaneLayout::DualPane => {}
                     }
                 }
 
                 Event::Keyboard(keyboard::Event::KeyPressed { key_code, modifiers, .. }) => {
                     let commands = self.handle_key_pressed_event(key_code, modifiers);
                     if commands.is_empty() {
-                        
                     } else {
                         return Command::batch(commands);
                     }
@@ -828,13 +756,8 @@ impl Application for DataViewer {
                     }
                 }
 
-
                 _ => return Command::none(),
-                //_ => command,
-
-            
             },
-            
         }
 
         if self.skate_right {
@@ -856,8 +779,6 @@ impl Application for DataViewer {
             let command = Command::none();
             command
         }
-
-        
     }
 
     fn view(&self) -> Element<Message> {
@@ -899,14 +820,6 @@ static ICON: &[u8] = if cfg!(target_os = "windows") {
 
 
 fn main() -> iced::Result {
-    //env_logger::init();
-    // Create a logger builder
-    /*Builder::new()
-        .format(|buf, record| {
-            writeln!(buf, "{}", record.args()) // Only print the log message
-        })
-        .init();*/
-
     Builder::from_default_env()
         .format(|buf, record| {
             let level_color = match record.level() {
@@ -933,7 +846,6 @@ fn main() -> iced::Result {
 
     use iced::window;
     let icon = iced::window::icon::from_file_data(ICON, Option::None);
-
     match icon {
         Ok(icon) => {
             info!("Icon loaded successfully");

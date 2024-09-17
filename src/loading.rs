@@ -1,5 +1,4 @@
 use log::{debug, error};
-use std::collections::VecDeque;
 use crate::pane;
 use crate::image_cache::ImageCache;
 use crate::loading_status::LoadingStatus;
