@@ -137,15 +137,17 @@ pub fn handle_load_operation(
 
     // Determine the target image to load based on operation type
     let target_image_to_load = match operation_type {
-        LoadOperationType::LoadNext => cache.get_next_image_to_load() as isize,
-        LoadOperationType::LoadPrevious => cache.get_prev_image_to_load() as isize,
-        _ => return,  // This case shouldn't happen due to the early return for Shift operations
+        LoadOperationType::LoadNext => Some(cache.get_next_image_to_load() as isize),
+        LoadOperationType::LoadPrevious => Some(cache.get_prev_image_to_load() as isize),
+        LoadOperationType::LoadPos => None,  // `LoadPos` needs to load the specified `target_index`
+        _ => return,
     };
 
-    let is_matched = target_image_to_load == target_index;
+    let is_matched = target_image_to_load.map_or(false, |load| load == target_index);
+
 
     debug!(
-        "IMAGE LOADED: target_image_to_load: {}, target_index: {}",
+        "IMAGE LOADED: target_image_to_load: {:?}, target_index: {}",
         target_image_to_load, target_index
     );
     debug!("load_operation: {:?}", operation_type);
@@ -158,7 +160,7 @@ pub fn handle_load_operation(
     }
 
     // If the target image matches, or if the target image is not found, load the image data
-    if is_matched {
+    if is_matched || matches!(operation_type, LoadOperationType::LoadPos) {
         match load_fn(cache, image_data, target_index) {
             Ok(reload_current_image) => {
                 if reload_current_image {
