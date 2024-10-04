@@ -624,25 +624,22 @@ impl Application for DataViewer {
                             match op {
                                 // NOTE: LoadPos is not used here
                                 LoadOperation::LoadNext((ref pane_indices, ref target_indices)) => {
-                                    // convert target_indices to Vec<isize>
-                                    let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
                                     loading::handle_load_operation_all(
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_indices,
-                                        target_indices_isize,
+                                        target_indices.clone(),
                                         image_data,
                                         op.load_fn(),
                                         op.operation_type(),
                                     );
                                 }
                                 LoadOperation::LoadPrevious((ref pane_indices, ref target_indices)) => {
-                                    let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
                                     loading::handle_load_operation_all(
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_indices,
-                                        target_indices_isize,
+                                        target_indices.clone(),
                                         image_data,
                                         op.load_fn(),
                                         op.operation_type(),
@@ -660,12 +657,11 @@ impl Application for DataViewer {
                                     );
                                 }
                                 LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
-                                    let target_indices_isize = target_indices.clone().iter().map(|&x| x as isize).collect::<Vec<isize>>();
                                     loading::handle_load_operation_all(
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_indices,
-                                        target_indices_isize,
+                                        target_indices.clone(),
                                         image_data,
                                         op.load_fn(),
                                         op.operation_type(),

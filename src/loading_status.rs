@@ -100,20 +100,22 @@ impl LoadingStatus {
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         })
     }
-    pub fn are_next_image_indices_in_queue(&self, next_image_indices: Vec<isize>) -> bool {
+    
+    pub fn are_next_image_indices_in_queue(&self, next_image_indices: Vec<Option<isize>>) -> bool {
         let flag = self.loading_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => { false },
+            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => false,
         }) && self.being_loaded_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => { false },
+            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => false,
         });
+    
         flag
     }
 

@@ -34,14 +34,23 @@ use crate::loading_status::LoadingStatus;
 use crate::pane::Pane;   
 
 
-#[derive(Debug, Clone, PartialEq)]
+/*#[derive(Debug, Clone, PartialEq)]
 pub enum LoadOperation {
     LoadNext((Vec<usize>, Vec<isize>)),       // Includes the target index
     ShiftNext((Vec<usize>, Vec<isize>)),
     LoadPrevious((Vec<usize>, Vec<isize>)),   // Includes the target index
     ShiftPrevious((Vec<usize>, Vec<isize>)),
     LoadPos((usize, usize, usize)), // Load an image at a specific position of the cache
+}*/
+#[derive(Debug, Clone, PartialEq)]
+pub enum LoadOperation {
+    LoadNext((Vec<usize>, Vec<Option<isize>>)),       // Includes the target index
+    ShiftNext((Vec<usize>, Vec<Option<isize>>)),
+    LoadPrevious((Vec<usize>, Vec<Option<isize>>)),   // Includes the target index
+    ShiftPrevious((Vec<usize>, Vec<Option<isize>>)),
+    LoadPos((usize, usize, usize)), // Load an image at a specific position of the cache
 }
+
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum LoadOperationType {
@@ -239,22 +248,25 @@ impl ImageCache {
             LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
         })
     }
-    pub fn are_next_image_indices_in_queue(&self, next_image_indices: Vec<isize>) -> bool {
+    
+    pub fn are_next_image_indices_in_queue(&self, next_image_indices: Vec<Option<isize>>) -> bool {
         let flag = self.loading_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => { false },
+            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => false,
         }) && self.being_loaded_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
             LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => { false },
+            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => false,
         });
+    
         flag
     }
+    
 
     pub fn is_operation_blocking(&self, operation: LoadOperationType) -> bool {
         match operation {
@@ -675,6 +687,7 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
                     Command::none()
                 }
                 LoadOperation::LoadPos((_cache_index, target_index, _pos)) => {
+                    debug!("++++load_image_by_operation - target_index: {}", target_index);
                     load_image_by_index(img_cache, target_index, operation)
                 }
             }
@@ -687,17 +700,20 @@ pub fn load_image_by_operation(img_cache: &mut ImageCache) -> Command<<DataViewe
 }
 
 
-pub fn load_images_by_indices(panes: &mut Vec<&mut Pane>, target_indices: Vec<isize>, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
+pub fn load_images_by_indices(
+    panes: &mut Vec<&mut Pane>, 
+    target_indices: Vec<Option<isize>>, 
+    operation: LoadOperation
+) -> Command<<DataViewer as iced::Application>::Message> {
     debug!("load_images_by_indices");
     let mut paths = Vec::new();
 
     for (pane_index, pane) in panes.iter_mut().enumerate() {
         let img_cache = &mut pane.img_cache;
-        let target_index = target_indices[pane_index];
-        
-        if target_index < 0 {
-            paths.push(None);
-        } else {
+
+        if let Some(target_index) = target_indices[pane_index] {
+            debug!("++++load_images_by_indices - target_index: {}", target_index);
+
             if let Some(path) = img_cache.image_paths.get(target_index as usize) {
                 if let Some(s) = path.to_str() {
                     paths.push(Some(s.to_string()));
@@ -707,6 +723,8 @@ pub fn load_images_by_indices(panes: &mut Vec<&mut Pane>, target_indices: Vec<is
             } else {
                 paths.push(None);
             }
+        } else {
+            paths.push(None);
         }
     }
 
@@ -722,6 +740,7 @@ pub fn load_images_by_indices(panes: &mut Vec<&mut Pane>, target_indices: Vec<is
         Command::none()
     }
 }
+
 
 pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Command<<DataViewer as iced::Application>::Message> {
     debug!("load_images_by_operation");

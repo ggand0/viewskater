@@ -1,3 +1,21 @@
+#[warn(unused_imports)]
+#[cfg(target_os = "linux")]
+mod other_os {
+    pub use iced;
+}
+
+#[cfg(not(target_os = "linux"))]
+mod macos {
+    pub use iced_custom as iced;
+}
+
+#[cfg(target_os = "linux")]
+use other_os::*;
+
+#[cfg(not(target_os = "linux"))]
+use macos::*;
+
+
 use log::{debug, error};
 use crate::pane;
 use crate::image_cache::ImageCache;
@@ -9,7 +27,7 @@ pub fn handle_load_operation_all(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_indices: &Vec<usize>,
-    target_indices: Vec<isize>,
+    target_indices: Vec<Option<isize>>,
     image_data: Vec<Option<Vec<u8>>>,
     mut load_fn: Box<dyn FnMut(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error>>,
     operation_type: LoadOperationType,
@@ -37,7 +55,13 @@ pub fn handle_load_operation_all(
 
     for (pane_index, pane) in panes_to_load.iter_mut().enumerate() {
         let cache = &mut pane.img_cache;
-        let target_index = target_indices[pane_index];
+        let target_index = match &target_indices[pane_index] {
+            Some(index) => *index,
+            None => {
+                // Skip loading if the target index is not valid
+                continue;
+            }
+        };
 
         // If the operation is blocking, skip the operation
         if cache.is_operation_blocking(operation_type.clone()) {
@@ -52,11 +76,14 @@ pub fn handle_load_operation_all(
         };
 
         if let Some(target_image_to_load) = target_image_to_load {
-            debug!("IMAGES LOADED: target_image_to_load: {}, target_index: {}", target_image_to_load, target_index);
+            debug!(
+                "IMAGES LOADED: target_image_to_load: {}, target_index: {}",
+                target_image_to_load, target_index
+            );
 
             // Skip if the cache offset is outside valid bounds
             if (operation_type == LoadOperationType::LoadNext && cache.current_offset > cache.cache_count as isize)
-                || (operation_type == LoadOperationType::LoadPrevious && cache.current_offset < -(cache.cache_count as isize)) 
+                || (operation_type == LoadOperationType::LoadPrevious && cache.current_offset < -(cache.cache_count as isize))
             {
                 return;
             }
@@ -81,6 +108,7 @@ pub fn handle_load_operation_all(
         }
     }
 }
+
 
 
 pub fn handle_load_operation(
