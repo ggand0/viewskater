@@ -28,164 +28,121 @@ use std::io;
 use log::{Level, debug, info, warn, error};
 
 
-fn get_loading_commands_slider(pane: &mut pane::Pane, pane_index: usize, pos: usize) -> Vec<Command<<DataViewer as iced::Application>::Message>> {
-    #[allow(unused_mut)]
-    let mut img_cache = &mut pane.img_cache;
+fn get_loading_commands_slider(
+    panes: &mut Vec<pane::Pane>,
+    loading_status: &mut LoadingStatus,
+    pane_index: usize,
+    pos: usize,
+) -> Vec<Command<<DataViewer as iced::Application>::Message>> {
     let mut commands = Vec::new();
-    let cache_index = pane_index;
-    debug!("get_loading_commands_slider - cache_count: {}, pos: {}, img_paths.len(): {}",
-                    img_cache.cache_count, pos, img_cache.image_paths.len());
-    
-    if pos < img_cache.cache_count {
-        let last_index = img_cache.cache_count*2 + 1;
-        for i in 0..last_index {
-            let target_cache_index = i;
-            let image_index = i;
-            img_cache.enqueue_image_load(
-                LoadOperation::LoadPos((
-                    cache_index, image_index, target_cache_index)));
-        }
-        img_cache.print_queue();
-        let local_commands = load_all_images_in_queue(img_cache);
-        commands.extend(local_commands);
-        debug!("get_loading_commands_slider - `pos < img_cache.cache_count`: current_offset: {}", img_cache.current_offset);
 
-    } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
-        let last_index = img_cache.cache_count * 2 + 1;
-        //let last_index = img_cache.cache_count*2 + 1 + 1;
-        
-        for i in 0..last_index {
-            let target_cache_index = i;
-            let image_index = img_cache.image_paths.len() - last_index + i;
-            ////debug!("target_cache_index: {}, image_index: {}", target_cache_index, image_index);
-            img_cache.enqueue_image_load(
-                LoadOperation::LoadPos((
-                    cache_index, image_index, target_cache_index)));
-        }
-        img_cache.print_queue();
+    if let Some(pane) = panes.get_mut(pane_index) {
+        let img_cache = &pane.img_cache;
+        let cache_count = img_cache.cache_count;
+        let last_index = cache_count * 2 + 1;
 
-        // If it missed the last image, load the last image into the current_index
-        if pos >= img_cache.image_paths.len() {
-            img_cache.current_index = img_cache.image_paths.len() - 1;
-            //img_cache.current_offset = img_cache.cache_count as isize - 1;
-            img_cache.current_offset = img_cache.cache_count as isize;
-            pane.current_image = iced::widget::image::Handle::from_memory(
-                img_cache.get_initial_image().unwrap().to_vec());
-        }
-        let local_commands = load_all_images_in_queue(img_cache);
-        commands.extend(local_commands);
-        debug!("get_loading_commands_slider - `pos >= img_cache.image_paths.len() - img_cache.cache_count`: current_offset: {}", img_cache.current_offset);
+        // Collect pairs of (image index, cache position)
+        let mut target_indices_and_cache = Vec::new();
 
-    } else if pos >= img_cache.image_paths.len() {
-        let last_index = img_cache.image_paths.len() - 1;
-        let last_pos = last_index - img_cache.cache_count;
-        debug!("get_loading_commands_slider - out of bounds (pos >= img_cache.image_paths.len()): pane_index: {}, pos: {}, last_pos: {}",
-            pane_index, pos, last_pos);
-
-        // Since it missed the last image, load the last image into the current_index
-        img_cache.enqueue_image_load(
-            LoadOperation::LoadPos((
-                cache_index, last_index, img_cache.cache_count)));
-        img_cache.current_index = last_index;
-        img_cache.current_offset = 0;
-
-        if img_cache.image_paths.len() > img_cache.cache_count {
-            // Load the last N images into the cache
-            for i in 0..img_cache.cache_count {
-                let target_cache_index = i;
-                //let target_cache_index = img_cache.cache_count + i;
-                let image_index = last_pos + i;
-                img_cache.enqueue_image_load(
-                    LoadOperation::LoadPos((
-                        cache_index, image_index, target_cache_index)));
-            }
-        } else {
-            // Load all images into the cache
-            let start_index = img_cache.cache_count - img_cache.image_paths.len();
-            for i in 0..img_cache.image_paths.len() {
-                let target_cache_index = start_index + i;
-                let image_index = i;
-                img_cache.enqueue_image_load(
-                    LoadOperation::LoadPos((
-                        cache_index, image_index, target_cache_index)));
+        // Example: Handling first cache window case
+        if pos < cache_count {
+            for i in 0..last_index {
+                let image_index = i as isize;
+                let cache_pos = i;
+                target_indices_and_cache.push(Some((image_index, cache_pos)));
             }
         }
-        
-        //debug!("get_loading_commands_slider - out of bounds: pos: {}, last_pos: {}", pos, last_pos);
-        img_cache.print_queue();
-        let local_commands = load_all_images_in_queue(img_cache);
-        commands.extend(local_commands);
-        
-    } else {
-        let center_index = img_cache.cache_count;
-        for i in 0..img_cache.cache_count {
-            let next_cache_index = center_index + i + 1;
-            let prev_cache_index = center_index- i - 1;
-            let next_image_index = pos + i + 1;
-            let prev_image_index = pos as isize - i as isize - 1;
-            debug!("get_loading_commands_slider - else: next_image_index: {}, prev_image_index: {}", next_image_index, prev_image_index);
-
-            // Load images into cache indices with LoadPos
-            if next_image_index < img_cache.image_paths.len() {
-                img_cache.enqueue_image_load(
-                    LoadOperation::LoadPos((
-                        cache_index, next_image_index, next_cache_index)));
-            }
-            if prev_image_index >= 0 {
-                img_cache.enqueue_image_load(
-                    LoadOperation::LoadPos((
-                        cache_index, prev_image_index as usize, prev_cache_index)));
+        // Example: Handling the last cache window case
+        else if pos >= img_cache.image_paths.len() - cache_count {
+            for i in 0..last_index {
+                let image_index = (img_cache.image_paths.len() - last_index + i) as isize;
+                let cache_pos = i;
+                target_indices_and_cache.push(Some((image_index, cache_pos)));
             }
         }
-        img_cache.print_queue();
+        // Example: Default handling for neighboring images
+        else {
+            let center_index = cache_count;
+            for i in 0..cache_count {
+                let next_image_index = pos + i + 1;
+                let prev_image_index = (pos as isize - i as isize - 1).max(0);
 
-        // Load the images in the loading queue
-        let local_commands = load_all_images_in_queue(img_cache);
-        commands.extend(local_commands);
+                // Enqueue neighboring images with cache positions
+                if next_image_index < img_cache.image_paths.len() {
+                    target_indices_and_cache.push(Some((next_image_index as isize, center_index + i + 1)));
+                }
+                if prev_image_index >= 0 {
+                    target_indices_and_cache.push(Some((prev_image_index as isize, center_index - i - 1)));
+                }
+            }
+        }
+
+        // Enqueue the batched LoadPos operation with (image index, cache position) pairs
+        let load_operation = LoadOperation::LoadPos((pane_index, target_indices_and_cache));
+        loading_status.enqueue_image_load(load_operation);
+
+        // Generate loading commands
+        let local_commands = load_all_images_in_queue(panes, loading_status);
+        commands.push(local_commands);
     }
 
     commands
 }
-    
-pub fn load_remaining_images(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) -> Command<<DataViewer as iced::Application>::Message> {
-    // Load the rest of the images within the cache window asynchronously
-    // Called from Message::SliderReleased
 
-    // Since we've moved to a completely new position, clear the loading queues
-    for (_cache_index, pane) in panes.iter_mut().enumerate() {
-        let img_cache = &mut pane.img_cache;
-        img_cache.reset_image_load_queue();
-        img_cache.reset_image_being_loaded_queue();
+
+pub fn load_remaining_images(
+    panes: &mut Vec<pane::Pane>,
+    loading_status: &mut LoadingStatus,
+    pane_index: isize,
+    pos: usize,
+) -> Command<<DataViewer as iced::Application>::Message> {
+    // Clear the loading queues for all panes since we've moved to a new position
+    for pane in panes.iter_mut() {
+        pane.img_cache.reset_image_load_queue();
+        pane.img_cache.reset_image_being_loaded_queue();
     }
+    // Clear the global loading queue
+    loading_status.reset_image_load_queue();
+    loading_status.reset_image_being_loaded_queue();
+
+
+    let mut commands = Vec::new();
+
+    debug!("##load_remaining_images - pane_index: {}, pos: {}", pane_index, pos);
 
     if pane_index == -1 {
-        // Perform dynamic loading:
-        // Load the image at pos (center) synchronously,
-        // and then load the rest of the images within the cache window asynchronously
-        let mut commands = Vec::new();
-        for (cache_index, pane) in panes.iter_mut().enumerate() {
+        // Dynamic loading: load the central image synchronously, and others asynchronously
+        let cache_indices: Vec<usize> = panes
+            .iter()
+            .enumerate()
+            .filter_map(|(cache_index, pane)| if pane.dir_loaded { Some(cache_index) } else { None })
+            .collect();
+
+        for cache_index in cache_indices {
+            let local_commands = get_loading_commands_slider(
+                panes, loading_status, cache_index, pos);
+            commands.extend(local_commands);
+        }
+    } else {
+        if let Some(pane) = panes.get_mut(pane_index as usize) {
             if pane.dir_loaded {
-                let local_commands = get_loading_commands_slider(pane, cache_index as usize, pos);
+                let local_commands = get_loading_commands_slider(
+                    panes, loading_status, pane_index as usize, pos);
                 commands.extend(local_commands);
             } else {
                 commands.push(Command::none());
             }
         }
-        Command::batch(commands)
-    } else{
-        let mut commands = Vec::new();
-        let pane = &mut panes[pane_index as usize];
-        let _img_cache = &mut pane.img_cache;
-
-        if pane.dir_loaded {
-            let local_commands = get_loading_commands_slider(pane, pane_index as usize, pos);
-            commands.extend(local_commands);
-        } else {
-            commands.push(Command::none());
-        }
-        Command::batch(commands)
     }
+
+    loading_status.print_queue();
+
+    Command::batch(commands)
 }
+
+
+
+
 
 fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), io::Error> {
     // Load the image at pos synchronously into the center position of cache

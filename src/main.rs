@@ -605,9 +605,9 @@ impl Application for DataViewer {
                                 LoadOperation::LoadPrevious((_c_index, _target_index)) => {}
                                 LoadOperation::ShiftNext((_c_index, _target_indices)) => {}
                                 LoadOperation::ShiftPrevious((_c_index, _target_index)) => {}
-                                LoadOperation::LoadPos((c_index, target_index, _pos)) => {
-                                    loading::handle_load_operation(
-                                        &mut self.panes, c_index as isize, target_index as isize, image_data, op.load_fn(), op.operation_type());
+                                LoadOperation::LoadPos((c_index, _target_indices_and_cache)) => {
+                                    //loading::handle_load_operation(
+                                    //    &mut self.panes, c_index as isize, target_index as isize, image_data, op.load_fn(), op.operation_type());
                                 }
                             }
                         }
@@ -622,52 +622,32 @@ impl Application for DataViewer {
                     Ok((image_data, operation)) => {
                         if let Some(op) = operation {
                             match op {
-                                // NOTE: LoadPos is not used here
-                                LoadOperation::LoadNext((ref pane_indices, ref target_indices)) => {
+                                LoadOperation::LoadNext((ref pane_indices, ref target_indices))
+                                | LoadOperation::LoadPrevious((ref pane_indices, ref target_indices))
+                                | LoadOperation::ShiftNext((ref pane_indices, ref target_indices))
+                                | LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
+                                    let load_fn = op.clone().load_fn(); // Capture the function in a variable. clone() to avoid borrowing errors
+                                    let operation_type = op.operation_type();
+                                    
                                     loading::handle_load_operation_all(
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_indices,
                                         target_indices.clone(),
                                         image_data,
-                                        op.load_fn(),
-                                        op.operation_type(),
+                                        load_fn,           // Pass the captured function
+                                        operation_type,     // Pass the captured operation type
                                     );
                                 }
-                                LoadOperation::LoadPrevious((ref pane_indices, ref target_indices)) => {
-                                    loading::handle_load_operation_all(
+                                LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
+                                    loading::handle_load_pos_operation(
                                         &mut self.panes,
                                         &mut self.loading_status,
-                                        pane_indices,
-                                        target_indices.clone(),
+                                        pane_index,
+                                        target_indices_and_cache.clone(),
                                         image_data,
-                                        op.load_fn(),
-                                        op.operation_type(),
                                     );
                                 }
-                                LoadOperation::ShiftNext((ref pane_indices, ref target_indices)) => {
-                                    loading::handle_load_operation_all(
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        pane_indices,
-                                        target_indices.clone(),
-                                        image_data,
-                                        op.load_fn(),
-                                        op.operation_type(),
-                                    );
-                                }
-                                LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
-                                    loading::handle_load_operation_all(
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        pane_indices,
-                                        target_indices.clone(),
-                                        image_data,
-                                        op.load_fn(),
-                                        op.operation_type(),
-                                    );
-                                }
-                                LoadOperation::LoadPos((_c_index, _target_index, _pos)) => {}
                             }
                         }
                     }
@@ -676,6 +656,7 @@ impl Application for DataViewer {
                     }
                 }
             }
+            
 
             Message::SliderChanged(pane_index, value) => {
                 debug!("pane_index {} slider value: {}", pane_index, value);
@@ -704,9 +685,9 @@ impl Application for DataViewer {
                 debug!("slider released: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
                     return load_remaining_images(
-                        &mut self.panes, pane_index, value as usize);
+                        &mut self.panes, &mut self.loading_status, pane_index, value as usize);
                 } else {
-                    return load_remaining_images(&mut self.panes, pane_index as isize, value as usize);
+                    return load_remaining_images(&mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
                 }
             }
 

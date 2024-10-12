@@ -109,6 +109,49 @@ pub fn handle_load_operation_all(
     }
 }
 
+pub fn handle_load_pos_operation(
+    panes: &mut Vec<pane::Pane>,
+    loading_status: &mut LoadingStatus,
+    pane_index: usize,
+    target_indices_and_cache: Vec<Option<(isize, usize)>>,
+    image_data: Vec<Option<Vec<u8>>>,
+) {
+    // Remove the current LoadPos operation from the being_loaded queue
+    loading_status.being_loaded_queue.pop_front();
+
+    // Access the pane that needs to update its cache and images
+    if let Some(pane) = panes.get_mut(pane_index) {
+        let cache = &mut pane.img_cache;
+
+        // Iterate over the target indices and cache positions along with image data
+        for ((target_opt, image_data_opt)) in target_indices_and_cache.iter().zip(image_data.iter()) {
+            if let Some((target_index, cache_pos)) = target_opt {
+                let target_index_usize = *target_index as usize;
+
+                // Ensure that the target index is within valid bounds
+                if target_index_usize < cache.image_paths.len() {
+                    // Load the image data into the cache if available
+                    if let Some(image) = image_data_opt {
+                        // Store the loaded image data in the cache at the specified cache position
+                        cache.cached_images[*cache_pos] = Some(image.clone());
+                        cache.cached_image_indices[*cache_pos] = *target_index;
+
+                        // If this is the current image, update the pane's current image
+                        if cache.current_index == target_index_usize {
+                            let loaded_image = cache.get_initial_image().unwrap().to_vec();
+                            let handle = iced::widget::image::Handle::from_memory(loaded_image);
+                            pane.current_image = handle;
+                        }
+                    } else {
+                        debug!("No image data available for target index: {}", target_index);
+                    }
+                } else {
+                    debug!("Target index {} is out of bounds", target_index);
+                }
+            }
+        }
+    }
+}
 
 
 pub fn handle_load_operation(

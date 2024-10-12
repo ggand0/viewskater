@@ -85,38 +85,64 @@ impl LoadingStatus {
     }
 
     pub fn is_next_image_index_in_queue(&self, _cache_index: usize, next_image_index: isize) -> bool {
-        let next_index_usize = next_image_index as usize;
+        // Check both the loading queue and being-loaded queue
         self.loading_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, _img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, _img_index)) => { false },
-            LoadOperation::ShiftNext((_c_index, _img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, _img_index)) => { false },
-            LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
+            LoadOperation::LoadNext((_c_index, img_indices)) 
+            | LoadOperation::LoadPrevious((_c_index, img_indices))
+            | LoadOperation::ShiftNext((_c_index, img_indices))
+            | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
+                !img_indices.contains(&Some(next_image_index))
+            }
+            LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
+                !target_indices_and_cache
+                    .iter()
+                    .any(|&item| item.map(|(index, _)| index == next_image_index).unwrap_or(false))
+            }
         }) && self.being_loaded_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, _img_indices)) => { false },
-            LoadOperation::LoadPrevious((_c_index, _img_index)) => { false },
-            LoadOperation::ShiftNext((_c_index, _img_indices)) => { false },
-            LoadOperation::ShiftPrevious((_c_index, _img_index)) => { false },
-            LoadOperation::LoadPos((_c_index, img_index, _pos)) => img_index != &next_index_usize,
+            LoadOperation::LoadNext((_c_index, img_indices)) 
+            | LoadOperation::LoadPrevious((_c_index, img_indices))
+            | LoadOperation::ShiftNext((_c_index, img_indices))
+            | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
+                !img_indices.contains(&Some(next_image_index))
+            }
+            LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
+                !target_indices_and_cache
+                    .iter()
+                    .any(|&item| item.map(|(index, _)| index == next_image_index).unwrap_or(false))
+            }
         })
     }
-    
+
     pub fn are_next_image_indices_in_queue(&self, next_image_indices: Vec<Option<isize>>) -> bool {
-        let flag = self.loading_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => false,
+        self.loading_queue.iter().all(|op| match op {
+            LoadOperation::LoadNext((_c_index, img_indices)) 
+            | LoadOperation::LoadPrevious((_c_index, img_indices))
+            | LoadOperation::ShiftNext((_c_index, img_indices))
+            | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
+                img_indices != &next_image_indices
+            }
+            LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
+                let extracted_indices: Vec<Option<isize>> = target_indices_and_cache
+                    .iter()
+                    .map(|item| item.map(|(index, _)| index))
+                    .collect();
+                extracted_indices != next_image_indices
+            }
         }) && self.being_loaded_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::ShiftNext((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::ShiftPrevious((_c_index, img_indices)) => img_indices != &next_image_indices,
-            LoadOperation::LoadPos((_c_index, _img_index, _pos)) => false,
-        });
-    
-        flag
+            LoadOperation::LoadNext((_c_index, img_indices)) 
+            | LoadOperation::LoadPrevious((_c_index, img_indices))
+            | LoadOperation::ShiftNext((_c_index, img_indices))
+            | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
+                img_indices != &next_image_indices
+            }
+            LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
+                let extracted_indices: Vec<Option<isize>> = target_indices_and_cache
+                    .iter()
+                    .map(|item| item.map(|(index, _)| index))
+                    .collect();
+                extracted_indices != next_image_indices
+            }
+        })
     }
 
     // Search for and remove the specific image from the out_of_order_images Vec
