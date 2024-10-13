@@ -4,7 +4,14 @@ use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
 use std::ffi::OsStr;
 use rfd;
+use futures::future::join_all;
 use crate::image_cache::LoadOperation;
+use tokio::fs::File;
+use tokio::time::Instant;
+
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
+
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -36,6 +43,51 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
         Err(e) => Err(e.kind()),
     }
 }
+
+async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let file_path = Path::new(path);
+        match File::open(file_path).await {
+            Ok(mut file) => {
+                let mut buffer = Vec::new();
+                if file.read_to_end(&mut buffer).await.is_ok() {
+                    Ok(Some(buffer))
+                } else {
+                    Err(std::io::ErrorKind::InvalidData)
+                }
+            }
+            Err(e) => Err(e.kind()),
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadOperation) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
+    let start = Instant::now();
+    let futures = paths.into_iter().map(|path| {
+        let future = async move {
+            let path_str = path.as_deref();
+            load_image_async(path_str).await
+        };
+        future
+    });
+    let results = join_all(futures).await;
+    let duration = start.elapsed();
+    debug!("Finished loading images in {:?}", duration);
+
+    let mut images = Vec::new();
+    for result in results {
+        match result {
+            Ok(image_data) => images.push(image_data),
+            Err(_) => images.push(None),
+        }
+    }
+
+    Ok((images, Some(load_operation)))
+}
+
+
 
 pub async fn pick_folder() -> Result<String, Error> {
     // let handle = rfd::AsyncFileDialog::new().set_title("Open Folder with images").pick_folder().await
@@ -83,9 +135,13 @@ pub async fn pick_file() -> Result<String, Error> {
     }
 }
 
-
+#[allow(dead_code)]
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
     Ok((None, Some(operation)))
+}
+
+pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
+    Ok((vec![None; count], Some(operation)))
 }
 
 pub fn is_file(path: &Path) -> bool {
