@@ -133,7 +133,6 @@ pub enum Message {
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     Event(Event),
-    ImageLoaded(Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     OnVerResize(u16),
     OnHorResize(u16),
@@ -592,29 +591,6 @@ impl Application for DataViewer {
                 self.panes[pane_index].is_selected = is_selected;
                 for (index, pane) in self.panes.iter_mut().enumerate() {
                     debug!("pane_index: {}, is_selected: {}", index, pane.is_selected);
-                }
-            }
-
-            Message::ImageLoaded (result) => {
-                match result {
-                    Ok((image_data, operation)) => {
-                        if let Some(op) = operation {
-                            match op {
-                                // NOTE: Only LoadPos is used here for now
-                                LoadOperation::LoadNext((_c_index, _target_indices)) => {}
-                                LoadOperation::LoadPrevious((_c_index, _target_index)) => {}
-                                LoadOperation::ShiftNext((_c_index, _target_indices)) => {}
-                                LoadOperation::ShiftPrevious((_c_index, _target_index)) => {}
-                                LoadOperation::LoadPos((c_index, _target_indices_and_cache)) => {
-                                    //loading::handle_load_operation(
-                                    //    &mut self.panes, c_index as isize, target_index as isize, image_data, op.load_fn(), op.operation_type());
-                                }
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        debug!("Image load failed: {:?}", err);
-                    }
                 }
             }
             

@@ -41,9 +41,7 @@ pub enum LoadOperation {
     ShiftNext((Vec<usize>, Vec<Option<isize>>)),
     LoadPrevious((Vec<usize>, Vec<Option<isize>>)),   // Includes the target index
     ShiftPrevious((Vec<usize>, Vec<Option<isize>>)),
-    //LoadPos((usize, Vec<Option<isize>>, usize)), // Load an image at a specific position of the cache
-    LoadPos((usize, Vec<Option<(isize, usize)>>))
-
+    LoadPos((usize, Vec<Option<(isize, usize)>>))   // // Load an images into specific cache positions
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -206,71 +204,7 @@ impl ImageCache {
 
     pub fn is_next_image_loaded(&self, next_image_index: usize) -> bool {
         self.cache_states[next_image_index]
-    }
-
-    pub fn is_next_image_index_in_queue(&self, _cache_index: usize, next_image_index: isize) -> bool {
-        // Check both the loading queue and being-loaded queue
-        self.loading_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, img_indices)) 
-            | LoadOperation::LoadPrevious((_c_index, img_indices))
-            | LoadOperation::ShiftNext((_c_index, img_indices))
-            | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
-                !img_indices.contains(&Some(next_image_index))
-            }
-            LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
-                !target_indices_and_cache
-                    .iter()
-                    .any(|&item| item.map(|(index, _)| index == next_image_index).unwrap_or(false))
-            }
-        }) && self.being_loaded_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, img_indices)) 
-            | LoadOperation::LoadPrevious((_c_index, img_indices))
-            | LoadOperation::ShiftNext((_c_index, img_indices))
-            | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
-                !img_indices.contains(&Some(next_image_index))
-            }
-            LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
-                !target_indices_and_cache
-                    .iter()
-                    .any(|&item| item.map(|(index, _)| index == next_image_index).unwrap_or(false))
-            }
-        })
-    }
-
-    pub fn are_next_image_indices_in_queue(&self, next_image_indices: Vec<Option<isize>>) -> bool {
-        self.loading_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, img_indices)) 
-            | LoadOperation::LoadPrevious((_c_index, img_indices))
-            | LoadOperation::ShiftNext((_c_index, img_indices))
-            | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
-                img_indices != &next_image_indices
-            }
-            LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
-                let extracted_indices: Vec<Option<isize>> = target_indices_and_cache
-                    .iter()
-                    .map(|item| item.map(|(index, _)| index))
-                    .collect();
-                extracted_indices != next_image_indices
-            }
-        }) && self.being_loaded_queue.iter().all(|op| match op {
-            LoadOperation::LoadNext((_c_index, img_indices)) 
-            | LoadOperation::LoadPrevious((_c_index, img_indices))
-            | LoadOperation::ShiftNext((_c_index, img_indices))
-            | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
-                img_indices != &next_image_indices
-            }
-            LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
-                let extracted_indices: Vec<Option<isize>> = target_indices_and_cache
-                    .iter()
-                    .map(|item| item.map(|(index, _)| index))
-                    .collect();
-                extracted_indices != next_image_indices
-            }
-        })
-    }
-    
-    
-    
+    }    
     
 
     pub fn is_operation_blocking(&self, operation: LoadOperationType) -> bool {
@@ -658,18 +592,7 @@ impl ImageCache {
     }
 }
 
-// Helper function to load an image by index
-// NOTE: This function returns a command object but does not execute it
-pub fn load_image_by_index(img_cache: &mut ImageCache, target_index: usize, operation: LoadOperation) -> Command<<DataViewer as iced::Application>::Message> {
-    let path = img_cache.image_paths.get(target_index);
-    if let Some(path) = path {
-        // debug!("target_index: {}, Loading Path: {}", path.clone().to_string_lossy(), target_index );
-        let image_loading_task = async_load_image(path.clone(), operation);
-        Command::perform(image_loading_task, Message::ImageLoaded)
-    } else {
-        Command::none()
-    }
-}
+
 
 pub fn load_images_by_operation_slider(
     panes: &mut Vec<pane::Pane>,

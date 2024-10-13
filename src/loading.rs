@@ -97,11 +97,6 @@ pub fn handle_load_operation_all(
 }
 
 
-
-
-
-
-
 pub fn handle_load_pos_operation(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
