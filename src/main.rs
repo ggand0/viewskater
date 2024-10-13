@@ -617,26 +617,27 @@ impl Application for DataViewer {
                     }
                 }
             }
+            
             Message::ImagesLoaded(result) => {
                 match result {
                     Ok((image_data, operation)) => {
                         if let Some(op) = operation {
+                            let cloned_op = op.clone();
                             match op {
                                 LoadOperation::LoadNext((ref pane_indices, ref target_indices))
                                 | LoadOperation::LoadPrevious((ref pane_indices, ref target_indices))
                                 | LoadOperation::ShiftNext((ref pane_indices, ref target_indices))
                                 | LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
-                                    let load_fn = op.clone().load_fn(); // Capture the function in a variable. clone() to avoid borrowing errors
-                                    let operation_type = op.operation_type();
-                                    
+                                    let operation_type = cloned_op.operation_type();
+            
                                     loading::handle_load_operation_all(
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_indices,
                                         target_indices.clone(),
                                         image_data,
-                                        load_fn,           // Pass the captured function
-                                        operation_type,     // Pass the captured operation type
+                                        cloned_op, // Pass the LoadOperation directly
+                                        operation_type,
                                     );
                                 }
                                 LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
@@ -656,6 +657,7 @@ impl Application for DataViewer {
                     }
                 }
             }
+            
             
 
             Message::SliderChanged(pane_index, value) => {

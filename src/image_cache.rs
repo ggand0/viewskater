@@ -56,30 +56,6 @@ pub enum LoadOperationType {
 }
 
 impl LoadOperation {
-    //pub fn load_fn(&self) -> Box<dyn FnMut(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error>> {
-    //pub fn load_fn(&self) -> Box<dyn FnMut(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error> + '_> {
-    pub fn load_fn(self) -> Box<dyn FnMut(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error> + 'static> {
-        match self {
-            LoadOperation::LoadNext(..) => {
-                Box::new(|cache, new_image, image_index| cache.move_next(new_image, image_index))
-            },
-            LoadOperation::ShiftNext(..) => Box::new(|cache, new_image, image_index| cache.move_next_edge(new_image, image_index)),
-            LoadOperation::LoadPrevious(..) => Box::new(|cache, new_image, image_index| cache.move_prev(new_image, image_index)),
-            LoadOperation::ShiftPrevious(..) => Box::new(|cache, new_image, image_index| cache.move_prev_edge(new_image, image_index)),
-            LoadOperation::LoadPos((_, target_indices_and_cache)) => {
-                // Iterate over the target_indices_and_cache to load images
-                Box::new(move |cache, new_image, _| {
-                    for target in target_indices_and_cache.iter() {
-                        if let Some((target_index, cache_pos)) = target {
-                            // Load the image at the cache position specified by cache_pos
-                            cache.load_pos(new_image.clone(), *cache_pos, *target_index)?;
-                        }
-                    }
-                    Ok(true)
-                })
-            }
-        }
-    }
     pub fn operation_type(&self) -> LoadOperationType {
         match self {
             LoadOperation::LoadNext(..) => LoadOperationType::LoadNext,
