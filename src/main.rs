@@ -269,6 +269,9 @@ impl DataViewer {
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
                 if self.skate_right {
                     self.skate_right = false;
+
+                    // Discard all queue items that are LoadNext or ShiftNext
+                    self.loading_status.reset_load_next_queue_items();
                 }
 
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
@@ -288,15 +291,11 @@ impl DataViewer {
                 
             }
             keyboard::KeyCode::Right | keyboard::KeyCode::D => {
-                debug!("ArrowRight pressed");
                 if self.skate_left {
-                    debug!("**********SKATE_RIGHT: SWITCHED: skate_left was true**********");
                     self.skate_left = false;
 
                     // Discard all queue items that are LoadPrevious or ShiftPrevious
-                    for pane in self.panes.iter_mut() {
-                        pane.img_cache.reset_load_previous_queue_items();
-                    }
+                    self.loading_status.reset_load_previous_queue_items();
                 }
 
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
@@ -340,23 +339,10 @@ impl DataViewer {
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
                 debug!("Left key or 'A' key released!");
                 self.skate_left = false;
-
-                // Reset panes' image loading queues
-                for pane in self.panes.iter_mut() {
-                    pane.img_cache.reset_image_load_queue();
-                    pane.img_cache.reset_image_being_loaded_queue();
-                }
-                
             }
             keyboard::KeyCode::Right | keyboard::KeyCode::D => {
                 debug!("Right key or 'D' key released!");
                 self.skate_right = false;
-                // Reset panes' image loading queues
-                for pane in self.panes.iter_mut() {
-                    pane.img_cache.reset_image_load_queue();
-                    pane.img_cache.reset_image_being_loaded_queue();
-                }
-                
             }
             _ => {},
         }

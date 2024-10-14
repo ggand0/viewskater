@@ -69,21 +69,8 @@ impl LoadingStatus {
         });
     }
 
-    pub fn is_load_next_items_in_queue(&self) -> bool {
-        self.loading_queue.iter().any(|op| match op {
-            LoadOperation::LoadNext(..) => true,
-            LoadOperation::ShiftNext(..) => true,
-            _ => false,
-        })
-    }
-    pub fn is_load_previous_items_in_queue(&self) -> bool {
-        self.loading_queue.iter().any(|op| match op {
-            LoadOperation::LoadPrevious(..) => true,
-            LoadOperation::ShiftPrevious(..) => true,
-            _ => false,
-        })
-    }
 
+    #[allow(dead_code)]
     pub fn is_next_image_index_in_queue(&self, _cache_index: usize, next_image_index: isize) -> bool {
         // Check both the loading queue and being-loaded queue
         self.loading_queue.iter().all(|op| match op {
@@ -143,15 +130,6 @@ impl LoadingStatus {
                 extracted_indices != next_image_indices
             }
         })
-    }
-
-    // Search for and remove the specific image from the out_of_order_images Vec
-    pub fn pop_out_of_order_image(&mut self, target_index: usize) -> Option<Vec<u8>> {
-        if let Some(pos) = self.out_of_order_images.iter().position(|&(index, _)| index == target_index) {
-            Some(self.out_of_order_images.remove(pos).1)
-        } else {
-            None
-        }
     }
 
     /// If there are certain loading operations in the queue and the new loading op would cause bugs, return true

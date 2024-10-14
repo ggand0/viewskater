@@ -29,7 +29,7 @@ use log::{debug, info, warn, error};
 
 use crate::{DataViewer,Message};
 use iced::Command;
-use crate::file_io::{async_load_image, load_images_async, empty_async_block_vec};
+use crate::file_io::{load_images_async, empty_async_block_vec};
 use crate::loading_status::LoadingStatus;
 use crate::pane::Pane;   
 use crate::pane;
@@ -79,7 +79,6 @@ pub struct ImageCache {
     pub cache_states: Vec<bool>,                        // Cache states
     pub loading_queue: VecDeque<LoadOperation>,
     pub being_loaded_queue: VecDeque<LoadOperation>,    // Queue of image indices being loaded
-    pub out_of_order_images: Vec<(usize, Vec<u8>)>,     // Store out-of-order images (used in Message::ImageLoaded)
 }
 
 impl ImageCache {
@@ -95,19 +94,21 @@ impl ImageCache {
             being_loaded_queue: VecDeque::new(),
             cache_states: Vec::new(),
             cached_image_indices: vec![-1; cache_count * 2 + 1],
-            out_of_order_images: Vec::new(),
         })
     }
 
+    #[allow(dead_code)]
     pub fn print_state(&self) {
         debug!("current_index: {}, current_offset: {}", self.current_index, self.current_offset);
     }
 
+    #[allow(dead_code)]
     pub fn print_queue(&self) {
         debug!("loading_queue: {:?}", self.loading_queue);
         debug!("being_loaded_queue: {:?}", self.being_loaded_queue);
     }
 
+    #[allow(dead_code)]
     pub fn print_cache(&self) {
         for (index, image_option) in self.cached_images.iter().enumerate() {
             match image_option {
@@ -122,6 +123,8 @@ impl ImageCache {
             }
         }
     }
+
+    #[allow(dead_code)]
     pub fn print_cache_index(&self) {
         for (index, cache_index) in self.cached_image_indices.iter().enumerate() {
             let index_info = format!("Index {} - Cache Index: {}", index, cache_index);
@@ -129,68 +132,10 @@ impl ImageCache {
         }
     }
 
+    #[allow(dead_code)]
     pub fn clear_cache(&mut self) {
         self.cached_images = vec![None; self.cache_count * 2 + 1];
         self.cache_states = vec![false; self.image_paths.len()];
-    }
-
-    pub fn enqueue_image_load(&mut self, operation: LoadOperation) {
-        // Push the operation into the loading queue
-        self.loading_queue.push_back(operation);
-    }
-
-    pub fn reset_image_load_queue(&mut self) {
-        self.loading_queue.clear();
-    }
-
-    pub fn enqueue_image_being_loaded(&mut self, operation: LoadOperation) {
-        // Push the index into the being loaded queue
-        self.being_loaded_queue.push_back(operation);
-    }
-
-    pub fn reset_image_being_loaded_queue(&mut self) {
-        self.being_loaded_queue.clear();
-    }
-
-    pub fn reset_load_next_queue_items(&mut self) {
-        // Discard all queue items that are LoadNext or ShiftNext
-        self.loading_queue.retain(|op| match op {
-            LoadOperation::LoadNext(..) => false,
-            LoadOperation::ShiftNext(..) => false,
-            _ => true,
-        });
-    }
-    pub fn reset_load_previous_queue_items(&mut self) {
-        // Discard all queue items that are LoadPrevious or ShiftPrevious
-        self.loading_queue.retain(|op| match op {
-            LoadOperation::LoadPrevious(..) => false,
-            LoadOperation::ShiftPrevious(..) => false,
-            _ => true,
-        });
-    }
-
-    pub fn is_load_next_items_in_queue(&self) -> bool {
-        self.loading_queue.iter().any(|op| match op {
-            LoadOperation::LoadNext(..) => true,
-            LoadOperation::ShiftNext(..) => true,
-            _ => false,
-        })
-    }
-    pub fn is_load_previous_items_in_queue(&self) -> bool {
-        self.loading_queue.iter().any(|op| match op {
-            LoadOperation::LoadPrevious(..) => true,
-            LoadOperation::ShiftPrevious(..) => true,
-            _ => false,
-        })
-    }
-
-    // Search for and remove the specific image from the out_of_order_images Vec
-    pub fn pop_out_of_order_image(&mut self, target_index: usize) -> Option<Vec<u8>> {
-        if let Some(pos) = self.out_of_order_images.iter().position(|&(index, _)| index == target_index) {
-            Some(self.out_of_order_images.remove(pos).1)
-        } else {
-            None
-        }
     }
 
     pub fn get_next_image_to_load(&self) -> usize {
@@ -201,10 +146,6 @@ impl ImageCache {
         let prev_image_index_to_load = (self.current_index as isize + (-(self.cache_count as isize) - self.current_offset) as isize) - 1;
         prev_image_index_to_load as usize
     }
-
-    pub fn is_next_image_loaded(&self, next_image_index: usize) -> bool {
-        self.cache_states[next_image_index]
-    }    
     
 
     pub fn is_operation_blocking(&self, operation: LoadOperationType) -> bool {
@@ -275,11 +216,6 @@ impl ImageCache {
         false
     }
 
-    pub fn is_operation_in_queues(&self, operation: LoadOperationType) -> bool {
-        self.loading_queue.iter().any(|op| op.operation_type() == operation) ||
-        self.being_loaded_queue.iter().any(|op| op.operation_type() == operation)
-    }
-
     pub fn is_some_at_index(&self, index: usize) -> bool {
         // Using pattern matching to check if element is None
         if let Some(image_data_option) = self.cached_images.get(index) {
@@ -323,10 +259,6 @@ impl ImageCache {
         index < 0 && index >= -(self.cache_count as isize) ||
         index >= 0 && index < self.image_paths.len() as isize ||
         index >= self.image_paths.len() as isize && index < self.image_paths.len() as isize + self.cache_count as isize
-    }
-
-    pub fn is_current_index_within_bounds(&self) -> bool {
-        (0..self.image_paths.len()).contains(&self.current_index)
     }
 
     pub fn get_next_cache_index(&self) -> isize {
@@ -406,17 +338,7 @@ impl ImageCache {
             ))
         }
     }
-    
-    pub fn load_current_image(&mut self) -> Result<&Vec<u8>, io::Error> {
-        let cache_index = self.cache_count;
-        debug!(" Current index: {}, Cache index: {}", self.current_index, cache_index);
-        if self.cached_images[cache_index].is_none() {
-            debug!("Loading image");
-            let current_image = self.load_image(self.current_index)?;
-            self.cached_images[cache_index] = Some(current_image.clone());
-        }
-        Ok(self.cached_images[cache_index].as_ref().unwrap())
-    }
+
 
     pub fn get_initial_image(&self) -> Result<&Vec<u8>, io::Error> {
         let cache_index = (self.cache_count as isize + self.current_offset) as usize;
@@ -437,6 +359,7 @@ impl ImageCache {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_current_image(&self) -> Result<&Vec<u8>, io::Error> {
         let cache_index = self.cache_count; // center element of the cache
         debug!("    Current index: {}, Cache index: {}", self.current_index, cache_index);
@@ -576,6 +499,7 @@ impl ImageCache {
         debug!("shift_cache_left - current_offset: {}", self.current_offset);
     }
 
+    #[allow(dead_code)]
     fn load_pos(&mut self, new_image: Option<Vec<u8>>, pos: usize, image_index: isize) -> Result<bool, io::Error> {
         // If `pos` is at the center of the cache return true to reload the current_image
         self.cached_images[pos] = new_image;

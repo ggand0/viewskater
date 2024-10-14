@@ -96,11 +96,6 @@ pub fn load_remaining_images(
     pane_index: isize,
     pos: usize,
 ) -> Command<<DataViewer as iced::Application>::Message> {
-    // Clear the loading queues for all panes since we've moved to a new position
-    for pane in panes.iter_mut() {
-        pane.img_cache.reset_image_load_queue();
-        pane.img_cache.reset_image_being_loaded_queue();
-    }
     // Clear the global loading queue
     loading_status.reset_image_load_queue();
     loading_status.reset_image_being_loaded_queue();
@@ -177,12 +172,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
 }
 
 pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) -> Command<<DataViewer as iced::Application>::Message> {
-    // Since we're moving to a completely new position, clear the loading queues
-    for (_cache_index, pane) in panes.iter_mut().enumerate() {
-        let img_cache = &mut pane.img_cache;
-        img_cache.reset_image_load_queue();
-        img_cache.reset_image_being_loaded_queue();
-    }
+    // TODO: clear the global loading queue here
 
     if pane_index == -1 {
         // Perform dynamic loading:

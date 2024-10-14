@@ -15,10 +15,9 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-
+#[allow(unused_imports)]
 use log::{debug, error};
 use crate::pane;
-use crate::image_cache::ImageCache;
 use crate::loading_status::LoadingStatus;
 use crate::image_cache::LoadOperationType;
 use crate::image_cache::LoadOperation;
@@ -83,7 +82,7 @@ pub fn handle_load_operation_all(
                     LoadOperation::ShiftPrevious(..) => {
                         cache.move_prev_edge(image_data[pane_index].clone(), target_index).unwrap();
                     }
-                    LoadOperation::LoadPos((_, ref target_indices_and_cache)) => {
+                    LoadOperation::LoadPos((_, ref _target_indices_and_cache)) => {
                         // LoadPos is covered in `handle_load_pos_operation()`
                     }
                 }
@@ -112,7 +111,7 @@ pub fn handle_load_pos_operation(
         let cache = &mut pane.img_cache;
 
         // Iterate over the target indices and cache positions along with image data
-        for ((target_opt, image_data_opt)) in target_indices_and_cache.iter().zip(image_data.iter()) {
+        for (target_opt, image_data_opt) in target_indices_and_cache.iter().zip(image_data.iter()) {
             if let Some((target_index, cache_pos)) = target_opt {
                 let target_index_usize = *target_index as usize;
 
@@ -139,75 +138,4 @@ pub fn handle_load_pos_operation(
             }
         }
     }
-}
-
-
-pub fn handle_load_operation(
-    panes: &mut Vec<pane::Pane>,
-    c_index: isize,
-    target_index: isize,
-    image_data: Option<Vec<u8>>,
-    mut load_fn: Box<dyn FnMut(&mut ImageCache, Option<Vec<u8>>, isize) -> Result<bool, std::io::Error>>,
-    operation_type: LoadOperationType,
-) {
-    let pane = &mut panes[c_index as usize];
-    let cache = &mut pane.img_cache;
-
-    // Early return for Shift operations as they don't involve loading
-    if matches!(operation_type, LoadOperationType::ShiftNext | LoadOperationType::ShiftPrevious) {
-        return;
-    }
-
-    // Remove the first item from the loading queue
-    cache.being_loaded_queue.pop_front();
-
-    // Skip if the operation is blocking
-    if cache.is_operation_blocking(operation_type.clone()) {
-        return;
-    }
-
-    // Determine the target image to load based on operation type
-    let target_image_to_load = match operation_type {
-        LoadOperationType::LoadNext => Some(cache.get_next_image_to_load() as isize),
-        LoadOperationType::LoadPrevious => Some(cache.get_prev_image_to_load() as isize),
-        LoadOperationType::LoadPos => None,  // `LoadPos` needs to load the specified `target_index`
-        _ => return,
-    };
-
-    let is_matched = target_image_to_load.map_or(false, |load| load == target_index);
-
-
-    debug!(
-        "IMAGE LOADED: target_image_to_load: {:?}, target_index: {}",
-        target_image_to_load, target_index
-    );
-    debug!("load_operation: {:?}", operation_type);
-
-    // Skip loading if the cache offset is outside valid bounds
-    if (operation_type == LoadOperationType::LoadNext && cache.current_offset > cache.cache_count as isize)
-        || (operation_type == LoadOperationType::LoadPrevious && cache.current_offset < -(cache.cache_count as isize)) 
-    {
-        return;
-    }
-
-    // If the target image matches, or if the target image is not found, load the image data
-    if is_matched || matches!(operation_type, LoadOperationType::LoadPos) {
-        match load_fn(cache, image_data, target_index) {
-            Ok(reload_current_image) => {
-                if reload_current_image {
-                    let loaded_image = cache.get_initial_image().unwrap().to_vec();
-                    let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
-                    pane.current_image = handle;
-                }
-            }
-            Err(error) => {
-                error!("Error loading image: {}", error);
-            }
-        }
-    }
-
-    debug!(
-        "IMAGE LOADED: cache_index: {}, current_offset: {}",
-        c_index, cache.current_offset
-    );
 }
