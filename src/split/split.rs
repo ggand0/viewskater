@@ -97,7 +97,6 @@ where
     /// The message that is send when the divider of the [`Split`] is moved.
     on_resize: Box<dyn Fn(u16) -> Message>,
     on_double_click: Box<dyn Fn(u16) -> Message>,
-    // on_drop: Option<Box<dyn Fn(u16) -> Message>>,
     on_drop: Box<dyn Fn(isize, String) -> Message>,
     on_select: Box<dyn Fn(usize, bool) -> Message>,
 
@@ -159,8 +158,6 @@ where
             axis,
             padding: 0.0,
             spacing: 5.0,
-            // spacing: 0.0,
-            // spacing: 1.0,
             width: Length::Fill,
             height: Length::Fill,
             min_size_first: 5,
@@ -281,9 +278,6 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) -> event::Status {
-        // DEBUG
-        // debug!("self.divider_position: {:?}", self.divider_position);
-        // debug!("Cursor position: {:?}", cursor.position().unwrap_or_default());
         for child_layout in layout.children() {
             let _bounds = child_layout.bounds();
             // debug!("cursor.is_over(bounds): {:?}", cursor.is_over(bounds));
@@ -373,7 +367,6 @@ where
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Event::Window(iced::window::Event::FileHovered(position)) => {
                 // Access the cursor position from the FileHovered event
-                // debug!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
                 debug!("FILEHOVER POSITION: {:?}", position);
             }
 
@@ -423,7 +416,6 @@ where
                     let bounds = child_layout.bounds();
                     debug!("Child bounds: {:?}", bounds);
                     debug!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
-                    
                     // debug!("Cursor position: {:?}", cursor.position());
     
                     // TODO: Implement enum LayoutItem { Pane, Divider }
@@ -656,13 +648,6 @@ where
 
 
         let bounds = divider_layout.bounds();
-        // Create a modified Rectangle for a thin line (1px width)
-        /*let thin_rectangle = Rectangle {
-            x: bounds.x,
-            y: bounds.y,
-            width: bounds.width, // Keep the same width
-            height: 1.0,         // Set a height of 1px for a thin line
-        };*/
         let is_horizontal = bounds.width >= bounds.height;
 
         // Create a modified Rectangle for a thin line
@@ -681,7 +666,6 @@ where
             Rectangle {
                 x: bounds.x + 2.0,
                 y: bounds.y,
-                // y: bounds.y,
                 width: 1.0,
                 height: bounds.height + 10.0,
             }
@@ -691,10 +675,9 @@ where
         // Draw the divider
         renderer.fill_quad(
             renderer::Quad {
-                // bounds: divider_layout.bounds(),
                 bounds: thin_rectangle,
                 border_radius: (0.0).into(),
-                border_width: 0.0,//divider_style.divider_border_width,
+                border_width: 0.0,
                 border_color: divider_style.divider_border_color,
             },
             Color::from_rgb(0.2, 0.2, 0.2)

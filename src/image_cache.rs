@@ -283,9 +283,7 @@ impl ImageCache {
     pub fn is_some_at_index(&self, index: usize) -> bool {
         // Using pattern matching to check if element is None
         if let Some(image_data_option) = self.cached_images.get(index) {
-            //debug!("is_some_at_index - index: {}, cached_images.len(): {}", index, self.cached_images.len());
             if let Some(_image_data) = image_data_option {
-                //debug!("is_some_at_index - image_data.len(): {}", image_data.len());
                 true
             } else {
                 false
@@ -561,17 +559,17 @@ impl ImageCache {
         // where the next image hasn't been loaded yet. 
         /*
         e.g. next_image_index_to_load: 702, next_image_index_to_render: 8 current_index: 694, current_offset: 2
-        Image 0 - Size: 4736 bytes
-        Image 1 - Size: 4650 bytes
-        Image 2 - Size: 4690 bytes
-        Image 3 - Size: 3885 bytes
-        Image 4 - Size: 3803 bytes
-        Image 5 - Size: 3741 bytes
-        Image 6 - Size: 3625 bytes
-        Image 7 - Size: 3555 bytes
-        No image at index 8
-        Image 9 - Size: 3538 bytes
-        No image at index 10
+            Image 0 - Size: 4736 bytes
+            Image 1 - Size: 4650 bytes
+            Image 2 - Size: 4690 bytes
+            Image 3 - Size: 3885 bytes
+            Image 4 - Size: 3803 bytes
+            Image 5 - Size: 3741 bytes
+            Image 6 - Size: 3625 bytes
+            Image 7 - Size: 3555 bytes
+            No image at index 8
+            Image 9 - Size: 3538 bytes
+            No image at index 10
         */
 
         self.current_offset -= 1;
@@ -600,7 +598,6 @@ pub fn load_images_by_operation_slider(
     target_indices_and_cache: Vec<Option<(isize, usize)>>,
     operation: LoadOperation
 ) -> Command<<DataViewer as iced::Application>::Message> {
-    debug!("load_images_by_operation_slider for pane_index: {}", pane_index);
     let mut paths = Vec::new();
 
     // Ensure we access the correct pane by the pane_index
@@ -610,8 +607,6 @@ pub fn load_images_by_operation_slider(
         // Loop over the target indices and cache positions
         for target in target_indices_and_cache.iter() {
             if let Some((target_index, cache_pos)) = target {
-                debug!("++++load_images_by_operation_slider - target_index: {}, cache_pos: {}", target_index, cache_pos);
-
                 if let Some(path) = img_cache.image_paths.get(*target_index as usize) {
                     if let Some(s) = path.to_str() {
                         paths.push(Some(s.to_string()));
@@ -630,9 +625,9 @@ pub fn load_images_by_operation_slider(
         }
 
         // Debug print the paths
-        for (i, path) in paths.iter().enumerate() {
+        /*for (i, path) in paths.iter().enumerate() {
             debug!("path[{}]: {:?}", i, path);
-        }
+        }*/
 
         // If we have valid paths, proceed to load the images asynchronously
         if !paths.is_empty() {
@@ -660,8 +655,6 @@ pub fn load_images_by_indices(
         let img_cache = &mut pane.img_cache;
 
         if let Some(target_index) = target_indices[pane_index] {
-            debug!("++++load_images_by_indices - target_index: {}", target_index);
-
             if let Some(path) = img_cache.image_paths.get(target_index as usize) {
                 if let Some(s) = path.to_str() {
                     paths.push(Some(s.to_string()));
@@ -677,9 +670,9 @@ pub fn load_images_by_indices(
     }
 
     // Debug print the paths
-    for (i, path) in paths.iter().enumerate() {
+    /*for (i, path) in paths.iter().enumerate() {
         debug!("path[{}]: {:?}", i, path);
-    }
+    }*/
 
     if !paths.is_empty() {
         let images_loading_task = load_images_async(paths, operation);
@@ -691,10 +684,8 @@ pub fn load_images_by_indices(
 
 
 pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Command<<DataViewer as iced::Application>::Message> {
-    debug!("load_images_by_operation");
     if !loading_status.loading_queue.is_empty() {
         if let Some(operation) = loading_status.loading_queue.pop_front() {
-            debug!("load_images_by_operation - operation: {:?}", operation);
             loading_status.enqueue_image_being_loaded(operation.clone());
             match operation {
                 LoadOperation::LoadNext((ref _pane_indices, ref target_indicies)) => {
@@ -727,8 +718,6 @@ pub fn load_all_images_in_queue(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
 ) -> Command<<DataViewer as iced::Application>::Message> {
-    debug!("##load_all_images_in_queue");
-
     let mut commands = Vec::new();
     let mut pane_refs: Vec<&mut pane::Pane> = vec![];
     

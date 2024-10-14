@@ -266,9 +266,6 @@ where
             | Event::Touch(touch::Event::FingerLifted { .. })
             | Event::Touch(touch::Event::FingerLost { .. }) => {
                 if is_dragging {
-                    /*if let Some(on_release) = self.on_release.clone() {
-                        shell.publish(on_release);
-                    }*/
                     shell.publish((self.on_release)( self.pane_index, self.value ));
                     state.is_dragging = false;
 

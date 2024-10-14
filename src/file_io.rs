@@ -90,9 +90,6 @@ pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadO
 
 
 pub async fn pick_folder() -> Result<String, Error> {
-    // let handle = rfd::AsyncFileDialog::new().set_title("Open Folder with images").pick_folder().await
-    //     .ok_or(Error::DialogClosed);
-
     let handle= rfd::AsyncFileDialog::new()
         .set_title("Open Folder with images")
         .pick_folder()

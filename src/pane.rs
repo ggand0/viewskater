@@ -25,7 +25,6 @@ use crate::file_io;
 use crate::file_io::{is_file, is_directory, get_file_index};
 
 use iced::widget::{
-    //container, row, column, slider, horizontal_space, text
     container, column, text
 };
 use iced::{Element, Length};
@@ -175,7 +174,6 @@ impl Pane {
 
         // Render the previous one right away
         // Avoid loading around the edges
-        ////if !self.is_prev_image_loaded && img_cache.cache_count as isize + img_cache.current_offset > 0 &&
         if img_cache.cache_count as isize + img_cache.current_offset > 0 &&
             img_cache.is_some_at_index( (img_cache.cache_count as isize + img_cache.current_offset) as usize) {
 
@@ -262,15 +260,9 @@ impl Pane {
         } else if is_directory(&path) {
             debug!("Dropped path is a directory");
             self.directory_path = Some(path.to_string_lossy().to_string());
-            //_file_paths = get_file_paths(Path::new(&self.directory_path.clone().unwrap()));
             _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
             initial_index = 0;
-            // Display the first 100 paths
-            /*for path in _file_paths.iter().take(100) {
-                debug!("{}", path.display());
-            }*/
 
-            
             let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
             is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
                 true
@@ -298,16 +290,13 @@ impl Pane {
         }
 
         // Sort
-        //alphanumeric_sort::sort_path_slice(&mut _file_paths);
         debug!("File paths: {}", _file_paths.len());
         self.dir_loaded = true;
 
         // Instantiate a new image cache and load the initial images
         let mut img_cache =  ImageCache::new(
             _file_paths,
-            //2,
             5,
-            //100,
             initial_index,
         ).unwrap();
         img_cache.load_initial_images().unwrap();
@@ -348,7 +337,6 @@ impl Pane {
     pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {
         let img: iced::widget::Container<Message>  = if self.dir_loaded {
             container(column![
-                //Image::new(self.current_image.clone())
                 viewer::Viewer::new(self.current_image.clone())
                 .width(Length::Fill)
                 .height(Length::Fill),

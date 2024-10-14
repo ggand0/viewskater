@@ -5,13 +5,11 @@
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
-    //pub use iced_aw;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
     pub use iced_custom as iced;
-    //pub use iced_aw_custom as iced_aw;
 }
 
 #[cfg(target_os = "linux")]
@@ -176,11 +174,6 @@ impl DataViewer {
             debug!("resized pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
         }
 
-        // Update the slider position
-        // NOTE: Do we need this?
-        if !self.is_slider_dual && self.last_opened_pane == -1 {
-            //self.slider_value = self.panes[pane_index].img_cache.current_index as u16;
-        }
         self.last_opened_pane = pane_index as isize;
     }
 
@@ -275,20 +268,16 @@ impl DataViewer {
 
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
                 if self.skate_right {
-                    debug!("**********SKATE_LEFT: SWITCHED: skate_right was true**********");
                     self.skate_right = false;
                 }
 
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
-                    //Command::none();
                 }
 
                 if modifiers.shift() {
-                    debug!("SKATE_LEFT: true");
                     self.skate_left = true;
                 } else {
-                    debug!("SKATE_LEFT: false");
                     self.skate_left = false;
 
                     let command = move_left_all(
@@ -312,14 +301,11 @@ impl DataViewer {
 
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
                     debug!("No panes selected");
-                    //Command::none();
                 }
 
                 if modifiers.shift() {
-                    debug!("SKATE_RIGHT: true");
                     self.skate_right = true;
                 } else {
-                    debug!("SKATE_RIGHT: false");
                     self.skate_right = false;
 
                     let command = move_right_all(
@@ -342,8 +328,6 @@ impl DataViewer {
         match key_code {
             keyboard::KeyCode::Tab => {
                 debug!("Tab released");
-                //Command::perform(async {}, |_| Message::TabReleased)
-                
             }
             keyboard::KeyCode::Enter | keyboard::KeyCode::NumpadEnter => {
                 debug!("Enter key released!");
@@ -355,7 +339,6 @@ impl DataViewer {
             }
             keyboard::KeyCode::Left | keyboard::KeyCode::A => {
                 debug!("Left key or 'A' key released!");
-                debug!("ArrowLeft released, SKATE_LEFT: false");
                 self.skate_left = false;
 
                 // Reset panes' image loading queues
@@ -459,7 +442,6 @@ impl Application for DataViewer {
             },
             Command::batch(vec![
                 font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded), // icon font
-                //font::load(include_bytes!("../assets/fonts/Iosevka-Regular.ttc").as_slice()).map(Message::FontLoaded),  // footer digit font
                 font::load(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf").as_slice()).map(Message::FontLoaded),  // footer digit font
                 font::load(include_bytes!("../assets/fonts/Roboto-Regular.ttf").as_slice()).map(Message::FontLoaded),   // UI font
             ])
@@ -575,18 +557,10 @@ impl Application for DataViewer {
             }
             Message::OnVerResize(position) => { self.ver_divider_position = Some(position); },
             Message::OnHorResize(position) => { self.hor_divider_position = Some(position); },
-            Message::ResetSplit(_position) => {
-                self.ver_divider_position = None;
-            },
-            Message::ToggleSliderType(_bool) => {
-                self.toggle_slider_type();
-            },
-            Message::TogglePaneLayout(pane_layout) => {
-                self.toggle_pane_layout(pane_layout);
-            },
-            Message::ToggleFooter(_bool) => {
-                self.toggle_footer();
-            },
+            Message::ResetSplit(_position) => { self.ver_divider_position = None; },
+            Message::ToggleSliderType(_bool) => { self.toggle_slider_type(); },
+            Message::TogglePaneLayout(pane_layout) => { self.toggle_pane_layout(pane_layout); },
+            Message::ToggleFooter(_bool) => { self.toggle_footer(); },
             Message::PaneSelected(pane_index, is_selected) => {
                 self.panes[pane_index].is_selected = is_selected;
                 for (index, pane) in self.panes.iter_mut().enumerate() {
@@ -644,7 +618,6 @@ impl Application for DataViewer {
                     self.slider_value = value;
                     debug!("slider - update_pos");
                     return update_pos(&mut self.panes, pane_index as isize, value as usize);
-
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
                     let _pane_index_org = pane_index.clone();
@@ -716,18 +689,26 @@ impl Application for DataViewer {
         }
 
         if self.skate_right {
-            debug!("SKATE_RIGHT CONTINUOUS: {}", self.skate_right);
-            debug!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
             let command = move_right_all(
-                &mut self.panes, &mut self.loading_status, &mut self.slider_value, &self.pane_layout, self.is_slider_dual,self.last_opened_pane as usize);
+                &mut self.panes,
+                &mut self.loading_status,
+                &mut self.slider_value,
+                &self.pane_layout,
+                self.is_slider_dual,
+                self.last_opened_pane as usize
+            );
             command
         } else if self.skate_left {
-            debug!("skae_left: {}", self.skate_left);
-            debug!("update_counter: {}", self.update_counter);
             self.update_counter = 0;
-            let command = move_left_all(&mut self.panes, &mut self.loading_status, &mut self.slider_value, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-            debug!("command: {:?}", command);
+            let command = move_left_all(
+                &mut self.panes,
+                &mut self.loading_status,
+                &mut self.slider_value,
+                &self.pane_layout,
+                self.is_slider_dual,
+                self.last_opened_pane as usize
+            );
             command
         } else {
             debug!("no skate mode detected");
