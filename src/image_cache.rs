@@ -363,6 +363,7 @@ impl ImageCache {
     pub fn get_current_image(&self) -> Result<&Vec<u8>, io::Error> {
         let cache_index = self.cache_count; // center element of the cache
         debug!("    Current index: {}, Cache index: {}", self.current_index, cache_index);
+
         // Display information about each image
         /*for (index, image_option) in self.cached_images.iter().enumerate() {
             match image_option {
@@ -430,7 +431,6 @@ impl ImageCache {
 
     pub fn move_next_edge(&mut self, _new_image: Option<Vec<u8>>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
-            debug!("move_next_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
             Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
@@ -448,7 +448,6 @@ impl ImageCache {
 
     pub fn move_prev_edge(&mut self, _new_image: Option<Vec<u8>>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
-            debug!("move_prev_edge - current_index: {}, current_offset: {}", self.current_index, self.current_offset);
             Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
@@ -548,11 +547,6 @@ pub fn load_images_by_operation_slider(
             }
         }
 
-        // Debug print the paths
-        /*for (i, path) in paths.iter().enumerate() {
-            debug!("path[{}]: {:?}", i, path);
-        }*/
-
         // If we have valid paths, proceed to load the images asynchronously
         if !paths.is_empty() {
             let images_loading_task = load_images_async(paths, operation);
@@ -592,11 +586,6 @@ pub fn load_images_by_indices(
             paths.push(None);
         }
     }
-
-    // Debug print the paths
-    /*for (i, path) in paths.iter().enumerate() {
-        debug!("path[{}]: {:?}", i, path);
-    }*/
 
     if !paths.is_empty() {
         let images_loading_task = load_images_async(paths, operation);
@@ -670,7 +659,6 @@ pub fn load_all_images_in_queue(
                 commands.push(command);
             }
             _ => {
-                // Handle other types of loading operations if necessary
             }
         }
     }

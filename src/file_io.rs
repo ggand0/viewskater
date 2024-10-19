@@ -47,7 +47,7 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
 
 #[allow(dead_code)]
 async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
-    //Load a single image asynchronously
+    // Load a single image asynchronously
     if let Some(path) = path {
         let file_path = Path::new(path);
         match File::open(file_path).await {

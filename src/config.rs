@@ -1,4 +1,3 @@
-// config.rs
 use once_cell::sync::Lazy;
 
 pub struct Config {
@@ -7,7 +6,6 @@ pub struct Config {
     pub max_being_loaded_queue_size: usize,
 }
 
-// Define a static `Lazy` configuration.
 pub static CONFIG: Lazy<Config> = Lazy::new(|| Config {
     cache_size: 5,
     max_loading_queue_size: 3,

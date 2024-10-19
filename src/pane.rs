@@ -42,11 +42,6 @@ use crate::config::CONFIG;
 use log::{Level, debug, info, warn, error};
 
 
-// ref: https://github.com/iced-rs/iced/blob/master/examples/todos/src/main.rs
-#[derive(Debug, Clone)]
-pub enum PaneMessage {
-}
-
 #[derive(Clone)]
 pub struct Pane {
     pub directory_path: Option<String>,
@@ -57,8 +52,6 @@ pub struct Pane {
     pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
     pub slider_value: u16,
     pub prev_slider_value: u16,
-
-    pub id: usize,
     pub is_selected: bool,
     pub is_selected_cache: bool,
 }
@@ -74,7 +67,6 @@ impl Default for Pane {
             is_prev_image_loaded: true,
             slider_value: 0,
             prev_slider_value: 0,
-            id: 0,
             is_selected: true,
             is_selected_cache: true,
         }
@@ -93,13 +85,11 @@ impl Pane {
             is_prev_image_loaded: true,
             slider_value: 0,
             prev_slider_value: 0,
-            id: 0,
             is_selected: true,
             is_selected_cache: true,
         }
     }
 
-    /// One liner print function
     pub fn print_state(&self) {
         debug!("directory_path: {:?}, dir_loaded: {:?}, current_image: {:?}, is_next_image_loaded: {:?}, is_prev_image_loaded: {:?}, slider_value: {:?}, prev_slider_value: {:?}",
             self.directory_path, self.dir_loaded, self.current_image, self.is_next_image_loaded, self.is_prev_image_loaded, self.slider_value, self.prev_slider_value);
@@ -137,7 +127,6 @@ impl Pane {
         let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
 
-        // Print out cache status
         img_cache.print_cache();
 
         if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
@@ -156,7 +145,7 @@ impl Pane {
             self.is_next_image_loaded = true;
             did_render_happen = true;
 
-            // NEW: handle current_index here without performing LoadingOperation::ShiftPrevious
+            // Handle current_index
             if img_cache.current_index < img_cache.image_paths.len() - 1 {
                 img_cache.current_index += 1;
             }
@@ -212,7 +201,6 @@ impl Pane {
     }
 
 
-    // Allowing for the sake of `is_dir_size_bigger`
     #[allow(unused_assignments)]
     pub fn initialize_dir_path(&mut self, pane_layout: &PaneLayout,
         pane_file_lengths: &[usize], _pane_index: usize, path: PathBuf,
@@ -330,12 +318,6 @@ impl Pane {
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
 
-    #[allow(dead_code)]
-    pub fn update(&mut self, message: PaneMessage) {
-        match message {
-        }
-    }
-
     pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {
         let img: iced::widget::Container<Message>  = if self.dir_loaded {
             container(column![
@@ -381,15 +363,6 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
             }
         }
     }
-
-    // If the directory size of the pane of max_dir_size_index and the pane of last_opened_pane is the same, 
-    // select (prioritize) the last_opened_pane's current_index
-    // TODO: ADDRESS THIS PART
-    // TODO: Maybe implement a similar function specifically for getting the slider value on file open
-    /*if pane_layout == &PaneLayout::DualPane && !is_slider_dual &&
-        panes[max_dir_size_index].img_cache.num_files == panes[last_opened_pane].img_cache.num_files {
-        return panes[last_opened_pane].img_cache.current_index as usize;
-    }*/
 
     let pane = &panes[max_dir_size_index];
     pane.img_cache.current_index as usize

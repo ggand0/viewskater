@@ -496,10 +496,7 @@ fn should_enqueue_loading(
     load_operation: &LoadOperation,
     panes: &mut Vec<&mut Pane>,
 ) -> bool {
-    ////let are_next_image_indices_valid = image_indices_to_load.iter().all(|&index| index.is_some());
-    
     is_image_index_within_bounds &&
-        ////are_next_image_indices_valid &&
         loading_status.are_next_image_indices_in_queue(image_indices_to_load.clone()) &&
         !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation.clone())
 }
@@ -560,7 +557,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
     }
 
     let mut commands = Vec::new();
-    // v1: load next images for all panes concurrently
+    // Load next images for all panes concurrently
     // Use the representative pane to determine the loading conditions
     // file_io::load_image_async() loads the next images for all panes at the same time,
     // so we can assume that the rest of the panes have the same loading conditions as the representative pane.
@@ -588,7 +585,6 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
         }
     }
 
-    //if !loading_status.is_next_image_loaded {
     if !are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
         debug!("move_right_all() - setting next image...");
         let did_render_happen: bool = set_next_image_all(&mut panes_to_load, pane_layout, is_slider_dual);

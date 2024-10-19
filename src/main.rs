@@ -24,6 +24,7 @@ use iced::subscription::{self, Subscription};
 use iced::{keyboard, clipboard};
 use iced::{Element, Length, Application, Theme, Settings, Command};
 use iced::font::{self, Font};
+use iced::window;
 
 use std::path::PathBuf;
 #[allow(unused_imports)]
@@ -31,24 +32,19 @@ use log::{Level, debug, info, warn, error};
 use env_logger::{fmt::Color, Builder};
 use std::io::Write;
 
-// #[macro_use]
-
 extern crate log;
 
 mod image_cache;
 use crate::image_cache::LoadOperation;
-
 mod navigation;
 use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
 mod file_io;
 use file_io::Error;
-
 mod menu;
 use menu::PaneLayout;
-
 mod split {
-    pub mod split; // Import the module from split/split.rs
-    pub mod style; // Import the module from split/style.rs
+    pub mod split;
+    pub mod style;
 }
 mod dualslider {
     pub mod dualslider;
@@ -58,7 +54,6 @@ mod toggler {
     pub mod toggler;
     pub mod style;
 }
-
 mod pane;
 use crate::pane::get_master_slider_value;
 mod ui_builder;
@@ -351,7 +346,6 @@ impl DataViewer {
         commands
     }
 
-    // UI
     fn toggle_slider_type(&mut self) {
         // When toggling from dual to single, reset pane.is_selected to true
         if self.is_slider_dual {
@@ -416,7 +410,6 @@ impl Application for DataViewer {
                 prev_slider_value: 0,
                 ver_divider_position: None,
                 hor_divider_position: None,
-                //pane_count: 2,
                 is_slider_dual: false,
                 show_footer: true,
                 pane_layout: PaneLayout::SinglePane,
@@ -573,7 +566,7 @@ impl Application for DataViewer {
                                         pane_indices,
                                         target_indices.clone(),
                                         image_data,
-                                        cloned_op, // Pass the LoadOperation directly
+                                        cloned_op,
                                         operation_type,
                                     );
                                 }
@@ -720,9 +713,7 @@ impl Application for DataViewer {
     }
 
     fn theme(&self) -> Self::Theme {
-        //Theme::Dark
         iced::Theme::custom(
-            //"Custom Theme".into(),
             iced::theme::Palette {
                 primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
                 ..iced::Theme::Dark.palette()
@@ -756,18 +747,12 @@ fn main() -> iced::Result {
             level_style.set_color(level_color);
 
             writeln!(buf,
-                //"{} {} {}", record.level(), record.target(), record.args()
                 "{} {}", level_style.value(record.level()), record.args()
             )
         })
         .init();
 
-    info!("This is an info message.");
-    debug!("This is a debug message.");
-    error!("This is an error message.");
 
-
-    use iced::window;
     let icon = iced::window::icon::from_file_data(ICON, Option::None);
     match icon {
         Ok(icon) => {
