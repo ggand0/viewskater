@@ -36,6 +36,8 @@ use crate::viewer;
 
 use crate::image_cache::ImageCache;
 
+use crate::config::CONFIG;
+
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
@@ -120,7 +122,7 @@ impl Pane {
 
         // May need to consider whether current_index reached the end of the list
         self.is_selected && self.dir_loaded && self.img_cache.is_next_cache_index_within_bounds() &&
-            self.img_cache.loading_queue.len() < 3 && self.img_cache.being_loaded_queue.len() < 3
+            self.img_cache.loading_queue.len() < CONFIG.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < CONFIG.max_being_loaded_queue_size
     }
 
     pub fn is_pane_cached_prev(&self) -> bool {
@@ -128,7 +130,7 @@ impl Pane {
             self.is_selected, self.dir_loaded, self.is_prev_image_loaded, self.img_cache.is_prev_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
         self.is_selected && self.dir_loaded && self.img_cache.is_prev_cache_index_within_bounds() &&
-            self.img_cache.loading_queue.len() < 3 && self.img_cache.being_loaded_queue.len() < 3
+            self.img_cache.loading_queue.len() < CONFIG.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < CONFIG.max_being_loaded_queue_size
     }
 
     pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
@@ -187,7 +189,7 @@ impl Pane {
                 self.current_image = handle;
                 img_cache.current_offset -= 1;
 
-                assert!(img_cache.current_offset >= -5);
+                assert!(img_cache.current_offset >= -(CONFIG.cache_size as isize)); // e.g. >= -5
 
                 // Since the prev image is loaded and rendered, mark the is_prev_image_loaded flag
                 self.is_prev_image_loaded = true;
@@ -296,7 +298,7 @@ impl Pane {
         // Instantiate a new image cache and load the initial images
         let mut img_cache =  ImageCache::new(
             _file_paths,
-            5,
+            CONFIG.cache_size,
             initial_index,
         ).unwrap();
         img_cache.load_initial_images().unwrap();
@@ -343,10 +345,9 @@ impl Pane {
             ])   
         } else {
             container(column![
-            text(String::from(""))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            
+                text(String::from(""))
+                .width(Length::Fill)
+                .height(Length::Fill)
             ])
         };
         img

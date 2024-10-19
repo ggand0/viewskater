@@ -65,6 +65,7 @@ mod ui_builder;
 mod viewer;
 mod loading_status;
 mod loading;
+mod config;
 
 
 #[derive(Debug, Clone, Copy)]

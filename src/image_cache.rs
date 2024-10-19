@@ -74,7 +74,7 @@ pub struct ImageCache {
     pub current_index: usize,
     pub current_offset: isize,
     pub cache_count: usize,                             // Number of images to cache in advance
-    pub cached_images: Vec<Option<Vec<u8>>>,                // Changed cached_images to store Option<Vec<u8>> for better handling
+    pub cached_images: Vec<Option<Vec<u8>>>,            // Changed cached_images to store Option<Vec<u8>> for better handling
     pub cached_image_indices: Vec<isize>,               // Indices of cached images (index of the image_paths array)
     pub cache_states: Vec<bool>,                        // Cache states
     pub loading_queue: VecDeque<LoadOperation>,

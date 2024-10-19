@@ -4413,6 +4413,7 @@ dependencies = [
  "image 0.23.14",
  "log",
  "num-traits 0.2.17",
+ "once_cell",
  "rfd",
  "tokio",
  "winres",
