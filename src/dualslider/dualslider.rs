@@ -1,53 +1,13 @@
 //! Display an interactive selector of a single value from a range of values.
 //!
 //! A [`Slider`] has some local [`State`].
-/*use crate::core::event::{self, Event};
-use crate::core::layout;
-use crate::core::mouse;
-use crate::core::renderer;
-use crate::core::touch;
-use crate::core::widget::tree::{self, Tree};
-use crate::core::{
-    Clipboard, Color, Element, Layout, Length, Pixels, Point, Rectangle, Shell,
-    Size, Widget,
-};
-pub use iced_style::slider::{
-    Appearance, Handle, HandleShape, Rail, StyleSheet,
-};
-*/
-
-/*#[cfg(target_os = "macos")]
-mod macos {
-    pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
-    pub use iced_widget_custom as iced_widget;
-}
-
-#[cfg(not(target_os = "macos"))]
-mod other_os {
-    pub use iced;
-    pub use iced_aw;
-    pub use iced_widget;
-}
-
-#[cfg(target_os = "macos")]
-use macos::*;
-
-#[cfg(not(target_os = "macos"))]
-use other_os::*;*/
-
-
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
-    pub use iced_aw;
     pub use iced_widget;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
-    pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
     pub use iced_widget_custom as iced_widget;
 }
 
@@ -57,17 +17,6 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-
-/*use iced_widget::core::{
-    self, event, layout, Element, Layout, Length, Point, Rectangle, Shell, Size, Pixels,
-    mouse::{self, Cursor},
-    renderer, touch,
-    widget::{
-        self, tree::{self, State, Tag, Tree},
-        Widget,
-    },
-    Clipboard, Color, Event, Padding,
-};*/
 use iced_widget::core::{
     self, event, layout, Element, Layout, Length, Point, Rectangle, Shell, Size, Pixels,
     mouse,
@@ -123,10 +72,7 @@ where
     range: RangeInclusive<T>,
     step: T,
     value: T,
-    // pane_index: usize,
     pane_index: isize, // needs to be isize because of the need to represent "all" panes; -1
-    // on_change: Box<dyn Fn(T) -> Message + 'a>,
-    // on_change: Box<dyn Fn(usize, T) -> Message + 'a>,
     on_change: Box<dyn Fn(isize, T) -> Message + 'a>,
     on_release: Box<dyn Fn(isize, T) -> Message + 'a>,
     width: Length,
@@ -191,7 +137,6 @@ where
     #[allow(unused_mut)]
     pub fn on_release(mut self, _on_release: Message) -> Self {
         //self.on_release = Some(on_release);
-
         self
     }
 
@@ -247,17 +192,6 @@ where
         Length::Shrink
     }
 
-    /*fn layout(
-        &self,
-        _tree: &mut Tree,
-        _renderer: &Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        let limits = limits.width(self.width).height(self.height);
-        let size = limits.resolve(Size::ZERO);
-
-        layout::Node::new(size)
-    }*/
     fn layout(
             &self,
             _renderer: &Renderer,
@@ -280,32 +214,6 @@ where
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> event::Status {
-        /*update(
-            event,
-            layout,
-            cursor,
-            shell,
-            tree.state.downcast_mut::<SliderState>(),
-            &mut self.value,
-            &self.range,
-            self.step,
-            self.on_change.as_ref(),
-            &self.on_release,
-        )*/
-
-        /*pub fn update<Message, T>(
-        event: Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        shell: &mut Shell<'_, Message>,
-        state: &mut SliderState,
-        value: &mut T,
-        range: &RangeInclusive<T>,
-        step: T,
-        on_change: &dyn Fn(usize, T) -> Message,
-        on_release: &Option<Message>,
-        ) -> event::Status
-        */
         let state = tree.state.downcast_mut::<SliderState>();
         let range = &self.range;
 
@@ -358,9 +266,6 @@ where
             | Event::Touch(touch::Event::FingerLifted { .. })
             | Event::Touch(touch::Event::FingerLost { .. }) => {
                 if is_dragging {
-                    /*if let Some(on_release) = self.on_release.clone() {
-                        shell.publish(on_release);
-                    }*/
                     shell.publish((self.on_release)( self.pane_index, self.value ));
                     state.is_dragging = false;
 
@@ -430,93 +335,6 @@ where
     }
 }
 
-/// Processes an [`Event`] and updates the [`State`] of a [`Slider`]
-/// accordingly.
-/*pub fn update<Message, T>(
-    event: Event,
-    layout: Layout<'_>,
-    cursor: mouse::Cursor,
-    shell: &mut Shell<'_, Message>,
-    state: &mut SliderState,
-    value: &mut T,
-    range: &RangeInclusive<T>,
-    step: T,
-    on_change: &dyn Fn(usize, T) -> Message,
-    on_release: &Option<Message>,
-) -> event::Status
-where
-    T: Copy + Into<f64> + num_traits::FromPrimitive,
-    Message: Clone,
-{
-    let is_dragging = state.is_dragging;
-
-    let mut change = |cursor_position: Point| {
-        let bounds = layout.bounds();
-        let new_value = if cursor_position.x <= bounds.x {
-            *range.start()
-        } else if cursor_position.x >= bounds.x + bounds.width {
-            *range.end()
-        } else {
-            let step = step.into();
-            let start = (*range.start()).into();
-            let end = (*range.end()).into();
-
-            let percent = f64::from(cursor_position.x - bounds.x)
-                / f64::from(bounds.width);
-
-            let steps = (percent * (end - start) / step).round();
-            let value = steps * step + start;
-
-            if let Some(value) = T::from_f64(value) {
-                value
-            } else {
-                return;
-            }
-        };
-
-        if ((*value).into() - new_value.into()).abs() > f64::EPSILON {
-            shell.publish((on_change)(pane_index, new_value));
-
-            *value = new_value;
-        }
-    };
-
-    match event {
-        Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-        | Event::Touch(touch::Event::FingerPressed { .. }) => {
-            if let Some(cursor_position) = cursor.position_over(layout.bounds())
-            {
-                change(cursor_position);
-                state.is_dragging = true;
-
-                return event::Status::Captured;
-            }
-        }
-        Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-        | Event::Touch(touch::Event::FingerLifted { .. })
-        | Event::Touch(touch::Event::FingerLost { .. }) => {
-            if is_dragging {
-                if let Some(on_release) = on_release.clone() {
-                    shell.publish(on_release);
-                }
-                state.is_dragging = false;
-
-                return event::Status::Captured;
-            }
-        }
-        Event::Mouse(mouse::Event::CursorMoved { .. })
-        | Event::Touch(touch::Event::FingerMoved { .. }) => {
-            if is_dragging {
-                let _ = cursor.position().map(change);
-
-                return event::Status::Captured;
-            }
-        }
-        _ => {}
-    }
-
-    event::Status::Ignored
-}*/
 
 /// Draws a [`Slider`].
 pub fn draw<T, R>(

@@ -2,15 +2,11 @@
 
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
-    pub use iced_aw;
     pub use iced_widget;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
-    pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
     pub use iced_widget_custom as iced_widget;
 }
 
@@ -71,7 +67,6 @@ impl<Handle: Hash> Viewer<Handle> {
     fn compute_and_store_handle_hash(&mut self) {
         let mut hasher = DefaultHasher::new();
         self.handle.hash(&mut hasher);
-        //self.handle.data().hash(&mut hasher);
         self.handle_hash = hasher.finish();
     }
 
@@ -269,7 +264,6 @@ where
                         return event::Status::Ignored;
                     };
 
-                    //let state = tree.state.downcast_mut::<State>();
                     state.cursor_grabbed_at = Some(cursor_position);
                     state.starting_offset = state.current_offset;
 
@@ -284,10 +278,6 @@ where
                             let double_click_position = cursor.position();
                             if let Some(_position) = double_click_position {
                                 // Reset the state
-                                /*state.scale = 1.0;
-                                state.starting_offset = Vector::default();
-                                state.current_offset = Vector::default();
-                                state.cursor_grabbed_at = None;*/
                                 state.reset();
                             }
                         } else {
@@ -415,20 +405,11 @@ where
             height: image_size.height - 2.0 * padding,
         };
         let _padded_image_size = image_size - Size::new(2.0 * padding, 2.0 * padding);
-        //println!("image_size: {:?}, padded_image_size: {:?}", image_size, padded_image_size);
 
         let translation = {
-            /*let image_top_left = Vector::new(
-                bounds.width / 2.0 - image_size.width / 2.0,
-                bounds.height / 2.0 - image_size.height / 2.0,
-            );
-            image_top_left - state.offset(bounds, image_size)
-            */
             let image_top_left = Vector::new(
                 bounds.width / 2.0 - image_size.width / 2.0,
                 bounds.height / 2.0 - image_size.height / 2.0,
-                //bounds.width / 2.0 - padded_bounds.width / 2.0,
-                //bounds.height / 2.0 - padded_bounds.height / 2.0,
             ) + Vector::new(padding, padding);
             image_top_left - state.offset(bounds, image_size)
         };
@@ -438,11 +419,6 @@ where
                 image::Renderer::draw(
                     renderer,
                     self.handle.clone(),
-                    /*Rectangle {
-                        x: bounds.x,
-                        y: bounds.y,
-                        ..Rectangle::with_size(image_size)
-                    },*/
                     Rectangle {
                         x: bounds.x,
                         y: bounds.y,

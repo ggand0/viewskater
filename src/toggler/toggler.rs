@@ -1,31 +1,11 @@
 //! Show toggle controls using togglers.
-/*use crate::core::alignment;
-use crate::core::event;
-use crate::core::layout;
-use crate::core::mouse;
-use crate::core::renderer;
-use crate::core::text;
-use crate::core::touch;
-use crate::core::widget::Tree;
-use crate::core::{
-    Alignment, Clipboard, Element, Event, Layout, Length, Pixels, Rectangle,
-    Shell, Widget,
-};
-use crate::{Row, Text};
-
-pub use crate::style::toggler::{Appearance, StyleSheet};*/
-
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
-    pub use iced_aw;
     pub use iced_widget;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
-    pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
     pub use iced_widget_custom as iced_widget;
 }
 
@@ -36,23 +16,19 @@ use other_os::*;
 use macos::*;
 
 use iced_widget::{
-    container,
     core::{
-        self, event,
-        layout::{Limits, Node},
-        mouse::{self, Cursor},
+        event,
+        mouse,
         renderer, touch,
         text, alignment, layout, Alignment,
         widget::{
-            tree::{State, Tag},
-            Operation, Tree, Text,
+            Tree, Text,
         },
-        Clipboard, Color, Element, Event, Layout, Length, Padding, Point, Rectangle, Shell, Size,
+        Clipboard, Element, Event, Layout, Length, Rectangle, Shell,
         Widget, Pixels,
     },
-    Container, Row
+    Row
 };
-//use iced_widget::core::alignment;
 
 use crate::toggler::style::StyleSheet;
 

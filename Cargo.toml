@@ -18,30 +18,18 @@ cargo-bundle = "0.6.0"
 #natord = "1.0.9"
 alphanumeric-sort = "1.5.3"
 image = "0.23"
+futures = "0.3"
+once_cell = "1.16"
 
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-# iced_custom: 6121eaca5aea4a61d419f2c0eba1f8fc67b048f1
-# iced_aw_custom: 193934d6436e423f346b31c998e5168f4f903ad8
-#iced_custom = { package = "iced", path = "iced_custom", features = ["image", "tokio", "svg", "lazy"], version = "0.10.0" }
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "6121eaca5aea4a61d419f2c0eba1f8fc67b048f1", features = ["image", "tokio", "svg", "lazy"] }
-#iced_aw_custom = { package = "iced_aw", path = "iced_aw_custom", features = [
 iced_aw_custom = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "193934d6436e423f346b31c998e5168f4f903ad8", features = [
     "menu",
     "quad",
     "icon_text"
 ] }
-#iced_widget_custom = { package = "iced_widget", path = "iced_custom/widget", version = "0.1.1" }
 iced_widget_custom = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", rev = "6121eaca5aea4a61d419f2c0eba1f8fc67b048f1" }
-
-#iced = { git = "https://github.com/ggand0/iced.git", rev = "6121eaca5aea4a61d419f2c0eba1f8fc67b048f1", features = ["image", "tokio", "svg", "lazy"] }
-#iced_aw = { git = "https://github.com/ggand0/iced_aw.git", rev = "193934d6436e423f346b31c998e5168f4f903ad8", features = [
-#    "menu",
-#    "quad",
-#    "icon_text"
-#] }
-#iced_widget = { git = "https://github.com/ggand0/iced.git", rev = "6121eaca5aea4a61d419f2c0eba1f8fc67b048f1" }
- 
 
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -60,26 +48,9 @@ winres = "0.1.12"
 OriginalFilename = "view_skater.exe"
 FileDescription = "Visual data viewer for people working with large data."
 
-#iced = {version = "0.10", features = ["image", "tokio", "svg", "lazy"]}
-##iced_aw = { version = "0.7.0", features = [
-#   "menu",
-#    "quad",
-#    "icon_text"
-#] }
-#iced_widget = { package = "iced_widget", version = "0.1.1" }
-
-
-#[dependencies.iced_widget]
-#git = "https://github.com/iced-rs/iced.git"
-#rev = "8221794"
-#version = "0.1.1"
-
-#[dependencies.iced_widget]
-#path = "iced_custom/widget"
 
 [package.metadata.bundle]
 name = "ViewSkater"
 identifier = "com.ggando.viewskater"
-#icon = ["icon.icns"]
 icon = ["assets/icon_16.png", "assets/icon_32.png", "assets/icon_48.png", "assets/icon_128.png", "assets/icon_256.png"]
 short_description = "Visual data viewer for browsing a large number of data."
