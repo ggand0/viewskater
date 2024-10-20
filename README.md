@@ -16,8 +16,8 @@ cargo run --release
 ```
 
 ## Shortcuts
-- Arrow keys (Left / Right): Show previous / next image
-- Shift + arrow keys (Left / Right): Render previous / next images continuously ("skate" mode)
+- Arrow keys (Left / Right) or A / D: Show previous / next image
+- Shift + arrow keys (Left / Right) or Shift + A / D: Render previous / next images continuously ("skate" mode)
 - Tab: Show / hide the slider and footer UI
 - Space: Toggle between a single slider and dual slider
 - `1` and `2` keys: Select Pane 1 or Pane 2
