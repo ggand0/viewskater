@@ -26,7 +26,10 @@ cargo run --release
 - **Ctrl + Q**: Exit
 
 ## Resources
-- [Website](https://viewskater.com/)  
+- [Website](https://viewskater.com/)
+
+## Acknowledgments
+ViewSkater's slider UI was inspired by the open-source project [emulsion](https://github.com/ArturKovacs/emulsion).
 
 ## License
 ViewSkater is licensed under either of
