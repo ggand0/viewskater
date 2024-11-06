@@ -40,7 +40,7 @@ const CARET_PATH : &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/svg/caret
 
 
 struct ButtonStyle;
-impl button::StyleSheet for ButtonStyle {
+/*impl button::StyleSheet for ButtonStyle {
     type Style = iced::Theme;
 
     fn active(&self, style: &Self::Style) -> button::Appearance {
@@ -61,7 +61,36 @@ impl button::StyleSheet for ButtonStyle {
             ..self.active(style)
         }
     }
+}*/
+//use iced::widget::button::{Appearance, StyleSheet};
+use iced_widget::button::{Appearance, StyleSheet};
+
+use iced::{Color, Theme};
+use iced::{widget::button, Theme};
+
+impl StyleSheet for ButtonStyle {
+    type Style = Theme;
+
+    fn active(&self, style: &Self::Style) -> Appearance {
+        Appearance {
+            text_color: style.extended_palette().background.base.text,
+            border_radius: [4.0; 4].into(),
+            background: Some(Color::TRANSPARENT.into()),
+            ..Default::default()
+        }
+    }
+
+    fn hovered(&self, style: &Self::Style) -> Appearance {
+        let plt = style.extended_palette();
+
+        Appearance {
+            background: Some(plt.primary.weak.color.into()),
+            text_color: plt.primary.weak.text,
+            ..self.active(style)
+        }
+    }
 }
+
 
 fn base_button<'a>(
     content: impl Into<Element<'a, Message, iced::Renderer>>,
@@ -69,7 +98,9 @@ fn base_button<'a>(
 ) -> button::Button<'a, Message, iced::Renderer> {
     button(content)
         .padding([4, 8])
-        .style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
+        //.style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
+        //.style(iced::theme::Button::Custom(Box::new(ButtonStyle)))
+        .style(Theme::Custom(Box::new(ButtonStyle)))
         .on_press(msg)
 }
 
@@ -85,7 +116,8 @@ fn labeled_button <'a>(
         .vertical_alignment(alignment::Vertical::Center)
     )
     .padding([4, 8])
-    .style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
+    //.style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
+    .style(Theme::Custom(Box::new(ButtonStyle)))
     .on_press(msg)
 }
 

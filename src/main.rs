@@ -20,9 +20,16 @@ use macos::*;
 
 
 use iced::event::Event;
-use iced::subscription::{self, Subscription};
+use iced::Subscription;
+//use iced::advanced::subscription;
+use iced::window::events;
+
 use iced::{keyboard, clipboard};
-use iced::{Element, Length, Application, Theme, Settings, Command};
+use iced::{Element, Length, Application, Theme, Settings};
+use iced::Task;
+
+
+
 use iced::font::{self, Font};
 use iced::window;
 
@@ -173,22 +180,22 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
     }
 
-    fn handle_key_pressed_event(&mut self, key_code: keyboard::KeyCode, modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
-        let mut commands = Vec::new();
+    fn handle_key_pressed_event(&mut self, key_code: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+        let mut Tasks = Vec::new();
         match key_code {
-            keyboard::KeyCode::Tab => {
+            keyboard::Key::Tab => {
                 debug!("Tab pressed");
                 // toggle footer
                 self.toggle_footer();
             }
 
-            keyboard::KeyCode::Space | keyboard::KeyCode::B => {
+            keyboard::Key::Space | keyboard::Key::B => {
                 debug!("Space pressed");
                 // Toggle slider type
                 self.toggle_slider_type();
             }
 
-            keyboard::KeyCode::Key1 => {
+            keyboard::Key::Key1 => {
                 debug!("Key1 pressed");
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
                     self.panes[0].is_selected = !self.panes[0].is_selected;
@@ -197,7 +204,7 @@ impl DataViewer {
                 // If alt+ctrl is pressed, load a file into pane0
                 if modifiers.alt() && modifiers.control() {
                     debug!("Key1 Shift pressed");
-                    commands.push(Command::perform(file_io::pick_file(), move |result| {
+                    Tasks.push(Task::perform(file_io::pick_file(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
                 }
@@ -205,7 +212,7 @@ impl DataViewer {
                 // If alt is pressed, load a folder into pane0
                 if modifiers.alt() {
                     debug!("Key1 Alt pressed");
-                    commands.push(Command::perform(file_io::pick_folder(), move |result| {
+                    Tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
                 }
@@ -215,7 +222,7 @@ impl DataViewer {
                     self.toggle_pane_layout(PaneLayout::SinglePane);
                 }
             }
-            keyboard::KeyCode::Key2 => {
+            keyboard::Key::Key2 => {
                 debug!("Key2 pressed");
                 if self.pane_layout == PaneLayout::DualPane {
                     if self.is_slider_dual {
@@ -225,7 +232,7 @@ impl DataViewer {
                     // If alt+ctrl is pressed, load a file into pane1
                     if modifiers.alt() && modifiers.control() {
                         debug!("Key2 Shift pressed");
-                        commands.push(Command::perform(file_io::pick_file(), move |result| {
+                        Tasks.push(Task::perform(file_io::pick_file(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
                     }
@@ -233,7 +240,7 @@ impl DataViewer {
                     // If alt is pressed, load a folder into pane1
                     if modifiers.alt() {
                         debug!("Key2 Alt pressed");
-                        commands.push(Command::perform(file_io::pick_folder(), move |result| {
+                        Tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
                     }
@@ -246,7 +253,7 @@ impl DataViewer {
                 }
             }
 
-            keyboard::KeyCode::C | keyboard::KeyCode::W => {
+            keyboard::Key::C | keyboard::Key::W => {
                 // Close the selected panes
                 if modifiers.control() {
                     for pane in self.panes.iter_mut() {
@@ -257,12 +264,12 @@ impl DataViewer {
                 }
             }
 
-            keyboard::KeyCode::Q => {
+            keyboard::Key::Q => {
                 // Terminate the app
                 std::process::exit(0);
             }
 
-            keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+            keyboard::Key::Left | keyboard::Key::A => {
                 if self.skate_right {
                     self.skate_right = false;
 
@@ -279,14 +286,14 @@ impl DataViewer {
                 } else {
                     self.skate_left = false;
 
-                    let command = move_left_all(
+                    let Task = move_left_all(
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    commands.push(command);
+                    Tasks.push(Task);
                 }
                 
             }
-            keyboard::KeyCode::Right | keyboard::KeyCode::D => {
+            keyboard::Key::Right | keyboard::Key::D => {
                 if self.skate_left {
                     self.skate_left = false;
 
@@ -303,47 +310,47 @@ impl DataViewer {
                 } else {
                     self.skate_right = false;
 
-                    let command = move_right_all(
+                    let Task = move_right_all(
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    commands.push(command);
+                    Tasks.push(Task);
                 }
             }
 
             _ => {}
         }
 
-        commands
+        Tasks
     }
 
-    fn handle_key_released_event(&mut self, key_code: keyboard::KeyCode, _modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
+    fn handle_key_released_event(&mut self, key_code: keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         #[allow(unused_mut)]
-        let mut commands = Vec::new();
+        let mut Tasks = Vec::new();
 
         match key_code {
-            keyboard::KeyCode::Tab => {
+            keyboard::Key::Tab => {
                 debug!("Tab released");
             }
-            keyboard::KeyCode::Enter | keyboard::KeyCode::NumpadEnter => {
+            keyboard::Key::Enter | keyboard::Key::NumpadEnter => {
                 debug!("Enter key released!");
                 
             }
-            keyboard::KeyCode::Escape => {
+            keyboard::Key::Escape => {
                 debug!("Escape key released!");
                 
             }
-            keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+            keyboard::Key::Left | keyboard::Key::A => {
                 debug!("Left key or 'A' key released!");
                 self.skate_left = false;
             }
-            keyboard::KeyCode::Right | keyboard::KeyCode::D => {
+            keyboard::Key::Right | keyboard::Key::D => {
                 debug!("Right key or 'D' key released!");
                 self.skate_right = false;
             }
             _ => {},
         }
 
-        commands
+        Tasks
     }
 
     fn toggle_slider_type(&mut self) {
@@ -400,7 +407,7 @@ impl Application for DataViewer {
     type Executor= iced::executor::Default;
     type Flags = ();
 
-    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
+    fn new(_flags: Self::Flags) -> (Self, Task<Self::Message>) {
         (
             Self {
                 title: String::from("ViewSkater"),
@@ -420,7 +427,7 @@ impl Application for DataViewer {
                 skate_left: false,
                 update_counter: 0,
             },
-            Command::batch(vec![
+            Task::batch(vec![
                 font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded), // icon font
                 font::load(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf").as_slice()).map(Message::FontLoaded),  // footer digit font
                 font::load(include_bytes!("../assets/fonts/Roboto-Regular.ttf").as_slice()).map(Message::FontLoaded),   // UI font
@@ -464,7 +471,7 @@ impl Application for DataViewer {
     }
 
     
-    fn update(&mut self, message: Message) -> Command<Self::Message> {
+    fn update(&mut self, message: Message) -> Task<Self::Message> {
         match message {
             Message::Nothing => {}
             Message::Debug(s) => {
@@ -472,12 +479,12 @@ impl Application for DataViewer {
             }
             Message::FontLoaded(_) => {}
             Message::OpenFolder(pane_index) => {
-                return Command::perform(file_io::pick_folder(), move |result| {
+                return Task::perform(file_io::pick_folder(), move |result| {
                     Message::FolderOpened(result, pane_index)
                 });
             }
             Message::OpenFile(pane_index) => {
-                return Command::perform(file_io::pick_file(), move |result| {
+                return Task::perform(file_io::pick_file(), move |result| {
                     Message::FolderOpened(result, pane_index)
                 });
             }
@@ -648,29 +655,29 @@ impl Application for DataViewer {
                 }
 
                 Event::Keyboard(keyboard::Event::KeyPressed { key_code, modifiers, .. }) => {
-                    let commands = self.handle_key_pressed_event(key_code, modifiers);
-                    if commands.is_empty() {
+                    let Tasks = self.handle_key_pressed_event(key_code, modifiers);
+                    if Tasks.is_empty() {
                     } else {
-                        return Command::batch(commands);
+                        return Task::batch(Tasks);
                     }
                 }
 
                 Event::Keyboard(keyboard::Event::KeyReleased { key_code, modifiers, .. }) => {
-                    let commands = self.handle_key_released_event(key_code, modifiers);
-                    if commands.is_empty() {
+                    let Tasks = self.handle_key_released_event(key_code, modifiers);
+                    if Tasks.is_empty() {
                         
                     } else {
-                        return Command::batch(commands);
+                        return Task::batch(Tasks);
                     }
                 }
 
-                _ => return Command::none(),
+                _ => return Task::none(),
             },
         }
 
         if self.skate_right {
             self.update_counter = 0;
-            let command = move_right_all(
+            let Task = move_right_all(
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -678,10 +685,10 @@ impl Application for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            command
+            Task
         } else if self.skate_left {
             self.update_counter = 0;
-            let command = move_left_all(
+            let Task = move_left_all(
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -689,11 +696,11 @@ impl Application for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            command
+            Task
         } else {
             debug!("no skate mode detected");
-            let command = Command::none();
-            command
+            let Task = Task::none();
+            Task
         }
     }
 
@@ -708,7 +715,8 @@ impl Application for DataViewer {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         Subscription::batch(vec![
-            subscription::events().map(Message::Event),
+            //subscription::events().map(Message::Event),
+            events().map(Message::Event),
         ])
     }
 

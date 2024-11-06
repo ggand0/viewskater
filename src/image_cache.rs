@@ -26,9 +26,9 @@ use std::time::Instant;
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-
-use crate::{DataViewer,Message};
-use iced::Command;
+//use iced::application::Application;
+use crate::{DataViewer, Message};
+use iced::Task;
 use crate::file_io::{load_images_async, empty_async_block_vec};
 use crate::loading_status::LoadingStatus;
 use crate::pane::Pane;   
@@ -520,7 +520,7 @@ pub fn load_images_by_operation_slider(
     pane_index: usize,
     target_indices_and_cache: Vec<Option<(isize, usize)>>,
     operation: LoadOperation
-) -> Command<<DataViewer as iced::Application>::Message> {
+) -> Task<Message> {
     let mut paths = Vec::new();
 
     // Ensure we access the correct pane by the pane_index
@@ -550,13 +550,13 @@ pub fn load_images_by_operation_slider(
         // If we have valid paths, proceed to load the images asynchronously
         if !paths.is_empty() {
             let images_loading_task = load_images_async(paths, operation);
-            Command::perform(images_loading_task, Message::ImagesLoaded)
+            Task::perform(images_loading_task, Message::ImagesLoaded)
         } else {
-            Command::none()
+            Task::none()
         }
     } else {
         debug!("Pane not found for pane_index: {}", pane_index);
-        Command::none()
+        Task::none()
     }
 }
 
@@ -565,7 +565,7 @@ pub fn load_images_by_indices(
     panes: &mut Vec<&mut Pane>, 
     target_indices: Vec<Option<isize>>, 
     operation: LoadOperation
-) -> Command<<DataViewer as iced::Application>::Message> {
+) -> Task<Message> {
     debug!("load_images_by_indices");
     let mut paths = Vec::new();
 
@@ -589,14 +589,14 @@ pub fn load_images_by_indices(
 
     if !paths.is_empty() {
         let images_loading_task = load_images_async(paths, operation);
-        Command::perform(images_loading_task, Message::ImagesLoaded)
+        Task::perform(images_loading_task, Message::ImagesLoaded)
     } else {
-        Command::none()
+        Task::none()
     }
 }
 
 
-pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Command<<DataViewer as iced::Application>::Message> {
+pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Task<Message> {
     if !loading_status.loading_queue.is_empty() {
         if let Some(operation) = loading_status.loading_queue.pop_front() {
             loading_status.enqueue_image_being_loaded(operation.clone());
@@ -609,29 +609,29 @@ pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut
                 }
                 LoadOperation::ShiftNext((ref _pane_indices, ref _target_indicies)) => {
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
-                    Command::perform(empty_async_block, Message::ImagesLoaded)
+                    Task::perform(empty_async_block, Message::ImagesLoaded)
                 }
                 LoadOperation::ShiftPrevious((ref _pane_indices,  ref _target_indicies)) => {
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
-                    Command::perform(empty_async_block, Message::ImagesLoaded)
+                    Task::perform(empty_async_block, Message::ImagesLoaded)
                 }
                 LoadOperation::LoadPos((ref _pane_indices, _target_indices_and_cache)) => {
-                    Command::none()
+                    Task::none()
                 }
             }
         } else {
-            Command::none()
+            Task::none()
         }
     } else {
-        Command::none()
+        Task::none()
     }
 }
 
 pub fn load_all_images_in_queue(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
-) -> Command<<DataViewer as iced::Application>::Message> {
-    let mut commands = Vec::new();
+) -> Task<Message> {
+    let mut Tasks = Vec::new();
     let mut pane_refs: Vec<&mut pane::Pane> = vec![];
     
     // Collect references to panes
@@ -650,23 +650,23 @@ pub fn load_all_images_in_queue(
         match operation {
             LoadOperation::LoadPos((ref pane_index, ref target_indices_and_cache)) => {
                 // Handle LoadPos with the new structure of (image_index, cache_pos)
-                let command = load_images_by_operation_slider(
+                let Task = load_images_by_operation_slider(
                     panes,
                     *pane_index,
                     target_indices_and_cache.clone(),
                     operation,
                 );
-                commands.push(command);
+                Tasks.push(Task);
             }
             _ => {
             }
         }
     }
 
-    // Return the batch of commands if any, otherwise return none
-    if commands.is_empty() {
-        Command::none()
+    // Return the batch of Tasks if any, otherwise return none
+    if Tasks.is_empty() {
+        Task::none()
     } else {
-        Command::batch(commands)
+        Task::batch(Tasks)
     }
 }
