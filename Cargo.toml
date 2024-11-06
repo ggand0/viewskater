@@ -7,11 +7,12 @@ description = "A fast image viewer for browsing large collections of images."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-iced_native = "0.10"
+#iced_native = "0.10"
 env_logger = "0.10"
 console_log = "1.0"
 log = "0.4.20"
-tokio = { version = "1.32", features = ["full"] }
+#tokio = { version = "1.32", features = ["full"] }
+tokio = { version = "1.32", features = ["rt", "sync", "macros", "time", "io-util", "fs"] }
 rfd = "0.12"
 num-traits = "0.2"
 cargo-bundle = "0.6.0"
@@ -32,11 +33,11 @@ iced_widget_custom = { package = "iced_widget", git = "https://github.com/ggand0
 
 
 [target.'cfg(target_os = "linux")'.dependencies]
-iced = {version = "0.10", features = ["image", "tokio", "svg", "lazy", "debug"]}
-iced_aw = { version = "0.7.0", features = [
+iced = {version = "0.13", features = ["image", "tokio", "svg", "lazy", "debug"]}
+iced_aw = { version = "0.11.0", features = [
     "menu",
     "quad",
-    "icon_text"
+    #"icon_text"
 ] }
 iced_widget = { package = "iced_widget", version = "0.1.1" }
 
