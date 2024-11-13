@@ -39,7 +39,8 @@ iced_aw = { version = "0.11.0", features = [
     "quad",
     #"icon_text"
 ] }
-iced_widget = { package = "iced_widget", version = "0.1.1" }
+##iced_widget = { package = "iced_widget", version = "0.1.1" }
+##iced_widget = { package = "iced_widget", version = "0.13.1" }
 
 [build-dependencies]
 winres = "0.1.12"
