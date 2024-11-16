@@ -1,41 +1,64 @@
-//! Display an interactive selector of a single value from a range of values.
+//! Sliders let users set a value by moving an indicator.
 //!
-//! A [`Slider`] has some local [`State`].
-#[cfg(target_os = "linux")]
-mod other_os {
-    pub use iced_widget;
-}
+//! # Example
+//! ```no_run
+//! # mod iced { pub mod widget { pub use iced_widget::*; } pub use iced_widget::Renderer; pub use iced_widget::core::*; }
+//! # pub type Element<'a, Message> = iced_widget::core::Element<'a, Message, iced_widget::Theme, iced_widget::Renderer>;
+//! #
+//! use iced::widget::slider;
+//!
+//! struct State {
+//!    value: f32,
+//! }
+//!
+//! #[derive(Debug, Clone)]
+//! enum Message {
+//!     ValueChanged(f32),
+//! }
+//!
+//! fn view(state: &State) -> Element<'_, Message> {
+//!     slider(0.0..=100.0, state.value, Message::ValueChanged).into()
+//! }
+//!
+//! fn update(state: &mut State, message: Message) {
+//!     match message {
+//!         Message::ValueChanged(value) => {
+//!             state.value = value;
+//!         }
+//!     }
+//! }
+//! ```
+/*use crate::core::border::{self, Border};
+use crate::core::event::{self, Event};
+use crate::core::keyboard;
+use crate::core::keyboard::key::{self, Key};
+use crate::core::layout;
+use crate::core::mouse;
+use crate::core::renderer;
+use crate::core::touch;
+use crate::core::widget::tree::{self, Tree};
+use crate::core::{
+    self, Background, Clipboard, Color, Element, Layout, Length, Pixels, Point,
+    Rectangle, Shell, Size, Theme, Widget,
+};*/
+use iced::event::{self, Event};
+use iced::keyboard::{self, Key};
+use iced::mouse;
+//use iced::renderer;
+use iced::touch;
+//use iced::widget::tree::{self, Tree};
 
-#[cfg(not(target_os = "linux"))]
-mod macos {
-    pub use iced_widget_custom as iced_widget;
-}
-
-#[cfg(target_os = "linux")]
-use other_os::*;
-
-#[cfg(not(target_os = "linux"))]
-use macos::*;
-
-use iced_widget::core::{
-    self, event, layout, Element, Layout, Length, Point, Rectangle, Shell, Size, Pixels,
-    mouse,
-    renderer, touch,
-    widget::{
-        tree::{self, State, Tree},
-        Widget,
+use iced::{
+    advanced::{
+        layout::{Limits, Node},
+        overlay, renderer,
+        widget::{tree, Operation, Tree},
+        Clipboard, Layout, Shell, Widget, layout
     },
-    Clipboard, Color, Event,
+    Background, Color, Element, Length, Point, Rectangle, Renderer, Size,
+    Theme, Pixels, Border, border
 };
-
-//use crate::dualslider::style::{Appearance, Handle, HandleShape, Rail, StyleSheet};
-use crate::dualslider::style::{HandleShape, StyleSheet};
-
-//use num_traits
-// use num_traits::NumCast;
 use std::ops::RangeInclusive;
-
-
 
 /// An horizontal bar and a handle that selects a single value from a range of
 /// values.
@@ -47,48 +70,59 @@ use std::ops::RangeInclusive;
 ///
 /// # Example
 /// ```no_run
-/// # type Slider<'a, T, Message> =
-/// #     iced_widget::Slider<'a, Message, T, iced_widget::renderer::Renderer<iced_widget::style::Theme>>;
+/// # mod iced { pub mod widget { pub use iced_widget::*; } pub use iced_widget::Renderer; pub use iced_widget::core::*; }
+/// # pub type Element<'a, Message> = iced_widget::core::Element<'a, Message, iced_widget::Theme, iced_widget::Renderer>;
 /// #
-/// #[derive(Clone)]
-/// pub enum Message {
-///     SliderChanged(f32),
+/// use iced::widget::slider;
+///
+/// struct State {
+///    value: f32,
 /// }
 ///
-/// let value = 50.0;
+/// #[derive(Debug, Clone)]
+/// enum Message {
+///     ValueChanged(f32),
+/// }
 ///
-/// Slider::new(0.0..=100.0, value, Message::SliderChanged);
+/// fn view(state: &State) -> Element<'_, Message> {
+///     slider(0.0..=100.0, state.value, Message::ValueChanged).into()
+/// }
+///
+/// fn update(state: &mut State, message: Message) {
+///     match message {
+///         Message::ValueChanged(value) => {
+///             state.value = value;
+///         }
+///     }
+/// }
 /// ```
-///
-/// ![Slider drawn by Coffee's renderer](https://github.com/hecrj/coffee/blob/bda9818f823dfcb8a7ad0ff4940b4d4b387b5208/images/ui/slider.png?raw=true)
 #[allow(missing_debug_implementations)]
-// pub struct DualSlider<'a, T, Message, Renderer = crate::Renderer>
-pub struct DualSlider<'a, T, Message, Renderer>
+pub struct DualSlider<'a, T, Message, Theme = crate::Theme>
 where
-    // Renderer: crate::core::Renderer,
-    Renderer: core::Renderer,
-    Renderer::Theme: StyleSheet,
+    Theme: Catalog,
 {
     range: RangeInclusive<T>,
     step: T,
+    shift_step: Option<T>,
     value: T,
-    pane_index: isize, // needs to be isize because of the need to represent "all" panes; -1
+    default: Option<T>,
+    //on_change: Box<dyn Fn(T) -> Message + 'a>,
+    //on_release: Option<Message>,
     on_change: Box<dyn Fn(isize, T) -> Message + 'a>,
     on_release: Box<dyn Fn(isize, T) -> Message + 'a>,
     width: Length,
     height: f32,
-    style: <Renderer::Theme as StyleSheet>::Style,
+    class: Theme::Class<'a>,
 }
 
-impl<'a, T, Message, Renderer> DualSlider<'a, T, Message, Renderer>
+impl<'a, T, Message, Theme> DualSlider<'a, T, Message, Theme>
 where
-    T: Copy + From<u8> + std::cmp::PartialOrd,
+    T: Copy + From<u8> + PartialOrd,
     Message: Clone,
-    Renderer: core::Renderer,
-    Renderer::Theme: StyleSheet,
+    Theme: Catalog,
 {
     /// The default height of a [`Slider`].
-    pub const DEFAULT_HEIGHT: f32 = 22.0;
+    pub const DEFAULT_HEIGHT: f32 = 16.0;
 
     /// Creates a new [`Slider`].
     ///
@@ -96,12 +130,12 @@ where
     ///   * an inclusive range of possible values
     ///   * the current value of the [`Slider`]
     ///   * a function that will be called when the [`Slider`] is dragged.
-    ///   It receives the new value of the [`Slider`] and must produce a
-    ///   `Message`.
-    pub fn new<F, G>(range: RangeInclusive<T>, value: T, pane_index: isize, on_change: F, on_release: G) -> Self
+    ///     It receives the new value of the [`Slider`] and must produce a
+    ///     `Message`.
+    pub fn new<F, G>(range: RangeInclusive<T>, value: T, on_change: F, on_release: G) -> Self
     where
-        F: 'a + Fn(isize, T) -> Message,
-        G: 'a + Fn(isize, T) -> Message,
+        F: 'a + Fn(T) -> Message,
+        G: 'a + Fn(T) -> Message,
     {
         let value = if value >= *range.start() {
             value
@@ -117,15 +151,25 @@ where
 
         DualSlider {
             value,
+            default: None,
             range,
-            pane_index: pane_index,
             step: T::from(1),
+            shift_step: None,
             on_change: Box::new(on_change),
+            //on_release: None,
             on_release: Box::new(on_release),
             width: Length::Fill,
             height: Self::DEFAULT_HEIGHT,
-            style: Default::default(),
+            class: Theme::default(),
         }
+    }
+
+    /// Sets the optional default value for the [`Slider`].
+    ///
+    /// If set, the [`Slider`] will reset to this value when ctrl-clicked or command-clicked.
+    pub fn default(mut self, default: impl Into<T>) -> Self {
+        self.default = Some(default.into());
+        self
     }
 
     /// Sets the release message of the [`Slider`].
@@ -134,8 +178,7 @@ where
     /// Typically, the user's interaction with the slider is finished when this message is produced.
     /// This is useful if you need to spawn a long-running task from the slider's result, where
     /// the default on_change message could create too many events.
-    #[allow(unused_mut)]
-    pub fn on_release(mut self, _on_release: Message) -> Self {
+    pub fn on_release(mut self, on_release: Message) -> Self {
         //self.on_release = Some(on_release);
         self
     }
@@ -152,55 +195,72 @@ where
         self
     }
 
-    /// Sets the style of the [`Slider`].
-    pub fn style(
-        mut self,
-        style: impl Into<<Renderer::Theme as StyleSheet>::Style>,
-    ) -> Self {
-        self.style = style.into();
-        self
-    }
-
     /// Sets the step size of the [`Slider`].
     pub fn step(mut self, step: impl Into<T>) -> Self {
         self.step = step.into();
         self
     }
+
+    /// Sets the optional "shift" step for the [`Slider`].
+    ///
+    /// If set, this value is used as the step while the shift key is pressed.
+    pub fn shift_step(mut self, shift_step: impl Into<T>) -> Self {
+        self.shift_step = Some(shift_step.into());
+        self
+    }
+
+    /// Sets the style of the [`Slider`].
+    #[must_use]
+    pub fn style(mut self, style: impl Fn(&Theme, Status) -> Style + 'a) -> Self
+    where
+        Theme::Class<'a>: From<StyleFn<'a, Theme>>,
+    {
+        self.class = (Box::new(style) as StyleFn<'a, Theme>).into();
+        self
+    }
+
+    /// Sets the style class of the [`Slider`].
+    #[cfg(feature = "advanced")]
+    #[must_use]
+    pub fn class(mut self, class: impl Into<Theme::Class<'a>>) -> Self {
+        self.class = class.into();
+        self
+    }
 }
 
-impl<'a, T, Message, Renderer> Widget<Message, Renderer>
-    for DualSlider<'a, T, Message, Renderer>
+impl<'a, T, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
+    for DualSlider<'a, T, Message, Theme>
 where
     T: Copy + Into<f64> + num_traits::FromPrimitive,
     Message: Clone,
-    Renderer: core::Renderer,
-    Renderer::Theme: StyleSheet,
+    Theme: Catalog,
+    //Renderer: core::Renderer,
+    Renderer: renderer::Renderer,
 {
     fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
+        //tree::Tag::of::<State>()
+        tree::Tag::of::<SliderState>()
     }
 
     fn state(&self) -> tree::State {
+        //tree::State::new(State::default())
         tree::State::new(SliderState::new())
     }
 
-    fn width(&self) -> Length {
-        self.width
-    }
-
-    fn height(&self) -> Length {
-        Length::Shrink
+    fn size(&self) -> Size<Length> {
+        Size {
+            width: self.width,
+            height: Length::Shrink,
+        }
     }
 
     fn layout(
-            &self,
-            _renderer: &Renderer,
-            limits: &layout::Limits,
-        ) -> layout::Node {
-        let limits = limits.width(self.width).height(self.height);
-        let size = limits.resolve(Size::ZERO);
-
-        layout::Node::new(size)
+        &self,
+        _tree: &mut Tree,
+        _renderer: &Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        layout::atomic(limits, self.width, self.height)
     }
 
     fn on_event(
@@ -214,6 +274,162 @@ where
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> event::Status {
+        /*let state = tree.state.downcast_mut::<State>();
+
+        let is_dragging = state.is_dragging;
+        let current_value = self.value;
+
+        let locate = |cursor_position: Point| -> Option<T> {
+            let bounds = layout.bounds();
+            let new_value = if cursor_position.x <= bounds.x {
+                Some(*self.range.start())
+            } else if cursor_position.x >= bounds.x + bounds.width {
+                Some(*self.range.end())
+            } else {
+                let step = if state.keyboard_modifiers.shift() {
+                    self.shift_step.unwrap_or(self.step)
+                } else {
+                    self.step
+                }
+                .into();
+
+                let start = (*self.range.start()).into();
+                let end = (*self.range.end()).into();
+
+                let percent = f64::from(cursor_position.x - bounds.x)
+                    / f64::from(bounds.width);
+
+                let steps = (percent * (end - start) / step).round();
+                let value = steps * step + start;
+
+                T::from_f64(value.min(end))
+            };
+
+            new_value
+        };
+
+        let increment = |value: T| -> Option<T> {
+            let step = if state.keyboard_modifiers.shift() {
+                self.shift_step.unwrap_or(self.step)
+            } else {
+                self.step
+            }
+            .into();
+
+            let steps = (value.into() / step).round();
+            let new_value = step * (steps + 1.0);
+
+            if new_value > (*self.range.end()).into() {
+                return Some(*self.range.end());
+            }
+
+            T::from_f64(new_value)
+        };
+
+        let decrement = |value: T| -> Option<T> {
+            let step = if state.keyboard_modifiers.shift() {
+                self.shift_step.unwrap_or(self.step)
+            } else {
+                self.step
+            }
+            .into();
+
+            let steps = (value.into() / step).round();
+            let new_value = step * (steps - 1.0);
+
+            if new_value < (*self.range.start()).into() {
+                return Some(*self.range.start());
+            }
+
+            T::from_f64(new_value)
+        };
+
+        let change = |new_value: T| {
+            if (self.value.into() - new_value.into()).abs() > f64::EPSILON {
+                shell.publish((self.on_change)(new_value));
+
+                self.value = new_value;
+            }
+        };
+
+        match event {
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerPressed { .. }) => {
+                if let Some(cursor_position) =
+                    cursor.position_over(layout.bounds())
+                {
+                    if state.keyboard_modifiers.command() {
+                        let _ = self.default.map(change);
+                        state.is_dragging = false;
+                    } else {
+                        let _ = locate(cursor_position).map(change);
+                        state.is_dragging = true;
+                    }
+
+                    return event::Status::Captured;
+                }
+            }
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerLifted { .. })
+            | Event::Touch(touch::Event::FingerLost { .. }) => {
+                if is_dragging {
+                    if let Some(on_release) = self.on_release.clone() {
+                        shell.publish(on_release);
+                    }
+                    state.is_dragging = false;
+
+                    return event::Status::Captured;
+                }
+            }
+            Event::Mouse(mouse::Event::CursorMoved { .. })
+            | Event::Touch(touch::Event::FingerMoved { .. }) => {
+                if is_dragging {
+                    let _ = cursor.position().and_then(locate).map(change);
+
+                    return event::Status::Captured;
+                }
+            }
+            Event::Mouse(mouse::Event::WheelScrolled { delta })
+                if state.keyboard_modifiers.control() =>
+            {
+                if cursor.is_over(layout.bounds()) {
+                    let delta = match delta {
+                        mouse::ScrollDelta::Lines { x: _, y } => y,
+                        mouse::ScrollDelta::Pixels { x: _, y } => y,
+                    };
+
+                    if delta < 0.0 {
+                        let _ = decrement(current_value).map(change);
+                    } else {
+                        let _ = increment(current_value).map(change);
+                    }
+
+                    return event::Status::Captured;
+                }
+            }
+            Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
+                if cursor.is_over(layout.bounds()) {
+                    match key {
+                        Key::Named(key::Named::ArrowUp) => {
+                            let _ = increment(current_value).map(change);
+                        }
+                        Key::Named(key::Named::ArrowDown) => {
+                            let _ = decrement(current_value).map(change);
+                        }
+                        _ => (),
+                    }
+
+                    return event::Status::Captured;
+                }
+            }
+            Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+                state.keyboard_modifiers = modifiers;
+            }
+            _ => {}
+        }
+
+        event::Status::Ignored*/
+
         let state = tree.state.downcast_mut::<SliderState>();
         let range = &self.range;
 
@@ -290,21 +506,185 @@ where
         &self,
         tree: &Tree,
         renderer: &mut Renderer,
-        theme: &Renderer::Theme,
+        theme: &Theme,
         _style: &renderer::Style,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         _viewport: &Rectangle,
     ) {
-        draw(
-            renderer,
-            layout,
-            cursor,
-            tree.state.downcast_ref::<SliderState>(),
-            self.value,
-            &self.range,
-            theme,
-            &self.style,
+        /*let state = tree.state.downcast_ref::<State>();
+        let bounds = layout.bounds();
+        let is_mouse_over = cursor.is_over(bounds);
+
+        let style = theme.style(
+            &self.class,
+            if state.is_dragging {
+                Status::Dragged
+            } else if is_mouse_over {
+                Status::Hovered
+            } else {
+                Status::Active
+            },
+        );
+
+        let (handle_width, handle_height, handle_border_radius) =
+            match style.handle.shape {
+                HandleShape::Circle { radius } => {
+                    (radius * 2.0, radius * 2.0, radius.into())
+                }
+                HandleShape::Rectangle {
+                    width,
+                    border_radius,
+                } => (f32::from(width), bounds.height, border_radius),
+            };
+
+        let value = self.value.into() as f32;
+        let (range_start, range_end) = {
+            let (start, end) = self.range.clone().into_inner();
+
+            (start.into() as f32, end.into() as f32)
+        };
+
+        let offset = if range_start >= range_end {
+            0.0
+        } else {
+            (bounds.width - handle_width) * (value - range_start)
+                / (range_end - range_start)
+        };
+
+        let rail_y = bounds.y + bounds.height / 2.0;
+
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: Rectangle {
+                    x: bounds.x,
+                    y: rail_y - style.rail.width / 2.0,
+                    width: offset + handle_width / 2.0,
+                    height: style.rail.width,
+                },
+                border: style.rail.border,
+                ..renderer::Quad::default()
+            },
+            style.rail.backgrounds.0,
+        );
+
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: Rectangle {
+                    x: bounds.x + offset + handle_width / 2.0,
+                    y: rail_y - style.rail.width / 2.0,
+                    width: bounds.width - offset - handle_width / 2.0,
+                    height: style.rail.width,
+                },
+                border: style.rail.border,
+                ..renderer::Quad::default()
+            },
+            style.rail.backgrounds.1,
+        );
+
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: Rectangle {
+                    x: bounds.x + offset,
+                    y: rail_y - handle_height / 2.0,
+                    width: handle_width,
+                    height: handle_height,
+                },
+                border: Border {
+                    radius: handle_border_radius,
+                    width: style.handle.border_width,
+                    color: style.handle.border_color,
+                },
+                ..renderer::Quad::default()
+            },
+            style.handle.background,
+        );*/
+
+        let state = tree.state.downcast_ref::<SliderState>();
+        let bounds = layout.bounds();
+        let is_mouse_over = cursor.is_over(bounds);
+
+        let style = theme.style(
+            &self.class,
+            if state.is_dragging {
+                Status::Dragged
+            } else if is_mouse_over {
+                Status::Hovered
+            } else {
+                Status::Active
+            },
+        );
+
+        let (handle_width, handle_height, handle_border_radius) =
+            match style.handle.shape {
+                HandleShape::Circle { radius } => {
+                    (radius * 2.0, radius * 2.0, radius.into())
+                }
+                HandleShape::Rectangle {
+                    width,
+                    border_radius,
+                } => (f32::from(width), bounds.height, border_radius),
+            };
+
+        let value = self.value.into() as f32;
+        let (range_start, range_end) = {
+            let (start, end) = self.range.clone().into_inner();
+
+            (start.into() as f32, end.into() as f32)
+        };
+
+        let offset = if range_start >= range_end {
+            0.0
+        } else {
+            (bounds.width - handle_width) * (value - range_start)
+                / (range_end - range_start)
+        };
+
+        let rail_y = bounds.y + bounds.height / 2.0;
+
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: Rectangle {
+                    x: bounds.x,
+                    y: rail_y - style.rail.width / 2.0,
+                    width: offset + handle_width / 2.0,
+                    height: style.rail.width,
+                },
+                border_radius: style.rail.border_radius,
+                border_width: 0.0,
+                border_color: Color::TRANSPARENT,
+            },
+            style.rail.colors.0,
+        );
+
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: Rectangle {
+                    x: bounds.x + offset + handle_width / 2.0,
+                    y: rail_y - style.rail.width / 2.0,
+                    width: bounds.width - offset - handle_width / 2.0,
+                    height: style.rail.width,
+                },
+                border_radius: style.rail.border_radius,
+                border_width: 0.0,
+                border_color: Color::TRANSPARENT,
+            },
+            style.rail.colors.1,
+        );
+
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: Rectangle {
+                    x: bounds.x + offset,
+                    y: rail_y - handle_height / 2.0,
+                    width: handle_width,
+                    height: handle_height,
+                },
+                border_radius: handle_border_radius,
+                border_width: style.handle.border_width,
+                border_color: style.handle.border_color,
+            },
+            style.handle.color,
         );
     }
 
@@ -316,152 +696,181 @@ where
         _viewport: &Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        mouse_interaction(layout, cursor, tree.state.downcast_ref::<SliderState>())
+        let state = tree.state.downcast_ref::<SliderState>();
+        let bounds = layout.bounds();
+        let is_mouse_over = cursor.is_over(bounds);
+
+        if state.is_dragging {
+            mouse::Interaction::Grabbing
+        } else if is_mouse_over {
+            mouse::Interaction::Grab
+        } else {
+            mouse::Interaction::default()
+        }
     }
 }
 
-impl<'a, T, Message, Renderer> From<DualSlider<'a, T, Message, Renderer>>
-    for Element<'a, Message, Renderer>
+impl<'a, T, Message, Theme, Renderer> From<DualSlider<'a, T, Message, Theme>>
+    for Element<'a, Message, Theme, Renderer>
 where
-    T: 'a + Copy + Into<f64> + num_traits::FromPrimitive,
-    Message: 'a + Clone,
-    Renderer: 'a + core::Renderer,
-    Renderer::Theme: StyleSheet,
+    T: Copy + Into<f64> + num_traits::FromPrimitive + 'a,
+    Message: Clone + 'a,
+    Theme: Catalog + 'a,
+    //Renderer: core::Renderer + 'a,
+    Renderer: renderer::Renderer + 'a,
 {
     fn from(
-        slider: DualSlider<'a, T, Message, Renderer>,
-    ) -> Element<'a, Message, Renderer> {
+        slider: DualSlider<'a, T, Message, Theme>,
+    ) -> Element<'a, Message, Theme, Renderer> {
         Element::new(slider)
     }
 }
 
+/*#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct State {
+    is_dragging: bool,
+    keyboard_modifiers: keyboard::Modifiers,
+}*/
 
-/// Draws a [`Slider`].
-pub fn draw<T, R>(
-    renderer: &mut R,
-    layout: Layout<'_>,
-    cursor: mouse::Cursor,
-    state: &SliderState,
-    value: T,
-    range: &RangeInclusive<T>,
-    style_sheet: &dyn StyleSheet<Style = <R::Theme as StyleSheet>::Style>,
-    style: &<R::Theme as StyleSheet>::Style,
-) where
-    T: Into<f64> + Copy,
-    R: core::Renderer,
-    R::Theme: StyleSheet,
-{
-    let bounds = layout.bounds();
-    let is_mouse_over = cursor.is_over(bounds);
-
-    let style = if state.is_dragging {
-        style_sheet.dragging(style)
-    } else if is_mouse_over {
-        style_sheet.hovered(style)
-    } else {
-        style_sheet.active(style)
-    };
-
-    let (handle_width, handle_height, handle_border_radius) =
-        match style.handle.shape {
-            HandleShape::Circle { radius } => {
-                (radius * 2.0, radius * 2.0, radius.into())
-            }
-            HandleShape::Rectangle {
-                width,
-                border_radius,
-            } => (f32::from(width), bounds.height, border_radius),
-        };
-
-    let value = value.into() as f32;
-    let (range_start, range_end) = {
-        let (start, end) = range.clone().into_inner();
-
-        (start.into() as f32, end.into() as f32)
-    };
-
-    let offset = if range_start >= range_end {
-        0.0
-    } else {
-        (bounds.width - handle_width) * (value - range_start)
-            / (range_end - range_start)
-    };
-
-    let rail_y = bounds.y + bounds.height / 2.0;
-
-    renderer.fill_quad(
-        renderer::Quad {
-            bounds: Rectangle {
-                x: bounds.x,
-                y: rail_y - style.rail.width / 2.0,
-                width: offset + handle_width / 2.0,
-                height: style.rail.width,
-            },
-            border_radius: style.rail.border_radius,
-            border_width: 0.0,
-            border_color: Color::TRANSPARENT,
-        },
-        style.rail.colors.0,
-    );
-
-    renderer.fill_quad(
-        renderer::Quad {
-            bounds: Rectangle {
-                x: bounds.x + offset + handle_width / 2.0,
-                y: rail_y - style.rail.width / 2.0,
-                width: bounds.width - offset - handle_width / 2.0,
-                height: style.rail.width,
-            },
-            border_radius: style.rail.border_radius,
-            border_width: 0.0,
-            border_color: Color::TRANSPARENT,
-        },
-        style.rail.colors.1,
-    );
-
-    renderer.fill_quad(
-        renderer::Quad {
-            bounds: Rectangle {
-                x: bounds.x + offset,
-                y: rail_y - handle_height / 2.0,
-                width: handle_width,
-                height: handle_height,
-            },
-            border_radius: handle_border_radius,
-            border_width: style.handle.border_width,
-            border_color: style.handle.border_color,
-        },
-        style.handle.color,
-    );
-}
-
-/// Computes the current [`mouse::Interaction`] of a [`Slider`].
-pub fn mouse_interaction(
-    layout: Layout<'_>,
-    cursor: mouse::Cursor,
-    state: &SliderState,
-) -> mouse::Interaction {
-    let bounds = layout.bounds();
-    let is_mouse_over = cursor.is_over(bounds);
-
-    if state.is_dragging {
-        mouse::Interaction::Grabbing
-    } else if is_mouse_over {
-        mouse::Interaction::Grab
-    } else {
-        mouse::Interaction::default()
-    }
+/// The possible status of a [`Slider`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    /// The [`Slider`] can be interacted with.
+    Active,
+    /// The [`Slider`] is being hovered.
+    Hovered,
+    /// The [`Slider`] is being dragged.
+    Dragged,
 }
 
 /// The local state of a [`Slider`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SliderState {
     is_dragging: bool,
+    keyboard_modifiers: keyboard::Modifiers,
 }
 
 impl SliderState {
     /// Creates a new [`SliderState`].
     pub fn new() -> SliderState {
         SliderState::default()
+    }
+}
+
+
+/// The appearance of a slider.
+#[derive(Debug, Clone, Copy)]
+pub struct Style {
+    /// The colors of the rail of the slider.
+    pub rail: Rail,
+    /// The appearance of the [`Handle`] of the slider.
+    pub handle: Handle,
+}
+
+impl Style {
+    /// Changes the [`HandleShape`] of the [`Style`] to a circle
+    /// with the given radius.
+    pub fn with_circular_handle(mut self, radius: impl Into<Pixels>) -> Self {
+        self.handle.shape = HandleShape::Circle {
+            radius: radius.into().0,
+        };
+        self
+    }
+}
+
+/// The appearance of a slider rail
+#[derive(Debug, Clone, Copy)]
+pub struct Rail {
+    /// The backgrounds of the rail of the slider.
+    pub backgrounds: (Background, Background),
+    /// The width of the stroke of a slider rail.
+    pub width: f32,
+    /// The border of the rail.
+    pub border: Border,
+}
+
+/// The appearance of the handle of a slider.
+#[derive(Debug, Clone, Copy)]
+pub struct Handle {
+    /// The shape of the handle.
+    pub shape: HandleShape,
+    /// The [`Background`] of the handle.
+    pub background: Background,
+    /// The border width of the handle.
+    pub border_width: f32,
+    /// The border [`Color`] of the handle.
+    pub border_color: Color,
+}
+
+/// The shape of the handle of a slider.
+#[derive(Debug, Clone, Copy)]
+pub enum HandleShape {
+    /// A circular handle.
+    Circle {
+        /// The radius of the circle.
+        radius: f32,
+    },
+    /// A rectangular shape.
+    Rectangle {
+        /// The width of the rectangle.
+        width: u16,
+        /// The border radius of the corners of the rectangle.
+        border_radius: border::Radius,
+    },
+}
+
+/// The theme catalog of a [`Slider`].
+pub trait Catalog: Sized {
+    /// The item class of the [`Catalog`].
+    type Class<'a>;
+
+    /// The default class produced by the [`Catalog`].
+    fn default<'a>() -> Self::Class<'a>;
+
+    /// The [`Style`] of a class with the given status.
+    fn style(&self, class: &Self::Class<'_>, status: Status) -> Style;
+}
+
+/// A styling function for a [`Slider`].
+pub type StyleFn<'a, Theme> = Box<dyn Fn(&Theme, Status) -> Style + 'a>;
+
+impl Catalog for Theme {
+    type Class<'a> = StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(default)
+    }
+
+    fn style(&self, class: &Self::Class<'_>, status: Status) -> Style {
+        class(self, status)
+    }
+}
+
+/// The default style of a [`Slider`].
+pub fn default(theme: &Theme, status: Status) -> Style {
+    let palette = theme.extended_palette();
+
+    let color = match status {
+        Status::Active => palette.primary.strong.color,
+        Status::Hovered => palette.primary.base.color,
+        Status::Dragged => palette.primary.strong.color,
+    };
+
+    Style {
+        rail: Rail {
+            backgrounds: (color.into(), palette.secondary.base.color.into()),
+            width: 4.0,
+            border: Border {
+                radius: 2.0.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+        },
+        handle: Handle {
+            shape: HandleShape::Circle { radius: 7.0 },
+            background: color.into(),
+            border_color: Color::TRANSPARENT,
+            border_width: 0.0,
+        },
     }
 }
