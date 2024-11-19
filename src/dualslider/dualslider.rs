@@ -41,6 +41,23 @@ use crate::core::{
     self, Background, Clipboard, Color, Element, Layout, Length, Pixels, Point,
     Rectangle, Shell, Size, Theme, Widget,
 };*/
+
+#[cfg(target_os = "linux")]
+mod other_os {
+    pub use iced;
+}
+
+#[cfg(not(target_os = "linux"))]
+mod macos {
+    pub use iced_custom as iced;
+}
+
+#[cfg(target_os = "linux")]
+use other_os::*;
+
+#[cfg(not(target_os = "linux"))]
+use macos::*;
+
 use iced::event::{self, Event};
 use iced::keyboard::{self, Key};
 use iced::mouse;
