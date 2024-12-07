@@ -28,16 +28,20 @@ use macos::*;
 use iced::{
     alignment, event, touch,
     
+    
     advanced::{
         layout, mouse, renderer, text, widget,
         image::{self, FilterMethod},
         widget::tree::{self, Tree},
         Widget, Clipboard, Shell, Layout,
+
+        image::Image,
     },
-    widget::{Image},
+    //widget::{Image},
     Border, Color, Element, Event, Length, Pixels, Point,
     Radians, Vector, Rectangle, Size, Theme, ContentFit
 };
+//use iced_core::image::Image;
 
 
 

@@ -122,6 +122,7 @@ where
     step: T,
     shift_step: Option<T>,
     value: T,
+    pane_index: isize, // needs to be isize because of the need to represent "all" panes; -1
     default: Option<T>,
     //on_change: Box<dyn Fn(T) -> Message + 'a>,
     //on_release: Option<Message>,
@@ -149,10 +150,10 @@ where
     ///   * a function that will be called when the [`Slider`] is dragged.
     ///     It receives the new value of the [`Slider`] and must produce a
     ///     `Message`.
-    pub fn new<F, G>(range: RangeInclusive<T>, value: T, on_change: F, on_release: G) -> Self
+    pub fn new<F, G>(range: RangeInclusive<T>, value: T, pane_index: isize, on_change: F, on_release: G) -> Self
     where
-        F: 'a + Fn(T) -> Message,
-        G: 'a + Fn(T) -> Message,
+        F: 'a + Fn(isize, T) -> Message,
+        G: 'a + Fn(isize, T) -> Message,
     {
         let value = if value >= *range.start() {
             value
@@ -170,6 +171,7 @@ where
             value,
             default: None,
             range,
+            pane_index: pane_index,
             step: T::from(1),
             shift_step: None,
             on_change: Box::new(on_change),
@@ -667,11 +669,19 @@ where
                     width: offset + handle_width / 2.0,
                     height: style.rail.width,
                 },
-                border_radius: style.rail.border_radius,
-                border_width: 0.0,
-                border_color: Color::TRANSPARENT,
+                //border_radius: style.rail.border_radius,
+                //border_width: 0.0,
+                //border_color: Color::TRANSPARENT,
+                /*border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: Radius::new(style.rail.border.radius), // Use `Radius` if `rail.border.radius` exists
+                },*/
+                border: style.rail.border,
+                ..renderer::Quad::default()
             },
-            style.rail.colors.0,
+            //style.rail.colors.0,
+            style.rail.backgrounds.0,
         );
 
         renderer.fill_quad(
@@ -682,11 +692,19 @@ where
                     width: bounds.width - offset - handle_width / 2.0,
                     height: style.rail.width,
                 },
-                border_radius: style.rail.border_radius,
-                border_width: 0.0,
-                border_color: Color::TRANSPARENT,
+                //border_radius: style.rail.border_radius,
+                //border_width: 0.0,
+                //border_color: Color::TRANSPARENT,
+                /*border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: Radius::new(style.rail.border.radius), // Use `Radius` if `rail.border.radius` exists
+                },*/
+                border: style.rail.border,
+                ..renderer::Quad::default()
             },
-            style.rail.colors.1,
+            //style.rail.colors.1,
+            style.rail.backgrounds.1,
         );
 
         renderer.fill_quad(
@@ -697,11 +715,23 @@ where
                     width: handle_width,
                     height: handle_height,
                 },
-                border_radius: handle_border_radius,
-                border_width: style.handle.border_width,
-                border_color: style.handle.border_color,
+                //border_radius: handle_border_radius,
+                //border_width: style.handle.border_width,
+                //border_color: style.handle.border_color,
+                /*border: Border {
+                    color: style.handle.border_color,
+                    width: style.handle.border_width,
+                    radius: Radius::new(handle_border_radius), // Use `Radius::new`
+                },*/
+                border: Border {
+                    radius: handle_border_radius,
+                    width: style.handle.border_width,
+                    color: style.handle.border_color,
+                },
+                ..renderer::Quad::default()
             },
-            style.handle.color,
+            //style.handle.color,
+            style.handle.background,
         );
     }
 

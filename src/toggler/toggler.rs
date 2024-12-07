@@ -69,6 +69,7 @@ use iced::{
     Border, Color, Element, Event, Length, Pixels,
     Rectangle, Size, Theme,
 };
+use std::borrow::Cow;
 
 /// A toggler widget.
 ///
@@ -144,19 +145,29 @@ where
     ///   * a function that will be called when the [`Toggler`] is toggled. It
     ///     will receive the new state of the [`Toggler`] and must produce a
     ///     `Message`.
-    pub fn new(is_toggled: bool) -> Self {
+    //pub fn new(is_toggled: bool) -> Self {
+    pub fn new<F>(
+        label: impl Into<Option<String>>,
+        is_toggled: bool,
+        f: F,
+    ) -> Self
+    where
+        F: 'a + Fn(bool) -> Message,
+    {
         Toggler {
             is_toggled,
-            on_toggle: None,
-            label: None,
+            on_toggle: Some(Box::new(f)),
+            label: label.into().map(Cow::Owned),
             width: Length::Shrink,
             size: Self::DEFAULT_SIZE,
-            text_size: None,
+            //text_size: None,
+            text_size: Some(iced::Pixels(14.0)),
             text_line_height: text::LineHeight::default(),
             text_alignment: alignment::Horizontal::Left,
             text_shaping: text::Shaping::default(),
             text_wrapping: text::Wrapping::default(),
-            spacing: Self::DEFAULT_SIZE / 2.0,
+            //spacing: Self::DEFAULT_SIZE / 2.0,
+            spacing: 0.0,
             font: None,
             class: Theme::default(),
         }
