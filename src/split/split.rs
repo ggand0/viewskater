@@ -97,8 +97,12 @@ where
     first: Element<'a, Message, Theme, Renderer>,
     /// The second element of the [`Split`].
     second: Element<'a, Message, Theme, Renderer>,
+
+    is_selected: Vec<bool>,
+
     /// The position of the divider.
     divider_position: Option<u16>,
+    divider_init_position: Option<u16>,
     /// The axis to split at.
     axis: Axis,
     /// The padding around the elements of the [`Split`].
@@ -116,7 +120,16 @@ where
     min_size_second: u16,
     /// The message that is send when the divider of the [`Split`] is moved.
     on_resize: Box<dyn Fn(u16) -> Message>,
+    on_double_click: Box<dyn Fn(u16) -> Message>,
+    on_drop: Box<dyn Fn(isize, String) -> Message>,
+    on_select: Box<dyn Fn(usize, bool) -> Message>,
+
     class: Theme::Class<'a>,
+    default_position: Option<u16>,
+    has_been_split: bool,
+
+    // Whether to enable pane selection
+    enable_pane_selection: bool,
 }
 
 impl<'a, Message, Theme, Renderer> Split<'a, Message, Theme, Renderer>
@@ -133,17 +146,25 @@ where
     ///     - The position of the divider. If none, the space will be split in half.
     ///     - The [`Axis`] to split at.
     ///     - The message that is send on moving the divider
-    pub fn new<A, B, F>(
+    pub fn new<A, B, F, G, H, I>(
+        enable_pane_selection: bool,
         first: A,
         second: B,
+        is_selected: Vec<bool>,
         divider_position: Option<u16>,
         axis: Axis,
         on_resize: F,
+        on_double_click: G,
+        on_drop: H,
+        on_select: I,
     ) -> Self
     where
         A: Into<Element<'a, Message, Theme, Renderer>>,
         B: Into<Element<'a, Message, Theme, Renderer>>,
         F: 'static + Fn(u16) -> Message,
+        G: 'static + Fn(u16) -> Message,
+        H: 'static + Fn(isize, String) -> Message,
+        I: 'static + Fn(usize, bool) -> Message,
     {
         Self {
             first: first.into(),
@@ -156,7 +177,9 @@ where
             //     .width(Length::Fill)
             //     .height(Length::Fill)
             //     .into(),
+            is_selected: is_selected,
             divider_position,
+            divider_init_position: divider_position,
             axis,
             padding: 0.0,
             spacing: 5.0,
@@ -165,7 +188,13 @@ where
             min_size_first: 5,
             min_size_second: 5,
             on_resize: Box::new(on_resize),
+            on_double_click: Box::new(on_double_click),
+            on_drop: Box::new(on_drop),
+            on_select: Box::new(on_select),
             class: Theme::default(),
+            default_position: None,
+            has_been_split: false,
+            enable_pane_selection: enable_pane_selection,
         }
     }
 
@@ -431,12 +460,18 @@ where
                     if is_within_bounds_first {
                         split_state.panes_seleced[0] = !split_state.panes_seleced[0];
                         shell.publish((self.on_select)(0, split_state.panes_seleced[0]));
+                        return event::Status::Captured;
                     }
                     let is_within_bounds_second = is_cursor_within_bounds::<Message>(second_layout, cursor, 1, split_state);
                     if is_within_bounds_second {
                         split_state.panes_seleced[1] = !split_state.panes_seleced[1];
                         shell.publish((self.on_select)(1, split_state.panes_seleced[1]));
+                        return event::Status::Captured;
                     }
+
+                    return event::Status::Ignored;
+                } else {
+                    return event::Status::Ignored;
                 }
             }
 
@@ -477,17 +512,21 @@ where
             
                     index += 1;
                 }
+                // Explicitly return Ignored if no child layout contains the cursor
+                return event::Status::Ignored;
             }
 
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileHovered(_path)) => {
                 // Access the cursor position from the FileHovered event
                 debug!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
+                return event::Status::Captured;
             }
     
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileDropped(path)) => {
                 let mut index = 0;
+                let mut handled = false;
                 debug!("layout children length: {}", layout.children().count());
                 for child_layout in layout.children() {
                     debug!("Child layout: {:?}", child_layout);
@@ -512,10 +551,18 @@ where
             
                     if bounds.contains(cursor.position().unwrap_or_default()) {
                         shell.publish((self.on_drop)(index, path.to_string_lossy().to_string()));
-                        return event::Status::Captured;
+                        //return event::Status::Captured;
+                        handled = true;
+                        break;
                     }
             
                     index += 1;
+                }
+                
+                if handled {
+                    return event::Status::Captured;
+                } else {
+                    return event::Status::Ignored;
                 }
             }
 
@@ -524,6 +571,9 @@ where
             | Event::Touch(touch::Event::FingerLifted { .. }) => {
                 if split_state.dragging {
                     split_state.dragging = false;
+                    return event::Status::Captured;
+                } else {
+                    return event::Status::Ignored;
                 }
             }
 
@@ -536,10 +586,14 @@ where
                         Axis::Vertical => position.x,
                     };
                     shell.publish((self.on_resize)(position as u16));
+                    return event::Status::Captured;
+                } else {
+                    return event::Status::Ignored;
                 }
             }
 
-            _ => {}
+            //_ => {}
+            _ => return event::Status::Ignored,
         }
     }
 
@@ -1171,13 +1225,47 @@ pub fn base(theme: &Theme, status: Status) -> Style {
     }
 }
 
-fn styled(pair: palette::Pair) -> Style {
+/*fn styled(pair: palette::Pair) -> Style {
     Style {
         background: Some(Background::Color(pair.color)),
         border: Border::rounded(2),
         ..Style::default()
     }
+}*/
+
+use iced::border::Radius;
+fn styled(pair: palette::Pair) -> Style {
+    Style {
+        background: Some(Background::Color(pair.color)),
+        border: Border::rounded(Border {
+            color: Color::TRANSPARENT,
+            width: 2.0,
+            radius: Radius::new(2.0),
+        }, 2.0),
+        divider_background: Background::Color(Color::TRANSPARENT), // Use Background directly
+        divider_border: Border::rounded(Border {
+            color: Color::TRANSPARENT,
+            width: 1.0,
+            radius: Radius::new(2.0),
+        }, 2.0),
+        first_background: Some(Background::Color(Color::WHITE)), // Wrap in Some
+        second_background: Some(Background::Color(Color::WHITE)), // Wrap in Some
+        first_border: Border::rounded(Border {
+            color: Color::TRANSPARENT,
+            width: 2.0,
+            radius: Radius::new(2.0),
+        }, 2.0),
+        second_border: Border::rounded(Border {
+            color: Color::TRANSPARENT,
+            width: 2.0,
+            radius: Radius::new(2.0),
+        }, 2.0),
+    }
 }
+
+
+
+
 
 fn disabled(style: Style) -> Style {
     Style {
