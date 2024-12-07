@@ -25,9 +25,11 @@ use iced::Subscription;
 use iced::window::events;
 
 use iced::{keyboard, clipboard};
-use iced::{Element, Length, Application, Theme, Settings};
+use iced::keyboard::{Event as KeyboardEvent, Key, key::Named, key::Code, Modifiers};
+use iced::{Element, Length, Application, Theme, Settings, Pixels};
 use iced::Task;
-
+use smol_str::SmolStr;
+//use iced::keyboard::key::Named;
 
 
 use iced::font::{self, Font};
@@ -180,22 +182,43 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
     }
 
-    fn handle_key_pressed_event(&mut self, key_code: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+
+    /*
+    fn handle_hotkey(key: keyboard::Key) -> Option<Message> {
+    use keyboard::key::{self, Key};
+    use pane_grid::{Axis, Direction};
+
+    match key.as_ref() {
+        Key::Character("v") => Some(Message::SplitFocused(Axis::Vertical)),
+        Key::Character("h") => Some(Message::SplitFocused(Axis::Horizontal)),
+        Key::Character("w") => Some(Message::CloseFocused),
+        Key::Named(key) => {
+            let direction = match key {
+                    key::Named::ArrowUp => Some(Direction::Up),
+                    key::Named::ArrowDown => Some(Direction::Down),
+                    key::Named::ArrowLeft => Some(Direction::Left),
+                    key::Named::ArrowRight => Some(Direction::Right),
+                    _ => None,
+                };
+    */
+
+    fn handle_key_pressed_event(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         let mut Tasks = Vec::new();
-        match key_code {
-            keyboard::Key::Tab => {
+        match key.as_ref() {
+            Key::Named(Named::Tab) => {
                 debug!("Tab pressed");
                 // toggle footer
                 self.toggle_footer();
             }
 
-            keyboard::Key::Space | keyboard::Key::B => {
+            //Named::Space | Key::Character(c) if c == SmolStr::from("b") => {
+            Key::Named(Named::Space) | Key::Character("b") => {
                 debug!("Space pressed");
                 // Toggle slider type
                 self.toggle_slider_type();
             }
 
-            keyboard::Key::Key1 => {
+            Key::Character("1") => {
                 debug!("Key1 pressed");
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
                     self.panes[0].is_selected = !self.panes[0].is_selected;
@@ -222,7 +245,7 @@ impl DataViewer {
                     self.toggle_pane_layout(PaneLayout::SinglePane);
                 }
             }
-            keyboard::Key::Key2 => {
+            Key::Character("2") => {
                 debug!("Key2 pressed");
                 if self.pane_layout == PaneLayout::DualPane {
                     if self.is_slider_dual {
@@ -253,7 +276,8 @@ impl DataViewer {
                 }
             }
 
-            keyboard::Key::C | keyboard::Key::W => {
+            Key::Character("c") |
+            Key::Character("w") => {
                 // Close the selected panes
                 if modifiers.control() {
                     for pane in self.panes.iter_mut() {
@@ -264,12 +288,12 @@ impl DataViewer {
                 }
             }
 
-            keyboard::Key::Q => {
+            Key::Character("q") => {
                 // Terminate the app
                 std::process::exit(0);
             }
 
-            keyboard::Key::Left | keyboard::Key::A => {
+            Key::Named(Named::ArrowLeft) | Key::Character("a") => {
                 if self.skate_right {
                     self.skate_right = false;
 
@@ -293,7 +317,7 @@ impl DataViewer {
                 }
                 
             }
-            keyboard::Key::Right | keyboard::Key::D => {
+            Key::Named(Named::ArrowRight) | Key::Character("d") => {
                 if self.skate_left {
                     self.skate_left = false;
 
@@ -327,23 +351,23 @@ impl DataViewer {
         #[allow(unused_mut)]
         let mut Tasks = Vec::new();
 
-        match key_code {
-            keyboard::Key::Tab => {
+        match key_code.as_ref() {
+            Key::Named(Named::Tab) => {
                 debug!("Tab released");
             }
-            keyboard::Key::Enter | keyboard::Key::NumpadEnter => {
+            Key::Named(Named::Enter) | Key::Character("NumpadEnter")  => {
                 debug!("Enter key released!");
                 
             }
-            keyboard::Key::Escape => {
+            Key::Named(Named::Escape) => {
                 debug!("Escape key released!");
                 
             }
-            keyboard::Key::Left | keyboard::Key::A => {
+            Key::Named(Named::ArrowLeft) | Key::Character("a") => {
                 debug!("Left key or 'A' key released!");
                 self.skate_left = false;
             }
-            keyboard::Key::Right | keyboard::Key::D => {
+            Key::Named(Named::ArrowRight) | Key::Character("d") => {
                 debug!("Right key or 'D' key released!");
                 self.skate_right = false;
             }
@@ -398,44 +422,16 @@ impl DataViewer {
     fn toggle_footer(&mut self) {
         self.show_footer = !self.show_footer;
     }
-}
 
-
-impl Application for DataViewer {
-    type Message = Message;
-    type Theme = Theme;
-    type Executor= iced::executor::Default;
-    type Flags = ();
-
-    fn new(_flags: Self::Flags) -> (Self, Task<Self::Message>) {
-        (
-            Self {
-                title: String::from("ViewSkater"),
-                directory_path: None,
-                current_image_index: 0,
-                slider_value: 0,
-                prev_slider_value: 0,
-                ver_divider_position: None,
-                hor_divider_position: None,
-                is_slider_dual: false,
-                show_footer: true,
-                pane_layout: PaneLayout::SinglePane,
-                last_opened_pane: 0,
-                panes: vec![pane::Pane::default()],
-                loading_status: loading_status::LoadingStatus::default(),
-                skate_right: false,
-                skate_left: false,
-                update_counter: 0,
-            },
-            Task::batch(vec![
-                font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded), // icon font
-                font::load(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf").as_slice()).map(Message::FontLoaded),  // footer digit font
-                font::load(include_bytes!("../assets/fonts/Roboto-Regular.ttf").as_slice()).map(Message::FontLoaded),   // UI font
-            ])
-        )
-
+    pub fn new() -> Self {
+        Task::batch(vec![
+            font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded), // icon font
+            font::load(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf").as_slice()).map(Message::FontLoaded),  // footer digit font
+            font::load(include_bytes!("../assets/fonts/Roboto-Regular.ttf").as_slice()).map(Message::FontLoaded),   // UI font
+        ]);
+        Self::default()
     }
-    
+
     fn title(&self) -> String {
         match self.pane_layout  {
             PaneLayout::SinglePane => {
@@ -471,7 +467,8 @@ impl Application for DataViewer {
     }
 
     
-    fn update(&mut self, message: Message) -> Task<Self::Message> {
+    //fn update(&mut self, message: Message) -> Task<Self::Message> {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Nothing => {}
             Message::Debug(s) => {
@@ -654,16 +651,16 @@ impl Application for DataViewer {
                     }
                 }
 
-                Event::Keyboard(keyboard::Event::KeyPressed { key_code, modifiers, .. }) => {
-                    let Tasks = self.handle_key_pressed_event(key_code, modifiers);
+                Event::Keyboard(KeyboardEvent::KeyPressed { key, modifiers, .. }) => {
+                    let Tasks = self.handle_key_pressed_event(key, modifiers);
                     if Tasks.is_empty() {
                     } else {
                         return Task::batch(Tasks);
                     }
                 }
 
-                Event::Keyboard(keyboard::Event::KeyReleased { key_code, modifiers, .. }) => {
-                    let Tasks = self.handle_key_released_event(key_code, modifiers);
+                Event::Keyboard(KeyboardEvent::KeyReleased { key, modifiers, .. }) => {
+                    let Tasks = self.handle_key_released_event(key, modifiers);
                     if Tasks.is_empty() {
                         
                     } else {
@@ -709,23 +706,33 @@ impl Application for DataViewer {
         container_all
         .height(Length::Fill)
         .width(Length::Fill)
-        .center_x()
+        .center_x(Length::Fill)
         .into()
     }
 
-    fn subscription(&self) -> Subscription<Self::Message> {
+    fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
             //subscription::events().map(Message::Event),
-            events().map(Message::Event),
+            //events().map(Message::Event),
+            //events().map(|(_id, event)| Message::Event(event))
+            events().map(|(_id, event)| Message::Event(iced::Event::Window(event)))
+
         ])
     }
 
-    fn theme(&self) -> Self::Theme {
-        iced::Theme::custom(
+    fn theme(&self) -> Theme {
+        /*iced::Theme::custom(
             iced::theme::Palette {
                 primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
                 ..iced::Theme::Dark.palette()
             }
+        )*/
+        iced::Theme::custom(
+            "Custom Theme".to_string(),
+            iced::theme::Palette {
+                primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
+                ..iced::Theme::Dark.palette()
+            },
         )
     }
 }
@@ -759,8 +766,10 @@ fn main() -> iced::Result {
             )
         })
         .init();
+    
 
-
+    // 0.10.0
+    /*
     let icon = iced::window::icon::from_file_data(ICON, Option::None);
     match icon {
         Ok(icon) => {
@@ -784,5 +793,26 @@ fn main() -> iced::Result {
             info!("Icon load failed: {:?}", err);
             DataViewer::run(Settings::default())
         }
-    }
+    }*/
+
+    // 0.13.1 (WIP)
+    let settings = Settings {
+        id: None,
+        default_text_size: Pixels(20.0),
+        antialiasing: true,
+        // Remove or add font data directly if available
+        ..Settings::default()
+    };
+
+    // Run the application with custom settings
+    iced::application(
+        DataViewer::title,
+        DataViewer::update,
+        DataViewer::view,
+    )
+    .theme(DataViewer::theme)
+    .subscription(DataViewer::subscription)
+    //.run_with(settings)
+    //.run_with(|| (DataViewer::new(), settings))
+    .run_with(|| (DataViewer::new(), Task::none()))
 }

@@ -5970,6 +5970,7 @@ dependencies = [
  "num-traits 0.2.19",
  "once_cell",
  "rfd",
+ "smol_str",
  "tokio",
  "winres",
 ]
