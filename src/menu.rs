@@ -18,13 +18,16 @@ use macos::*;
 
 
 
-use iced::widget::{
-    row, button, text, svg,
-};
-use iced::alignment;
-use iced::{Element, Length, Color, theme};
-use iced_aw::menu::menu_tree::MenuTree;
-use iced_aw::{helpers::menu_tree, menu_tree};
+use iced::widget::{container, row, button, text, svg,};
+use iced::alignment::{self, Horizontal, Vertical};
+use iced::{Element, Length, Color, theme, Border};
+use iced::border::Radius;
+//use iced_aw::menu::menu_tree::MenuTree;
+//use iced_aw::{helpers::menu_tree, menu_tree};
+use iced_aw::menu::{self, Item, Menu};
+//use iced_aw::{menu, menu_bar, menu_items};
+use iced_aw::{menu_bar, menu_items};
+
 use crate::{Message, DataViewer};
 use crate::toggler::toggler;
 
@@ -38,64 +41,133 @@ const MENU_FONT_SIZE : u16 = 16;
 const MENU_ITEM_FONT_SIZE : u16 = 14;
 const CARET_PATH : &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/svg/caret-right-fill.svg");
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ButtonClass {
+    Transparent,
+    Labeled,
+    Nothing,
+}
 
-struct ButtonStyle;
-/*impl button::StyleSheet for ButtonStyle {
-    type Style = iced::Theme;
 
-    fn active(&self, style: &Self::Style) -> button::Appearance {
-        button::Appearance {
-            text_color: style.extended_palette().background.base.text,
-            border_radius: [4.0; 4].into(),
-            background: Some(Color::TRANSPARENT.into()),
-            ..Default::default()
-        }
+use iced::Theme as BaseTheme;
+
+pub struct CustomTheme(pub BaseTheme);
+
+impl button::Catalog for CustomTheme {
+    type Class<'a> = ButtonClass;
+
+    fn default<'a>() -> Self::Class<'a> {
+        ButtonClass::Transparent
     }
 
-    fn hovered(&self, style: &Self::Style) -> button::Appearance {
-        let plt = style.extended_palette();
+    fn style(&self, class: &Self::Class<'_>, status: button::Status) -> button::Style {
+        let palette = self.0.extended_palette(); // Access the inner theme's palette
 
-        button::Appearance {
-            background: Some(plt.primary.weak.color.into()),
-            text_color: plt.primary.weak.text,
-            ..self.active(style)
-        }
-    }
-}*/
-//use iced::widget::button::{Appearance, StyleSheet};
-use iced_widget::button::{Appearance, StyleSheet};
-
-use iced::{Color, Theme};
-use iced::{widget::button, Theme};
-
-impl StyleSheet for ButtonStyle {
-    type Style = Theme;
-
-    fn active(&self, style: &Self::Style) -> Appearance {
-        Appearance {
-            text_color: style.extended_palette().background.base.text,
-            border_radius: [4.0; 4].into(),
-            background: Some(Color::TRANSPARENT.into()),
-            ..Default::default()
-        }
-    }
-
-    fn hovered(&self, style: &Self::Style) -> Appearance {
-        let plt = style.extended_palette();
-
-        Appearance {
-            background: Some(plt.primary.weak.color.into()),
-            text_color: plt.primary.weak.text,
-            ..self.active(style)
+        match class {
+            ButtonClass::Transparent => match status {
+                button::Status::Active | button::Status::Hovered => button::Style {
+                    text_color: palette.background.base.text,
+                    background: Some(Color::TRANSPARENT.into()),
+                    //border_radius: 4.0,
+                    border: Border {
+                        color: Color::TRANSPARENT,
+                        width: 0.0,
+                        radius: Radius {
+                            top_left: 4.0,
+                            top_right: 4.0,
+                            bottom_right: 4.0,
+                            bottom_left: 4.0,
+                        },
+                    },
+                    ..Default::default()
+                },
+                _ => button::Style::default(),
+            },
+            ButtonClass::Labeled => match status {
+                button::Status::Active => button::Style {
+                    text_color: palette.primary.weak.text,
+                    background: Some(palette.primary.weak.color.into()),
+                    //border_radius: 4.0,
+                    border: Border {
+                        color: Color::TRANSPARENT,
+                        width: 0.0,
+                        radius: Radius {
+                            top_left: 4.0,
+                            top_right: 4.0,
+                            bottom_right: 4.0,
+                            bottom_left: 4.0,
+                        },
+                    },
+                    ..Default::default()
+                },
+                button::Status::Hovered => button::Style {
+                    background: Some(palette.primary.strong.color.into()),
+                    text_color: palette.primary.strong.text,
+                    ..Default::default()
+                },
+                _ => button::Style::default(),
+            },
+            ButtonClass::Nothing => button::Style::default(),
         }
     }
 }
 
 
-fn base_button<'a>(
-    content: impl Into<Element<'a, Message, iced::Renderer>>,
+use iced::widget::button::{Style};
+use iced::Theme;
+//use iced::border::Radius;
+
+impl<'a> From<ButtonClass> for Box<dyn Fn(&Theme, button::Status) -> Style + 'a> {
+    fn from(class: ButtonClass) -> Self {
+        Box::new(move |theme: &Theme, status: button::Status| match class {
+            ButtonClass::Transparent => Style {
+                text_color: theme.extended_palette().background.base.text,
+                background: Some(iced::Color::TRANSPARENT.into()),
+                border: iced::Border {
+                    color: iced::Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: Radius {
+                        top_left: 4.0,
+                        top_right: 4.0,
+                        bottom_right: 4.0,
+                        bottom_left: 4.0,
+                    },
+                },
+                ..Default::default()
+            },
+            ButtonClass::Labeled => match status {
+                button::Status::Active => Style {
+                    text_color: theme.extended_palette().primary.weak.text,
+                    background: Some(theme.extended_palette().primary.weak.color.into()),
+                    border: iced::Border {
+                        color: iced::Color::TRANSPARENT,
+                        width: 0.0,
+                        radius: Radius {
+                            top_left: 4.0,
+                            top_right: 4.0,
+                            bottom_right: 4.0,
+                            bottom_left: 4.0,
+                        },
+                    },
+                    ..Default::default()
+                },
+                button::Status::Hovered => Style {
+                    background: Some(theme.extended_palette().primary.strong.color.into()),
+                    text_color: theme.extended_palette().primary.strong.text,
+                    ..Default::default()
+                },
+                _ => Style::default(),
+            },
+            ButtonClass::Nothing => Style::default(),
+        })
+    }
+}
+
+
+/*fn base_button<'a>(
+    content: impl Into<Element<'a, Message>>,
     msg: Message,
-) -> button::Button<'a, Message, iced::Renderer> {
+) -> button::Button<'a, Message> {
     button(content)
         .padding([4, 8])
         //.style(iced::theme::Button::Custom(Box::new(ButtonStyle {})))
@@ -108,7 +180,7 @@ fn labeled_button <'a>(
     label: &str,
     text_size: u16,
     msg: Message
-) -> button::Button<'a, Message, iced::Renderer> {
+) -> button::Button<'a, Message> {
     button(text(label)
         .size(text_size)
         .width(Length::Fill)
@@ -121,15 +193,73 @@ fn labeled_button <'a>(
     .on_press(msg)
 }
 
-fn nothing_button <'a>(label: &str, text_size: u16) -> button::Button<'a, Message, iced::Renderer> {
+fn nothing_button <'a>(label: &str, text_size: u16) -> button::Button<'a, Message> {
     labeled_button(label, text_size, Message::Nothing)
+}*/
+fn base_button<'a>(
+    content: impl Into<Element<'a, Message>>,
+    msg: Message,
+) -> button::Button<'a, Message> {
+    button(content)
+        .padding([4, 8])
+        .class(ButtonClass::Transparent)
+        .on_press(msg)
 }
 
-pub fn sub_menu_msg<'a>(
+fn labeled_button<'a>(
+    label: &'a str,
+    text_size: u16,
+    msg: Message,
+) -> button::Button<'a, Message> {
+    // 0.10.0
+    /*button(
+        text(label)
+            .size(text_size)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .vertical_alignment(alignment::Vertical::Center),
+    )
+    .padding([4, 8])
+    .class(ButtonClass::Labeled)
+    .on_press(msg)*/
+
+    // 0.13.1
+    button(
+        container(
+            text(label)
+                .size(text_size)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .align_x(Horizontal::Center) // Align horizontally
+        .align_y(Vertical::Center),  // Align vertically
+    )
+    .padding([4, 8])
+    .class(ButtonClass::Labeled)
+    .on_press(msg)
+
+}
+
+fn nothing_button<'a>(label: &'a str, text_size: u16) -> button::Button<'a, Message> {
+    button(
+        container(
+            text(label)
+                .size(text_size)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .align_x(Horizontal::Center) // Align horizontally
+        .align_y(Vertical::Center),  // Align vertically
+    )
+    .padding([4, 8])
+    .class(ButtonClass::Nothing)
+}
+
+/*pub fn sub_menu_msg<'a>(
     label: &str,
     msg: Message,
-    children: Vec<MenuTree<'a, Message, iced::Renderer>>,
-) -> MenuTree<'a, Message, iced::Renderer> {
+    children: Vec<MenuTree<'a, Message>>,
+) -> MenuTree<'a, Message> {
     let handle = svg::Handle::from_path(CARET_PATH);
     let arrow = svg(handle)
         .width(Length::Shrink)
@@ -157,7 +287,7 @@ pub fn sub_menu_msg<'a>(
 }
 
 
-fn build_menu_items_v1<'a>() -> Vec<MenuTree<'a, Message, iced::Renderer>> {
+fn build_menu_items_v1<'a>() -> Vec<MenuTree<'a, Message>> {
     let menu_items = vec![
         labeled_button(&String::from("Open Folder (Alt+1 or 2)"), MENU_ITEM_FONT_SIZE, Message::OpenFolder(0) ),
         labeled_button(&String::from("Open File (Alt+Ctrl+1 or 2)"), MENU_ITEM_FONT_SIZE, Message::OpenFile(0) ),
@@ -167,7 +297,7 @@ fn build_menu_items_v1<'a>() -> Vec<MenuTree<'a, Message, iced::Renderer>> {
     menu_items.into_iter().map(|item| menu_tree!(item.width(Length::Fill).height(Length::Fill))).collect()
 }
 
-pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
+pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message> {
     // Other menu items...
 
     // Create a submenu for pane layout selection
@@ -213,7 +343,7 @@ pub fn menu_3<'a>(app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
     root
 }
 
-pub fn menu_1<'a>(_app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
+pub fn menu_1<'a>(_app: &DataViewer) -> MenuTree<'a, Message> {
     let c = build_menu_items_v1();
     let root = menu_tree(
         nothing_button("File", MENU_FONT_SIZE),
@@ -221,4 +351,131 @@ pub fn menu_1<'a>(_app: &DataViewer) -> MenuTree<'a, Message, iced::Renderer> {
     );
 
     root
+}
+*/
+
+
+/*pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message> {
+    let pane_layout_submenu = Menu::new(menu_items!(
+        (labeled_button("Single Pane (Ctrl+1)", MENU_ITEM_FONT_SIZE, Message::TogglePaneLayout(PaneLayout::SinglePane)))
+        (labeled_button("Dual Pane (Ctrl+2)", MENU_ITEM_FONT_SIZE, Message::TogglePaneLayout(PaneLayout::DualPane)))
+    ))
+    .max_width(180.0)
+    .spacing(5.0);
+
+    let controls_menu = menu_items!(
+        (toggler::Toggler::new(Some("Toggle Slider (Space)".into()), app.is_slider_dual, Message::ToggleSliderType).padding([4, 8]))
+        (toggler::Toggler::new(Some("Toggle Footer (Tab)".into()), app.show_footer, Message::ToggleFooter).padding([4, 8]))
+    );
+
+    Menu::new(menu_items!(
+        (nothing_button("Controls", MENU_FONT_SIZE))
+        (menu_bar!(("Pane Layout", pane_layout_submenu)))
+        // TODO: Add this back
+        //(menu_bar!(controls_menu))
+    ))
+    .max_width(240.0)
+    .spacing(5.0)
+}
+
+fn build_menu_items_v1<'a>() -> Vec<Item<'a, Message>> {
+    menu_items!(
+        (labeled_button("Open Folder (Alt+1 or 2)", MENU_ITEM_FONT_SIZE, Message::OpenFolder(0)))
+        (labeled_button("Open File (Alt+Ctrl+1 or 2)", MENU_ITEM_FONT_SIZE, Message::OpenFile(0)))
+        (labeled_button("Close (Ctrl+W)", MENU_ITEM_FONT_SIZE, Message::Close))
+        (labeled_button("Quit (Ctrl+Q)", MENU_ITEM_FONT_SIZE, Message::Quit))
+    )
+}
+
+pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message> {
+    let menu_items = build_menu_items_v1();
+    Menu::new(menu_items)
+        .max_width(240.0)
+        .spacing(5.0)
+}*/
+pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Renderer> {
+    let pane_layout_submenu = Menu::new(menu_items!(
+        (labeled_button(
+            "Single Pane (Ctrl+1)",
+            MENU_ITEM_FONT_SIZE,
+            Message::TogglePaneLayout(PaneLayout::SinglePane)
+        ))
+        (labeled_button(
+            "Dual Pane (Ctrl+2)",
+            MENU_ITEM_FONT_SIZE,
+            Message::TogglePaneLayout(PaneLayout::DualPane)
+        ))
+    ))
+    .max_width(180.0)
+    .spacing(5.0);
+
+    /*let controls_menu = Menu::new(menu_items!(
+        (toggler::Toggler::new(
+            Some("Toggle Slider (Space)".into()),
+            app.is_slider_dual,
+            Message::ToggleSliderType
+        )
+        .padding([4, 8]))
+        (toggler::Toggler::new(
+            Some("Toggle Footer (Tab)".into()),
+            app.show_footer,
+            Message::ToggleFooter
+        )
+        .padding([4, 8]))
+    ))
+    .max_width(180.0)
+    .spacing(5.0);*/
+    let controls_menu = Menu::new(menu_items!(
+        (container(
+            toggler::Toggler::new(
+                Some("Toggle Slider (Space)".into()),
+                app.is_slider_dual,
+                Message::ToggleSliderType,
+            )
+        )
+        .padding([4, 8]))
+        (container(
+            toggler::Toggler::new(
+                Some("Toggle Footer (Tab)".into()),
+                app.show_footer,
+                Message::ToggleFooter,
+            )
+        )
+        .padding([4, 8]))
+    ))
+    .max_width(180.0)
+    .spacing(5.0);
+
+
+    Menu::new(menu_items!(
+        (nothing_button("Controls", MENU_FONT_SIZE))
+        (menu_bar!(("Pane Layout", pane_layout_submenu)))
+        (menu_bar!(("Controls", controls_menu)))
+    ))
+    .max_width(240.0)
+    .spacing(5.0)
+}
+
+fn build_menu_items_v1<'a>() -> Vec<Item<'a, Message, iced::Theme, iced::Renderer>> {
+    menu_items!(
+        (labeled_button(
+            "Open Folder (Alt+1 or 2)",
+            MENU_ITEM_FONT_SIZE,
+            Message::OpenFolder(0)
+        ))
+        (labeled_button(
+            "Open File (Alt+Ctrl+1 or 2)",
+            MENU_ITEM_FONT_SIZE,
+            Message::OpenFile(0)
+        ))
+        (labeled_button("Close (Ctrl+W)", MENU_ITEM_FONT_SIZE, Message::Close))
+        (labeled_button("Quit (Ctrl+Q)", MENU_ITEM_FONT_SIZE, Message::Quit))
+    )
+}
+
+pub fn menu_1<'a>(
+    _app: &DataViewer,
+) -> Menu<'a, Message, iced::Theme, iced::Renderer> {
+    let menu_items = build_menu_items_v1();
+    Menu::new(menu_items).max_width(240.0).spacing(5.0)
 }
