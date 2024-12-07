@@ -155,7 +155,10 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
 
             img_cache.current_index = pos;
             let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
-            pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
+            // 0.10.0
+            //pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
+            // 0.13.1
+            pane.current_image = iced::widget::image::Handle::from_bytes(loaded_image);
 
             Ok(())
         }

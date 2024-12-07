@@ -62,7 +62,7 @@ impl Default for Pane {
             directory_path: None,
             dir_loaded: false,
             img_cache: ImageCache::default(),
-            current_image: iced::widget::image::Handle::from_memory(vec![]),
+            current_image: iced::widget::image::Handle::from_bytes(vec![]),
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -80,7 +80,7 @@ impl Pane {
             directory_path: None,
             dir_loaded: false,
             img_cache: ImageCache::default(),
-            current_image: iced::widget::image::Handle::from_memory(vec![]),
+            current_image: iced::widget::image::Handle::from_bytes(vec![]),
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -100,7 +100,8 @@ impl Pane {
         self.directory_path = None;
         self.dir_loaded = false;
         self.img_cache = ImageCache::default();
-        self.current_image = iced::widget::image::Handle::from_memory(vec![]);
+        //self.current_image = iced::widget::image::Handle::from_bytes(vec![]);
+        self.current_image = iced::widget::image::Handle::from_bytes(vec![]);
         self.is_next_image_loaded = true;
         self.slider_value = 0;
         self.prev_slider_value = 0;
@@ -136,7 +137,8 @@ impl Pane {
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
-            let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+            //let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
+            let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
 
             self.current_image = handle;
             img_cache.current_offset += 1;
@@ -174,7 +176,8 @@ impl Pane {
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_render) {
                 let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
-                let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+                //let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
+                let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
                 self.current_image = handle;
                 img_cache.current_offset -= 1;
 
@@ -294,7 +297,7 @@ impl Pane {
         
 
         let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
-        let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+        let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
         self.current_image = handle;
 
         let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
