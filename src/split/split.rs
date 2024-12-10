@@ -724,6 +724,7 @@ where
 
         let style_divider = theme.style(&self.class, status_divider);
 
+        // Draw the divider
         renderer.fill_quad(
             renderer::Quad {
                 bounds: divider_layout.bounds(),
@@ -733,6 +734,40 @@ where
             style_divider
                 .divider_background,
         );
+
+        // Draw pane selection status; if selected, draw a border around the pane
+        if self.enable_pane_selection {
+            if self.is_selected[0] {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: first_layout.bounds(),
+                        border: Border {
+                            color: Color::from_rgb(0.0, 1.0, 0.0),
+                            width: 1.0,
+                            radius: Radius::new(0.0),
+                        },
+                        shadow: Default::default(), // Use Default for no shadow
+                    },
+                    Background::Color(Color::TRANSPARENT),
+                );
+                
+            }
+            if self.is_selected[1] {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: second_layout.bounds(),
+                        border: Border {
+                            color: Color::from_rgb(0.0, 1.0, 0.0),
+                            width: 1.0,
+                            radius: Radius::new(0.0),
+                        },
+                        shadow: Default::default(), // Use Default for no shadow
+                    },
+                    Background::Color(Color::TRANSPARENT),
+                );
+                
+            }
+        }
     }
 
     fn operate<'b>(
@@ -802,18 +837,15 @@ fn is_cursor_within_bounds<Message>(
     _pane_index: usize,
     _split_state: &mut State,
 ) -> bool {
-    debug!("Processing layout");
-    if let Some(container_layout) = layout.children().next() {
-        if let Some(column_layout) = container_layout.children().next() {
-            if let Some(image_layout) = column_layout.children().next() {
-                let image_bounds = image_layout.bounds();
 
-                if image_bounds.contains(cursor.position().unwrap_or_default()) {
-                    debug!("Cursor is within the Image content bounds");
-                    return true;
-                }
+    if let Some(container_layout) = layout.children().next() {
+        if let Some(image_layout) = container_layout.children().next() {
+            let image_bounds = image_layout.bounds();
+            if image_bounds.contains(cursor.position().unwrap_or_default()) {
+                return true;
             }
         }
+        
     }
     false
 }
