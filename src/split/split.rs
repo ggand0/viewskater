@@ -315,88 +315,17 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) -> event::Status {
-        /*let split_state: &mut State = state.state.downcast_mut();
-        let mut children = layout.children();
-
-        let first_layout = children
-            .next()
-            .expect("Native: Layout should have a first layout");
-        let first_status = self.first.as_widget_mut().on_event(
-            &mut state.children[0],
-            event.clone(),
-            first_layout,
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            viewport,
-        );
-
-        let divider_layout = children
-            .next()
-            .expect("Native: Layout should have a divider layout");
-        match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if divider_layout
-                    .bounds().expand(5.0)
-                    .contains(cursor.position().unwrap_or_default())
-                {
-                    split_state.dragging = true;
-                }
-            }
-
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerLifted { .. }) => {
-                if split_state.dragging {
-                    split_state.dragging = false;
-                }
-            }
-
-            Event::Mouse(mouse::Event::CursorMoved { position })
-            | Event::Touch(touch::Event::FingerMoved { position, .. }) => {
-                if split_state.dragging {
-                    let position = match self.axis {
-                        Axis::Horizontal => position.y,
-                        Axis::Vertical => position.x,
-                    };
-
-                    shell.publish((self.on_resize)(position as u16));
-                }
-            }
-
-            _ => {}
-        }
-
-        let second_layout = children
-            .next()
-            .expect("Native: Layout should have a second layout");
-        let second_status = self.second.as_widget_mut().on_event(
-            &mut state.children[1],
-            event,
-            second_layout,
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            viewport,
-        );
-
-        first_status.merge(second_status)*/
-
-
         for child_layout in layout.children() {
             let _bounds = child_layout.bounds();
             // debug!("cursor.is_over(bounds): {:?}", cursor.is_over(bounds));
         }
 
-        let split_state: &mut SplitState = state.state.downcast_mut();
-        let mut children = layout.children();
+        let split_state: &mut State = state.state.downcast_mut();
 
+        let mut children = layout.children();
         let first_layout = children
             .next()
             .expect("Native: Layout should have a first layout");
-
         let first_status = self.first.as_widget_mut().on_event(
             &mut state.children[0],
             event.clone(),
@@ -500,7 +429,7 @@ where
                     if (bounds.width - 5.0).abs() < std::f32::EPSILON {
                         // This is a divider
                         continue;
-                    }
+                    }debug!("split debug1");
                     /////// END HACK
             
                     let custom_position = Point::new(position.x as f32, position.y as f32);
@@ -871,7 +800,7 @@ fn is_cursor_within_bounds<Message>(
     layout: Layout<'_>,
     cursor: Cursor,
     _pane_index: usize,
-    _split_state: &mut SplitState,
+    _split_state: &mut State,
 ) -> bool {
     debug!("Processing layout");
     if let Some(container_layout) = layout.children().next() {
@@ -891,14 +820,14 @@ fn is_cursor_within_bounds<Message>(
 
 /// The state of a [`Split`].
 #[derive(Clone, Debug, Default)]
-pub struct SplitState {
+pub struct State {
     /// If the divider is dragged by the user.
     dragging: bool,
     last_click_time: Option<Instant>,
     panes_seleced: [bool; 2],
 }
 
-impl SplitState {
+impl State {
     /// Creates a new [`State`] for a [`Split`].
     ///
     /// It expects:
@@ -1082,25 +1011,6 @@ where
 {
     fn from(split_pane: Split<'a, Message, Theme, Renderer>) -> Self {
         Element::new(split_pane)
-    }
-}
-
-/// The state of a [`Split`].
-#[derive(Clone, Debug, Default)]
-pub struct State {
-    /// If the divider is dragged by the user.
-    dragging: bool,
-}
-
-impl State {
-    /// Creates a new [`State`] for a [`Split`].
-    ///
-    /// It expects:
-    ///     - The optional position of the divider. If none, the available space will be split in half.
-    ///     - The [`Axis`] to split at.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self { dragging: false }
     }
 }
 
