@@ -146,6 +146,8 @@ pub enum Message {
     PaneSelected(usize, bool),
     CopyFilename(usize),
     CopyFilePath(usize),
+    KeyPressed(keyboard::Key, keyboard::Modifiers),
+    KeyReleased(keyboard::Key, keyboard::Modifiers),
 }
 
 impl DataViewer {
@@ -626,6 +628,23 @@ impl DataViewer {
                 }
             }
 
+            Message::KeyPressed(key, modifiers) => {
+                let tasks = self.handle_key_pressed_event(key, modifiers);
+                if tasks.is_empty() {
+                    //Task::none()
+                } else {
+                    return Task::batch(tasks);
+                }
+            }
+            Message::KeyReleased(key, modifiers) => {
+                let tasks = self.handle_key_released_event(key, modifiers);
+                if tasks.is_empty() {
+                    //Task::none()
+                } else {
+                    return Task::batch(tasks);
+                }
+            }
+
 
             Message::Event(event) => match event {
                 // Only using for single pane layout
@@ -648,23 +667,6 @@ impl DataViewer {
                             self.initialize_dir_path(dropped_path, 0);
                         },
                         PaneLayout::DualPane => {}
-                    }
-                }
-
-                Event::Keyboard(KeyboardEvent::KeyPressed { key, modifiers, .. }) => {
-                    let Tasks = self.handle_key_pressed_event(key, modifiers);
-                    if Tasks.is_empty() {
-                    } else {
-                        return Task::batch(Tasks);
-                    }
-                }
-
-                Event::Keyboard(KeyboardEvent::KeyReleased { key, modifiers, .. }) => {
-                    let Tasks = self.handle_key_released_event(key, modifiers);
-                    if Tasks.is_empty() {
-                        
-                    } else {
-                        return Task::batch(Tasks);
                     }
                 }
 
@@ -712,10 +714,14 @@ impl DataViewer {
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
-            //subscription::events().map(Message::Event),
-            //events().map(Message::Event),
-            //events().map(|(_id, event)| Message::Event(event))
-            events().map(|(_id, event)| Message::Event(iced::Event::Window(event)))
+            events().map(|(_id, event)| Message::Event(iced::Event::Window(event))),
+            
+            keyboard::on_key_press(|key, modifiers| {
+                Some(Message::KeyPressed(key, modifiers))
+            }),
+            keyboard::on_key_release(|key, modifiers| {
+                Some(Message::KeyReleased(key, modifiers))
+            }),
 
         ])
     }
