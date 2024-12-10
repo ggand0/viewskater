@@ -63,7 +63,7 @@ use iced::{
     Background, Border, Color, Element, Event, Length, Padding, Point,
     Rectangle, Shadow, Size, Theme, Vector
 };
-
+use iced::border::Radius;
 
 
 use std::time::{Duration, Instant};
@@ -1107,7 +1107,7 @@ impl Catalog for Theme {
     type Class<'a> = StyleFn<'a, Self>;
 
     fn default<'a>() -> Self::Class<'a> {
-        Box::new(base)
+        Box::new(default)
     }
 
     fn style(&self, class: &Self::Class<'_>, status: Status) -> Style {
@@ -1115,67 +1115,29 @@ impl Catalog for Theme {
     }
 }
 
-pub fn base(theme: &Theme, status: Status) -> Style {
+pub fn default(theme: &Theme, status: Status) -> Style {
     let palette = theme.extended_palette();
-    let base = styled(palette.primary.strong);
+    let base = base(palette.background);
 
     match status {
         Status::Active => base,
-        Status::Hovered => Style {
-            background: Some(Background::Color(palette.primary.base.color)),
-            divider_background: Background::Color(palette.primary.strong.color),
-            ..base
-        },
-        Status::Dragging => Style {
-            background: Some(Background::Color(palette.primary.weak.color)),
-            divider_background: Background::Color(palette.primary.base.color),
-            ..base
-        },
+        Status::Hovered => base,
+        Status::Dragging => base,
         Status::Disabled => disabled(base),
     }
 }
 
-/*fn styled(pair: palette::Pair) -> Style {
+fn base(bg: palette::Background) -> Style {
     Style {
-        background: Some(Background::Color(pair.color)),
-        border: Border::rounded(2),
-        ..Style::default()
-    }
-}*/
-
-use iced::border::Radius;
-fn styled(pair: palette::Pair) -> Style {
-    Style {
-        background: Some(Background::Color(pair.color)),
+        background: Some(Background::Color(bg.base.color)),
         border: Border::rounded(Border {
             color: Color::TRANSPARENT,
             width: 2.0,
             radius: Radius::new(2.0),
         }, 2.0),
-        divider_background: Background::Color(Color::TRANSPARENT), // Use Background directly
-        divider_border: Border::rounded(Border {
-            color: Color::TRANSPARENT,
-            width: 1.0,
-            radius: Radius::new(2.0),
-        }, 2.0),
-        first_background: Some(Background::Color(Color::WHITE)), // Wrap in Some
-        second_background: Some(Background::Color(Color::WHITE)), // Wrap in Some
-        first_border: Border::rounded(Border {
-            color: Color::TRANSPARENT,
-            width: 2.0,
-            radius: Radius::new(2.0),
-        }, 2.0),
-        second_border: Border::rounded(Border {
-            color: Color::TRANSPARENT,
-            width: 2.0,
-            radius: Radius::new(2.0),
-        }, 2.0),
+        ..Style::default()
     }
 }
-
-
-
-
 
 fn disabled(style: Style) -> Style {
     Style {
