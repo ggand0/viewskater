@@ -315,6 +315,7 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) -> event::Status {
+
         for child_layout in layout.children() {
             let _bounds = child_layout.bounds();
             // debug!("cursor.is_over(bounds): {:?}", cursor.is_over(bounds));
@@ -341,10 +342,10 @@ where
             .next()
             .expect("Native: Layout should have a divider layout");
 
-
         let second_layout = children
             .next()
-            .expect("Native: Layout should have a second layout");
+            .expect("Graphics: Layout should have a second layout");
+
         
         match event.clone() {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
@@ -389,18 +390,14 @@ where
                     if is_within_bounds_first {
                         split_state.panes_seleced[0] = !split_state.panes_seleced[0];
                         shell.publish((self.on_select)(0, split_state.panes_seleced[0]));
-                        return event::Status::Captured;
+                        
                     }
                     let is_within_bounds_second = is_cursor_within_bounds::<Message>(second_layout, cursor, 1, split_state);
                     if is_within_bounds_second {
                         split_state.panes_seleced[1] = !split_state.panes_seleced[1];
                         shell.publish((self.on_select)(1, split_state.panes_seleced[1]));
-                        return event::Status::Captured;
+                        
                     }
-
-                    return event::Status::Ignored;
-                } else {
-                    return event::Status::Ignored;
                 }
             }
 
@@ -436,20 +433,17 @@ where
                     debug!("custom_position, bounds.contains(custom_position: {:?}, {:?}", custom_position, bounds.contains(custom_position));
                     if bounds.contains(custom_position) {
                         shell.publish((self.on_drop)(index, paths[0].to_string_lossy().to_string()));
-                        return event::Status::Captured;
                     }
             
                     index += 1;
                 }
-                // Explicitly return Ignored if no child layout contains the cursor
-                return event::Status::Ignored;
             }
 
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileHovered(_path)) => {
                 // Access the cursor position from the FileHovered event
                 debug!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
-                return event::Status::Captured;
+
             }
     
             #[cfg(target_os = "linux")]
@@ -484,15 +478,9 @@ where
                         handled = true;
                         break;
                     }
-            
                     index += 1;
                 }
-                
-                if handled {
-                    return event::Status::Captured;
-                } else {
-                    return event::Status::Ignored;
-                }
+
             }
 
 
@@ -500,9 +488,6 @@ where
             | Event::Touch(touch::Event::FingerLifted { .. }) => {
                 if split_state.dragging {
                     split_state.dragging = false;
-                    return event::Status::Captured;
-                } else {
-                    return event::Status::Ignored;
                 }
             }
 
@@ -515,15 +500,26 @@ where
                         Axis::Vertical => position.x,
                     };
                     shell.publish((self.on_resize)(position as u16));
-                    return event::Status::Captured;
-                } else {
-                    return event::Status::Ignored;
+
                 }
             }
 
-            //_ => {}
-            _ => return event::Status::Ignored,
+            _ => {}
         }
+
+
+        let second_status = self.second.as_widget_mut().on_event(
+            &mut state.children[1],
+            event,
+            second_layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
+        );
+
+        first_status.merge(second_status)
     }
 
     fn mouse_interaction(
@@ -724,16 +720,47 @@ where
 
         let style_divider = theme.style(&self.class, status_divider);
 
+        let bounds = divider_layout.bounds();
+        let is_horizontal = bounds.width >= bounds.height;
+
+        // Create a modified Rectangle for a thin line
+        let thin_rectangle = if is_horizontal {
+            // For horizontal dividers
+            Rectangle {
+                x: bounds.x - 5.0,
+                y: bounds.y,
+                width: bounds.width + 5.0,
+                height: 1.0,
+            }
+        } else {
+            // For vertical dividers
+            // TODO: when there's another pane above, -5.0/+5.0,
+            // when it's not, 0.0/+10.0
+            Rectangle {
+                x: bounds.x + 2.0,
+                y: bounds.y,
+                width: 1.0,
+                height: bounds.height + 10.0,
+            }
+        };
+
+
         // Draw the divider
         renderer.fill_quad(
             renderer::Quad {
-                bounds: divider_layout.bounds(),
-                border: style_divider.divider_border,
-                shadow: Shadow::default(),
+                bounds: thin_rectangle,
+                border: Border {
+                    //color: style_divider.divider_border_color,
+                    color: style_divider.border.color,
+                    width: 0.0,
+                    radius: Radius::new(0.0),
+                },
+                shadow: Default::default(), // No shadow
             },
-            style_divider
-                .divider_background,
+            Background::Color(Color::from_rgb(0.2, 0.2, 0.2)),
         );
+        
+
 
         // Draw pane selection status; if selected, draw a border around the pane
         if self.enable_pane_selection {
@@ -1160,12 +1187,21 @@ pub fn default(theme: &Theme, status: Status) -> Style {
 }
 
 fn base(bg: palette::Background) -> Style {
-    Style {
+    /*Style {
         background: Some(Background::Color(bg.base.color)),
         border: Border::rounded(Border {
             color: Color::TRANSPARENT,
             width: 2.0,
             radius: Radius::new(2.0),
+        }, 2.0),
+        ..Style::default()
+    }*/
+    Style {
+        background: Some(Background::Color(bg.base.color)),
+        border: Border::rounded(Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: Radius::new(0.0),
         }, 2.0),
         ..Style::default()
     }

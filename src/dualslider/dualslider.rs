@@ -28,19 +28,6 @@
 //!     }
 //! }
 //! ```
-/*use crate::core::border::{self, Border};
-use crate::core::event::{self, Event};
-use crate::core::keyboard;
-use crate::core::keyboard::key::{self, Key};
-use crate::core::layout;
-use crate::core::mouse;
-use crate::core::renderer;
-use crate::core::touch;
-use crate::core::widget::tree::{self, Tree};
-use crate::core::{
-    self, Background, Clipboard, Color, Element, Layout, Length, Pixels, Point,
-    Rectangle, Shell, Size, Theme, Widget,
-};*/
 
 #[cfg(target_os = "linux")]
 mod other_os {
@@ -76,6 +63,7 @@ use iced::{
     Theme, Pixels, Border, border
 };
 use std::ops::RangeInclusive;
+use log::{Level, debug, info, warn, error};
 
 /// An horizontal bar and a handle that selects a single value from a range of
 /// values.
@@ -140,7 +128,8 @@ where
     Theme: Catalog,
 {
     /// The default height of a [`Slider`].
-    pub const DEFAULT_HEIGHT: f32 = 16.0;
+    //pub const DEFAULT_HEIGHT: f32 = 16.0;
+    pub const DEFAULT_HEIGHT: f32 = 22.0;
 
     /// Creates a new [`Slider`].
     ///
@@ -175,7 +164,6 @@ where
             step: T::from(1),
             shift_step: None,
             on_change: Box::new(on_change),
-            //on_release: None,
             on_release: Box::new(on_release),
             width: Length::Fill,
             height: Self::DEFAULT_HEIGHT,
@@ -253,17 +241,14 @@ where
     T: Copy + Into<f64> + num_traits::FromPrimitive,
     Message: Clone,
     Theme: Catalog,
-    //Renderer: core::Renderer,
     Renderer: renderer::Renderer,
 {
     fn tag(&self) -> tree::Tag {
-        //tree::Tag::of::<State>()
-        tree::Tag::of::<SliderState>()
+        tree::Tag::of::<State>()
     }
 
     fn state(&self) -> tree::State {
-        //tree::State::new(State::default())
-        tree::State::new(SliderState::new())
+        tree::State::new(State::new())
     }
 
     fn size(&self) -> Size<Length> {
@@ -293,7 +278,7 @@ where
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> event::Status {
-        /*let state = tree.state.downcast_mut::<State>();
+        let state = tree.state.downcast_mut::<State>();
 
         let is_dragging = state.is_dragging;
         let current_value = self.value;
@@ -365,7 +350,7 @@ where
 
         let change = |new_value: T| {
             if (self.value.into() - new_value.into()).abs() > f64::EPSILON {
-                shell.publish((self.on_change)(new_value));
+                shell.publish((self.on_change)( self.pane_index, new_value ));
 
                 self.value = new_value;
             }
@@ -381,6 +366,7 @@ where
                         let _ = self.default.map(change);
                         state.is_dragging = false;
                     } else {
+                        //debug!("DS1 Mouse button pressed inner if block");
                         let _ = locate(cursor_position).map(change);
                         state.is_dragging = true;
                     }
@@ -392,9 +378,7 @@ where
             | Event::Touch(touch::Event::FingerLifted { .. })
             | Event::Touch(touch::Event::FingerLost { .. }) => {
                 if is_dragging {
-                    if let Some(on_release) = self.on_release.clone() {
-                        shell.publish(on_release);
-                    }
+                    shell.publish((self.on_release)( self.pane_index, self.value ));
                     state.is_dragging = false;
 
                     return event::Status::Captured;
@@ -426,7 +410,7 @@ where
                     return event::Status::Captured;
                 }
             }
-            Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
+            /*Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
                 if cursor.is_over(layout.bounds()) {
                     match key {
                         Key::Named(key::Named::ArrowUp) => {
@@ -443,82 +427,12 @@ where
             }
             Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
                 state.keyboard_modifiers = modifiers;
-            }
-            _ => {}
-        }
-
-        event::Status::Ignored*/
-
-        let state = tree.state.downcast_mut::<SliderState>();
-        let range = &self.range;
-
-
-        let is_dragging = state.is_dragging;
-
-        let mut change = |cursor_position: Point| {
-            let bounds = layout.bounds();
-            let new_value = if cursor_position.x <= bounds.x {
-                *range.start()
-            } else if cursor_position.x >= bounds.x + bounds.width {
-                *range.end()
-            } else {
-                let step = self.step.into();
-                let start = (*range.start()).into();
-                let end = (*range.end()).into();
-
-                let percent = f64::from(cursor_position.x - bounds.x)
-                    / f64::from(bounds.width);
-
-                let steps = (percent * (end - start) / step).round();
-                let value = steps * step + start;
-
-                if let Some(value) = T::from_f64(value) {
-                    value
-                } else {
-                    return;
-                }
-            };
-
-            if ((self.value).into() - new_value.into()).abs() > f64::EPSILON {
-                shell.publish((self.on_change)( self.pane_index, new_value ));
-    
-                self.value = new_value;
-            }
-        };
-
-        match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if let Some(cursor_position) = cursor.position_over(layout.bounds())
-                {
-                    change(cursor_position);
-                    state.is_dragging = true;
-
-                    return event::Status::Captured;
-                }
-            }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerLifted { .. })
-            | Event::Touch(touch::Event::FingerLost { .. }) => {
-                if is_dragging {
-                    shell.publish((self.on_release)( self.pane_index, self.value ));
-                    state.is_dragging = false;
-
-                    return event::Status::Captured;
-                }
-            }
-            Event::Mouse(mouse::Event::CursorMoved { .. })
-            | Event::Touch(touch::Event::FingerMoved { .. }) => {
-                if is_dragging {
-                    let _ = cursor.position().map(change);
-
-                    return event::Status::Captured;
-                }
-            }
+            }*/
             _ => {}
         }
 
         event::Status::Ignored
+
     }
 
     fn draw(
@@ -531,8 +445,9 @@ where
         cursor: mouse::Cursor,
         _viewport: &Rectangle,
     ) {
-        /*let state = tree.state.downcast_ref::<State>();
+        let state = tree.state.downcast_ref::<State>();
         let bounds = layout.bounds();
+        
         let is_mouse_over = cursor.is_over(bounds);
 
         let style = theme.style(
@@ -581,102 +496,6 @@ where
                     width: offset + handle_width / 2.0,
                     height: style.rail.width,
                 },
-                border: style.rail.border,
-                ..renderer::Quad::default()
-            },
-            style.rail.backgrounds.0,
-        );
-
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: Rectangle {
-                    x: bounds.x + offset + handle_width / 2.0,
-                    y: rail_y - style.rail.width / 2.0,
-                    width: bounds.width - offset - handle_width / 2.0,
-                    height: style.rail.width,
-                },
-                border: style.rail.border,
-                ..renderer::Quad::default()
-            },
-            style.rail.backgrounds.1,
-        );
-
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: Rectangle {
-                    x: bounds.x + offset,
-                    y: rail_y - handle_height / 2.0,
-                    width: handle_width,
-                    height: handle_height,
-                },
-                border: Border {
-                    radius: handle_border_radius,
-                    width: style.handle.border_width,
-                    color: style.handle.border_color,
-                },
-                ..renderer::Quad::default()
-            },
-            style.handle.background,
-        );*/
-
-        let state = tree.state.downcast_ref::<SliderState>();
-        let bounds = layout.bounds();
-        let is_mouse_over = cursor.is_over(bounds);
-
-        let style = theme.style(
-            &self.class,
-            if state.is_dragging {
-                Status::Dragged
-            } else if is_mouse_over {
-                Status::Hovered
-            } else {
-                Status::Active
-            },
-        );
-
-        let (handle_width, handle_height, handle_border_radius) =
-            match style.handle.shape {
-                HandleShape::Circle { radius } => {
-                    (radius * 2.0, radius * 2.0, radius.into())
-                }
-                HandleShape::Rectangle {
-                    width,
-                    border_radius,
-                } => (f32::from(width), bounds.height, border_radius),
-            };
-
-        let value = self.value.into() as f32;
-        let (range_start, range_end) = {
-            let (start, end) = self.range.clone().into_inner();
-
-            (start.into() as f32, end.into() as f32)
-        };
-
-        let offset = if range_start >= range_end {
-            0.0
-        } else {
-            (bounds.width - handle_width) * (value - range_start)
-                / (range_end - range_start)
-        };
-
-        let rail_y = bounds.y + bounds.height / 2.0;
-
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: Rectangle {
-                    x: bounds.x,
-                    y: rail_y - style.rail.width / 2.0,
-                    width: offset + handle_width / 2.0,
-                    height: style.rail.width,
-                },
-                //border_radius: style.rail.border_radius,
-                //border_width: 0.0,
-                //border_color: Color::TRANSPARENT,
-                /*border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: Radius::new(style.rail.border.radius), // Use `Radius` if `rail.border.radius` exists
-                },*/
                 border: style.rail.border,
                 ..renderer::Quad::default()
             },
@@ -692,14 +511,6 @@ where
                     width: bounds.width - offset - handle_width / 2.0,
                     height: style.rail.width,
                 },
-                //border_radius: style.rail.border_radius,
-                //border_width: 0.0,
-                //border_color: Color::TRANSPARENT,
-                /*border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: Radius::new(style.rail.border.radius), // Use `Radius` if `rail.border.radius` exists
-                },*/
                 border: style.rail.border,
                 ..renderer::Quad::default()
             },
@@ -715,14 +526,6 @@ where
                     width: handle_width,
                     height: handle_height,
                 },
-                //border_radius: handle_border_radius,
-                //border_width: style.handle.border_width,
-                //border_color: style.handle.border_color,
-                /*border: Border {
-                    color: style.handle.border_color,
-                    width: style.handle.border_width,
-                    radius: Radius::new(handle_border_radius), // Use `Radius::new`
-                },*/
                 border: Border {
                     radius: handle_border_radius,
                     width: style.handle.border_width,
@@ -730,7 +533,6 @@ where
                 },
                 ..renderer::Quad::default()
             },
-            //style.handle.color,
             style.handle.background,
         );
     }
@@ -743,7 +545,7 @@ where
         _viewport: &Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        let state = tree.state.downcast_ref::<SliderState>();
+        let state = tree.state.downcast_ref::<State>();
         let bounds = layout.bounds();
         let is_mouse_over = cursor.is_over(bounds);
 
@@ -773,11 +575,6 @@ where
     }
 }
 
-/*#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct State {
-    is_dragging: bool,
-    keyboard_modifiers: keyboard::Modifiers,
-}*/
 
 /// The possible status of a [`Slider`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -792,15 +589,15 @@ pub enum Status {
 
 /// The local state of a [`Slider`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct SliderState {
+pub struct State {
     is_dragging: bool,
     keyboard_modifiers: keyboard::Modifiers,
 }
 
-impl SliderState {
-    /// Creates a new [`SliderState`].
-    pub fn new() -> SliderState {
-        SliderState::default()
+impl State {
+    /// Creates a new [`State`].
+    pub fn new() -> State {
+        State::default()
     }
 }
 
