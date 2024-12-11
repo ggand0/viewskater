@@ -27,8 +27,6 @@ use macos::*;
 
 use iced::{
     alignment, event, touch,
-    
-    
     advanced::{
         layout, mouse, renderer, text, widget,
         image::{self, FilterMethod},
@@ -37,12 +35,9 @@ use iced::{
 
         image::Image,
     },
-    //widget::{Image},
     Border, Color, Element, Event, Length, Pixels, Point,
     Radians, Vector, Rectangle, Size, Theme, ContentFit
 };
-//use iced_core::image::Image;
-
 
 
 /// A frame that displays an image with the ability to zoom in/out and pan.
@@ -365,6 +360,16 @@ where
             self.content_fit,
         );
 
+        // Adjust bounds size and position for padding
+        let padding = 1.0; // Adjust the padding value as needed
+        let padded_bounds = Rectangle {
+            x: bounds.x + padding,
+            y: bounds.y + padding,
+            width: final_size.width - 2.0 * padding,
+            height: final_size.height - 2.0 * padding,
+        };
+        let _padded_image_size = final_size - Size::new(2.0 * padding, 2.0 * padding);
+
         let translation = {
             let diff_w = bounds.width - final_size.width;
             let diff_h = bounds.height - final_size.height;
@@ -374,12 +379,17 @@ where
                     Vector::new(diff_w.max(0.0) / 2.0, diff_h.max(0.0) / 2.0)
                 }
                 _ => Vector::new(diff_w / 2.0, diff_h / 2.0),
-            };
+            } + Vector::new(padding, padding);;
 
             image_top_left - state.offset(bounds, final_size)
         };
 
-        let drawing_bounds = Rectangle::new(bounds.position(), final_size);
+        let drawing_bounds = Rectangle {
+            x: bounds.x,
+            y: bounds.y,
+            width: padded_bounds.width,
+            height: padded_bounds.height,
+        };
 
         let render = |renderer: &mut Renderer| {
             renderer.with_translation(translation, |renderer| {
