@@ -25,7 +25,8 @@ use iced::font::Font;
 use iced_aw::menu::{Item, Menu};
 //use iced_aw::{menu, menu_bar, menu_items};
 use iced_aw::{menu_bar, menu_items};
-
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
 
 
 use crate::dualslider::dualslider::DualSlider;
@@ -40,6 +41,7 @@ fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
 
     text(codepoint)
         .font(ICON_FONT)
+        .size(18)
         .into()
 }
 
@@ -53,12 +55,12 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message> {
 
 pub fn get_footer(footer_text: String, pane_index: usize) -> container::Container<'static, Message> {
     let copy_filename_button = button(file_copy_icon())
-        .padding(2)
+        .padding( iced::padding::all(2) )
         .class(crate::menu::ButtonClass::Labeled)
         .on_press(Message::CopyFilename(pane_index));
 
     let copy_filepath_button = button(folder_copy_icon())
-        .padding(2)
+        .padding( iced::padding::all(2) )
         .class(crate::menu::ButtonClass::Labeled)
         .on_press(Message::CopyFilePath(pane_index));
 
@@ -66,19 +68,14 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> container::Containe
         row![
             copy_filepath_button,
             copy_filename_button,
-            /*text(footer_text)
-                .font(Font::monospace())
-                .style(Color::from([0.8, 0.8, 0.8]))
-                .size(14)*/
             text(footer_text)
-                .font(Font::with_name("monospace")) // Use Font::with_name
+                .font(Font::MONOSPACE)
                 .style(|_theme| iced::widget::text::Style {
                     color: Some(Color::from([0.8, 0.8, 0.8])), // Wrap Color in a style configuration
                     ..Default::default()
                 })
                 .size(14)
         ]
-        //.align_items(Alignment::Center)
         .align_y(Alignment::Center)
         .spacing(3),
     )

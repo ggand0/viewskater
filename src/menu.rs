@@ -141,7 +141,7 @@ impl<'a> From<ButtonClass> for Box<dyn Fn(&Theme, button::Status) -> Style + 'a>
                     background: Some(theme.extended_palette().primary.weak.color.into()),
                     border: iced::Border {
                         color: iced::Color::TRANSPARENT,
-                        width: 0.0,
+                        width: 1.0,
                         radius: Radius {
                             top_left: 4.0,
                             top_right: 4.0,
@@ -154,6 +154,16 @@ impl<'a> From<ButtonClass> for Box<dyn Fn(&Theme, button::Status) -> Style + 'a>
                 button::Status::Hovered => Style {
                     background: Some(theme.extended_palette().primary.strong.color.into()),
                     text_color: theme.extended_palette().primary.strong.text,
+                    border: iced::Border {
+                        color: iced::Color::TRANSPARENT,
+                        width: 1.0,
+                        radius: Radius {
+                            top_left: 4.0,
+                            top_right: 4.0,
+                            bottom_right: 4.0,
+                            bottom_left: 4.0,
+                        },
+                    },
                     ..Default::default()
                 },
                 _ => Style::default(),

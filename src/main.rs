@@ -40,6 +40,7 @@ use std::path::PathBuf;
 use log::{Level, debug, info, warn, error};
 use env_logger::{fmt::Color, Builder};
 use std::io::Write;
+use std::borrow::Cow;
 
 extern crate log;
 
@@ -426,11 +427,6 @@ impl DataViewer {
     }
 
     pub fn new() -> Self {
-        Task::batch(vec![
-            font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded), // icon font
-            font::load(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf").as_slice()).map(Message::FontLoaded),  // footer digit font
-            font::load(include_bytes!("../assets/fonts/Roboto-Regular.ttf").as_slice()).map(Message::FontLoaded),   // UI font
-        ]);
         Self::default()
     }
 
@@ -754,6 +750,21 @@ static ICON: &[u8] = if cfg!(target_os = "windows") {
 };
 
 
+pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
+    vec![
+        include_bytes!("../assets/fonts/viewskater-fonts.ttf")          // icon font
+            .as_slice()
+            .into(),
+        include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf")     // footer digit font
+            .as_slice()
+            .into(),
+        include_bytes!("../assets/fonts/Roboto-Regular.ttf")            // UI font
+            .as_slice()
+            .into(),
+    ]
+}
+
+
 fn main() -> iced::Result {
     Builder::from_default_env()
         .format(|buf, record| {
@@ -806,7 +817,7 @@ fn main() -> iced::Result {
         id: None,
         default_text_size: Pixels(20.0),
         antialiasing: true,
-        // Remove or add font data directly if available
+        fonts: load_fonts(),
         ..Settings::default()
     };
 
@@ -818,7 +829,6 @@ fn main() -> iced::Result {
     )
     .theme(DataViewer::theme)
     .subscription(DataViewer::subscription)
-    //.run_with(settings)
-    //.run_with(|| (DataViewer::new(), settings))
+    .settings(settings)
     .run_with(|| (DataViewer::new(), Task::none()))
 }
