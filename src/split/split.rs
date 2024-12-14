@@ -761,7 +761,7 @@ where
         );
         
 
-
+        let style = theme.style(&self.class, Status::Active);
         // Draw pane selection status; if selected, draw a border around the pane
         if self.enable_pane_selection {
             if self.is_selected[0] {
@@ -769,7 +769,7 @@ where
                     renderer::Quad {
                         bounds: first_layout.bounds(),
                         border: Border {
-                            color: Color::from_rgb(0.0, 1.0, 0.0),
+                            color: style.primary.base.color,
                             width: 1.0,
                             radius: Radius::new(0.0),
                         },
@@ -784,7 +784,7 @@ where
                     renderer::Quad {
                         bounds: second_layout.bounds(),
                         border: Border {
-                            color: Color::from_rgb(0.0, 1.0, 0.0),
+                            color: style.primary.base.color,
                             width: 1.0,
                             radius: Radius::new(0.0),
                         },
@@ -1119,6 +1119,8 @@ pub struct Style {
     pub divider_background: Background,
     /// The [`Border`] of the divider of the [`Split`].
     pub divider_border: Border,
+    /// The primary color of the [`Split`].
+    pub primary: palette::Primary,
 }
 
 impl Style {
@@ -1142,6 +1144,11 @@ impl Default for Style {
             second_border: Border::default(),
             divider_background: Background::Color(Color::TRANSPARENT),
             divider_border: Border::default(),
+            primary: palette::Primary::generate(
+                Color::TRANSPARENT,
+                Color::TRANSPARENT,
+                Color::TRANSPARENT,
+            ),
         }
     }
 }
@@ -1176,7 +1183,7 @@ impl Catalog for Theme {
 
 pub fn default(theme: &Theme, status: Status) -> Style {
     let palette = theme.extended_palette();
-    let base = base(palette.background);
+    let base = base(*palette);
 
     match status {
         Status::Active => base,
@@ -1186,23 +1193,15 @@ pub fn default(theme: &Theme, status: Status) -> Style {
     }
 }
 
-fn base(bg: palette::Background) -> Style {
-    /*Style {
-        background: Some(Background::Color(bg.base.color)),
-        border: Border::rounded(Border {
-            color: Color::TRANSPARENT,
-            width: 2.0,
-            radius: Radius::new(2.0),
-        }, 2.0),
-        ..Style::default()
-    }*/
+fn base(palette: palette::Extended) -> Style {
     Style {
-        background: Some(Background::Color(bg.base.color)),
+        background: Some(Background::Color(palette.background.base.color)),
         border: Border::rounded(Border {
             color: Color::TRANSPARENT,
             width: 0.0,
             radius: Radius::new(0.0),
         }, 2.0),
+        primary: palette.primary,
         ..Style::default()
     }
 }
