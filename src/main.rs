@@ -704,7 +704,7 @@ impl DataViewer {
         container_all
         .height(Length::Fill)
         .width(Length::Fill)
-        .center_x(Length::Fill)
+        ////.center_x(Length::Fill)
         .into()
     }
 
@@ -815,9 +815,10 @@ fn main() -> iced::Result {
     // 0.13.1 (WIP)
     let settings = Settings {
         id: None,
+        fonts: load_fonts(),
+        default_font: Font::with_name("Roboto"),
         default_text_size: Pixels(20.0),
         antialiasing: true,
-        fonts: load_fonts(),
         ..Settings::default()
     };
 
