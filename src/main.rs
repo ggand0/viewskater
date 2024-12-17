@@ -52,19 +52,10 @@ mod file_io;
 use file_io::Error;
 mod menu;
 use menu::PaneLayout;
-mod split {
-    pub mod split;
-}
-mod dualslider {
-    pub mod dualslider;
-}
-mod toggler {
-    pub mod toggler;
-}
+mod widgets;
 mod pane;
 use crate::pane::get_master_slider_value;
 mod ui_builder;
-mod viewer;
 mod loading_status;
 mod loading;
 mod config;

@@ -26,11 +26,11 @@ use iced_aw::{menu_bar, menu_items};
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use crate::dualslider::dualslider::DualSlider;
+use crate::widgets::{dualslider::DualSlider, viewer};
 use crate::pane;
 use crate::menu as app_menu;
 use crate::{Message, PaneLayout, DataViewer};
-use crate::viewer;
+
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
     const ICON_FONT: Font = Font::with_name("viewskater-fonts");

@@ -28,11 +28,9 @@ use iced::widget::{
     container, column, text
 };
 use iced::{Element, Length};
-use crate::dualslider::dualslider::DualSlider;
-use crate::menu::PaneLayout;
 
-use crate::split::split::{Axis, Split};
-use crate::viewer;
+use crate::menu::PaneLayout;
+use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
 
 use crate::image_cache::ImageCache;
 

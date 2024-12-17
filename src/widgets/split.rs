@@ -67,6 +67,7 @@ use iced::border::Radius;
 
 
 use std::time::{Duration, Instant};
+#[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
 /// A split can divide the available space by half to display two different elements.

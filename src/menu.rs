@@ -33,7 +33,8 @@ use iced_aw::MenuBar;
 use iced_aw::style::{menu_bar::primary, Status};
 
 use crate::{Message, DataViewer};
-use crate::toggler::toggler;
+//use crate::toggler::toggler;
+use crate::widgets::toggler;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaneLayout {
