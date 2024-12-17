@@ -54,15 +54,12 @@ mod menu;
 use menu::PaneLayout;
 mod split {
     pub mod split;
-    pub mod style;
 }
 mod dualslider {
     pub mod dualslider;
-    pub mod style;
 }
 mod toggler {
     pub mod toggler;
-    pub mod style;
 }
 mod pane;
 use crate::pane::get_master_slider_value;
