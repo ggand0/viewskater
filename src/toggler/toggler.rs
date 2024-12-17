@@ -70,6 +70,8 @@ use iced::{
     Rectangle, Size, Theme,
 };
 use std::borrow::Cow;
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
 
 /// A toggler widget.
 ///
@@ -411,29 +413,37 @@ where
         const SPACE_RATIO: f32 = 0.05;
 
         let mut children = layout.children();
-        let toggler_layout = children.next().unwrap();
+        //let toggler_layout = children.next().unwrap();
+        // => thread 'main' panicked at src/toggler/toggler.rs:414:46:
+        //      called `Option::unwrap()` on a `None` value
+        
+        // Workaround for the above panic
+        let toggler_layout = if let Some(layout) = children.next() {
+            layout
+        } else {
+            warn!("Error: Missing toggler layout");
+            return; // Or handle the error gracefully
+        };
 
         if self.label.is_some() {
-            let label_layout = children.next().unwrap();
-            let state: &widget::text::State<Renderer::Paragraph> =
-                tree.state.downcast_ref();
+            //let label_layout = children.next().unwrap();
+            if let Some(label_layout) = children.next() {
+                let state: &widget::text::State<Renderer::Paragraph> =
+                    tree.state.downcast_ref();
 
-            /*crate::text::draw(
-                renderer,
-                style,
-                label_layout,
-                state.0.raw(),
-                crate::text::Style::default(),
-                viewport,
-            );*/
-            crate::iced::widget::text::draw(
-                renderer,
-                style,
-                label_layout,
-                state.0.raw(),
-                crate::iced::widget::text::Style::default(),
-                viewport,
-            );
+                crate::iced::widget::text::draw(
+                    renderer,
+                    style,
+                    label_layout,
+                    state.0.raw(),
+                    crate::iced::widget::text::Style::default(),
+                    viewport,
+                );
+            } else {
+                warn!("Error: Missing label layout");
+                return; // Or handle the error gracefully
+            }
+            
         }
 
         let bounds = toggler_layout.bounds();
@@ -587,9 +597,9 @@ pub fn default(theme: &Theme, status: Status) -> Style {
     let background = match status {
         Status::Active { is_toggled } | Status::Hovered { is_toggled } => {
             if is_toggled {
-                palette.primary.strong.color
+                palette.primary.weak.color
             } else {
-                palette.background.strong.color
+                palette.background.weak.color
             }
         }
         Status::Disabled => palette.background.weak.color,
