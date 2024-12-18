@@ -403,7 +403,6 @@ where
             }
 
 
-            // #[cfg(target_os = "macos")]
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Event::Window(iced::window::Event::FileHovered(position)) => {
                 // Access the cursor position from the FileHovered event
