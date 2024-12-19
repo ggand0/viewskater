@@ -24,7 +24,7 @@ smol_str = "0.2.2"
 
 
 
-#[target.'cfg(not(target_os = "linux"))'.dependencies]
+[target.'cfg(not(target_os = "linux"))'.dependencies]
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "69a425da03f227a8fd0e654eeb1e2d8c271e4411", features = [
         "image", "tokio", "svg", "lazy", "wgpu"]  }
 #iced_aw_custom = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "193934d6436e423f346b31c998e5168f4f903ad8", features = [
