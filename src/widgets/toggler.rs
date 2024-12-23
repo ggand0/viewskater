@@ -66,7 +66,8 @@ use iced::{
         widget::tree::{self, Tree},
         Widget, Clipboard, Shell, Layout
     },
-    Border, Color, Element, Event, Length, Pixels,
+    border::Radius,
+    Border, Color, Element, Event, Length, Pixels, Padding,
     Rectangle, Size, Theme,
 };
 use std::borrow::Cow;
@@ -127,6 +128,7 @@ pub struct Toggler<
     text_shaping: text::Shaping,
     text_wrapping: text::Wrapping,
     spacing: f32,
+    padding: Padding,
     font: Option<Renderer::Font>,
     class: Theme::Class<'a>,
 }
@@ -170,6 +172,7 @@ where
             text_wrapping: text::Wrapping::default(),
             //spacing: Self::DEFAULT_SIZE / 2.0,
             spacing: 0.0,
+            padding: DEFAULT_PADDING,
             font: None,
             class: Theme::default(),
         }
@@ -256,6 +259,12 @@ where
         self
     }
 
+    /// Sets the [`Padding`] of the [`Button`].
+    pub fn padding<P: Into<Padding>>(mut self, padding: P) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
     /// Sets the [`Renderer::Font`] of the text of the [`Toggler`]
     ///
     /// [`Renderer::Font`]: crate::core::text::Renderer
@@ -310,39 +319,49 @@ where
         renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let limits = limits.width(self.width);
-
-        layout::next_to_each_other(
-            &limits,
-            self.spacing,
-            |_| layout::Node::new(Size::new(2.0 * self.size, self.size)),
+        // Use the padded helper to add padding
+        layout::padded(
+            limits,
+            self.width,
+            Length::Shrink, // Adjust height as needed
+            self.padding,   // Pass the padding value here
             |limits| {
-                if let Some(label) = self.label.as_deref() {
-                    let state = tree
-                    .state
-                    .downcast_mut::<widget::text::State<Renderer::Paragraph>>();
-
-                    widget::text::layout(
-                        state,
-                        renderer,
-                        limits,
-                        self.width,
-                        Length::Shrink,
-                        label,
-                        self.text_line_height,
-                        self.text_size,
-                        self.font,
-                        self.text_alignment,
-                        alignment::Vertical::Top,
-                        self.text_shaping,
-                        self.text_wrapping,
-                    )
-                } else {
-                    layout::Node::new(Size::ZERO)
-                }
+                // Use the existing logic for laying out the children
+                layout::next_to_each_other(
+                    limits,
+                    self.spacing,
+                    |_| layout::Node::new(Size::new(2.0 * self.size, self.size)),
+                    |limits| {
+                        if let Some(label) = self.label.as_deref() {
+                            let state = tree
+                                .state
+                                .downcast_mut::<widget::text::State<Renderer::Paragraph>>();
+    
+                            widget::text::layout(
+                                state,
+                                renderer,
+                                limits,
+                                self.width,
+                                Length::Shrink,
+                                label,
+                                self.text_line_height,
+                                self.text_size,
+                                self.font,
+                                self.text_alignment,
+                                alignment::Vertical::Top,
+                                self.text_shaping,
+                                self.text_wrapping,
+                            )
+                        } else {
+                            layout::Node::new(Size::ZERO)
+                        }
+                    },
+                )
             },
         )
     }
+    
+
 
     fn on_event(
         &mut self,
@@ -400,7 +419,7 @@ where
         tree: &Tree,
         renderer: &mut Renderer,
         theme: &Theme,
-        style: &renderer::Style,
+        _style: &renderer::Style,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         viewport: &Rectangle,
@@ -412,39 +431,31 @@ where
         /// between the background Quad and foreground Quad.
         const SPACE_RATIO: f32 = 0.05;
 
+
         let mut children = layout.children();
-        //let toggler_layout = children.next().unwrap();
-        // => thread 'main' panicked at src/toggler/toggler.rs:414:46:
-        //      called `Option::unwrap()` on a `None` value
         
-        // Workaround for the above panic
-        let toggler_layout = if let Some(layout) = children.next() {
+        // The first child layout now represents the padded content
+        let padded_content_layout = if let Some(layout) = children.next() {
+            layout
+        } else {
+            warn!("Error: Missing padded content layout");
+            return;
+        };
+
+        // Retrieve the children of the padded content layout
+        let mut padded_children = padded_content_layout.children();
+
+
+        // let toggler_layout = children.next().unwrap();
+        // => This will cause a runtime panic if the next child layout is missing (None)
+        // Using a workaround to handle this case
+        let toggler_layout = if let Some(layout) = padded_children.next() {
             layout
         } else {
             warn!("Error: Missing toggler layout");
-            return; // Or handle the error gracefully
+            return;
         };
 
-        if self.label.is_some() {
-            //let label_layout = children.next().unwrap();
-            if let Some(label_layout) = children.next() {
-                let state: &widget::text::State<Renderer::Paragraph> =
-                    tree.state.downcast_ref();
-
-                crate::iced::widget::text::draw(
-                    renderer,
-                    style,
-                    label_layout,
-                    state.0.raw(),
-                    crate::iced::widget::text::Style::default(),
-                    viewport,
-                );
-            } else {
-                warn!("Error: Missing label layout");
-                return; // Or handle the error gracefully
-            }
-            
-        }
 
         let bounds = toggler_layout.bounds();
         let is_mouse_over = cursor.is_over(layout.bounds());
@@ -462,6 +473,44 @@ where
         };
 
         let style = theme.style(&self.class, status);
+
+        // Fill the entire widget background
+        let widget_bounds = layout.bounds(); // Bounds of the entire widget
+        let is_hovered = cursor.is_over(widget_bounds);
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: widget_bounds,
+                border: Border {
+                    radius: Radius::new(0.0), // No border radius for full background
+                    width: 1.0,
+                    color: style.widget_background
+                },
+                ..renderer::Quad::default()
+            },
+            style.widget_background, // Use the background color from the style
+        );
+
+        if self.label.is_some() {
+            // Handle the label layout similar to the toggler layout
+            // let label_layout = children.next().unwrap();
+            if let Some(label_layout) = padded_children.next() {
+                let state: &widget::text::State<Renderer::Paragraph> =
+                    tree.state.downcast_ref();
+
+                crate::iced::widget::text::draw(
+                    renderer,
+                    _style,
+                    label_layout,
+                    state.0.raw(),
+                    crate::iced::widget::text::Style::default(),
+                    viewport,
+                );
+            } else {
+                warn!("Error: Missing label layout");
+                return;
+            }
+            
+        }
 
         let border_radius = bounds.height / BORDER_RADIUS_RATIO;
         let space = SPACE_RATIO * bounds.height;
@@ -527,7 +576,15 @@ where
     }
 }
 
-/// The possible status of a [`Toggler`].
+/// The default [`Padding`] of a [`Toggler`].
+pub(crate) const DEFAULT_PADDING: Padding = Padding {
+    top: 5.0,
+    bottom: 5.0,
+    right: 10.0,
+    left: 10.0,
+};
+
+/// The possible status of a [`Toggler`]. Same as Button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     /// The [`Toggler`] can be interacted with.
@@ -559,6 +616,8 @@ pub struct Style {
     pub foreground_border_width: f32,
     /// The [`Color`] of the foreground border of the toggler.
     pub foreground_border_color: Color,
+    /// The background [`Color`] of the entire widget.
+    pub widget_background: Color,
 }
 
 /// The theme catalog of a [`Toggler`].
@@ -594,39 +653,40 @@ impl Catalog for Theme {
 pub fn default(theme: &Theme, status: Status) -> Style {
     let palette = theme.extended_palette();
 
+    let widget_background = match status {
+        Status::Active { is_toggled } => {
+            palette.background.base.color
+        }
+        Status::Hovered { is_toggled } => {
+            palette.background.weak.color
+        }
+        Status::Disabled => palette.background.weak.color, // Muted color for disabled state
+    };
+
     let background = match status {
         Status::Active { is_toggled } | Status::Hovered { is_toggled } => {
             if is_toggled {
-                palette.primary.weak.color
+                palette.primary.strong.color
             } else {
-                palette.background.weak.color
+                palette.background.strong.color
             }
         }
         Status::Disabled => palette.background.weak.color,
     };
 
     let foreground = match status {
-        Status::Active { is_toggled } => {
+        Status::Active { is_toggled } | Status::Hovered { is_toggled } => {
             if is_toggled {
                 palette.primary.strong.text
             } else {
                 palette.background.base.color
             }
         }
-        Status::Hovered { is_toggled } => {
-            if is_toggled {
-                Color {
-                    a: 0.5,
-                    ..palette.primary.strong.text
-                }
-            } else {
-                palette.background.weak.color
-            }
-        }
         Status::Disabled => palette.background.base.color,
     };
 
     Style {
+        widget_background, 
         background,
         foreground,
         foreground_border_width: 0.0,

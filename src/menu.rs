@@ -33,7 +33,6 @@ use iced_aw::MenuBar;
 use iced_aw::style::{menu_bar::primary, Status};
 
 use crate::{Message, DataViewer};
-//use crate::toggler::toggler;
 use crate::widgets::toggler;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,9 +67,8 @@ impl<'a> From<ButtonClass> for Box<dyn Fn(&Theme, button::Status) -> Style + 'a>
             },
             ButtonClass::Labeled => match status {
                 button::Status::Active => Style {
+                    background: Some(theme.extended_palette().background.base.color.into()),
                     text_color: theme.extended_palette().primary.weak.text,
-                    //background: Some(theme.extended_palette().primary.weak.color.into()),
-                    background: Some(iced::Color::TRANSPARENT.into()),
                     border: iced::Border {
                         color: iced::Color::TRANSPARENT,
                         width: 1.0,
@@ -79,6 +77,16 @@ impl<'a> From<ButtonClass> for Box<dyn Fn(&Theme, button::Status) -> Style + 'a>
                     ..Default::default()
                 },
                 button::Status::Hovered => Style {
+                    background: Some(theme.extended_palette().background.weak.color.into()),
+                    text_color: theme.extended_palette().primary.weak.text,
+                    border: iced::Border {
+                        color: iced::Color::TRANSPARENT,
+                        width: 1.0,
+                        radius: Radius::new(0.0),
+                    },
+                    ..Default::default()
+                },
+                button::Status::Pressed => Style {
                     background: Some(theme.extended_palette().primary.weak.color.into()),
                     text_color: theme.extended_palette().primary.weak.text,
                     border: iced::Border {
@@ -101,7 +109,6 @@ fn base_button<'a>(
     msg: Message,
 ) -> button::Button<'a, Message> {
     button(content)
-        //.padding([4, 8])
         .class(ButtonClass::Labeled)
         .on_press(msg)
 }
@@ -116,7 +123,6 @@ fn labeled_button<'a>(
             .size(text_size)
             .font(Font::with_name("Roboto"))
     )
-    //.padding([4, 8])
     .class(ButtonClass::Labeled)
     .on_press(msg)
     .width(Length::Fill)
@@ -176,20 +182,15 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Rend
                 Some("  Toggle Slider (Space)".into()),
                 app.is_slider_dual,
                 Message::ToggleSliderType,
-            )
-        )
-        .padding([4, 8])
-        .width(Length::Fill)
-        )
+            ).width(Length::Fill)
+        ))
         (container(
             toggler::Toggler::new(
                 Some("  Toggle Footer (Tab)".into()),
                 app.show_footer,
                 Message::ToggleFooter,
-            )
-        )
-        .padding([4, 8])
-        .width(Length::Fill))
+            ).width(Length::Fill)
+        ))
     ))
     .max_width(200.0)
     .spacing(0.0);
@@ -274,6 +275,7 @@ pub fn build_menu(app: &DataViewer) -> MenuBar<Message, iced::Theme, iced::Rende
             radius: Radius::new(0.0),
             ..Default::default()
         },
+        path: theme.extended_palette().background.weak.color.into(),
         ..primary(theme, status)
     })
 }
