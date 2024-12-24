@@ -774,8 +774,7 @@ fn main() -> iced::Result {
     
 
     // 0.10.0
-    /*
-    let icon = iced::window::icon::from_file_data(ICON, Option::None);
+    /*let icon = iced::window::icon::from_file_data(ICON, Option::None);
     match icon {
         Ok(icon) => {
             info!("Icon loaded successfully");
@@ -816,6 +815,16 @@ fn main() -> iced::Result {
         DataViewer::update,
         DataViewer::view,
     )
+    .window(window::Settings {
+        icon: Some(
+            window::icon::from_file_data(
+                ICON,
+                None,
+            )
+            .expect("Icon load failed")
+        ),
+        ..Default::default()
+    })
     .theme(DataViewer::theme)
     .subscription(DataViewer::subscription)
     .settings(settings)
