@@ -26,8 +26,7 @@ use std::time::Instant;
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-//use iced::application::Application;
-use crate::{DataViewer, Message};
+use crate::Message;
 use iced::Task;
 use crate::file_io::{load_images_async, empty_async_block_vec};
 use crate::loading_status::LoadingStatus;
@@ -631,7 +630,7 @@ pub fn load_all_images_in_queue(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
 ) -> Task<Message> {
-    let mut Tasks = Vec::new();
+    let mut tasks = Vec::new();
     let mut pane_refs: Vec<&mut pane::Pane> = vec![];
     
     // Collect references to panes
@@ -650,23 +649,23 @@ pub fn load_all_images_in_queue(
         match operation {
             LoadOperation::LoadPos((ref pane_index, ref target_indices_and_cache)) => {
                 // Handle LoadPos with the new structure of (image_index, cache_pos)
-                let Task = load_images_by_operation_slider(
+                let task = load_images_by_operation_slider(
                     panes,
                     *pane_index,
                     target_indices_and_cache.clone(),
                     operation,
                 );
-                Tasks.push(Task);
+                tasks.push(task);
             }
             _ => {
             }
         }
     }
 
-    // Return the batch of Tasks if any, otherwise return none
-    if Tasks.is_empty() {
+    // Return the batch of tasks if any, otherwise return none
+    if tasks.is_empty() {
         Task::none()
     } else {
-        Task::batch(Tasks)
+        Task::batch(tasks)
     }
 }

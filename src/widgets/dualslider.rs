@@ -46,23 +46,20 @@ use other_os::*;
 use macos::*;
 
 use iced::event::{self, Event};
-use iced::keyboard::{self, Key};
+use iced::keyboard;
 use iced::mouse;
-//use iced::renderer;
 use iced::touch;
-//use iced::widget::tree::{self, Tree};
-
 use iced::{
     advanced::{
-        layout::{Limits, Node},
-        overlay, renderer,
-        widget::{tree, Operation, Tree},
+        renderer,
+        widget::{tree, Tree},
         Clipboard, Layout, Shell, Widget, layout
     },
-    Background, Color, Element, Length, Point, Rectangle, Renderer, Size,
+    Background, Color, Element, Length, Point, Rectangle, Size,
     Theme, Pixels, Border, border
 };
 use std::ops::RangeInclusive;
+#[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
 /// An horizontal bar and a handle that selects a single value from a range of
@@ -112,8 +109,6 @@ where
     value: T,
     pane_index: isize, // needs to be isize because of the need to represent "all" panes; -1
     default: Option<T>,
-    //on_change: Box<dyn Fn(T) -> Message + 'a>,
-    //on_release: Option<Message>,
     on_change: Box<dyn Fn(isize, T) -> Message + 'a>,
     on_release: Box<dyn Fn(isize, T) -> Message + 'a>,
     width: Length,
@@ -185,8 +180,11 @@ where
     /// Typically, the user's interaction with the slider is finished when this message is produced.
     /// This is useful if you need to spawn a long-running task from the slider's result, where
     /// the default on_change message could create too many events.
-    pub fn on_release(mut self, on_release: Message) -> Self {
-        //self.on_release = Some(on_release);
+    pub fn on_release<F>(mut self, on_release: F) -> Self
+    where
+        F: 'a + Fn(isize, T) -> Message,
+    {
+        self.on_release = Box::new(on_release);
         self
     }
 
@@ -227,7 +225,6 @@ where
     }
 
     /// Sets the style class of the [`Slider`].
-    #[cfg(feature = "advanced")]
     #[must_use]
     pub fn class(mut self, class: impl Into<Theme::Class<'a>>) -> Self {
         self.class = class.into();

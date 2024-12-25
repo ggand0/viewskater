@@ -111,7 +111,6 @@ pub struct Toggler<
     'a,
     Message,
     Theme = crate::Theme,
-    //Renderer = crate::Renderer,
     Renderer = iced::Renderer,
 > where
     Theme: Catalog,
@@ -284,7 +283,6 @@ where
     }
 
     /// Sets the style class of the [`Toggler`].
-    #[cfg(feature = "advanced")]
     #[must_use]
     pub fn class(mut self, class: impl Into<Theme::Class<'a>>) -> Self {
         self.class = class.into();
@@ -476,7 +474,6 @@ where
 
         // Fill the entire widget background
         let widget_bounds = layout.bounds(); // Bounds of the entire widget
-        let is_hovered = cursor.is_over(widget_bounds);
         renderer.fill_quad(
             renderer::Quad {
                 bounds: widget_bounds,
@@ -654,10 +651,10 @@ pub fn default(theme: &Theme, status: Status) -> Style {
     let palette = theme.extended_palette();
 
     let widget_background = match status {
-        Status::Active { is_toggled } => {
+        Status::Active { is_toggled: _ } => {
             palette.background.base.color
         }
-        Status::Hovered { is_toggled } => {
+        Status::Hovered { is_toggled: _ } => {
             palette.background.weak.color
         }
         Status::Disabled => palette.background.weak.color, // Muted color for disabled state

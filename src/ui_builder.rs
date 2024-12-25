@@ -1,13 +1,11 @@
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
-    pub use iced_aw;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
     pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
 }
 
 #[cfg(target_os = "linux")]
@@ -17,11 +15,9 @@ use other_os::*;
 use macos::*;
 
 use iced::widget::{container, row, column, horizontal_space, text, button};
-use iced::{Length, Color, alignment, Element, Theme, Alignment};
-use iced::alignment::{Horizontal, Vertical};
+use iced::{Length, Color, alignment, Element, Alignment};
+use iced::alignment::Horizontal;
 use iced::font::Font;
-use iced_aw::menu::{Item, Menu};
-use iced_aw::{menu_bar, menu_items};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};

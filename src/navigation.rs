@@ -20,7 +20,7 @@ use crate::image_cache::{LoadOperation, LoadOperationType, load_images_by_operat
 use crate::pane::{Pane, get_master_slider_value};
 use crate::menu::PaneLayout;
 use crate::loading_status::LoadingStatus;
-use crate::{DataViewer,Message};
+use crate::Message;
 use iced::Task;
 use std::io;
 
@@ -28,13 +28,13 @@ use std::io;
 use log::{Level, debug, info, warn, error};
 
 
-fn get_loading_Tasks_slider(
+fn get_loading_tasks_slider(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: usize,
     pos: usize,
 ) -> Vec<Task<Message>> {
-    let mut Tasks = Vec::new();
+    let mut tasks = Vec::new();
 
     if let Some(pane) = panes.get_mut(pane_index) {
         let img_cache = &pane.img_cache;
@@ -81,12 +81,12 @@ fn get_loading_Tasks_slider(
         let load_operation = LoadOperation::LoadPos((pane_index, target_indices_and_cache));
         loading_status.enqueue_image_load(load_operation);
 
-        // Generate loading Tasks
-        let local_Tasks = load_all_images_in_queue(panes, loading_status);
-        Tasks.push(local_Tasks);
+        // Generate loading tasks
+        let local_tasks = load_all_images_in_queue(panes, loading_status);
+        tasks.push(local_tasks);
     }
 
-    Tasks
+    tasks
 }
 
 pub fn load_remaining_images(
@@ -100,7 +100,7 @@ pub fn load_remaining_images(
     loading_status.reset_image_being_loaded_queue();
 
 
-    let mut Tasks = Vec::new();
+    let mut tasks = Vec::new();
 
     if pane_index == -1 {
         // Dynamic loading: load the central image synchronously, and others asynchronously
@@ -111,25 +111,25 @@ pub fn load_remaining_images(
             .collect();
 
         for cache_index in cache_indices {
-            let local_Tasks = get_loading_Tasks_slider(
+            let local_tasks = get_loading_tasks_slider(
                 panes, loading_status, cache_index, pos);
-            Tasks.extend(local_Tasks);
+            tasks.extend(local_tasks);
         }
     } else {
         if let Some(pane) = panes.get_mut(pane_index as usize) {
             if pane.dir_loaded {
-                let local_Tasks = get_loading_Tasks_slider(
+                let local_tasks = get_loading_tasks_slider(
                     panes, loading_status, pane_index as usize, pos);
-                Tasks.extend(local_Tasks);
+                tasks.extend(local_tasks);
             } else {
-                Tasks.push(Task::none());
+                tasks.push(Task::none());
             }
         }
     }
 
     loading_status.print_queue();
 
-    Task::batch(Tasks)
+    Task::batch(tasks)
 }
 
 fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), io::Error> {
@@ -176,7 +176,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
         // Perform dynamic loading:
         // Load the image at pos (center) synchronously,
         // and then load the rest of the images within the cache window asynchronously
-        let mut Tasks = Vec::new();
+        let mut tasks = Vec::new();
         for (cache_index, pane) in panes.iter_mut().enumerate() {
             if pane.dir_loaded {
                 match load_current_slider_image(pane, pos) {
@@ -188,10 +188,10 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
                     }
                 }
             } else {
-                Tasks.push(Task::none());
+                tasks.push(Task::none());
             }
         }
-        Task::batch(Tasks)
+        Task::batch(tasks)
 
     } else {
         let pane_index = pane_index as usize;
@@ -554,7 +554,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
         loading_status.is_next_image_loaded = false;
     }
 
-    let mut Tasks = Vec::new();
+    let mut tasks = Vec::new();
     // Load next images for all panes concurrently
     // Use the representative pane to determine the loading conditions
     // file_io::load_image_async() loads the next images for all panes at the same time,
@@ -569,7 +569,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
         if !loading_status.is_operation_in_queues(LoadOperationType::LoadNext) ||
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftNext)
         {
-            Tasks.push(load_next_images_all(
+            tasks.push(load_next_images_all(
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
 
@@ -594,7 +594,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
             }
 
             debug!("move_right_all() - loading next images...");
-            Tasks.push(load_next_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+            tasks.push(load_next_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
     }
 
@@ -607,7 +607,7 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
         *slider_value = (get_master_slider_value(&mut panes_to_load, pane_layout, is_slider_dual, last_opened_pane)) as u16;
     }
 
-    Task::batch(Tasks)
+    Task::batch(tasks)
 }
 
 
@@ -640,7 +640,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingSt
         loading_status.is_prev_image_loaded = false;
     }
 
-    let mut Tasks = Vec::new();
+    let mut tasks = Vec::new();
     debug!("move_left_all() - PROCESSING");
     if !are_panes_cached_prev(&mut panes_to_load, pane_layout, is_slider_dual) {
         debug!("move_left_all() - not all panes cached prev, skipping...");
@@ -649,7 +649,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingSt
         if !loading_status.is_operation_in_queues(LoadOperationType::LoadPrevious) ||
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftPrevious)
         {
-            Tasks.push(load_prev_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+            tasks.push(load_prev_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
         // If panes already reached the edge, mark their is_next_image_loaded as true
         // We already picked the pane with the largest dir size, so we don't have to worry about the rest
@@ -673,7 +673,7 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingSt
             loading_status.is_prev_image_loaded = true;
 
             debug!("move_left_all() - loading prev images...");
-            Tasks.push(load_prev_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+            tasks.push(load_prev_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
     }
 
@@ -683,5 +683,5 @@ pub fn move_left_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingSt
         *slider_value = (get_master_slider_value(&mut panes_to_load, pane_layout, is_slider_dual, last_opened_pane) ) as u16;
     }
 
-    Task::batch(Tasks)
+    Task::batch(tasks)
 }

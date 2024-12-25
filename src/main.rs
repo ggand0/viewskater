@@ -21,17 +21,12 @@ use macos::*;
 
 use iced::event::Event;
 use iced::Subscription;
-//use iced::advanced::subscription;
 use iced::window::events;
 
 use iced::{keyboard, clipboard};
-use iced::keyboard::{Event as KeyboardEvent, Key, key::Named, key::Code, Modifiers};
-use iced::{Element, Length, Application, Theme, Settings, Pixels};
+use iced::keyboard::{Key, key::Named,};
+use iced::{Element, Length, Theme, Settings, Pixels};
 use iced::Task;
-use smol_str::SmolStr;
-//use iced::keyboard::key::Named;
-
-
 use iced::font::{self, Font};
 use iced::window;
 
@@ -194,7 +189,7 @@ impl DataViewer {
     */
 
     fn handle_key_pressed_event(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
-        let mut Tasks = Vec::new();
+        let mut tasks = Vec::new();
         match key.as_ref() {
             Key::Named(Named::Tab) => {
                 debug!("Tab pressed");
@@ -218,7 +213,7 @@ impl DataViewer {
                 // If alt+ctrl is pressed, load a file into pane0
                 if modifiers.alt() && modifiers.control() {
                     debug!("Key1 Shift pressed");
-                    Tasks.push(Task::perform(file_io::pick_file(), move |result| {
+                    tasks.push(Task::perform(file_io::pick_file(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
                 }
@@ -226,7 +221,7 @@ impl DataViewer {
                 // If alt is pressed, load a folder into pane0
                 if modifiers.alt() {
                     debug!("Key1 Alt pressed");
-                    Tasks.push(Task::perform(file_io::pick_folder(), move |result| {
+                    tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
                 }
@@ -246,7 +241,7 @@ impl DataViewer {
                     // If alt+ctrl is pressed, load a file into pane1
                     if modifiers.alt() && modifiers.control() {
                         debug!("Key2 Shift pressed");
-                        Tasks.push(Task::perform(file_io::pick_file(), move |result| {
+                        tasks.push(Task::perform(file_io::pick_file(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
                     }
@@ -254,7 +249,7 @@ impl DataViewer {
                     // If alt is pressed, load a folder into pane1
                     if modifiers.alt() {
                         debug!("Key2 Alt pressed");
-                        Tasks.push(Task::perform(file_io::pick_folder(), move |result| {
+                        tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
                     }
@@ -301,10 +296,10 @@ impl DataViewer {
                 } else {
                     self.skate_left = false;
 
-                    let Task = move_left_all(
+                    let task = move_left_all(
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    Tasks.push(Task);
+                    tasks.push(task);
                 }
                 
             }
@@ -325,22 +320,22 @@ impl DataViewer {
                 } else {
                     self.skate_right = false;
 
-                    let Task = move_right_all(
+                    let task = move_right_all(
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    Tasks.push(Task);
+                    tasks.push(task);
                 }
             }
 
             _ => {}
         }
 
-        Tasks
+        tasks
     }
 
     fn handle_key_released_event(&mut self, key_code: keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         #[allow(unused_mut)]
-        let mut Tasks = Vec::new();
+        let mut tasks = Vec::new();
 
         match key_code.as_ref() {
             Key::Named(Named::Tab) => {
@@ -365,7 +360,7 @@ impl DataViewer {
             _ => {},
         }
 
-        Tasks
+        tasks
     }
 
     fn toggle_slider_type(&mut self) {
@@ -660,7 +655,7 @@ impl DataViewer {
 
         if self.skate_right {
             self.update_counter = 0;
-            let Task = move_right_all(
+            let task = move_right_all(
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -668,10 +663,10 @@ impl DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            Task
+            task
         } else if self.skate_left {
             self.update_counter = 0;
-            let Task = move_left_all(
+            let task = move_left_all(
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -679,11 +674,11 @@ impl DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            Task
+            task
         } else {
             debug!("no skate mode detected");
-            let Task = Task::none();
-            Task
+            let task = Task::none();
+            task
         }
     }
 

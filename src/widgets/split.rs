@@ -103,7 +103,8 @@ where
 
     /// The position of the divider.
     divider_position: Option<u16>,
-    divider_init_position: Option<u16>,
+    //divider_init_position: Option<u16>,
+
     /// The axis to split at.
     axis: Axis,
     /// The padding around the elements of the [`Split`].
@@ -126,8 +127,6 @@ where
     on_select: Box<dyn Fn(usize, bool) -> Message>,
 
     class: Theme::Class<'a>,
-    default_position: Option<u16>,
-    has_been_split: bool,
 
     // Whether to enable pane selection
     enable_pane_selection: bool,
@@ -180,7 +179,7 @@ where
             //     .into(),
             is_selected: is_selected,
             divider_position,
-            divider_init_position: divider_position,
+            //divider_init_position: divider_position,
             axis,
             padding: 0.0,
             spacing: 5.0,
@@ -193,8 +192,6 @@ where
             on_drop: Box::new(on_drop),
             on_select: Box::new(on_select),
             class: Theme::default(),
-            default_position: None,
-            has_been_split: false,
             enable_pane_selection: enable_pane_selection,
         }
     }
@@ -449,7 +446,6 @@ where
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileDropped(path)) => {
                 let mut index = 0;
-                let mut handled = false;
                 debug!("layout children length: {}", layout.children().count());
                 for child_layout in layout.children() {
                     debug!("Child layout: {:?}", child_layout);
@@ -474,13 +470,10 @@ where
             
                     if bounds.contains(cursor.position().unwrap_or_default()) {
                         shell.publish((self.on_drop)(index, path.to_string_lossy().to_string()));
-                        //return event::Status::Captured;
-                        handled = true;
                         break;
                     }
                     index += 1;
                 }
-
             }
 
 

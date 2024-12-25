@@ -17,11 +17,9 @@ use other_os::*;
 use macos::*;
 
 
-use iced::widget::{container, row, button, text, svg,};
-use iced::widget::text::LineHeight;
-use iced::alignment::{self, Horizontal, Vertical};
-use iced::{Padding, Pixels, Element, Length, Color, theme, Border};
-use iced::{Alignment};
+use iced::widget::{container, row, button, text};
+use iced::alignment;
+use iced::{Padding, Element, Length, Border};
 use iced::border::Radius;
 use iced::widget::button::{Style};
 use iced::Theme;
@@ -41,9 +39,9 @@ pub enum PaneLayout {
     DualPane,
 }
 
-const MENU_FONT_SIZE : u16 = 16;
+const _MENU_FONT_SIZE : u16 = 16;
 const MENU_ITEM_FONT_SIZE : u16 = 14;
-const CARET_PATH : &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/svg/caret-right-fill.svg");
+const _CARET_PATH : &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/svg/caret-right-fill.svg");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonClass {
@@ -128,6 +126,7 @@ fn labeled_button<'a>(
     .width(Length::Fill)
 }
 
+#[allow(dead_code)]
 fn nothing_button<'a>(label: &'a str, text_size: u16) -> button::Button<'a, Message> {
     button(
         text(label)
@@ -203,23 +202,6 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Rend
     .max_width(120.0)
     .spacing(0.0)
     .offset(5.0)
-}
-
-fn build_menu_items_v1<'a>() -> Vec<Item<'a, Message, iced::Theme, iced::Renderer>> {
-    menu_items!(
-        (labeled_button(
-            "Open Folder (Alt+1 or 2)",
-            MENU_ITEM_FONT_SIZE,
-            Message::OpenFolder(0)
-        ))
-        (labeled_button(
-            "Open File (Alt+Ctrl+1 or 2)",
-            MENU_ITEM_FONT_SIZE,
-            Message::OpenFile(0)
-        ))
-        (labeled_button("Close (Ctrl+W)", MENU_ITEM_FONT_SIZE, Message::Close))
-        (labeled_button("Quit (Ctrl+Q)", MENU_ITEM_FONT_SIZE, Message::Quit))
-    )
 }
 
 pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Renderer> {

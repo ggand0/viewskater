@@ -7,27 +7,21 @@ description = "A fast image viewer for browsing large collections of images."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-#iced_native = "0.10"
 env_logger = "0.10"
 console_log = "1.0"
 log = "0.4.20"
-#tokio = { version = "1.32", features = ["full"] }
 tokio = { version = "1.32", features = ["rt", "sync", "macros", "time", "io-util", "fs"] }
 rfd = "0.12"
 num-traits = "0.2"
-cargo-bundle = "0.6.0"
 alphanumeric-sort = "1.5.3"
 image = "0.23"
 futures = "0.3"
 once_cell = "1.16"
 smol_str = "0.2.2"
 
-
-
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "69a425da03f227a8fd0e654eeb1e2d8c271e4411", features = [
         "image", "tokio", "svg", "lazy", "wgpu"]  }
-#iced_aw_custom = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "193934d6436e423f346b31c998e5168f4f903ad8", features = [
 iced_aw_custom = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "7897549ee9100b5095a9e934c3decdfbdbdc2818", features = [
     "menu", "quad" ] }
 
@@ -36,8 +30,10 @@ iced = {version = "0.13", features = ["image", "tokio", "svg", "lazy", "debug"]}
 iced_aw = { version = "0.11.0", features = [
     "menu",
     "quad",
-    #"icon_text"
 ] }
+
+[dev-dependencies]
+cargo-bundle = "0.6.0"
 
 [build-dependencies]
 winres = "0.1.12"
@@ -45,7 +41,6 @@ winres = "0.1.12"
 [package.metadata.winres]
 OriginalFilename = "view_skater.exe"
 FileDescription = "A fast image viewer for browsing large collections of images."
-
 
 [package.metadata.bundle]
 name = "ViewSkater"

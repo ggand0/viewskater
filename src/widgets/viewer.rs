@@ -1,14 +1,4 @@
 //! Zoom and pan on an image.
-/*use crate::core::event::{self, Event};
-use crate::core::image::{self, FilterMethod};
-use crate::core::layout;
-use crate::core::mouse;
-use crate::core::renderer;
-use crate::core::widget::tree::{self, Tree};
-use crate::core::{
-    Clipboard, ContentFit, Element, Image, Layout, Length, Pixels, Point,
-    Radians, Rectangle, Shell, Size, Vector, Widget,
-};*/
 #[cfg(target_os = "linux")]
 mod other_os {
     pub use iced;
@@ -26,17 +16,17 @@ use other_os::*;
 use macos::*;
 
 use iced::{
-    alignment, event, touch,
+    event,
     advanced::{
-        layout, mouse, renderer, text, widget,
+        layout, mouse, renderer,
         image::{self, FilterMethod},
         widget::tree::{self, Tree},
         Widget, Clipboard, Shell, Layout,
 
         image::Image,
     },
-    Border, Color, Element, Event, Length, Pixels, Point,
-    Radians, Vector, Rectangle, Size, Theme, ContentFit
+    Element, Event, Length, Pixels, Point,
+    Radians, Vector, Rectangle, Size, ContentFit
 };
 
 
@@ -379,7 +369,7 @@ where
                     Vector::new(diff_w.max(0.0) / 2.0, diff_h.max(0.0) / 2.0)
                 }
                 _ => Vector::new(diff_w / 2.0, diff_h / 2.0),
-            } + Vector::new(padding, padding);;
+            } + Vector::new(padding, padding);
 
             image_top_left - state.offset(bounds, final_size)
         };
