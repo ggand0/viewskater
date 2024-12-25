@@ -730,7 +730,7 @@ impl DataViewer {
 
 // Include the icon image data at compile time
 static ICON: &[u8] = if cfg!(target_os = "windows") {
-    include_bytes!("../assets/icon_512.png")
+    include_bytes!("../assets/icon.ico")
 } else if cfg!(target_os = "macos") {
     include_bytes!("../assets/icon_512.png")
 } else {
