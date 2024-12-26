@@ -20,9 +20,13 @@ use macos::*;
 
 
 use iced::event::Event;
-use iced::subscription::{self, Subscription};
+use iced::Subscription;
+use iced::window::events;
+
 use iced::{keyboard, clipboard};
-use iced::{Element, Length, Application, Theme, Settings, Command};
+use iced::keyboard::{Key, key::Named,};
+use iced::{Element, Length, Theme, Settings, Pixels};
+use iced::Task;
 use iced::font::{self, Font};
 use iced::window;
 
@@ -31,6 +35,7 @@ use std::path::PathBuf;
 use log::{Level, debug, info, warn, error};
 use env_logger::{fmt::Color, Builder};
 use std::io::Write;
+use std::borrow::Cow;
 
 extern crate log;
 
@@ -42,22 +47,10 @@ mod file_io;
 use file_io::Error;
 mod menu;
 use menu::PaneLayout;
-mod split {
-    pub mod split;
-    pub mod style;
-}
-mod dualslider {
-    pub mod dualslider;
-    pub mod style;
-}
-mod toggler {
-    pub mod toggler;
-    pub mod style;
-}
+mod widgets;
 mod pane;
 use crate::pane::get_master_slider_value;
 mod ui_builder;
-mod viewer;
 mod loading_status;
 mod loading;
 mod config;
@@ -137,6 +130,8 @@ pub enum Message {
     PaneSelected(usize, bool),
     CopyFilename(usize),
     CopyFilePath(usize),
+    KeyPressed(keyboard::Key, keyboard::Modifiers),
+    KeyReleased(keyboard::Key, keyboard::Modifiers),
 }
 
 impl DataViewer {
@@ -173,22 +168,43 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
     }
 
-    fn handle_key_pressed_event(&mut self, key_code: keyboard::KeyCode, modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
-        let mut commands = Vec::new();
-        match key_code {
-            keyboard::KeyCode::Tab => {
+
+    /*
+    fn handle_hotkey(key: keyboard::Key) -> Option<Message> {
+    use keyboard::key::{self, Key};
+    use pane_grid::{Axis, Direction};
+
+    match key.as_ref() {
+        Key::Character("v") => Some(Message::SplitFocused(Axis::Vertical)),
+        Key::Character("h") => Some(Message::SplitFocused(Axis::Horizontal)),
+        Key::Character("w") => Some(Message::CloseFocused),
+        Key::Named(key) => {
+            let direction = match key {
+                    key::Named::ArrowUp => Some(Direction::Up),
+                    key::Named::ArrowDown => Some(Direction::Down),
+                    key::Named::ArrowLeft => Some(Direction::Left),
+                    key::Named::ArrowRight => Some(Direction::Right),
+                    _ => None,
+                };
+    */
+
+    fn handle_key_pressed_event(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+        let mut tasks = Vec::new();
+        match key.as_ref() {
+            Key::Named(Named::Tab) => {
                 debug!("Tab pressed");
                 // toggle footer
                 self.toggle_footer();
             }
 
-            keyboard::KeyCode::Space | keyboard::KeyCode::B => {
+            //Named::Space | Key::Character(c) if c == SmolStr::from("b") => {
+            Key::Named(Named::Space) | Key::Character("b") => {
                 debug!("Space pressed");
                 // Toggle slider type
                 self.toggle_slider_type();
             }
 
-            keyboard::KeyCode::Key1 => {
+            Key::Character("1") => {
                 debug!("Key1 pressed");
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
                     self.panes[0].is_selected = !self.panes[0].is_selected;
@@ -197,7 +213,7 @@ impl DataViewer {
                 // If alt+ctrl is pressed, load a file into pane0
                 if modifiers.alt() && modifiers.control() {
                     debug!("Key1 Shift pressed");
-                    commands.push(Command::perform(file_io::pick_file(), move |result| {
+                    tasks.push(Task::perform(file_io::pick_file(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
                 }
@@ -205,7 +221,7 @@ impl DataViewer {
                 // If alt is pressed, load a folder into pane0
                 if modifiers.alt() {
                     debug!("Key1 Alt pressed");
-                    commands.push(Command::perform(file_io::pick_folder(), move |result| {
+                    tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
                 }
@@ -215,7 +231,7 @@ impl DataViewer {
                     self.toggle_pane_layout(PaneLayout::SinglePane);
                 }
             }
-            keyboard::KeyCode::Key2 => {
+            Key::Character("2") => {
                 debug!("Key2 pressed");
                 if self.pane_layout == PaneLayout::DualPane {
                     if self.is_slider_dual {
@@ -225,7 +241,7 @@ impl DataViewer {
                     // If alt+ctrl is pressed, load a file into pane1
                     if modifiers.alt() && modifiers.control() {
                         debug!("Key2 Shift pressed");
-                        commands.push(Command::perform(file_io::pick_file(), move |result| {
+                        tasks.push(Task::perform(file_io::pick_file(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
                     }
@@ -233,7 +249,7 @@ impl DataViewer {
                     // If alt is pressed, load a folder into pane1
                     if modifiers.alt() {
                         debug!("Key2 Alt pressed");
-                        commands.push(Command::perform(file_io::pick_folder(), move |result| {
+                        tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
                     }
@@ -246,7 +262,8 @@ impl DataViewer {
                 }
             }
 
-            keyboard::KeyCode::C | keyboard::KeyCode::W => {
+            Key::Character("c") |
+            Key::Character("w") => {
                 // Close the selected panes
                 if modifiers.control() {
                     for pane in self.panes.iter_mut() {
@@ -257,12 +274,12 @@ impl DataViewer {
                 }
             }
 
-            keyboard::KeyCode::Q => {
+            Key::Character("q") => {
                 // Terminate the app
                 std::process::exit(0);
             }
 
-            keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+            Key::Named(Named::ArrowLeft) | Key::Character("a") => {
                 if self.skate_right {
                     self.skate_right = false;
 
@@ -279,14 +296,14 @@ impl DataViewer {
                 } else {
                     self.skate_left = false;
 
-                    let command = move_left_all(
+                    let task = move_left_all(
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    commands.push(command);
+                    tasks.push(task);
                 }
                 
             }
-            keyboard::KeyCode::Right | keyboard::KeyCode::D => {
+            Key::Named(Named::ArrowRight) | Key::Character("d") => {
                 if self.skate_left {
                     self.skate_left = false;
 
@@ -303,47 +320,47 @@ impl DataViewer {
                 } else {
                     self.skate_right = false;
 
-                    let command = move_right_all(
+                    let task = move_right_all(
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    commands.push(command);
+                    tasks.push(task);
                 }
             }
 
             _ => {}
         }
 
-        commands
+        tasks
     }
 
-    fn handle_key_released_event(&mut self, key_code: keyboard::KeyCode, _modifiers: keyboard::Modifiers) -> Vec<Command<Message>> {
+    fn handle_key_released_event(&mut self, key_code: keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         #[allow(unused_mut)]
-        let mut commands = Vec::new();
+        let mut tasks = Vec::new();
 
-        match key_code {
-            keyboard::KeyCode::Tab => {
+        match key_code.as_ref() {
+            Key::Named(Named::Tab) => {
                 debug!("Tab released");
             }
-            keyboard::KeyCode::Enter | keyboard::KeyCode::NumpadEnter => {
+            Key::Named(Named::Enter) | Key::Character("NumpadEnter")  => {
                 debug!("Enter key released!");
                 
             }
-            keyboard::KeyCode::Escape => {
+            Key::Named(Named::Escape) => {
                 debug!("Escape key released!");
                 
             }
-            keyboard::KeyCode::Left | keyboard::KeyCode::A => {
+            Key::Named(Named::ArrowLeft) | Key::Character("a") => {
                 debug!("Left key or 'A' key released!");
                 self.skate_left = false;
             }
-            keyboard::KeyCode::Right | keyboard::KeyCode::D => {
+            Key::Named(Named::ArrowRight) | Key::Character("d") => {
                 debug!("Right key or 'D' key released!");
                 self.skate_right = false;
             }
             _ => {},
         }
 
-        commands
+        tasks
     }
 
     fn toggle_slider_type(&mut self) {
@@ -391,44 +408,11 @@ impl DataViewer {
     fn toggle_footer(&mut self) {
         self.show_footer = !self.show_footer;
     }
-}
 
-
-impl Application for DataViewer {
-    type Message = Message;
-    type Theme = Theme;
-    type Executor= iced::executor::Default;
-    type Flags = ();
-
-    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
-        (
-            Self {
-                title: String::from("ViewSkater"),
-                directory_path: None,
-                current_image_index: 0,
-                slider_value: 0,
-                prev_slider_value: 0,
-                ver_divider_position: None,
-                hor_divider_position: None,
-                is_slider_dual: false,
-                show_footer: true,
-                pane_layout: PaneLayout::SinglePane,
-                last_opened_pane: 0,
-                panes: vec![pane::Pane::default()],
-                loading_status: loading_status::LoadingStatus::default(),
-                skate_right: false,
-                skate_left: false,
-                update_counter: 0,
-            },
-            Command::batch(vec![
-                font::load(include_bytes!("../assets/fonts/viewskater-fonts.ttf").as_slice()).map(Message::FontLoaded), // icon font
-                font::load(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf").as_slice()).map(Message::FontLoaded),  // footer digit font
-                font::load(include_bytes!("../assets/fonts/Roboto-Regular.ttf").as_slice()).map(Message::FontLoaded),   // UI font
-            ])
-        )
-
+    pub fn new() -> Self {
+        Self::default()
     }
-    
+
     fn title(&self) -> String {
         match self.pane_layout  {
             PaneLayout::SinglePane => {
@@ -464,7 +448,8 @@ impl Application for DataViewer {
     }
 
     
-    fn update(&mut self, message: Message) -> Command<Self::Message> {
+    //fn update(&mut self, message: Message) -> Task<Self::Message> {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Nothing => {}
             Message::Debug(s) => {
@@ -472,12 +457,12 @@ impl Application for DataViewer {
             }
             Message::FontLoaded(_) => {}
             Message::OpenFolder(pane_index) => {
-                return Command::perform(file_io::pick_folder(), move |result| {
+                return Task::perform(file_io::pick_folder(), move |result| {
                     Message::FolderOpened(result, pane_index)
                 });
             }
             Message::OpenFile(pane_index) => {
-                return Command::perform(file_io::pick_file(), move |result| {
+                return Task::perform(file_io::pick_file(), move |result| {
                     Message::FolderOpened(result, pane_index)
                 });
             }
@@ -622,6 +607,23 @@ impl Application for DataViewer {
                 }
             }
 
+            Message::KeyPressed(key, modifiers) => {
+                let tasks = self.handle_key_pressed_event(key, modifiers);
+                if tasks.is_empty() {
+                    //Task::none()
+                } else {
+                    return Task::batch(tasks);
+                }
+            }
+            Message::KeyReleased(key, modifiers) => {
+                let tasks = self.handle_key_released_event(key, modifiers);
+                if tasks.is_empty() {
+                    //Task::none()
+                } else {
+                    return Task::batch(tasks);
+                }
+            }
+
 
             Message::Event(event) => match event {
                 // Only using for single pane layout
@@ -647,30 +649,13 @@ impl Application for DataViewer {
                     }
                 }
 
-                Event::Keyboard(keyboard::Event::KeyPressed { key_code, modifiers, .. }) => {
-                    let commands = self.handle_key_pressed_event(key_code, modifiers);
-                    if commands.is_empty() {
-                    } else {
-                        return Command::batch(commands);
-                    }
-                }
-
-                Event::Keyboard(keyboard::Event::KeyReleased { key_code, modifiers, .. }) => {
-                    let commands = self.handle_key_released_event(key_code, modifiers);
-                    if commands.is_empty() {
-                        
-                    } else {
-                        return Command::batch(commands);
-                    }
-                }
-
-                _ => return Command::none(),
+                _ => return Task::none(),
             },
         }
 
         if self.skate_right {
             self.update_counter = 0;
-            let command = move_right_all(
+            let task = move_right_all(
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -678,10 +663,10 @@ impl Application for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            command
+            task
         } else if self.skate_left {
             self.update_counter = 0;
-            let command = move_left_all(
+            let task = move_left_all(
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -689,11 +674,11 @@ impl Application for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            command
+            task
         } else {
             debug!("no skate mode detected");
-            let command = Command::none();
-            command
+            let task = Task::none();
+            task
         }
     }
 
@@ -702,22 +687,37 @@ impl Application for DataViewer {
         container_all
         .height(Length::Fill)
         .width(Length::Fill)
-        .center_x()
+        ////.center_x(Length::Fill)
         .into()
     }
 
-    fn subscription(&self) -> Subscription<Self::Message> {
+    fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
-            subscription::events().map(Message::Event),
+            events().map(|(_id, event)| Message::Event(iced::Event::Window(event))),
+            
+            keyboard::on_key_press(|key, modifiers| {
+                Some(Message::KeyPressed(key, modifiers))
+            }),
+            keyboard::on_key_release(|key, modifiers| {
+                Some(Message::KeyReleased(key, modifiers))
+            }),
+
         ])
     }
 
-    fn theme(&self) -> Self::Theme {
-        iced::Theme::custom(
+    fn theme(&self) -> Theme {
+        /*iced::Theme::custom(
             iced::theme::Palette {
                 primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
                 ..iced::Theme::Dark.palette()
             }
+        )*/
+        iced::Theme::custom(
+            "Custom Theme".to_string(),
+            iced::theme::Palette {
+                primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
+                ..iced::Theme::Dark.palette()
+            },
         )
     }
 }
@@ -725,12 +725,27 @@ impl Application for DataViewer {
 
 // Include the icon image data at compile time
 static ICON: &[u8] = if cfg!(target_os = "windows") {
-    include_bytes!("../assets/icon_512.png")
+    include_bytes!("../assets/icon.ico")
 } else if cfg!(target_os = "macos") {
     include_bytes!("../assets/icon_512.png")
 } else {
     include_bytes!("../assets/icon_48.png")
 };
+
+
+pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
+    vec![
+        include_bytes!("../assets/fonts/viewskater-fonts.ttf")          // icon font
+            .as_slice()
+            .into(),
+        include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf")     // footer digit font
+            .as_slice()
+            .into(),
+        include_bytes!("../assets/fonts/Roboto-Regular.ttf")            // UI font
+            .as_slice()
+            .into(),
+    ]
+}
 
 
 fn main() -> iced::Result {
@@ -751,9 +766,10 @@ fn main() -> iced::Result {
             )
         })
         .init();
+    
 
-
-    let icon = iced::window::icon::from_file_data(ICON, Option::None);
+    // 0.10.0
+    /*let icon = iced::window::icon::from_file_data(ICON, Option::None);
     match icon {
         Ok(icon) => {
             info!("Icon loaded successfully");
@@ -776,5 +792,36 @@ fn main() -> iced::Result {
             info!("Icon load failed: {:?}", err);
             DataViewer::run(Settings::default())
         }
-    }
+    }*/
+
+    // 0.13.1 (WIP)
+    let settings = Settings {
+        id: None,
+        fonts: load_fonts(),
+        default_font: Font::with_name("Roboto"),
+        default_text_size: Pixels(20.0),
+        antialiasing: true,
+        ..Settings::default()
+    };
+
+    // Run the application with custom settings
+    iced::application(
+        DataViewer::title,
+        DataViewer::update,
+        DataViewer::view,
+    )
+    .window(window::Settings {
+        icon: Some(
+            window::icon::from_file_data(
+                ICON,
+                None,
+            )
+            .expect("Icon load failed")
+        ),
+        ..Default::default()
+    })
+    .theme(DataViewer::theme)
+    .subscription(DataViewer::subscription)
+    .settings(settings)
+    .run_with(|| (DataViewer::new(), Task::none()))
 }

@@ -88,7 +88,7 @@ pub fn handle_load_operation_all(
                 }
                 // Reload current image if necessary
                 let loaded_image = cache.get_initial_image().unwrap().to_vec();
-                let handle = iced::widget::image::Handle::from_memory(loaded_image.clone());
+                let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
                 pane.current_image = handle;
             }
         }
@@ -126,7 +126,7 @@ pub fn handle_load_pos_operation(
                         // If this is the current image, update the pane's current image
                         if cache.current_index == target_index_usize {
                             let loaded_image = cache.get_initial_image().unwrap().to_vec();
-                            let handle = iced::widget::image::Handle::from_memory(loaded_image);
+                            let handle = iced::widget::image::Handle::from_bytes(loaded_image);
                             pane.current_image = handle;
                         }
                     } else {
