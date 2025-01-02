@@ -19,6 +19,7 @@ futures = "0.3"
 once_cell = "1.16"
 smol_str = "0.2.2"
 backtrace = "0.3"
+dirs = "5.0"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "69a425da03f227a8fd0e654eeb1e2d8c271e4411", features = [

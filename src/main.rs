@@ -45,7 +45,7 @@ use crate::image_cache::LoadOperation;
 mod navigation;
 use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
 mod file_io;
-use file_io::{Error, setup_panic_hook};
+use file_io::{Error};
 mod menu;
 use menu::PaneLayout;
 mod widgets;
@@ -769,8 +769,9 @@ fn main() -> iced::Result {
         .init();
 
     // Set up panic hook to log to a file
-    let log_file = "runtime_error.log";
-    setup_panic_hook(log_file);
+    let app_name = "viewskater";
+    let log_file = file_io::setup_log_file(app_name);
+    file_io::setup_panic_hook(log_file);
     
 
     // 0.10.0
@@ -830,6 +831,8 @@ fn main() -> iced::Result {
     .settings(settings)
     .run_with(|| (DataViewer::new(), Task::none()))
     .inspect_err(|err| error!("Runtime error: {}", err))?;
+
+    info!("Application exited");
 
     Ok(())
 }

@@ -13,7 +13,7 @@ use tokio::time::Instant;
 use log::{Level, debug, info, warn, error};
 
 use std::panic;
-use std::fs::{File as FSFile, OpenOptions};
+use std::fs::{OpenOptions};
 use std::io::Write;
 
 #[derive(Debug, Clone)]
@@ -180,9 +180,30 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
     image_paths
 }
 
-pub fn setup_panic_hook(log_file: &str) {
-    let log_file = log_file.to_string();
+fn get_log_directory(app_name: &str) -> PathBuf {
+    if cfg!(target_os = "linux") {
+        dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
+    } else if cfg!(target_os = "macos") {
+        dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
+    } else if cfg!(target_os = "windows") {
+        dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
+    } else {
+        PathBuf::from(".").join(app_name).join("logs")
+    }
+}
 
+pub fn setup_log_file(app_name: &str) -> PathBuf {
+    let log_dir = get_log_directory(app_name);
+
+    // Ensure the directory exists
+    std::fs::create_dir_all(&log_dir).expect("Failed to create log directory");
+
+    // Construct the log file path
+    log_dir.join("runtime_error.log")
+}
+
+
+pub fn setup_panic_hook(log_file: PathBuf) {
     panic::set_hook(Box::new(move |info| {
         let backtrace = backtrace::Backtrace::new();
         let mut file = OpenOptions::new()
