@@ -4988,6 +4988,7 @@ name = "view_skater"
 version = "0.1.0"
 dependencies = [
  "alphanumeric-sort",
+ "backtrace",
  "cargo-bundle",
  "console_log",
  "env_logger",

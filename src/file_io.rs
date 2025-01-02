@@ -12,6 +12,9 @@ use tokio::time::Instant;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
+use std::panic;
+use std::fs::{File as FSFile, OpenOptions};
+use std::io::Write;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -175,4 +178,22 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
     // Sort paths like Nautilus file viewer. `image_paths.sort()` does not work as expected
     alphanumeric_sort::sort_path_slice(&mut image_paths);
     image_paths
+}
+
+pub fn setup_panic_hook(log_file: &str) {
+    let log_file = log_file.to_string();
+
+    panic::set_hook(Box::new(move |info| {
+        let backtrace = backtrace::Backtrace::new();
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file)
+            .expect("Failed to open log file");
+
+        writeln!(file, "Panic occurred: {}", info)
+            .expect("Failed to write panic info");
+        writeln!(file, "Backtrace:\n{:?}\n", backtrace)
+            .expect("Failed to write backtrace");
+    }));
 }

@@ -37,6 +37,7 @@ use env_logger::{fmt::Color, Builder};
 use std::io::Write;
 use std::borrow::Cow;
 
+
 extern crate log;
 
 mod image_cache;
@@ -44,7 +45,7 @@ use crate::image_cache::LoadOperation;
 mod navigation;
 use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
 mod file_io;
-use file_io::Error;
+use file_io::{Error, setup_panic_hook};
 mod menu;
 use menu::PaneLayout;
 mod widgets;
@@ -766,6 +767,10 @@ fn main() -> iced::Result {
             )
         })
         .init();
+
+    // Set up panic hook to log to a file
+    let log_file = "runtime_error.log";
+    setup_panic_hook(log_file);
     
 
     // 0.10.0
@@ -824,4 +829,7 @@ fn main() -> iced::Result {
     .subscription(DataViewer::subscription)
     .settings(settings)
     .run_with(|| (DataViewer::new(), Task::none()))
+    .inspect_err(|err| error!("Runtime error: {}", err))?;
+
+    Ok(())
 }
