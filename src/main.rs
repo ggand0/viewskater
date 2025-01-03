@@ -748,12 +748,10 @@ pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
 
 
 fn main() -> iced::Result {
-    file_io::setup_logger();
-
     // Set up panic hook to log to a file
     let app_name = "viewskater";
-    let log_file = file_io::setup_log_file(app_name);
-    file_io::setup_panic_hook(log_file);
+    file_io::setup_logger(app_name);
+    file_io::setup_panic_hook(app_name);
     
 
     // 0.10.0

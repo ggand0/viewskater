@@ -6,8 +6,10 @@ use std::ffi::OsStr;
 use rfd;
 use futures::future::join_all;
 use crate::image_cache::LoadOperation;
-use tokio::fs::File;
+//use tokio::fs::File;
+//use std::fs::File;
 use tokio::time::Instant;
+//use std::env;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -18,7 +20,9 @@ use std::io::Write;
 use std::sync::Mutex;
 use std::collections::VecDeque;
 use lazy_static::lazy_static;
-use env_logger::{fmt::Color, Builder};
+use env_logger::{fmt::Color};
+use log::{LevelFilter, Metadata, Record};
+use backtrace::Backtrace;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -57,7 +61,7 @@ async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io
     // Load a single image asynchronously
     if let Some(path) = path {
         let file_path = Path::new(path);
-        match File::open(file_path).await {
+        match tokio::fs::File::open(file_path).await {
             Ok(mut file) => {
                 let mut buffer = Vec::new();
                 if file.read_to_end(&mut buffer).await.is_ok() {
@@ -184,81 +188,153 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
     image_paths
 }
 
+
 const MAX_LOG_LINES: usize = 1000;
 lazy_static! {
     static ref LOG_BUFFER: Mutex<VecDeque<String>> = Mutex::new(VecDeque::with_capacity(MAX_LOG_LINES));
 }
 
-pub fn setup_logger() {
-    Builder::from_default_env()
-        .format(|buf, record| {
-            let level_color = match record.level() {
-                Level::Trace => Color::White,
-                Level::Debug => Color::Blue,
-                Level::Info => Color::Green,
-                Level::Warn => Color::Yellow,
-                Level::Error => Color::Red,
-            };
-            let mut level_style = buf.style();
-            level_style.set_color(level_color);
 
-            let log_entry = format!("{} {}", record.level(), record.args());
-            // Write to the ring buffer
-            {
-                let mut log_buffer = LOG_BUFFER.lock().unwrap();
-                if log_buffer.len() == MAX_LOG_LINES {
-                    log_buffer.pop_front(); // Remove the oldest entry
-                }
-                log_buffer.push_back(log_entry.clone());
+struct AppLogger {
+}
+
+impl AppLogger {
+    fn new() -> Self {
+        Self {
+        }
+    }
+
+    fn log_to_buffer(&self, message: &str, target: &str) {
+        // Strictly include only logs from your crate
+        if target.starts_with("view_skater") {
+            let mut buffer = LOG_BUFFER.lock().unwrap();
+            if buffer.len() == MAX_LOG_LINES {
+                buffer.pop_front();
             }
+            buffer.push_back(message.to_string());
+        }
+    }
+}
 
-            // Write to stdout
-            writeln!(buf, "{} {}", level_style.value(record.level()), record.args())
-        })
-        .init();
+impl log::Log for AppLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.target().starts_with("view_skater") && metadata.level() <= LevelFilter::Debug
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            let message = format!("{:<5} {}", record.level(), record.args());
+
+            // Add to buffer only if the target is from your crate
+            self.log_to_buffer(&message, record.target());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+struct CompositeLogger {
+    console_logger: env_logger::Logger,
+    buffer_logger: AppLogger,
+}
+
+impl log::Log for CompositeLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        self.console_logger.enabled(metadata) || self.buffer_logger.enabled(metadata)
+    }
+
+    fn log(&self, record: &Record) {
+        if self.console_logger.enabled(record.metadata()) {
+            self.console_logger.log(record);
+        }
+        if self.buffer_logger.enabled(record.metadata()) {
+            self.buffer_logger.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.console_logger.flush();
+        self.buffer_logger.flush();
+    }
+}
+
+pub fn setup_logger(_app_name: &str) {
+    // File logger setup
+    let buffer_logger = AppLogger::new();
+
+    // Console logger setup
+    let mut builder = env_logger::Builder::new();
+
+    // Check if RUST_LOG is set
+    if std::env::var("RUST_LOG").is_ok() {
+        builder.parse_env("RUST_LOG");
+    } else if cfg!(debug_assertions) {
+        // Default to debug in debug mode if RUST_LOG is not set
+        builder.filter(Some("view_skater"), LevelFilter::Debug);
+    } else {
+        // Default to info in release mode if RUST_LOG is not set
+        builder.filter(Some("view_skater"), LevelFilter::Info);
+    }
+
+    // Disable external crate logs unless explicitly set
+    builder.filter(None, LevelFilter::Off);
+
+    // Apply formatting for console logs
+    builder.format(|buf, record| {
+        let mut style = buf.style();
+        match record.level() {
+            Level::Error => style.set_color(Color::Red),
+            Level::Warn => style.set_color(Color::Yellow),
+            Level::Info => style.set_color(Color::Green),
+            Level::Debug => style.set_color(Color::Blue),
+            Level::Trace => style.set_color(Color::White),
+        };
+
+        writeln!(
+            buf,
+            "{:<5} {}",
+            style.value(record.level()),
+            record.args()
+        )
+    });
+
+    let console_logger = builder.build();
+
+    // Composite logger
+    let composite_logger = CompositeLogger {
+        console_logger,
+        buffer_logger,
+    };
+
+    log::set_boxed_logger(Box::new(composite_logger)).expect("Failed to set logger");
+    log::set_max_level(LevelFilter::Trace); // Allow maximum verbosity; actual level controlled by filters
 }
 
 
 fn get_log_directory(app_name: &str) -> PathBuf {
-    if cfg!(target_os = "linux") {
-        dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
-    } else if cfg!(target_os = "macos") {
-        dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
-    } else if cfg!(target_os = "windows") {
-        dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
-    } else {
-        PathBuf::from(".").join(app_name).join("logs")
-    }
+    dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
 }
 
-pub fn setup_log_file(app_name: &str) -> PathBuf {
-    let log_dir = get_log_directory(app_name);
+pub fn setup_panic_hook(app_name: &str) {
+    let log_file_path = get_log_directory(app_name).join("panic.log");
+    std::fs::create_dir_all(log_file_path.parent().unwrap()).expect("Failed to create log directory");
 
-    // Ensure the directory exists
-    std::fs::create_dir_all(&log_dir).expect("Failed to create log directory");
-
-    // Construct the log file path
-    log_dir.join("runtime_error.log")
-}
-
-
-pub fn setup_panic_hook(log_file: PathBuf) {
     panic::set_hook(Box::new(move |info| {
-        let backtrace = backtrace::Backtrace::new();
+        let backtrace = Backtrace::new();
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
-            .truncate(true) // Truncate the file to clear previous content
-            .open(&log_file)
-            .expect("Failed to open log file");
+            .truncate(true) // Overwrite the existing log file
+            .open(&log_file_path)
+            .expect("Failed to open panic log file");
 
-        writeln!(file, "Panic occurred: {}", info)
-            .expect("Failed to write panic info");
-        writeln!(file, "Backtrace:\n{:?}\n", backtrace)
-            .expect("Failed to write backtrace");
+        // Write panic information
+        writeln!(file, "Panic occurred: {}", info).expect("Failed to write panic info");
+        writeln!(file, "Backtrace:\n{:?}\n", backtrace).expect("Failed to write backtrace");
 
         // Write the last `MAX_LOG_LINES` log entries
         writeln!(file, "Last {} log entries:\n", MAX_LOG_LINES).expect("Failed to write log header");
+
         let log_buffer = LOG_BUFFER.lock().unwrap();
         for log in log_buffer.iter() {
             writeln!(file, "{}", log).expect("Failed to write log entry");
