@@ -15,6 +15,10 @@ use log::{Level, debug, info, warn, error};
 use std::panic;
 use std::fs::{OpenOptions};
 use std::io::Write;
+use std::sync::Mutex;
+use std::collections::VecDeque;
+use lazy_static::lazy_static;
+use env_logger::{fmt::Color, Builder};
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -180,6 +184,41 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
     image_paths
 }
 
+const MAX_LOG_LINES: usize = 1000;
+lazy_static! {
+    static ref LOG_BUFFER: Mutex<VecDeque<String>> = Mutex::new(VecDeque::with_capacity(MAX_LOG_LINES));
+}
+
+pub fn setup_logger() {
+    Builder::from_default_env()
+        .format(|buf, record| {
+            let level_color = match record.level() {
+                Level::Trace => Color::White,
+                Level::Debug => Color::Blue,
+                Level::Info => Color::Green,
+                Level::Warn => Color::Yellow,
+                Level::Error => Color::Red,
+            };
+            let mut level_style = buf.style();
+            level_style.set_color(level_color);
+
+            let log_entry = format!("{} {}", record.level(), record.args());
+            // Write to the ring buffer
+            {
+                let mut log_buffer = LOG_BUFFER.lock().unwrap();
+                if log_buffer.len() == MAX_LOG_LINES {
+                    log_buffer.pop_front(); // Remove the oldest entry
+                }
+                log_buffer.push_back(log_entry.clone());
+            }
+
+            // Write to stdout
+            writeln!(buf, "{} {}", level_style.value(record.level()), record.args())
+        })
+        .init();
+}
+
+
 fn get_log_directory(app_name: &str) -> PathBuf {
     if cfg!(target_os = "linux") {
         dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
@@ -208,7 +247,8 @@ pub fn setup_panic_hook(log_file: PathBuf) {
         let backtrace = backtrace::Backtrace::new();
         let mut file = OpenOptions::new()
             .create(true)
-            .append(true)
+            .write(true)
+            .truncate(true) // Truncate the file to clear previous content
             .open(&log_file)
             .expect("Failed to open log file");
 
@@ -216,5 +256,12 @@ pub fn setup_panic_hook(log_file: PathBuf) {
             .expect("Failed to write panic info");
         writeln!(file, "Backtrace:\n{:?}\n", backtrace)
             .expect("Failed to write backtrace");
+
+        // Write the last `MAX_LOG_LINES` log entries
+        writeln!(file, "Last {} log entries:\n", MAX_LOG_LINES).expect("Failed to write log header");
+        let log_buffer = LOG_BUFFER.lock().unwrap();
+        for log in log_buffer.iter() {
+            writeln!(file, "{}", log).expect("Failed to write log entry");
+        }
     }));
 }

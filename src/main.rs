@@ -33,8 +33,6 @@ use iced::window;
 use std::path::PathBuf;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
-use env_logger::{fmt::Color, Builder};
-use std::io::Write;
 use std::borrow::Cow;
 
 
@@ -750,23 +748,7 @@ pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
 
 
 fn main() -> iced::Result {
-    Builder::from_default_env()
-        .format(|buf, record| {
-            let level_color = match record.level() {
-                Level::Trace => Color::White,
-                Level::Debug => Color::Blue,
-                Level::Info => Color::Green,
-                Level::Warn => Color::Yellow,
-                Level::Error => Color::Red,
-            };
-            let mut level_style = buf.style();
-            level_style.set_color(level_color);
-
-            writeln!(buf,
-                "{} {}", level_style.value(record.level()), record.args()
-            )
-        })
-        .init();
+    file_io::setup_logger();
 
     // Set up panic hook to log to a file
     let app_name = "viewskater";
