@@ -484,6 +484,7 @@ impl DataViewer {
             Message::ShowLogs => {
                 let app_name = "viewskater";
                 let log_dir_path = file_io::get_log_directory(app_name);
+                std::fs::create_dir_all(log_dir_path.clone());
                 self.open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
             }
             Message::FontLoaded(_) => {}
