@@ -6,10 +6,7 @@ use std::ffi::OsStr;
 use rfd;
 use futures::future::join_all;
 use crate::image_cache::LoadOperation;
-//use tokio::fs::File;
-//use std::fs::File;
 use tokio::time::Instant;
-//use std::env;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -17,9 +14,8 @@ use log::{Level, debug, info, warn, error};
 use std::panic;
 use std::fs::{OpenOptions};
 use std::io::Write;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use lazy_static::lazy_static;
 use env_logger::{fmt::Color};
 use log::{LevelFilter, Metadata, Record};
 use backtrace::Backtrace;
@@ -190,33 +186,40 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
 
 
 const MAX_LOG_LINES: usize = 1000;
-lazy_static! {
-    static ref LOG_BUFFER: Mutex<VecDeque<String>> = Mutex::new(VecDeque::with_capacity(MAX_LOG_LINES));
+
+struct BufferLogger {
+    log_buffer: Arc<Mutex<VecDeque<String>>>,
 }
 
-
-struct AppLogger {
-}
-
-impl AppLogger {
+impl BufferLogger {
     fn new() -> Self {
         Self {
+            log_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(MAX_LOG_LINES))),
         }
     }
 
     fn log_to_buffer(&self, message: &str, target: &str) {
-        // Strictly include only logs from your crate
         if target.starts_with("view_skater") {
-            let mut buffer = LOG_BUFFER.lock().unwrap();
+            let mut buffer = self.log_buffer.lock().unwrap();
             if buffer.len() == MAX_LOG_LINES {
                 buffer.pop_front();
             }
             buffer.push_back(message.to_string());
         }
     }
+
+    #[allow(dead_code)]
+    fn dump_logs(&self) -> Vec<String> {
+        let buffer = self.log_buffer.lock().unwrap();
+        buffer.iter().cloned().collect()
+    }
+
+    fn get_shared_buffer(&self) -> Arc<Mutex<VecDeque<String>>> {
+        Arc::clone(&self.log_buffer)
+    }
 }
 
-impl log::Log for AppLogger {
+impl log::Log for BufferLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.target().starts_with("view_skater") && metadata.level() <= LevelFilter::Debug
     }
@@ -224,8 +227,6 @@ impl log::Log for AppLogger {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             let message = format!("{:<5} {}", record.level(), record.args());
-
-            // Add to buffer only if the target is from your crate
             self.log_to_buffer(&message, record.target());
         }
     }
@@ -235,7 +236,7 @@ impl log::Log for AppLogger {
 
 struct CompositeLogger {
     console_logger: env_logger::Logger,
-    buffer_logger: AppLogger,
+    buffer_logger: BufferLogger,
 }
 
 impl log::Log for CompositeLogger {
@@ -258,28 +259,21 @@ impl log::Log for CompositeLogger {
     }
 }
 
-pub fn setup_logger(_app_name: &str) {
-    // File logger setup
-    let buffer_logger = AppLogger::new();
+pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
+    let buffer_logger = BufferLogger::new();
+    let shared_buffer = buffer_logger.get_shared_buffer();
 
-    // Console logger setup
     let mut builder = env_logger::Builder::new();
-
-    // Check if RUST_LOG is set
     if std::env::var("RUST_LOG").is_ok() {
         builder.parse_env("RUST_LOG");
     } else if cfg!(debug_assertions) {
-        // Default to debug in debug mode if RUST_LOG is not set
         builder.filter(Some("view_skater"), LevelFilter::Debug);
     } else {
-        // Default to info in release mode if RUST_LOG is not set
         builder.filter(Some("view_skater"), LevelFilter::Info);
     }
 
-    // Disable external crate logs unless explicitly set
     builder.filter(None, LevelFilter::Off);
 
-    // Apply formatting for console logs
     builder.format(|buf, record| {
         let mut style = buf.style();
         match record.level() {
@@ -289,33 +283,27 @@ pub fn setup_logger(_app_name: &str) {
             Level::Debug => style.set_color(Color::Blue),
             Level::Trace => style.set_color(Color::White),
         };
-
-        writeln!(
-            buf,
-            "{:<5} {}",
-            style.value(record.level()),
-            record.args()
-        )
+        writeln!(buf, "{:<5} {}", style.value(record.level()), record.args())
     });
 
     let console_logger = builder.build();
 
-    // Composite logger
     let composite_logger = CompositeLogger {
         console_logger,
         buffer_logger,
     };
 
     log::set_boxed_logger(Box::new(composite_logger)).expect("Failed to set logger");
-    log::set_max_level(LevelFilter::Trace); // Allow maximum verbosity; actual level controlled by filters
-}
+    log::set_max_level(LevelFilter::Trace);
 
+    shared_buffer
+}
 
 fn get_log_directory(app_name: &str) -> PathBuf {
     dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
 }
 
-pub fn setup_panic_hook(app_name: &str) {
+pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) {
     let log_file_path = get_log_directory(app_name).join("panic.log");
     std::fs::create_dir_all(log_file_path.parent().unwrap()).expect("Failed to create log directory");
 
@@ -324,19 +312,17 @@ pub fn setup_panic_hook(app_name: &str) {
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
-            .truncate(true) // Overwrite the existing log file
+            .truncate(true)
             .open(&log_file_path)
             .expect("Failed to open panic log file");
 
-        // Write panic information
         writeln!(file, "Panic occurred: {}", info).expect("Failed to write panic info");
         writeln!(file, "Backtrace:\n{:?}\n", backtrace).expect("Failed to write backtrace");
 
-        // Write the last `MAX_LOG_LINES` log entries
         writeln!(file, "Last {} log entries:\n", MAX_LOG_LINES).expect("Failed to write log header");
 
-        let log_buffer = LOG_BUFFER.lock().unwrap();
-        for log in log_buffer.iter() {
+        let buffer = log_buffer.lock().unwrap();
+        for log in buffer.iter() {
             writeln!(file, "{}", log).expect("Failed to write log entry");
         }
     }));

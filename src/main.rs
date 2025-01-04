@@ -750,8 +750,14 @@ pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
 fn main() -> iced::Result {
     // Set up panic hook to log to a file
     let app_name = "viewskater";
-    file_io::setup_logger(app_name);
-    file_io::setup_panic_hook(app_name);
+    //file_io::setup_logger(app_name);
+    //file_io::setup_panic_hook(app_name);
+
+    // Initialize the logger and retrieve the shared log buffer
+    let shared_log_buffer = file_io::setup_logger(app_name);
+
+    // Set up the panic hook with the shared log buffer
+    file_io::setup_panic_hook(app_name, shared_log_buffer);
     
 
     // 0.10.0
