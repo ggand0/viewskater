@@ -299,7 +299,7 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     shared_buffer
 }
 
-fn get_log_directory(app_name: &str) -> PathBuf {
+pub fn get_log_directory(app_name: &str) -> PathBuf {
     dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
 }
 

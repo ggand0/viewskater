@@ -34,6 +34,7 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 use std::borrow::Cow;
+use std::process::Command;
 
 
 extern crate log;
@@ -109,6 +110,7 @@ impl Default for DataViewer {
 pub enum Message {
     Debug(String),
     Nothing,
+    ShowLogs,
     FontLoaded(Result<(), font::Error>),
     OpenFolder(usize),
     OpenFile(usize),
@@ -408,6 +410,31 @@ impl DataViewer {
         self.show_footer = !self.show_footer;
     }
 
+    
+    fn open_in_file_explorer(&self, path: &str) {
+        if cfg!(target_os = "windows") {
+            // Windows: Use "explorer" to open the directory
+            Command::new("explorer")
+                .arg(path)
+                .spawn()
+                .expect("Failed to open directory in File Explorer");
+        } else if cfg!(target_os = "macos") {
+            // macOS: Use "open" to open the directory
+            Command::new("open")
+                .arg(path)
+                .spawn()
+                .expect("Failed to open directory in Finder");
+        } else if cfg!(target_os = "linux") {
+            // Linux: Use "xdg-open" to open the directory (works with most desktop environments)
+            Command::new("xdg-open")
+                .arg(path)
+                .spawn()
+                .expect("Failed to open directory in File Explorer");
+        } else {
+            eprintln!("Opening directories is not supported on this OS.");
+        }
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -453,6 +480,11 @@ impl DataViewer {
             Message::Nothing => {}
             Message::Debug(s) => {
                 self.title = s;
+            }
+            Message::ShowLogs => {
+                let app_name = "viewskater";
+                let log_dir_path = file_io::get_log_directory(app_name);
+                self.open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
             }
             Message::FontLoaded(_) => {}
             Message::OpenFolder(pane_index) => {
