@@ -751,7 +751,7 @@ impl DataViewer {
                         style: iced::font::Style::Normal,
                     }),
                     column![
-                        text("version 0.1.1").size(18),
+                        text("version 0.1.1").size(15),
                         row![
                             text("Author:  ").size(15),
                             text("Gota Gando").size(15)
