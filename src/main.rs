@@ -18,44 +18,33 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-
-use iced::event::Event;
-use iced::Subscription;
-use iced::window::events;
-
-use iced::{keyboard, clipboard};
-use iced::keyboard::{Key, key::Named,};
-use iced::{Element, Length, Theme, Settings, Pixels};
-use iced::Task;
-use iced::font::{self, Font};
-use iced::window;
-use iced::widget::{self, text, button, container, column, row};
-
 use std::path::PathBuf;
+use std::borrow::Cow;
+
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
-use std::borrow::Cow;
-use std::process::Command;
 
-
-extern crate log;
+use iced::{
+    clipboard, Element, Length, Pixels, Settings, Subscription, Task, Theme,
+    event::Event, keyboard::{self, Key, key::Named},
+    widget::{self, text, button, container, column, row},
+    font::{self, Font},
+    window::{self, events},
+};
 
 mod image_cache;
 use crate::image_cache::LoadOperation;
 mod navigation;
 use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
 mod file_io;
-use file_io::{Error};
 mod menu;
 use menu::PaneLayout;
 mod widgets;
 mod pane;
-use crate::pane::get_master_slider_value;
 mod ui_builder;
 mod loading_status;
 mod loading;
 mod config;
-use crate::widgets::modal::modal;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -65,21 +54,20 @@ pub enum MenuItem {
     Help
 }
 
-
 pub struct DataViewer {
     title: String,
     directory_path: Option<String>,
     current_image_index: usize,
-    slider_value: u16,                  // for master slider
-    prev_slider_value: u16,             // for master slider
+    slider_value: u16,                              // for master slider
+    prev_slider_value: u16,                         // for master slider
     ver_divider_position: Option<u16>,
     hor_divider_position: Option<u16>,
     is_slider_dual: bool,
     show_footer: bool,
     pane_layout: PaneLayout,
     last_opened_pane: isize,
-    panes: Vec<pane::Pane>,             // Each pane has its own image cache
-    loading_status: loading_status::LoadingStatus, // global loading status for all panes
+    panes: Vec<pane::Pane>,                         // Each pane has its own image cache
+    loading_status: loading_status::LoadingStatus,  // global loading status for all panes
     skate_right: bool,
     skate_left: bool,
     update_counter: u32,
@@ -124,7 +112,7 @@ pub enum Message {
     FileDropped(isize, String),
     Close,
     Quit,
-    FolderOpened(Result<String, Error>, usize),
+    FolderOpened(Result<String, file_io::Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     Event(Event),
@@ -177,39 +165,16 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
     }
 
-
-    /*
-    fn handle_hotkey(key: keyboard::Key) -> Option<Message> {
-    use keyboard::key::{self, Key};
-    use pane_grid::{Axis, Direction};
-
-    match key.as_ref() {
-        Key::Character("v") => Some(Message::SplitFocused(Axis::Vertical)),
-        Key::Character("h") => Some(Message::SplitFocused(Axis::Horizontal)),
-        Key::Character("w") => Some(Message::CloseFocused),
-        Key::Named(key) => {
-            let direction = match key {
-                    key::Named::ArrowUp => Some(Direction::Up),
-                    key::Named::ArrowDown => Some(Direction::Down),
-                    key::Named::ArrowLeft => Some(Direction::Left),
-                    key::Named::ArrowRight => Some(Direction::Right),
-                    _ => None,
-                };
-    */
-
     fn handle_key_pressed_event(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
         match key.as_ref() {
             Key::Named(Named::Tab) => {
                 debug!("Tab pressed");
-                // toggle footer
                 self.toggle_footer();
             }
 
-            //Named::Space | Key::Character(c) if c == SmolStr::from("b") => {
             Key::Named(Named::Space) | Key::Character("b") => {
                 debug!("Space pressed");
-                // Toggle slider type
                 self.toggle_slider_type();
             }
 
@@ -383,7 +348,7 @@ impl DataViewer {
             }
 
             let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
-            self.slider_value = get_master_slider_value(&mut panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+            self.slider_value = pane::get_master_slider_value(&mut panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
         } else {
             // Single to dual slider: give slider.value to each slider
             for pane in self.panes.iter_mut() {
@@ -403,7 +368,7 @@ impl DataViewer {
                 if self.pane_layout == PaneLayout::DualPane {
                     // Reset the slider value to the first pane's current index
                     let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
-                    self.slider_value = get_master_slider_value(&mut panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+                    self.slider_value = pane::get_master_slider_value(&mut panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
                     self.panes[0].is_selected = true;
                 }
             }
@@ -414,33 +379,9 @@ impl DataViewer {
         }
         self.pane_layout = pane_layout;
     }
+
     fn toggle_footer(&mut self) {
         self.show_footer = !self.show_footer;
-    }
-
-    
-    fn open_in_file_explorer(&self, path: &str) {
-        if cfg!(target_os = "windows") {
-            // Windows: Use "explorer" to open the directory
-            Command::new("explorer")
-                .arg(path)
-                .spawn()
-                .expect("Failed to open directory in File Explorer");
-        } else if cfg!(target_os = "macos") {
-            // macOS: Use "open" to open the directory
-            Command::new("open")
-                .arg(path)
-                .spawn()
-                .expect("Failed to open directory in Finder");
-        } else if cfg!(target_os = "linux") {
-            // Linux: Use "xdg-open" to open the directory (works with most desktop environments)
-            Command::new("xdg-open")
-                .arg(path)
-                .spawn()
-                .expect("Failed to open directory in File Explorer");
-        } else {
-            eprintln!("Opening directories is not supported on this OS.");
-        }
     }
 
     pub fn new() -> Self {
@@ -481,8 +422,6 @@ impl DataViewer {
         }
     }
 
-    
-    //fn update(&mut self, message: Message) -> Task<Self::Message> {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Nothing => {}
@@ -493,7 +432,7 @@ impl DataViewer {
                 let app_name = "viewskater";
                 let log_dir_path = file_io::get_log_directory(app_name);
                 let _ = std::fs::create_dir_all(log_dir_path.clone());
-                self.open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
+                file_io::open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
             }
             Message::ShowAbout => {
                 self.show_about = true;
@@ -504,7 +443,7 @@ impl DataViewer {
             }
             Message::OpenWebLink(url) => {
                 if let Err(e) = webbrowser::open(&url) {
-                    debug!("Failed to open link: {}, error: {:?}", url, e);
+                    warn!("Failed to open link: {}, error: {:?}", url, e);
                 }
             }
             Message::FontLoaded(_) => {}
@@ -624,8 +563,6 @@ impl DataViewer {
                     }
                 }
             }
-            
-            
 
             Message::SliderChanged(pane_index, value) => {
                 debug!("pane_index {} slider value: {}", pane_index, value);
@@ -662,7 +599,6 @@ impl DataViewer {
             Message::KeyPressed(key, modifiers) => {
                 let tasks = self.handle_key_pressed_event(key, modifiers);
                 if tasks.is_empty() {
-                    //Task::none()
                 } else {
                     return Task::batch(tasks);
                 }
@@ -670,12 +606,10 @@ impl DataViewer {
             Message::KeyReleased(key, modifiers) => {
                 let tasks = self.handle_key_released_event(key, modifiers);
                 if tasks.is_empty() {
-                    //Task::none()
                 } else {
                     return Task::batch(tasks);
                 }
             }
-
 
             Message::Event(event) => match event {
                 // Only using for single pane layout
@@ -751,13 +685,12 @@ impl DataViewer {
                         style: iced::font::Style::Normal,
                     }),
                     column![
-                        text("version 0.1.1").size(15),
+                        text("Version 0.1.1").size(15),
                         row![
                             text("Author:  ").size(15),
                             text("Gota Gando").size(15)
                             .style(|theme: &Theme| {
                                 text::Style {
-                                    //color: Some(theme.extended_palette().primary.strong.text),
                                     color: Some(theme.extended_palette().primary.strong.color),
                                 }
                             })
@@ -791,7 +724,7 @@ impl DataViewer {
             .padding(20)
             .style(container::rounded_box);
 
-            modal(content, about_content, Message::HideAbout)
+            widgets::modal::modal(content, about_content, Message::HideAbout)
         } else {
             content.into()
         }
@@ -800,7 +733,6 @@ impl DataViewer {
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
             events().map(|(_id, event)| Message::Event(iced::Event::Window(event))),
-            
             keyboard::on_key_press(|key, modifiers| {
                 Some(Message::KeyPressed(key, modifiers))
             }),
@@ -812,12 +744,6 @@ impl DataViewer {
     }
 
     fn theme(&self) -> Theme {
-        /*iced::Theme::custom(
-            iced::theme::Palette {
-                primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
-                ..iced::Theme::Dark.palette()
-            }
-        )*/
         iced::Theme::custom(
             "Custom Theme".to_string(),
             iced::theme::Palette {
@@ -838,7 +764,6 @@ static ICON: &[u8] = if cfg!(target_os = "windows") {
     include_bytes!("../assets/icon_48.png")
 };
 
-
 pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
     vec![
         include_bytes!("../assets/fonts/viewskater-fonts.ttf")          // icon font
@@ -857,43 +782,9 @@ pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
 fn main() -> iced::Result {
     // Set up panic hook to log to a file
     let app_name = "viewskater";
-    //file_io::setup_logger(app_name);
-    //file_io::setup_panic_hook(app_name);
-
-    // Initialize the logger and retrieve the shared log buffer
     let shared_log_buffer = file_io::setup_logger(app_name);
-
-    // Set up the panic hook with the shared log buffer
     file_io::setup_panic_hook(app_name, shared_log_buffer);
-    
 
-    // 0.10.0
-    /*let icon = iced::window::icon::from_file_data(ICON, Option::None);
-    match icon {
-        Ok(icon) => {
-            info!("Icon loaded successfully");
-            let settings = Settings {
-                window: window::Settings {
-                    icon: Some(icon),
-                    ..Default::default()
-                },
-                default_font: Font {
-                    family:  iced::font::Family::Name("Roboto"),
-                    weight: iced::font::Weight::Normal,
-                    stretch: iced::font::Stretch::Normal,
-                    monospaced: true,
-                },
-                ..Settings::default()
-            };
-            DataViewer::run(settings)
-        }
-        Err(err) => {
-            info!("Icon load failed: {:?}", err);
-            DataViewer::run(Settings::default())
-        }
-    }*/
-
-    // 0.13.1 (WIP)
     let settings = Settings {
         id: None,
         fonts: load_fonts(),

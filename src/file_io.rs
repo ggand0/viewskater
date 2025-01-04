@@ -19,6 +19,7 @@ use std::collections::VecDeque;
 use env_logger::{fmt::Color};
 use log::{LevelFilter, Metadata, Record};
 use backtrace::Backtrace;
+use std::process::Command;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -326,4 +327,28 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
             writeln!(file, "{}", log).expect("Failed to write log entry");
         }
     }));
+}
+
+pub fn open_in_file_explorer(path: &str) {
+    if cfg!(target_os = "windows") {
+        // Windows: Use "explorer" to open the directory
+        Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .expect("Failed to open directory in File Explorer");
+    } else if cfg!(target_os = "macos") {
+        // macOS: Use "open" to open the directory
+        Command::new("open")
+            .arg(path)
+            .spawn()
+            .expect("Failed to open directory in Finder");
+    } else if cfg!(target_os = "linux") {
+        // Linux: Use "xdg-open" to open the directory (works with most desktop environments)
+        Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .expect("Failed to open directory in File Explorer");
+    } else {
+        error!("Opening directories is not supported on this OS.");
+    }
 }
