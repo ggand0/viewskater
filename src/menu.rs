@@ -224,6 +224,16 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Ren
     )
 }
 
+pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Renderer> {
+    let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
+    menu_tpl_2(
+        menu_items!(
+            (labeled_button("About", MENU_ITEM_FONT_SIZE, Message::ShowAbout))
+            (labeled_button("Show logs", MENU_ITEM_FONT_SIZE, Message::ShowLogs))
+        )
+    )
+}
+
 
 pub fn build_menu(app: &DataViewer) -> MenuBar<Message, iced::Theme, iced::Renderer> {
     menu_bar!(
@@ -239,6 +249,13 @@ pub fn build_menu(app: &DataViewer) -> MenuBar<Message, iced::Theme, iced::Rende
                 text("Controls").size(16).font(Font::with_name("Roboto")),//.align_y(alignment::Vertical::Center)
             ).padding([4, 8]),
             menu_3(app)
+        )
+
+        (
+            container(
+                text("Help").size(16).font(Font::with_name("Roboto"))
+            ).padding([4, 8]),
+            menu_help(app)
         )
     )
     //.spacing(10)

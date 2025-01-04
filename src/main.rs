@@ -29,13 +29,14 @@ use iced::{Element, Length, Theme, Settings, Pixels};
 use iced::Task;
 use iced::font::{self, Font};
 use iced::window;
+use iced::widget::{self, text, button, container, column, row};
 
 use std::path::PathBuf;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
-use env_logger::{fmt::Color, Builder};
-use std::io::Write;
 use std::borrow::Cow;
+use std::process::Command;
+
 
 extern crate log;
 
@@ -44,7 +45,7 @@ use crate::image_cache::LoadOperation;
 mod navigation;
 use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
 mod file_io;
-use file_io::Error;
+use file_io::{Error};
 mod menu;
 use menu::PaneLayout;
 mod widgets;
@@ -54,6 +55,7 @@ mod ui_builder;
 mod loading_status;
 mod loading;
 mod config;
+use crate::widgets::modal::modal;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -81,6 +83,7 @@ pub struct DataViewer {
     skate_right: bool,
     skate_left: bool,
     update_counter: u32,
+    show_about: bool,
 }
 
 impl Default for DataViewer {
@@ -102,6 +105,7 @@ impl Default for DataViewer {
             skate_right: false,
             skate_left: false,
             update_counter: 0,
+            show_about: false,
         }
     }
 }
@@ -110,6 +114,10 @@ impl Default for DataViewer {
 pub enum Message {
     Debug(String),
     Nothing,
+    ShowAbout,
+    HideAbout,
+    ShowLogs,
+    OpenWebLink(String),
     FontLoaded(Result<(), font::Error>),
     OpenFolder(usize),
     OpenFile(usize),
@@ -148,6 +156,7 @@ impl DataViewer {
         self.loading_status = loading_status::LoadingStatus::default();
         self.skate_right = false;
         self.update_counter = 0;
+        self.show_about = false;
     }
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
@@ -409,6 +418,31 @@ impl DataViewer {
         self.show_footer = !self.show_footer;
     }
 
+    
+    fn open_in_file_explorer(&self, path: &str) {
+        if cfg!(target_os = "windows") {
+            // Windows: Use "explorer" to open the directory
+            Command::new("explorer")
+                .arg(path)
+                .spawn()
+                .expect("Failed to open directory in File Explorer");
+        } else if cfg!(target_os = "macos") {
+            // macOS: Use "open" to open the directory
+            Command::new("open")
+                .arg(path)
+                .spawn()
+                .expect("Failed to open directory in Finder");
+        } else if cfg!(target_os = "linux") {
+            // Linux: Use "xdg-open" to open the directory (works with most desktop environments)
+            Command::new("xdg-open")
+                .arg(path)
+                .spawn()
+                .expect("Failed to open directory in File Explorer");
+        } else {
+            eprintln!("Opening directories is not supported on this OS.");
+        }
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -454,6 +488,24 @@ impl DataViewer {
             Message::Nothing => {}
             Message::Debug(s) => {
                 self.title = s;
+            }
+            Message::ShowLogs => {
+                let app_name = "viewskater";
+                let log_dir_path = file_io::get_log_directory(app_name);
+                let _ = std::fs::create_dir_all(log_dir_path.clone());
+                self.open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
+            }
+            Message::ShowAbout => {
+                self.show_about = true;
+                return widget::focus_next()
+            }
+            Message::HideAbout => {
+                self.show_about = false;
+            }
+            Message::OpenWebLink(url) => {
+                if let Err(e) = webbrowser::open(&url) {
+                    debug!("Failed to open link: {}, error: {:?}", url, e);
+                }
             }
             Message::FontLoaded(_) => {}
             Message::OpenFolder(pane_index) => {
@@ -684,11 +736,65 @@ impl DataViewer {
 
     fn view(&self) -> Element<Message> {
         let container_all = ui_builder::build_ui(&self);
-        container_all
-        .height(Length::Fill)
-        .width(Length::Fill)
-        ////.center_x(Length::Fill)
-        .into()
+        let content = container_all
+            .height(Length::Fill)
+            .width(Length::Fill);
+
+        if self.show_about {
+            let about_content = container(
+                column![
+                    text("ViewSkater").size(25)
+                    .font(Font {
+                        family: iced::font::Family::Name("Roboto"),
+                        weight: iced::font::Weight::Bold,
+                        stretch: iced::font::Stretch::Normal,
+                        style: iced::font::Style::Normal,
+                    }),
+                    column![
+                        text("version 0.1.1").size(15),
+                        row![
+                            text("Author:  ").size(15),
+                            text("Gota Gando").size(15)
+                            .style(|theme: &Theme| {
+                                text::Style {
+                                    //color: Some(theme.extended_palette().primary.strong.text),
+                                    color: Some(theme.extended_palette().primary.strong.color),
+                                }
+                            })
+                        ],
+                        text("Learn more at:").size(15),
+                            button(
+                                text("https://github.com/ggand0/viewskater")
+                                    .size(18)
+                            )
+                            .style(|theme: &Theme, _status| {
+                                button::Style {
+                                    background: Some(iced::Color::TRANSPARENT.into()),
+                                    text_color: theme.extended_palette().primary.strong.color,
+                                    border: iced::Border {
+                                        color: iced::Color::TRANSPARENT,
+                                        width: 1.0,
+                                        radius: iced::border::Radius::new(0.0),
+                                    },
+                                    ..Default::default()
+                                }
+                            })
+                            .on_press(Message::OpenWebLink(
+                                "https://github.com/ggand0/viewskater".to_string(),
+                            )),
+                    ].spacing(4)
+                ]
+                .spacing(15)
+                .align_x(iced::Alignment::Center),
+                
+            )
+            .padding(20)
+            .style(container::rounded_box);
+
+            modal(content, about_content, Message::HideAbout)
+        } else {
+            content.into()
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -749,23 +855,16 @@ pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
 
 
 fn main() -> iced::Result {
-    Builder::from_default_env()
-        .format(|buf, record| {
-            let level_color = match record.level() {
-                Level::Trace => Color::White,
-                Level::Debug => Color::Blue,
-                Level::Info => Color::Green,
-                Level::Warn => Color::Yellow,
-                Level::Error => Color::Red,
-            };
-            let mut level_style = buf.style();
-            level_style.set_color(level_color);
+    // Set up panic hook to log to a file
+    let app_name = "viewskater";
+    //file_io::setup_logger(app_name);
+    //file_io::setup_panic_hook(app_name);
 
-            writeln!(buf,
-                "{} {}", level_style.value(record.level()), record.args()
-            )
-        })
-        .init();
+    // Initialize the logger and retrieve the shared log buffer
+    let shared_log_buffer = file_io::setup_logger(app_name);
+
+    // Set up the panic hook with the shared log buffer
+    file_io::setup_panic_hook(app_name, shared_log_buffer);
     
 
     // 0.10.0
@@ -824,4 +923,9 @@ fn main() -> iced::Result {
     .subscription(DataViewer::subscription)
     .settings(settings)
     .run_with(|| (DataViewer::new(), Task::none()))
+    .inspect_err(|err| error!("Runtime error: {}", err))?;
+
+    info!("Application exited");
+
+    Ok(())
 }
