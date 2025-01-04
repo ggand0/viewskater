@@ -29,7 +29,7 @@ use iced::{Element, Length, Theme, Settings, Pixels};
 use iced::Task;
 use iced::font::{self, Font};
 use iced::window;
-use iced::widget::{self, text, container, column, row};
+use iced::widget::{self, text, button, container, column, row};
 
 use std::path::PathBuf;
 #[allow(unused_imports)]
@@ -117,6 +117,7 @@ pub enum Message {
     ShowAbout,
     HideAbout,
     ShowLogs,
+    OpenWebLink(String),
     FontLoaded(Result<(), font::Error>),
     OpenFolder(usize),
     OpenFile(usize),
@@ -501,6 +502,11 @@ impl DataViewer {
             Message::HideAbout => {
                 self.show_about = false;
             }
+            Message::OpenWebLink(url) => {
+                if let Err(e) = webbrowser::open(&url) {
+                    debug!("Failed to open link: {}, error: {:?}", url, e);
+                }
+            }
             Message::FontLoaded(_) => {}
             Message::OpenFolder(pane_index) => {
                 return Task::perform(file_io::pick_folder(), move |result| {
@@ -757,14 +763,25 @@ impl DataViewer {
                             })
                         ],
                         text("Learn more at:").size(15),
-                        text("https://github.com/ggand0/viewskater")
-                            .size(15)
-                            .style(|theme: &Theme| {
-                                text::Style {
-                                    //color: Some(theme.extended_palette().primary.strong.text),
-                                    color: Some(theme.extended_palette().primary.strong.color),
+                            button(
+                                text("https://github.com/ggand0/viewskater")
+                                    .size(18)
+                            )
+                            .style(|theme: &Theme, _status| {
+                                button::Style {
+                                    background: Some(iced::Color::TRANSPARENT.into()),
+                                    text_color: theme.extended_palette().primary.strong.color,
+                                    border: iced::Border {
+                                        color: iced::Color::TRANSPARENT,
+                                        width: 1.0,
+                                        radius: iced::border::Radius::new(0.0),
+                                    },
+                                    ..Default::default()
                                 }
                             })
+                            .on_press(Message::OpenWebLink(
+                                "https://github.com/ggand0/viewskater".to_string(),
+                            )),
                     ].spacing(4)
                 ]
                 .spacing(15)
