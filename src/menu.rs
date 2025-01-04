@@ -228,7 +228,7 @@ pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::
     let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
     menu_tpl_2(
         menu_items!(
-            (labeled_button("About", MENU_ITEM_FONT_SIZE, Message::Nothing))
+            (labeled_button("About", MENU_ITEM_FONT_SIZE, Message::ShowAbout))
             (labeled_button("Show logs", MENU_ITEM_FONT_SIZE, Message::ShowLogs))
         )
     )

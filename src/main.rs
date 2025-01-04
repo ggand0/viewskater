@@ -29,6 +29,7 @@ use iced::{Element, Length, Theme, Settings, Pixels};
 use iced::Task;
 use iced::font::{self, Font};
 use iced::window;
+use iced::widget::{self, text, container, column, row};
 
 use std::path::PathBuf;
 #[allow(unused_imports)]
@@ -54,6 +55,7 @@ mod ui_builder;
 mod loading_status;
 mod loading;
 mod config;
+use crate::widgets::modal::modal;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -81,6 +83,7 @@ pub struct DataViewer {
     skate_right: bool,
     skate_left: bool,
     update_counter: u32,
+    show_about: bool,
 }
 
 impl Default for DataViewer {
@@ -102,6 +105,7 @@ impl Default for DataViewer {
             skate_right: false,
             skate_left: false,
             update_counter: 0,
+            show_about: false,
         }
     }
 }
@@ -110,6 +114,8 @@ impl Default for DataViewer {
 pub enum Message {
     Debug(String),
     Nothing,
+    ShowAbout,
+    HideAbout,
     ShowLogs,
     FontLoaded(Result<(), font::Error>),
     OpenFolder(usize),
@@ -149,6 +155,7 @@ impl DataViewer {
         self.loading_status = loading_status::LoadingStatus::default();
         self.skate_right = false;
         self.update_counter = 0;
+        self.show_about = false;
     }
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
@@ -484,8 +491,15 @@ impl DataViewer {
             Message::ShowLogs => {
                 let app_name = "viewskater";
                 let log_dir_path = file_io::get_log_directory(app_name);
-                std::fs::create_dir_all(log_dir_path.clone());
+                let _ = std::fs::create_dir_all(log_dir_path.clone());
                 self.open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
+            }
+            Message::ShowAbout => {
+                self.show_about = true;
+                return widget::focus_next()
+            }
+            Message::HideAbout => {
+                self.show_about = false;
             }
             Message::FontLoaded(_) => {}
             Message::OpenFolder(pane_index) => {
@@ -716,11 +730,54 @@ impl DataViewer {
 
     fn view(&self) -> Element<Message> {
         let container_all = ui_builder::build_ui(&self);
-        container_all
-        .height(Length::Fill)
-        .width(Length::Fill)
-        ////.center_x(Length::Fill)
-        .into()
+        let content = container_all
+            .height(Length::Fill)
+            .width(Length::Fill);
+
+        if self.show_about {
+            let about_content = container(
+                column![
+                    text("ViewSkater").size(25)
+                    .font(Font {
+                        family: iced::font::Family::Name("Roboto"),
+                        weight: iced::font::Weight::Bold,
+                        stretch: iced::font::Stretch::Normal,
+                        style: iced::font::Style::Normal,
+                    }),
+                    column![
+                        text("version 0.1.1").size(18),
+                        row![
+                            text("Author:  ").size(15),
+                            text("Gota Gando").size(15)
+                            .style(|theme: &Theme| {
+                                text::Style {
+                                    //color: Some(theme.extended_palette().primary.strong.text),
+                                    color: Some(theme.extended_palette().primary.strong.color),
+                                }
+                            })
+                        ],
+                        text("Learn more at:").size(15),
+                        text("https://github.com/ggand0/viewskater")
+                            .size(15)
+                            .style(|theme: &Theme| {
+                                text::Style {
+                                    //color: Some(theme.extended_palette().primary.strong.text),
+                                    color: Some(theme.extended_palette().primary.strong.color),
+                                }
+                            })
+                    ].spacing(4)
+                ]
+                .spacing(15)
+                .align_x(iced::Alignment::Center),
+                
+            )
+            .padding(20)
+            .style(container::rounded_box);
+
+            modal(content, about_content, Message::HideAbout)
+        } else {
+            content.into()
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {
