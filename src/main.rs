@@ -20,6 +20,7 @@ use macos::*;
 
 use std::path::PathBuf;
 use std::borrow::Cow;
+use std::sync::Arc;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -32,8 +33,11 @@ use iced::{
     window::{self, events},
 };
 
-mod image_cache;
-use crate::image_cache::LoadOperation;
+use wgpu;
+use pollster;
+
+mod cache;
+use crate::cache::img_cache::LoadOperation;
 mod navigation;
 use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
 mod file_io;
@@ -41,10 +45,13 @@ mod menu;
 use menu::PaneLayout;
 mod widgets;
 mod pane;
+use crate::pane::Pane;
 mod ui_builder;
 mod loading_status;
 mod loading;
 mod config;
+use crate::widgets::shader::scene::Scene;
+
 
 
 #[derive(Debug, Clone, Copy)]
@@ -72,10 +79,44 @@ pub struct DataViewer {
     skate_left: bool,
     update_counter: u32,
     show_about: bool,
+    device: Arc<wgpu::Device>,                     // Shared ownership using Arc
+    queue: Arc<wgpu::Queue>,                       // Shared ownership using Arc
+    is_gpu_supported: bool,
 }
 
 impl Default for DataViewer {
     fn default() -> Self {
+
+        // Check if the GPU supports the image format
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            dx12_shader_compiler: Default::default(),
+            flags: wgpu::InstanceFlags::empty(),
+            gles_minor_version: wgpu::Gles3MinorVersion::default(),
+        });
+
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }));
+
+        let (device, queue) = adapter
+            .as_ref()
+            .and_then(|adapter| {
+                let device_desc = wgpu::DeviceDescriptor {
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                    label: None,
+                    memory_hints: wgpu::MemoryHints::default(),
+                };
+                pollster::block_on(adapter.request_device(&device_desc, None)).ok()
+            })
+            .expect("Failed to create device and queue");
+
+        let is_gpu_supported = adapter.is_some();
+
+
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -94,6 +135,9 @@ impl Default for DataViewer {
             skate_left: false,
             update_counter: 0,
             show_about: false,
+            device: Arc::new(device),
+            queue: Arc::new(queue),
+            is_gpu_supported: is_gpu_supported,
         }
     }
 }
@@ -131,6 +175,10 @@ pub enum Message {
 }
 
 impl DataViewer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     fn reset_state(&mut self) {
         self.title = String::from("ViewSkater");
         self.directory_path = None;
@@ -150,12 +198,23 @@ impl DataViewer {
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
         debug!("last_opened_pane: {}", self.last_opened_pane);
 
-        let pane_file_lengths = self.panes.iter().map(|pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
+        let pane_file_lengths = self.panes.iter().map(
+            |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
         let pane = &mut self.panes[pane_index];
         debug!("pane_file_lengths: {:?}", pane_file_lengths);
-        pane.initialize_dir_path(
-            &self.pane_layout, &pane_file_lengths, pane_index, path, self.is_slider_dual, &mut self.slider_value);
 
+        pane.initialize_dir_path(
+            Arc::clone(&self.device),
+            Arc::clone(&self.queue),
+            self.is_gpu_supported,
+            &self.pane_layout,  // Pass the required &PaneLayout
+            &pane_file_lengths, // Pass &[usize]
+            pane_index,
+            path,
+            self.is_slider_dual,
+            &mut self.slider_value,
+        );
+    
         debug!("pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
         if pane_index >= self.panes.len() {
             self.panes.resize_with(pane_index + 1, || pane::Pane::default());
@@ -362,7 +421,9 @@ impl DataViewer {
     fn toggle_pane_layout(&mut self, pane_layout: PaneLayout) {
         match pane_layout {
             PaneLayout::SinglePane => {
-                self.panes.resize(1, Default::default());
+                //self.panes.resize(1, Default::default());
+                Pane::resize_panes(&mut self.panes, 1);
+
                 debug!("self.panes.len(): {}", self.panes.len());
 
                 if self.pane_layout == PaneLayout::DualPane {
@@ -373,7 +434,8 @@ impl DataViewer {
                 }
             }
             PaneLayout::DualPane => {
-                self.panes.resize(2, Default::default()); // Resize to hold 2 image caches
+                //self.panes.resize(2, Default::default()); // Resize to hold 2 image caches
+                Pane::resize_panes(&mut self.panes, 2);
                 debug!("self.panes.len(): {}", self.panes.len());
             }
         }
@@ -384,9 +446,7 @@ impl DataViewer {
         self.show_footer = !self.show_footer;
     }
 
-    pub fn new() -> Self {
-        Self::default()
-    }
+    
 
     fn title(&self) -> String {
         match self.pane_layout  {

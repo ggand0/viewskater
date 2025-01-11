@@ -7,6 +7,7 @@ use wgpu::Texture;
 use wgpu::util::DeviceExt;
 
 use std::path::Path;
+use std::sync::Arc;
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
@@ -15,19 +16,18 @@ use log::{debug, info, warn, error};
 use crate::loading_status::LoadingStatus;
 use crate::cache::img_cache::{LoadOperation, LoadOperationType};
 
+
 pub struct GpuImageCache {
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
 }
 
 impl GpuImageCache {
-    pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
-        Self {
-            device,
-            queue,
-        }
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+        Self { device, queue }
     }
 }
+
 
 impl ImageCacheBackend for GpuImageCache {
     fn load_image(&self, index: usize, image_paths: &[PathBuf]) -> Result<CachedData, io::Error> {

@@ -20,6 +20,7 @@ use crate::ui_builder::get_footer;
 use crate::Message;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::file_io;
 use crate::file_io::{is_file, is_directory, get_file_index};
@@ -32,7 +33,8 @@ use iced::{Element, Length};
 use crate::menu::PaneLayout;
 use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
 
-use crate::image_cache::ImageCache;
+use crate::cache::img_cache::ImageCache;
+use crate::widgets::shader::scene::Scene;
 
 use crate::config::CONFIG;
 
@@ -40,7 +42,7 @@ use crate::config::CONFIG;
 use log::{Level, debug, info, warn, error};
 
 
-#[derive(Clone)]
+//#[derive(Clone)]
 pub struct Pane {
     pub directory_path: Option<String>,
     pub dir_loaded: bool,
@@ -52,6 +54,7 @@ pub struct Pane {
     pub prev_slider_value: u16,
     pub is_selected: bool,
     pub is_selected_cache: bool,
+    scene: Scene,
 }
 
 impl Default for Pane {
@@ -67,6 +70,7 @@ impl Default for Pane {
             prev_slider_value: 0,
             is_selected: true,
             is_selected_cache: true,
+            scene: Scene::default(),
         }
     }
 }
@@ -85,13 +89,14 @@ impl Pane {
             prev_slider_value: 0,
             is_selected: true,
             is_selected_cache: true,
+            scene: Scene::default(),
         }
     }
 
     pub fn print_state(&self) {
         debug!("directory_path: {:?}, dir_loaded: {:?}, current_image: {:?}, is_next_image_loaded: {:?}, is_prev_image_loaded: {:?}, slider_value: {:?}, prev_slider_value: {:?}",
             self.directory_path, self.dir_loaded, self.current_image, self.is_next_image_loaded, self.is_prev_image_loaded, self.slider_value, self.prev_slider_value);
-        self.img_cache.print_state();
+        //self.img_cache.print_state();
     }
 
     pub fn reset_state(&mut self) {
@@ -103,6 +108,18 @@ impl Pane {
         self.is_next_image_loaded = true;
         self.slider_value = 0;
         self.prev_slider_value = 0;
+    }
+
+    pub fn resize_panes(panes: &mut Vec<Pane>, new_size: usize) {
+        if new_size > panes.len() {
+            // Add new panes
+            for _ in panes.len()..new_size {
+                panes.push(Pane::default());
+            }
+        } else if new_size < panes.len() {
+            // Truncate panes, preserving the first `new_size` elements
+            panes.truncate(new_size);
+        }
     }
 
     pub fn is_pane_cached_next(&self) -> bool {
@@ -135,7 +152,6 @@ impl Pane {
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
-            //let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
             let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
 
             self.current_image = handle;
@@ -203,9 +219,18 @@ impl Pane {
 
 
     #[allow(unused_assignments)]
-    pub fn initialize_dir_path(&mut self, pane_layout: &PaneLayout,
-        pane_file_lengths: &[usize], _pane_index: usize, path: PathBuf,
-        is_slider_dual: bool, slider_value: &mut u16) {
+    pub fn initialize_dir_path(
+        &mut self,
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        is_gpu_supported: bool,
+        pane_layout: &PaneLayout,
+        pane_file_lengths: &[usize],
+        pane_index: usize,
+        path: PathBuf,
+        is_slider_dual: bool,
+        slider_value: &mut u16,
+    ) {
         let mut _file_paths: Vec<PathBuf> = Vec::new();
         let initial_index: usize;
         let mut is_dir_size_bigger: bool = false;
@@ -285,21 +310,37 @@ impl Pane {
         self.dir_loaded = true;
 
         // Instantiate a new image cache and load the initial images
-        let mut img_cache =  ImageCache::new(
+        /*let mut img_cache =  ImageCache::new(
             _file_paths,
             CONFIG.cache_size,
             initial_index,
+            is_gpu_supported,
+            device.unwrap(),
         ).unwrap();
         img_cache.load_initial_images().unwrap();
         img_cache.print_cache();
-        
 
         let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
         let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-        self.current_image = handle;
+        self.current_image = handle;*/
+
+        // Instantiate a new image cache based on GPU support
+        let mut img_cache = ImageCache::new(
+            _file_paths,
+            CONFIG.cache_size,
+            is_gpu_supported,
+            Some(device),
+            Some(queue),
+        )
+        .unwrap();
+        
+        
+
+        // Load initial images into the cache
+        img_cache.load_initial_images().unwrap();
+        img_cache.print_cache();
 
         let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-        
         debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
         let current_slider_value = initial_index as u16;
         debug!("current_slider_value: {:?}", current_slider_value);

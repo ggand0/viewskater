@@ -19,6 +19,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::io;
 use std::collections::VecDeque;
+use std::sync::Arc;
+
 
 #[allow(unused_imports)]
 use std::time::Instant;
@@ -150,18 +152,19 @@ impl ImageCache {
         image_paths: Vec<PathBuf>,
         cache_count: usize,
         is_gpu_supported: bool,
-        device: Option<wgpu::Device>,
-        queue: Option<wgpu::Queue>,
+        device: Option<Arc<wgpu::Device>>,
+        queue: Option<Arc<wgpu::Queue>>,
     ) -> Result<Self, io::Error> {
         let backend: Box<dyn ImageCacheBackend> = if is_gpu_supported {
-            if let (Some(d), Some(q)) = (device, queue) {
-                Box::new(GpuImageCache { device: d, queue: q })
+            if let (Some(device), Some(queue)) = (device, queue) {
+                Box::new(GpuImageCache::new(device, queue))
             } else {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "GPU support enabled but device/queue not provided",
                 ));
             }
+
         } else {
             Box::new(CpuImageCache {})
         };
