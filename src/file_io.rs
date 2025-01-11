@@ -5,7 +5,7 @@ use tokio::io::AsyncReadExt;
 use std::ffi::OsStr;
 use rfd;
 use futures::future::join_all;
-use crate::image_cache::LoadOperation;
+use crate::cache::img_cache::LoadOperation;
 use tokio::time::Instant;
 
 #[allow(unused_imports)]

@@ -16,13 +16,14 @@ use other_os::*;
 use macos::*;
 
 use crate::pane;
-use crate::image_cache::{LoadOperation, LoadOperationType, load_images_by_operation, load_all_images_in_queue};
+use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_operation, load_all_images_in_queue};
 use crate::pane::{Pane, get_master_slider_value};
 use crate::menu::PaneLayout;
 use crate::loading_status::LoadingStatus;
 use crate::Message;
 use iced::Task;
 use std::io;
+use crate::cache::img_cache::{CachedData};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -150,14 +151,20 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
                 target_index = img_cache.cache_count;
                 img_cache.current_offset = 0;
             }
-            img_cache.cached_images[target_index] = Some(image);
+            ////img_cache.cached_data[target_index] = Some(image);
+            // use setter
+            img_cache.set_cached_data(target_index, image);
             img_cache.cached_image_indices[target_index] = pos as isize;
 
             img_cache.current_index = pos;
-            let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
-            // 0.10.0
-            //pane.current_image = iced::widget::image::Handle::from_memory(loaded_image);
-            // 0.13.1
+
+            ////let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
+
+            let loaded_image: Vec<u8> = vec![];     
+            if let CachedData::Cpu(ref data) = img_cache.get_initial_image().unwrap() {
+                let loaded_image = data.clone(); // Extract the Vec<u8>
+            }
+            
             pane.current_image = iced::widget::image::Handle::from_bytes(loaded_image);
 
             Ok(())

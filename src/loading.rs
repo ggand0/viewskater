@@ -19,9 +19,8 @@ use macos::*;
 use log::{debug, error};
 use crate::pane;
 use crate::loading_status::LoadingStatus;
-use crate::image_cache::LoadOperationType;
-use crate::image_cache::LoadOperation;
-
+use crate::cache::img_cache::{LoadOperation, LoadOperationType};
+use crate::cache::img_cache::{CachedData};
 
 pub fn handle_load_operation_all(
     panes: &mut Vec<pane::Pane>,
@@ -69,28 +68,45 @@ pub fn handle_load_operation_all(
 
         if let Some(target_image_to_load) = target_image_to_load {
             if target_image_to_load == target_index {
+                // Convert `Option<Vec<u8>>` to `Option<CachedData>`
+                let mut converted_data = image_data[pane_index]
+                    .clone()
+                    .map(CachedData::Cpu);
+
                 match op {
                     LoadOperation::LoadNext(..) => {
-                        cache.move_next(image_data[pane_index].clone(), target_index).unwrap();
+                        //cache.move_next(converted_data.clone(), target_index).unwrap();
+                        cache.move_next(Some(converted_data.take()).expect("Failed to move next"), target_index).unwrap();
                     }
                     LoadOperation::LoadPrevious(..) => {
-                        cache.move_prev(image_data[pane_index].clone(), target_index).unwrap();
+                        //cache.move_prev(converted_data.clone(), target_index).unwrap();
+                        cache.move_prev(Some(converted_data.take()).expect("Failed to move previous"), target_index).unwrap();
                     }
                     LoadOperation::ShiftNext(..) => {
-                        cache.move_next_edge(image_data[pane_index].clone(), target_index).unwrap();
+                        //cache.move_next_edge(converted_data.clone(), target_index).unwrap();
+                        cache.move_next_edge(Some(converted_data.take()).expect("Failed to move next edge"), target_index).unwrap();
                     }
                     LoadOperation::ShiftPrevious(..) => {
-                        cache.move_prev_edge(image_data[pane_index].clone(), target_index).unwrap();
+                        //cache.move_prev_edge(converted_data.clone(), target_index).unwrap();
+                        cache.move_prev_edge(Some(converted_data.take()).expect("Failed to move previous edge"), target_index).unwrap();
                     }
                     LoadOperation::LoadPos((_, ref _target_indices_and_cache)) => {
                         // LoadPos is covered in `handle_load_pos_operation()`
                     }
                 }
-                // Reload current image if necessary
+                /*
                 let loaded_image = cache.get_initial_image().unwrap().to_vec();
-                let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-                pane.current_image = handle;
+                    let handle = iced::widget::image::Hand
+                */
+
+                // Reload current image if necessary
+                if let CachedData::Cpu(ref data) = cache.get_initial_image().unwrap() {
+                    let loaded_image = data.clone(); // Extract the Vec<u8>
+                    let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
+                    pane.current_image = handle;
+                }
             }
+
         }
     }
 }
@@ -120,14 +136,22 @@ pub fn handle_load_pos_operation(
                     // Load the image data into the cache if available
                     if let Some(image) = image_data_opt {
                         // Store the loaded image data in the cache at the specified cache position
-                        cache.cached_images[*cache_pos] = Some(image.clone());
+                        //cache.get_cached_data()[*cache_pos] = Some(image.clone());
+                        cache.set_cached_data(*cache_pos, CachedData::Cpu(image.clone())) ;
                         cache.cached_image_indices[*cache_pos] = *target_index;
 
                         // If this is the current image, update the pane's current image
-                        if cache.current_index == target_index_usize {
+                        /*if cache.current_index == target_index_usize {
                             let loaded_image = cache.get_initial_image().unwrap().to_vec();
                             let handle = iced::widget::image::Handle::from_bytes(loaded_image);
                             pane.current_image = handle;
+                        }*/
+                        if cache.current_index == target_index_usize {
+                            if let CachedData::Cpu(ref data) = cache.get_initial_image().unwrap() {
+                                let loaded_image = data.clone(); // Extract the Vec<u8>
+                                let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
+                                pane.current_image = handle;
+                            }
                         }
                     } else {
                         debug!("No image data available for target index: {}", target_index);
