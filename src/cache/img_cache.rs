@@ -73,11 +73,18 @@ impl LoadOperation {
 }
 
 
-#[derive(Clone)]
+//#[derive(Clone)]
 pub enum CachedData {
     Cpu(Vec<u8>),          // CPU: Raw image bytes
     Gpu(wgpu::Texture),    // GPU: GPU textures
 }
+
+impl CachedData {
+    pub fn take(self) -> Option<Self> {
+        Some(self)
+    }
+}
+
 
 impl CachedData {
     pub fn len(&self) -> usize {
@@ -90,16 +97,7 @@ impl CachedData {
 
 
 pub trait ImageCacheBackend {
-    /*fn load_image(&self, path: &Path) -> Result<&CachedData, io::Error>;
-    fn load_pos(
-        &mut self,
-        new_data: Option<CachedData>,
-        pos: usize,
-        data_index: isize,
-    ) -> Result<bool, io::Error>;
-    fn load_initial_images(&mut self) -> Result<(), io::Error>;*/
-    fn load_image(&self, path: &Path) -> Result<CachedData, io::Error>;
-    fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error>;
+    fn load_image(&self, index: usize, image_paths: &[PathBuf]) -> Result<CachedData, io::Error>;
     fn load_initial_images(
         &mut self,
         image_paths: &[PathBuf],
@@ -107,30 +105,9 @@ pub trait ImageCacheBackend {
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,
         cached_image_indices: &mut Vec<isize>,
-        current_offset: &mut isize) -> Result<(), io::Error>;
-
-    /*fn get_current_image(&self) -> Result<&CachedData, io::Error>;
-    fn get_initial_image(&self) -> Result<&CachedData, io::Error>;
-    fn get_cached_data(&self) -> Option<&CachedData>;
-    fn move_next(&mut self, new_data: Option<CachedData>, image_index: isize) -> Result<bool, io::Error>;
-    fn move_prev(&mut self, new_data: Option<CachedData>, image_index: isize) -> Result<bool, io::Error>;
-    fn move_next_edge(
-        &mut self,
-        new_data: Option<CachedData>,
-        data_index: isize,
-    ) -> Result<bool, io::Error>;
-    fn move_prev_edge(
-        &mut self,
-        new_data: Option<CachedData>,
-        data_index: isize,
-    ) -> Result<bool, io::Error>;
-    
-    fn load_initial_images(&mut self) -> Result<(), io::Error>;
-    fn print_cache(&self);
-    fn clear_cache(&mut self);
-    fn is_some_at_index(&self, index: usize) -> bool;
-    fn is_cache_index_within_bounds(&self, index: usize) -> bool;
-    */
+        current_offset: &mut isize,
+    ) -> Result<(), io::Error>;
+    fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error>;
 }
 
 
@@ -147,8 +124,24 @@ pub struct ImageCache {
 
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
-    device: Option<wgpu::Device>,
-    queue: Option<wgpu::Queue>,
+}
+
+impl Default for ImageCache {
+    fn default() -> Self {
+        ImageCache {
+            image_paths: Vec::new(),
+            num_files: 0,
+            current_index: 0,
+            current_offset: 0,
+            cache_count: 0,
+            cached_image_indices: Vec::new(),
+            cache_states: Vec::new(),
+            loading_queue: VecDeque::new(),
+            being_loaded_queue: VecDeque::new(),
+            cached_data: Vec::new(),
+            backend: Box::new(CpuImageCache {}),
+        }
+    }
 }
 
 // Constructor, cached_data getter / setter, and type specific methods
@@ -161,10 +154,22 @@ impl ImageCache {
         queue: Option<wgpu::Queue>,
     ) -> Result<Self, io::Error> {
         let backend: Box<dyn ImageCacheBackend> = if is_gpu_supported {
-            Box::new(GpuImageCache {})
+            if let (Some(d), Some(q)) = (device, queue) {
+                Box::new(GpuImageCache { device: d, queue: q })
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "GPU support enabled but device/queue not provided",
+                ));
+            }
         } else {
             Box::new(CpuImageCache {})
         };
+
+        let mut cached_data = Vec::new();
+        for _ in 0..(cache_count * 2 + 1) {
+            cached_data.push(None);
+        }
 
         Ok(ImageCache {
             image_paths,
@@ -172,14 +177,12 @@ impl ImageCache {
             current_index: 0,
             current_offset: 0,
             cache_count,
-            cached_data: vec![None; cache_count * 2 + 1],
+            cached_data: cached_data,
             cached_image_indices: vec![-1; cache_count * 2 + 1],
             cache_states: vec![false; cache_count * 2 + 1],
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
             backend,
-            device,
-            queue,
         })
     }
 
@@ -194,14 +197,7 @@ impl ImageCache {
     }
 
     pub fn load_image(&self, index: usize) -> Result<CachedData, io::Error> {
-        if let Some(path) = self.image_paths.get(index) {
-            self.backend.load_image(path)
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Invalid image index",
-            ))
-        }
+        self.backend.load_image(index, &self.image_paths)
     }
 
     pub fn load_pos(
@@ -253,7 +249,12 @@ impl ImageCache {
 
     #[allow(dead_code)]
     pub fn clear_cache(&mut self) {
-        self.cached_data = vec![None; self.cache_count * 2 + 1];
+        let mut cached_data = Vec::new();
+        for _ in 0..(self.cache_count * 2 + 1) {
+            cached_data.push(None);
+        }
+        self.cached_data = cached_data;
+
         self.cache_states = vec![false; self.image_paths.len()];
     }
 
@@ -277,30 +278,6 @@ impl ImageCache {
         }
     }
 
-    /*pub fn move_next(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
-        if self.current_index < self.image_paths.len() - 1 {
-            // I used to change the current_offset here, but now it's done right after the rendering.
-            // The same goes with other move functions.
-            //self.current_index += 1;
-            //self.current_offset += 1;
-
-            //shift_cache_left(new_image);
-            shift_cache_left(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
-            Ok(false)
-        } else {
-            Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
-        }
-    }
-
-    pub fn move_prev(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
-        if self.current_index > 0 {
-            shift_cache_right(self.cached_data, self.cached_image_indices, new_image, &mut self.current_offset);
-            Ok(false)
-        } else {
-            Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
-        }
-    }*/
-
     pub fn move_next_edge(&mut self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             Ok(false)
@@ -308,8 +285,6 @@ impl ImageCache {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
         }
     }
-
-    
 
     pub fn move_prev_edge(&mut self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
@@ -521,8 +496,6 @@ impl ImageCache {
         }
         false
     }
-
-
 }
 
 
@@ -549,7 +522,7 @@ pub fn load_images_by_operation_slider(
                     }
 
                     // Store the target image at the specified cache position
-                    img_cache.cached_image_indices()[*cache_pos] = *target_index;
+                    img_cache.cached_image_indices[*cache_pos] = *target_index;
                 } else {
                     paths.push(None);
                 }
