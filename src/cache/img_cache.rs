@@ -28,9 +28,10 @@ use std::time::Instant;
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use wgpu;
+//use wgpu;
+use iced_wgpu::{wgpu, Renderer};
 
-use crate::Message;
+use crate::app::Message;
 use iced::Task;
 use crate::file_io::{load_images_async, empty_async_block_vec};
 use crate::loading_status::LoadingStatus;
@@ -75,7 +76,7 @@ impl LoadOperation {
 }
 
 
-//#[derive(Clone)]
+
 pub enum CachedData {
     Cpu(Vec<u8>),          // CPU: Raw image bytes
     Gpu(wgpu::Texture),    // GPU: GPU textures
@@ -93,6 +94,16 @@ impl CachedData {
         match self {
             CachedData::Cpu(data) => data.len(),
             CachedData::Gpu(_) => 0, // Placeholder for GPU texture size
+        }
+    }
+
+    pub fn as_vec(&self) -> Result<Vec<u8>, io::Error> {
+        match self {
+            CachedData::Cpu(data) => Ok(data.clone()),
+            CachedData::Gpu(_) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "GPU data cannot be converted to a Vec<u8>",
+            )),
         }
     }
 }

@@ -74,6 +74,9 @@ use std::borrow::Cow;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
+use iced_widget::text as widget_text;
+
+
 /// A toggler widget.
 ///
 /// # Example
@@ -494,12 +497,20 @@ where
                 let state: &widget::text::State<Renderer::Paragraph> =
                     tree.state.downcast_ref();
 
-                crate::iced::widget::text::draw(
+                /*crate::iced::widget::text::draw(
                     renderer,
                     _style,
                     label_layout,
                     state.0.raw(),
                     crate::iced::widget::text::Style::default(),
+                    viewport,
+                );*/
+                widget_text::draw(
+                    renderer,
+                    _style,
+                    label_layout,
+                    state.0.raw(),
+                    widget_text::Style::default(),
                     viewport,
                 );
             } else {

@@ -20,7 +20,7 @@ use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_o
 use crate::pane::{Pane, get_master_slider_value};
 use crate::menu::PaneLayout;
 use crate::loading_status::LoadingStatus;
-use crate::Message;
+use crate::app::Message;
 use iced::Task;
 use std::io;
 use crate::cache::img_cache::{CachedData};
@@ -618,7 +618,8 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
 }
 
 
-pub fn move_left_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingStatus, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize
+pub fn move_left_all(
+    panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingStatus, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize
 ) -> Task<Message> {
     debug!("##########MOVE_LEFT_ALL()##########");
 

@@ -18,10 +18,14 @@ use iced::{
     Color, Element
 };
 use iced::widget::{container, stack, mouse_area, center, opaque};
+use iced_wgpu::Renderer;
+use iced_winit::core::Theme as WinitTheme;
 
 pub fn modal<'a, Message>(
-    base: impl Into<Element<'a, Message>>,
-    content: impl Into<Element<'a, Message>>,
+    //base: impl Into<Element<'a, Message>>,
+    //content: impl Into<Element<'a, Message>>,
+    base: impl Into<Element<'a, Message, WinitTheme, Renderer>>,
+    content: impl Into<Element<'a, Message, WinitTheme, Renderer>>,
     on_blur: Message,
 ) -> Element<'a, Message>
 where

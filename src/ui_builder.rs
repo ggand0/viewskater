@@ -14,10 +14,16 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-use iced::widget::{container, row, column, horizontal_space, text, button};
-use iced::{Length, Color, alignment, Element, Alignment};
-use iced::alignment::Horizontal;
-use iced::font::Font;
+//use iced::widget::{container, row, column, horizontal_space, text, button, shader, center};
+use iced_widget::{container, row, column, Row, Column, horizontal_space, text, button, shader, center};
+//use iced::{Length, Color, alignment, Element, Alignment, Fill};
+//use iced::alignment::Horizontal;
+//use iced::font::Font;
+use iced_winit::core::{Color, Element, Length, Length::*, Alignment};
+use iced_winit::core::alignment;
+use iced_winit::core::alignment::Horizontal;
+use iced_winit::core::font::Font;
+
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -25,10 +31,15 @@ use log::{Level, debug, info, warn, error};
 use crate::widgets::{dualslider::DualSlider, viewer};
 use crate::pane;
 use crate::menu as app_menu;
-use crate::{Message, PaneLayout, DataViewer};
+use crate::{app::Message, PaneLayout, DataViewer};
+use crate::Scene;
+use iced_wgpu::Renderer;
+use iced_winit::core::Theme as WinitTheme;
+use iced_widget::Container;
 
 
-fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
+//fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
+fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
     const ICON_FONT: Font = Font::with_name("viewskater-fonts");
 
     text(codepoint)
@@ -37,15 +48,18 @@ fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
         .into()
 }
 
-fn file_copy_icon<'a, Message>() -> Element<'a, Message> {
+//fn file_copy_icon<'a, Message>() -> Element<'a, Message> {
+fn file_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer> {
     icon('\u{E804}')
 }
 
-fn folder_copy_icon<'a, Message>() -> Element<'a, Message> {
+//fn folder_copy_icon<'a, Message>() -> Element<'a, Message> {
+fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer> {
     icon('\u{E805}')
 }
 
-pub fn get_footer(footer_text: String, pane_index: usize) -> container::Container<'static, Message> {
+//pub fn get_footer(footer_text: String, pane_index: usize) -> container::Container<'static, Message> {
+pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message, WinitTheme, Renderer> {
     let copy_filename_button = button(file_copy_icon())
         .padding( iced::padding::all(2) )
         .class(crate::menu::ButtonClass::Labeled)
@@ -56,17 +70,20 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> container::Containe
         .class(crate::menu::ButtonClass::Labeled)
         .on_press(Message::CopyFilePath(pane_index));
 
-    container(
+    container::<Message, WinitTheme, Renderer>(
         row![
+        //Row::<Message, WinitTheme, Renderer>::new([
             copy_filepath_button,
             copy_filename_button,
-            text(footer_text)
+            Element::<'_, Message, WinitTheme, Renderer>::from(
+                text(footer_text)
                 .font(Font::MONOSPACE)
                 .style(|_theme| iced::widget::text::Style {
                     color: Some(Color::from([0.8, 0.8, 0.8])), // Wrap Color in a style configuration
                     ..Default::default()
                 })
                 .size(14)
+            )
         ]
         .align_y(Alignment::Center)
         .spacing(3),
@@ -79,7 +96,9 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> container::Containe
 
 
 /// Build the main UI layout
-pub fn build_ui(app: &DataViewer) -> container::Container<Message> {
+//pub fn build_ui(app: &DataViewer) -> container::Container<Message> {
+pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
+
     // Create the menu bar
     let mb = app_menu::build_menu(app);
 
@@ -108,39 +127,92 @@ pub fn build_ui(app: &DataViewer) -> container::Container<Message> {
                 container(text("")).height(0)
             };
 
+            ////let shader = shader(&app.scene).width(Fill).height(Fill);
+            let shader: iced_widget::Shader<Message, &Scene> = shader(
+                &app.panes[0].scene).width(Fill).height(Fill);
+                
             let first_img = if app.panes[0].dir_loaded {
-                container(
-                    column![
-                        viewer::Viewer::new(app.panes[0].current_image.clone())
-                            .width(Length::Fill)
-                            .height(Length::Fill),
-                        DualSlider::new(
+                container::<Message, WinitTheme, Renderer>(
+                    //column![
+                    column::<Message, WinitTheme, Renderer>([
+                        //viewer::Viewer::new(app.panes[0].current_image.clone())
+                        //    .width(Length::Fill)
+                        //    .height(Length::Fill),
+
+                        ////center(shader).into(),
+                        //center::<Message, WinitTheme, Renderer>(shader).into(),
+                        Element::<'_, Message, WinitTheme, Renderer>::from(
+                            center(shader)),
+
+
+
+                        /*DualSlider::new(
                             0..=(app.panes[0].img_cache.num_files - 1) as u16,
                             app.slider_value,
                             -1,
                             Message::SliderChanged,
                             Message::SliderReleased
                         )
-                        .width(Length::Fill),
-                        footer
-                    ],
+                        .width(Length::Fill),*/
+
+                        footer.into()
+                    ]),
                 )
             } else {
-                container(text(""))
+                ////container(text(""))
+                container::<Message, WinitTheme, Renderer>(text(""))
+
             };
 
-            container(
-                column![top_bar, first_img.width(Length::Fill)],
+            //container(
+            //    column![top_bar, first_img.width(Length::Fill)],
+            //)
+            /*container::<Message, WinitTheme, Renderer>(
+                //column![top_bar, first_img.width(Length::Fill)]
+                column::<Message, WinitTheme, Renderer>([
+                        top_bar, 
+                        //first_img.width(Length::Fill)])
+                        Element::<'_, Message, WinitTheme, Renderer>::from(first_img).width(Length::Fill),
+                    ]
+                )
+            )*/
+            /*let first_img_element: Element<'_, Message, WinitTheme, Renderer> = 
+                first_img.into();  // Ensures `first_img` matches expected type
+
+            container::<Message, WinitTheme, Renderer>(
+                column::<Message, WinitTheme, Renderer>([
+                    //top_bar,
+                    container::<Message, WinitTheme, Renderer>(first_img_element)
+                        .width(Length::Fill),
+                ])
+            )*/
+            let first_img_element: Element<'_, Message, WinitTheme, Renderer> = first_img.into(); 
+
+            container::<Message, WinitTheme, Renderer>(
+                column::<Message, WinitTheme, Renderer>([
+                    container::<Message, WinitTheme, Renderer>(first_img_element)
+                        .width(Length::Fill)
+                        .into(),  // Convert to Element
+                ])
             )
+
+
+            
+            
         }
         PaneLayout::DualPane => {
-            if app.is_slider_dual {
+            /*if app.is_slider_dual {
                 let panes = pane::build_ui_dual_pane_slider2(
                     &app.panes,
                     app.ver_divider_position,
                     app.show_footer,
                 );
-                container(column![top_bar, panes]).center_y(Length::Fill)
+                //container(column![top_bar, panes]).center_y(Length::Fill)
+                container::<Message, WinitTheme, Renderer>(
+                    //column![top_bar, panes]
+                    column::<Message, WinitTheme, Renderer>([top_bar, panes])
+                ).center_y(Length::Fill)
+                
             } else {
                 let panes = pane::build_ui_dual_pane_slider1(&app.panes, app.ver_divider_position);
 
@@ -172,7 +244,7 @@ pub fn build_ui(app: &DataViewer) -> container::Container<Message> {
                 );
 
                 if app.panes[0].dir_loaded || app.panes[1].dir_loaded {
-                    container(
+                    container::<Message, WinitTheme, Renderer>(
                         column![
                             top_bar,
                             panes,
@@ -182,9 +254,18 @@ pub fn build_ui(app: &DataViewer) -> container::Container<Message> {
                     )
                     .center_y(Length::Fill)
                 } else {
-                    container(column![top_bar, panes].spacing(25)).center_y(Length::Fill)
+                    //container(column![top_bar, panes].spacing(25)).center_y(Length::Fill)
+                    container::<Message, WinitTheme, Renderer>(
+                        column![top_bar, panes].spacing(25)
+                    ).center_y(Length::Fill)
+                
                 }
-            }
+            }*/
+
+            // debug: render dummy stuff here
+            container::<Message, WinitTheme, Renderer>(
+                text("DualPane")
+            )
         }
     };
 

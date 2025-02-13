@@ -17,7 +17,7 @@ use macos::*;
 
 //use crate::image_cache;
 use crate::ui_builder::get_footer;
-use crate::Message;
+use crate::app::Message;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,10 +25,14 @@ use std::sync::Arc;
 use crate::file_io;
 use crate::file_io::{is_file, is_directory, get_file_index};
 
-use iced::widget::{
-    container, column, text
-};
-use iced::{Element, Length};
+//use iced::widget::{container, column, text};
+//use iced::{Element, Length};
+use iced_widget::{container, row, column, text};
+use iced_winit::core::{Element, Length};
+use iced_wgpu::Renderer;
+use iced_winit::core::Theme as WinitTheme;
+use image::GenericImageView;
+
 
 use crate::menu::PaneLayout;
 use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
@@ -37,6 +41,7 @@ use crate::cache::img_cache::ImageCache;
 use crate::widgets::shader::scene::Scene;
 
 use crate::config::CONFIG;
+use iced_wgpu::{wgpu};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -54,7 +59,7 @@ pub struct Pane {
     pub prev_slider_value: u16,
     pub is_selected: bool,
     pub is_selected_cache: bool,
-    scene: Scene,
+    pub scene: Scene,
 }
 
 impl Default for Pane {
@@ -77,8 +82,8 @@ impl Default for Pane {
 
 impl Pane {
     #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+        /*Self {
             directory_path: None,
             dir_loaded: false,
             img_cache: ImageCache::default(),
@@ -90,6 +95,52 @@ impl Pane {
             is_selected: true,
             is_selected_cache: true,
             scene: Scene::default(),
+        }*/
+
+
+        let image_paths = vec![
+            "image.jpg",
+            //"image2.jpg",
+            //"image3.jpg",
+        ]; // Replace with actual image paths
+
+        let textures = image_paths
+            .iter()
+            .map(|&path| {
+                let (texture, dimensions) = Scene::create_texture_from_image(
+                    &device, &queue, path);
+                (Arc::new(texture), dimensions)
+            })
+            .collect::<Vec<_>>();
+
+        let image_data: Vec<(Vec<u8>, (u32, u32))> = image_paths
+            .into_iter()
+            .map(|img| {
+                let img = image::open(img).unwrap();
+                let rgba_image = img.to_rgba8();
+                let dimensions = img.dimensions();
+                (rgba_image.into_raw(), dimensions)
+            })
+            .collect();
+
+        println!("Loaded textures: {:?}", textures.iter().map(|(_, d)| d).collect::<Vec<_>>());
+        println!("Loaded image_data: {:?}", image_data.iter().map(|(_, d)| d).collect::<Vec<_>>());
+        
+
+        let scene = Scene::new(textures, image_data);
+
+        Self {
+            directory_path: None,
+            dir_loaded: false,
+            img_cache: ImageCache::default(),
+            current_image: iced::widget::image::Handle::from_bytes(vec![]),
+            is_next_image_loaded: true,
+            is_prev_image_loaded: true,
+            slider_value: 0,
+            prev_slider_value: 0,
+            is_selected: true,
+            is_selected_cache: true,
+            scene,
         }
     }
 
@@ -151,7 +202,12 @@ impl Pane {
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
-            let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
+            //let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
+            let loaded_image = img_cache
+                .get_image_by_index(next_image_index_to_render as usize)
+                .unwrap()
+                .as_vec()
+                .expect("Failed to convert CachedData to Vec<u8>");
             let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
 
             self.current_image = handle;
@@ -189,8 +245,12 @@ impl Pane {
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_render) {
-                let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
-                //let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
+                //let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
+                let loaded_image = img_cache
+                    .get_image_by_index(next_image_index_to_render as usize)
+                    .unwrap()
+                    .as_vec()
+                    .expect("Failed to convert CachedData to Vec<u8>");
                 let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
                 self.current_image = handle;
                 img_cache.current_offset -= 1;
@@ -333,8 +393,6 @@ impl Pane {
             Some(queue),
         )
         .unwrap();
-        
-        
 
         // Load initial images into the cache
         img_cache.load_initial_images().unwrap();
@@ -410,7 +468,10 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     pane.img_cache.current_index as usize
 }
 
-pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u16>) -> Element<Message> {
+/*pub fn build_ui_dual_pane_slider1(
+    panes: &[Pane], ver_divider_position: Option<u16>
+//) -> Element<Message> {
+) -> Element<Message, WinitTheme, Renderer> {
     let first_img: iced::widget::Container<Message>  = panes[0].build_ui_dual_pane_slider1();
     let second_img: iced::widget::Container<Message> = panes[1].build_ui_dual_pane_slider1();
 
@@ -430,7 +491,9 @@ pub fn build_ui_dual_pane_slider1(panes: &[Pane], ver_divider_position: Option<u
     .into()
 }
 
-pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u16>, show_footer: bool) -> Element<Message> {
+pub fn build_ui_dual_pane_slider2(
+    panes: &[Pane], ver_divider_position: Option<u16>, show_footer: bool
+) -> Element<Message, WinitTheme, Renderer> {
     let footer_texts = vec![
         format!(
             "{}/{}",
@@ -445,6 +508,7 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
     ];
 
     let first_img: iced::widget::Container<Message> = if panes[0].dir_loaded {
+        //container(
         container(
             if show_footer { column![
                 // NOTE: Wrapping the image in a container messes up the layout
@@ -535,4 +599,4 @@ pub fn build_ui_dual_pane_slider2(panes: &[Pane], ver_divider_position: Option<u
         Message::PaneSelected
     )
     .into()
-}
+}*/

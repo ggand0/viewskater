@@ -1,18 +1,19 @@
 use iced_wgpu::wgpu;
 use iced_wgpu::wgpu::util::DeviceExt;
-use image::image_dimensions;
+use std::sync::Arc;
+use iced_core::Rectangle;
 
 pub struct Pipeline {
     pipeline: wgpu::RenderPipeline,
     vertices: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
-    atlas_texture: wgpu::Texture, // Keep a reference to the texture for operations
     uniform_buffer: wgpu::Buffer,
     atlas_size: (u32, u32),
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     window_size: (u32, u32),
     screen_rect_buffer: wgpu::Buffer,
+    texture: Arc<wgpu::Texture>, // Store shared ownership of Texture
 }
 
 impl Pipeline {
@@ -20,13 +21,12 @@ impl Pipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         format: wgpu::TextureFormat,
-        image_data: Vec<(Vec<u8>, (u32, u32))>, // Vec of image data and dimensions
+        texture: Arc<wgpu::Texture>,
         atlas_size: (u32, u32),
         window_size: (u32, u32),
+        image_dimensions: (u32, u32),
     ) -> Self {
-
         let vertices: [f32; 16] = [
-            // positions    // tex_coords
             -1.0, -1.0, 0.0, 1.0, // bottom-left
              1.0, -1.0, 1.0, 1.0, // bottom-right
             -1.0,  1.0, 0.0, 0.0, // top-left
@@ -46,88 +46,26 @@ impl Pipeline {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-
-        // Initialize the texture atlas
-        let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Texture Atlas"),
-            size: wgpu::Extent3d {
-                width: atlas_size.0,
-                height: atlas_size.1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        // Write image data into the atlas
-        // NOTE: make sure image_data.clone() is not too resource expensive
-        /*for ((data, (width, height)), (offset_x, offset_y)) in image_data.clone().into_iter().zip(image_offsets.iter()) {
-            println!("offset_x: {}, offset_y: {}", offset_x, offset_y);
-            queue.1(
-                wgpu::ImageCopyTexture {
-                    texture: &atlas_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: *offset_x,
-                        y: *offset_y,
-                        z: 0,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &data,
-                wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: Some((width * 4).try_into().expect("Image width exceeds u32")),
-                    rows_per_image: None,
-                },
-                wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-            );
-        }*/
-        // Directly write the single image's data
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &atlas_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &image_data[0].0,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some((image_data[0].1 .0 * 4) as u32),
-                rows_per_image: None,
-            },
-            wgpu::Extent3d {
-                width: image_data[0].1 .0,
-                height: image_data[0].1 .1,
-                depth_or_array_layers: 1,
-            },
-        );
-        
-
-        // Create texture view and bind group
-        let texture_view = atlas_texture.create_view(
-            &wgpu::TextureViewDescriptor::default());
-
         // Uniform buffer for offsets and scaling
         //let (offset_x, offset_y) = image_offsets[0]; // Assuming starting with the first image
-        let (width, height) = image_data[0].1;      // Dimensions of the first image
+        //let (width, height) = image_data[0].1;      // Dimensions of the first image
+        let (width, height) = image_dimensions; // Dimensions of the first image
         let image_dimensions = (width, height);
 
-        // v1: scale texture to fit window
-        let uniform_data = [
+        // case 1: using atlas texture
+        /*let uniform_data = [
             0.0, //offset_x as f32 / atlas_size.0 as f32, // Normalized x offset within atlas
             0.0, //offset_y as f32 / atlas_size.1 as f32, // Normalized y offset within atlas
             image_dimensions.0 as f32 / atlas_size.0 as f32, // Scale x (width relative to the atlas)
             image_dimensions.1 as f32 / atlas_size.1 as f32, // Scale y (height relative to the atlas)
+        ];*/
+
+        // case 2: using individual textures
+        let uniform_data = [
+            0.0, //offset_x as f32 / atlas_size.0 as f32, // Normalized x offset within atlas
+            0.0, //offset_y as f32 / atlas_size.1 as f32, // Normalized y offset within atlas
+            1.0, // Scale x (width relative to the atlas)
+            1.0, // Scale y (height relative to the atlas)
         ];
         println!("atlas_size: {:?}", atlas_size); // atlas_size: (8192, 8192)
         println!("image_dimensions: {:?}", image_dimensions);
@@ -198,7 +136,8 @@ impl Pipeline {
 
 
         // Calculate the scaled image dimensions to respect the aspect ratio
-        let (image_width, image_height) = image_data[0].1;
+        //let (image_width, image_height) = image_data[0].1;
+        let (image_width, image_height) = image_dimensions;
         let window_width = window_size.0 as f32;
         let window_height = window_size.1 as f32;
 
@@ -257,6 +196,7 @@ impl Pipeline {
         });
 
 
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &bind_group_layout,
             entries: &[
@@ -341,17 +281,19 @@ impl Pipeline {
             pipeline,
             vertices: vertex_buffer,
             bind_group,
-            atlas_texture,
+            //atlas_texture,
             uniform_buffer,
             atlas_size,
             index_buffer,
             num_indices: indices.len() as u32,
             window_size,
             screen_rect_buffer,
+            texture,
         }
+    
     }
 
-    // v1: scale texture to fit window
+
     pub fn update_uniforms(
         &self,
         queue: &wgpu::Queue, // Pass the queue as a parameter
@@ -384,17 +326,25 @@ impl Pipeline {
         let offset_y = (window_size.1 as f32 - scaled_height) / 2.0;
         
 
-        let uniform_data = [
+        /*let uniform_data = [
             image_offset.0 as f32 / atlas_size.0 as f32, // Normalized x offset within atlas
             image_offset.1 as f32 / atlas_size.1 as f32, // Normalized y offset within atlas
             image_dimensions.0 as f32 / atlas_size.0 as f32, // Scale x (width relative to the atlas)
             image_dimensions.1 as f32 / atlas_size.1 as f32, // Scale y (height relative to the atlas)
+        ];*/
+
+        // case 2: using individual textures
+        let uniform_data = [
+            0.0, //offset_x as f32 / atlas_size.0 as f32, // Normalized x offset within atlas
+            0.0, //offset_y as f32 / atlas_size.1 as f32, // Normalized y offset within atlas
+            1.0, // Scale x (width relative to the atlas)
+            1.0, // Scale y (height relative to the atlas)
         ];
 
             
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&uniform_data));
     }
-    
+
     pub fn update_screen_uniforms(
         &self,
         queue: &wgpu::Queue,
@@ -447,7 +397,13 @@ impl Pipeline {
         );
     }
 
-    pub fn render(&self, target: &wgpu::TextureView, encoder: &mut wgpu::CommandEncoder) {
+
+    pub fn render(
+        &self,
+        target: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+        clip_bounds: &Rectangle<u32>,
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -462,6 +418,13 @@ impl Pipeline {
             occlusion_query_set: None,
             timestamp_writes: None,
         });
+
+        pass.set_scissor_rect(
+            clip_bounds.x,
+            clip_bounds.y,
+            clip_bounds.width,
+            clip_bounds.height,
+        );
 
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);

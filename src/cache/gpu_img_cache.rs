@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::io;
-use wgpu;
+//use wgpu;
+use iced_wgpu::{wgpu, Renderer};
 use crate::cache::img_cache::{ImageCache, CachedData, ImageCacheBackend};
 use crate::cache::cache_utils::{shift_cache_left, shift_cache_right, load_pos};
 use wgpu::Texture;
@@ -8,6 +9,7 @@ use wgpu::util::DeviceExt;
 
 use std::path::Path;
 use std::sync::Arc;
+
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};

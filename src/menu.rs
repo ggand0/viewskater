@@ -30,7 +30,7 @@ use iced_aw::{menu_bar, menu_items};
 use iced_aw::MenuBar;
 use iced_aw::style::{menu_bar::primary, Status};
 
-use crate::{Message, DataViewer};
+use crate::{app::Message, DataViewer};
 use crate::widgets::toggler;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
