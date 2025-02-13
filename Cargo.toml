@@ -26,6 +26,7 @@ bytemuck = { version = "1.0", features = ["derive"] }
 iced_wgpu = "0.13.5"
 wgpu = "23.0"
 pollster = "0.4.0"
+tracing-subscriber = "0.3"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "69a425da03f227a8fd0e654eeb1e2d8c271e4411", features = [
@@ -34,6 +35,11 @@ iced_aw_custom = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw
     "menu", "quad" ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+iced_winit = "0.13"
+iced_wgpu = "0.13.5"
+iced_widget = { version = "0.13", features = ["wgpu"] }
+iced_core = "0.13"
+
 iced = {version = "0.13", features = ["image", "tokio", "svg", "lazy", "debug"]}
 iced_aw = { version = "0.11.0", features = [
     "menu",
