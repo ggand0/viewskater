@@ -105,16 +105,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
 
-    /*let first_img = {        
-        let shader_widget = shader(&app.panes[0].scene)
-            .width(Fill)
-            .height(Fill);
-
-        container(center(shader_widget))
-            .width(Length::Fill)
-            .height(Length::Fill)
-    };*/
-    let first_img = {
+    /*let first_img = {
         let shader_widget = app.panes[0].scene.as_ref().map_or_else(
             || container(text("No image loaded")),
             |scene| {
@@ -128,7 +119,23 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         );
     
         shader_widget
+    };*/
+    let first_img = if app.panes[0].dir_loaded {
+        if let Some(scene) = &app.panes[0].scene {
+            let shader_widget = shader(scene)
+                .width(Fill)
+                .height(Fill);
+    
+            container(center(shader_widget))
+                .width(Length::Fill)
+                .height(Length::Fill)
+        } else {
+            container(text("No image loaded"))
+        }
+    } else {
+        container(text(""))
     };
+    
     
 
     let footer = if app.show_footer {

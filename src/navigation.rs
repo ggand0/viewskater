@@ -23,6 +23,7 @@ use crate::loading_status::LoadingStatus;
 use crate::app::Message;
 use iced::Task;
 use std::io;
+use crate::Arc;
 use crate::cache::img_cache::{CachedData};
 
 #[allow(unused_imports)]
@@ -151,21 +152,30 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
                 target_index = img_cache.cache_count;
                 img_cache.current_offset = 0;
             }
-            ////img_cache.cached_data[target_index] = Some(image);
-            // use setter
+
             img_cache.set_cached_data(target_index, image);
             img_cache.cached_image_indices[target_index] = pos as isize;
-
             img_cache.current_index = pos;
 
-            ////let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
-
-            let loaded_image: Vec<u8> = vec![];     
-            if let CachedData::Cpu(ref data) = img_cache.get_initial_image().unwrap() {
-                let loaded_image = data.clone(); // Extract the Vec<u8>
+            //if let CachedData::Cpu(ref data) = img_cache.get_initial_image().unwrap() {
+            //    pane.current_image = CachedData::Cpu(data.clone()); // ✅ Correct assignment
+            //}
+            // Retrieve the newly loaded image from cache
+            if let Ok(cached_image) = img_cache.get_initial_image() {
+                match cached_image {
+                    CachedData::Cpu(data) => {
+                        debug!("Setting CPU image as current_image");
+                        pane.current_image = CachedData::Cpu(data.clone());
+                    }
+                    CachedData::Gpu(texture) => {
+                        debug!("Setting GPU texture as current_image");
+                        pane.current_image = CachedData::Gpu(Arc::clone(texture));
+                    }
+                }
+            } else {
+                debug!("Failed to retrieve cached image after loading.");
             }
-            
-            pane.current_image = iced::widget::image::Handle::from_bytes(loaded_image);
+
 
             Ok(())
         }

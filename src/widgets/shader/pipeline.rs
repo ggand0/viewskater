@@ -8,7 +8,7 @@ pub struct Pipeline {
     vertex_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
-    atlas_size: (u32, u32),
+    //atlas_size: (u32, u32),
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     window_size: (u32, u32),
@@ -23,7 +23,7 @@ impl Pipeline {
         queue: &wgpu::Queue,
         format: wgpu::TextureFormat,
         texture: Arc<wgpu::Texture>,
-        atlas_size: (u32, u32),
+        //atlas_size: (u32, u32),
         window_size: (u32, u32),
         image_dimensions: (u32, u32),
         bounds_relative: (f32, f32, f32, f32), // Pass the shader widget bounds
@@ -262,7 +262,7 @@ impl Pipeline {
             vertex_buffer: vertex_buffer,
             bind_group,
             uniform_buffer,
-            atlas_size,
+            //atlas_size,
             index_buffer,
             num_indices: indices.len() as u32,
             window_size,
@@ -279,7 +279,7 @@ impl Pipeline {
         image_offset: (u32, u32),
         image_dimensions: (u32, u32),
         window_size: (u32, u32),
-        atlas_size: (u32, u32),
+        //atlas_size: (u32, u32),
     ) {
         let scale_x = image_dimensions.0 as f32 / window_size.0 as f32;
         let scale_y = image_dimensions.1 as f32 / window_size.1 as f32;

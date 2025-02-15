@@ -79,7 +79,7 @@ impl LoadOperation {
 
 pub enum CachedData {
     Cpu(Vec<u8>),          // CPU: Raw image bytes
-    Gpu(wgpu::Texture),    // GPU: GPU textures
+    Gpu(Arc<wgpu::Texture>),    // GPU: Use Arc to allow cloning
 }
 
 impl CachedData {
@@ -88,12 +88,16 @@ impl CachedData {
     }
 }
 
-
 impl CachedData {
     pub fn len(&self) -> usize {
         match self {
             CachedData::Cpu(data) => data.len(),
-            CachedData::Gpu(_) => 0, // Placeholder for GPU texture size
+            //CachedData::Gpu(_) => 0, // Placeholder for GPU texture size
+            CachedData::Gpu(texture) => {
+                let width = texture.width();
+                let height = texture.height();
+                4 * (width as usize) * (height as usize) // 4 bytes per pixel (RGBA8)
+            }
         }
     }
 
@@ -107,7 +111,6 @@ impl CachedData {
         }
     }
 }
-
 
 pub trait ImageCacheBackend {
     fn load_image(&self, index: usize, image_paths: &[PathBuf]) -> Result<CachedData, io::Error>;
@@ -309,8 +312,13 @@ impl ImageCache {
     }
 
     pub fn get_initial_image(&self) -> Result<&CachedData, io::Error> {
+        debug!("get_initial_image - current_index: {}", self.current_index);
         let cache_index = (self.cache_count as isize + self.current_offset) as usize;
+        debug!("get_initial_image - cache_index: {}", cache_index);
+        debug!("get_initial_image - cached_data.len(): {}", self.cached_data.len());
+        
         if let Some(image_data_option) = self.cached_data.get(cache_index) {
+            debug!("get_initial_image2");
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
@@ -325,7 +333,29 @@ impl ImageCache {
                 "Invalid cache index",
             ))
         }
-    }
+    }/**/
+
+    /*pub fn get_initial_image(&self) -> Result<&CachedData, io::Error> {
+        debug!("get_initial_image - current_index: {}, cache_count: {}, current_offset: {}", 
+            self.current_index, self.cache_count, self.current_offset);
+    
+        let cache_index = self.cached_image_indices.iter()
+            .position(|&idx| idx == self.current_index as isize);
+    
+        if let Some(cache_index) = cache_index {
+            debug!("get_initial_image - Found current_index at cache position: {}", cache_index);
+            if let Some(image_data) = &self.cached_data[cache_index] {
+                return Ok(image_data);
+            } else {
+                debug!("get_initial_image - Cache entry found but empty!");
+                return Err(io::Error::new(io::ErrorKind::Other, "Image data is not cached"));
+            }
+        } else {
+            debug!("get_initial_image - current_index not found in cached_image_indices!");
+            return Err(io::Error::new(io::ErrorKind::Other, "Invalid cache index"));
+        }
+    }*/
+    
 
     #[allow(dead_code)]
     pub fn get_current_image(&self) -> Result<&CachedData, io::Error> {

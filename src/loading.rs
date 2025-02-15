@@ -17,6 +17,7 @@ use macos::*;
 
 #[allow(unused_imports)]
 use log::{debug, error};
+use crate::Arc;
 use crate::pane;
 use crate::loading_status::LoadingStatus;
 use crate::cache::img_cache::{LoadOperation, LoadOperationType};
@@ -94,17 +95,21 @@ pub fn handle_load_operation_all(
                         // LoadPos is covered in `handle_load_pos_operation()`
                     }
                 }
-                /*
-                let loaded_image = cache.get_initial_image().unwrap().to_vec();
-                    let handle = iced::widget::image::Hand
-                */
 
                 // Reload current image if necessary
-                if let CachedData::Cpu(ref data) = cache.get_initial_image().unwrap() {
-                    let loaded_image = data.clone(); // Extract the Vec<u8>
-                    let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-                    pane.current_image = handle;
+                if let Ok(cached_image) = cache.get_initial_image() {
+                    match cached_image {
+                        CachedData::Cpu(data) => {
+                            debug!("Setting CPU image as current_image");
+                            pane.current_image = CachedData::Cpu(data.clone());
+                        }
+                        CachedData::Gpu(texture) => {
+                            debug!("Setting GPU texture as current_image");
+                            pane.current_image = CachedData::Gpu(Arc::clone(&texture));
+                        }
+                    }
                 }
+
             }
 
         }
@@ -147,11 +152,20 @@ pub fn handle_load_pos_operation(
                             pane.current_image = handle;
                         }*/
                         if cache.current_index == target_index_usize {
-                            if let CachedData::Cpu(ref data) = cache.get_initial_image().unwrap() {
-                                let loaded_image = data.clone(); // Extract the Vec<u8>
-                                let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-                                pane.current_image = handle;
+                            // Reload current image if necessary
+                            if let Ok(cached_image) = cache.get_initial_image() {
+                                match cached_image {
+                                    CachedData::Cpu(data) => {
+                                        debug!("Setting CPU image as current_image");
+                                        pane.current_image = CachedData::Cpu(data.clone());
+                                    }
+                                    CachedData::Gpu(texture) => {
+                                        debug!("Setting GPU texture as current_image");
+                                        pane.current_image = CachedData::Gpu(Arc::clone(&texture));
+                                    }
+                                }
                             }
+
                         }
                     } else {
                         debug!("No image data available for target index: {}", target_index);

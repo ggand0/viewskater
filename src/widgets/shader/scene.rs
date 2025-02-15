@@ -5,108 +5,136 @@ use crate::widgets::shader::pipeline::Pipeline;
 use image::GenericImageView;
 use std::sync::Arc;
 
+use crate::cache::img_cache::CachedData;
+
 pub struct Scene {
-    pub current_image_index: usize,
-    pub atlas_size: (u32, u32),
-    pub textures: Vec<(Arc<wgpu::Texture>, (u32, u32))>, // Store textures only
-    pub image_data: Vec<(Vec<u8>, (u32, u32))>, // Store the image data
-    pub pending_window_size: Option<(u32, u32)>
+    pub texture: Option<Arc<wgpu::Texture>>, // Store the active texture
+    pub texture_size: (u32, u32),            // Store texture dimensions
 }
 
 impl Scene {
-    pub fn new(textures: Vec<(Arc<wgpu::Texture>, (u32, u32))>,
-    image_data: Vec<(Vec<u8>, (u32, u32))>,
-) -> Self {
-        let atlas_size = (8192, 8192);
-        Self {
-            current_image_index: 0,
-            atlas_size,
-            textures,
-            image_data,
-            pending_window_size: None,
-        }
+    pub fn new(initial_image: Option<&CachedData>) -> Self {
+        let (texture, texture_size) = match initial_image {
+            Some(CachedData::Gpu(tex)) => (
+                Some(Arc::clone(tex)), (tex.width(), tex.height())
+            ),
+            _ => (None, (0, 0)), // Default to (0,0) if no texture
+        };
+        println!("Scene::new: texture_size: {:?}", texture_size);
+
+        Scene { texture, texture_size }
     }
 
-    pub fn set_current_image(&mut self, index: usize) {
-        self.current_image_index = index;
+    pub fn update_texture(&mut self, new_texture: Arc<wgpu::Texture>) {
+        self.texture = Some(new_texture);
     }
 
-    pub fn create_texture_from_image(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        image_path: &str,
-    ) -> (wgpu::Texture, (u32, u32)) {
-        let image = image::open(image_path).expect("Failed to load image");
-        let rgba_image = image.to_rgba8();
-        let dimensions = image.dimensions();
-
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Image Texture"),
-            size: wgpu::Extent3d {
-                width: dimensions.0,
-                height: dimensions.1,
-                //width: 8192,
-                //height: 8192,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rgba_image,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * dimensions.0),
-                rows_per_image: None,
-            },
-            wgpu::Extent3d {
-                width: dimensions.0,
-                height: dimensions.1,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        (texture, dimensions)
-    }
 
 }
 
 #[derive(Debug)]
 pub struct Primitive {
-    current_texture_index: usize,
-    atlas_size: (u32, u32),
-    textures: Vec<(Arc<wgpu::Texture>, (u32, u32))>, // Include dimensions
+    texture: Arc<wgpu::Texture>,
+    texture_size: (u32, u32),
     bounds: Rectangle,
 }
 
 impl Primitive {
     pub fn new(
-        current_texture_index: usize,
-        atlas_size: (u32, u32),
-        textures: Vec<(Arc<wgpu::Texture>, (u32, u32))>,
+        texture: Arc<wgpu::Texture>,
+        texture_size: (u32, u32),
         bounds: Rectangle,
     ) -> Self {
         Self {
-            current_texture_index,
-            atlas_size,
-            textures,
+            texture,
+            texture_size,
             bounds,
         }
     }
 }
 
 impl shader::Primitive for Primitive {
+    fn prepare(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        storage: &mut shader::Storage,
+        bounds: &Rectangle,
+        viewport: &Viewport,
+    ) {
+        let scale_factor = viewport.scale_factor() as f32;
+        let viewport_size = viewport.physical_size();
+
+        let shader_size = (
+            (bounds.width * scale_factor) as u32,
+            (bounds.height * scale_factor) as u32,
+        );
+
+        let bounds_relative = (
+            (bounds.x * scale_factor) / viewport_size.width as f32,
+            (bounds.y * scale_factor) / viewport_size.height as f32,
+            (bounds.width * scale_factor) / viewport_size.width as f32,
+            (bounds.height * scale_factor) / viewport_size.height as f32,
+        );
+
+        if !storage.has::<Pipeline>() {
+            storage.store(Pipeline::new(
+                device,
+                queue,
+                format,
+                self.texture.clone(), // ✅ Use the current texture
+                //elf.atlas_size,
+                shader_size,
+                self.texture_size,
+                bounds_relative,
+            ));
+        } else {
+            let pipeline = storage.get_mut::<Pipeline>().unwrap();
+
+            pipeline.update_vertices(device, bounds_relative);
+            pipeline.update_texture(device, queue, self.texture.clone()); // ✅ Update with current texture
+            pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
+        }
+    }
+
+    fn render(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        storage: &shader::Storage,
+        target: &wgpu::TextureView,
+        clip_bounds: &Rectangle<u32>,
+    ) {
+        let pipeline = storage.get::<Pipeline>().unwrap();
+        pipeline.render(target, encoder, clip_bounds);
+    }
+}
+
+impl<Message> shader::Program<Message> for Scene {
+    type State = ();
+    type Primitive = Primitive;
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        _cursor: mouse::Cursor,
+        bounds: Rectangle,
+    ) -> Self::Primitive {
+        if let Some(texture) = &self.texture {
+            Primitive::new(
+                Arc::clone(texture),  // ✅ Pass the current GPU texture
+                self.texture_size,    // ✅ Pass the correct dimensions
+                bounds,
+            )
+        } else {
+            panic!("No texture available for rendering in Scene!");
+        }
+    }
+}
+
+
+
+/*impl shader::Primitive for Primitive {
     fn prepare(
         &self,
         device: &iced_wgpu::wgpu::Device,
@@ -231,4 +259,4 @@ impl<Message> shader::Program<Message> for Scene {
             bounds,
         )
     }
-}
+}*/

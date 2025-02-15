@@ -38,6 +38,7 @@ use crate::menu::PaneLayout;
 use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
 
 use crate::cache::img_cache::ImageCache;
+use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::scene::Scene;
 
 use crate::config::CONFIG;
@@ -52,7 +53,7 @@ pub struct Pane {
     pub directory_path: Option<String>,
     pub dir_loaded: bool,
     pub img_cache: ImageCache,
-    pub current_image: iced::widget::image::Handle,
+    pub current_image: CachedData, // <-- Now stores either CPU or GPU image
     pub is_next_image_loaded: bool, // whether the next image in cache is loaded
     pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
     pub slider_value: u16,
@@ -69,7 +70,7 @@ impl Default for Pane {
             directory_path: None,
             dir_loaded: false,
             img_cache: ImageCache::default(),
-            current_image: iced::widget::image::Handle::from_bytes(vec![]),
+            current_image: CachedData::Cpu(vec![]), // Default to empty CPU image
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -84,22 +85,8 @@ impl Default for Pane {
 impl Pane {
     #[allow(dead_code)]
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
-        /*Self {
-            directory_path: None,
-            dir_loaded: false,
-            img_cache: ImageCache::default(),
-            current_image: iced::widget::image::Handle::from_bytes(vec![]),
-            is_next_image_loaded: true,
-            is_prev_image_loaded: true,
-            slider_value: 0,
-            prev_slider_value: 0,
-            is_selected: true,
-            is_selected_cache: true,
-            scene: Scene::default(),
-        }*/
-
-
-        let image_paths = vec![
+        // debuggign with sample image
+        /*let image_paths = vec![
             "image.jpg",
             //"image2.jpg",
             //"image3.jpg",
@@ -126,15 +113,17 @@ impl Pane {
 
         println!("Loaded textures: {:?}", textures.iter().map(|(_, d)| d).collect::<Vec<_>>());
         println!("Loaded image_data: {:?}", image_data.iter().map(|(_, d)| d).collect::<Vec<_>>());
-        
 
-        let scene = Scene::new(textures, image_data);
+        let scene = Scene::new(textures, image_data);*/
+
+        let scene = Scene::new(None);
+
 
         Self {
             directory_path: None,
             dir_loaded: false,
             img_cache: ImageCache::default(),
-            current_image: iced::widget::image::Handle::from_bytes(vec![]),
+            current_image: CachedData::Cpu(vec![]),
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -146,8 +135,9 @@ impl Pane {
     }
 
     pub fn print_state(&self) {
-        debug!("directory_path: {:?}, dir_loaded: {:?}, current_image: {:?}, is_next_image_loaded: {:?}, is_prev_image_loaded: {:?}, slider_value: {:?}, prev_slider_value: {:?}",
-            self.directory_path, self.dir_loaded, self.current_image, self.is_next_image_loaded, self.is_prev_image_loaded, self.slider_value, self.prev_slider_value);
+        debug!("directory_path: {:?}, dir_loaded: {:?}, is_next_image_loaded: {:?}, is_prev_image_loaded: {:?}, slider_value: {:?}, prev_slider_value: {:?}",
+            self.directory_path, self.dir_loaded, self.is_next_image_loaded, self.is_prev_image_loaded, self.slider_value, self.prev_slider_value);
+        // TODO: print `current_image` too
         //self.img_cache.print_state();
     }
 
@@ -155,8 +145,7 @@ impl Pane {
         self.directory_path = None;
         self.dir_loaded = false;
         self.img_cache = ImageCache::default();
-        //self.current_image = iced::widget::image::Handle::from_bytes(vec![]);
-        self.current_image = iced::widget::image::Handle::from_bytes(vec![]);
+        self.current_image = CachedData::Cpu(vec![]);
         self.is_next_image_loaded = true;
         self.slider_value = 0;
         self.prev_slider_value = 0;
@@ -203,15 +192,33 @@ impl Pane {
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
-            //let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
-            let loaded_image = img_cache
+            /*let loaded_image = img_cache
                 .get_image_by_index(next_image_index_to_render as usize)
                 .unwrap()
                 .as_vec()
                 .expect("Failed to convert CachedData to Vec<u8>");
             let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
+            self.current_image = handle;*/
 
-            self.current_image = handle;
+            // Retrieve the cached image (GPU or CPU)
+            if let Ok(cached_image) = img_cache.get_image_by_index(next_image_index_to_render as usize) {
+                match cached_image {
+                    CachedData::Cpu(image_bytes) => {
+                        debug!("Setting CPU image as current_image");
+                        self.current_image = CachedData::Cpu(image_bytes.clone());
+                    }
+                    CachedData::Gpu(texture) => {
+                        debug!("Setting GPU texture as current_image");
+                        self.current_image = CachedData::Gpu(Arc::clone(&texture)); // ✅ Borrow before cloning
+                    }
+                }
+            } else {
+                debug!("Failed to retrieve next cached image.");
+                return false;
+            }
+
+
+
             img_cache.current_offset += 1;
 
             // Since the next image is loaded and rendered, mark the is_next_image_loaded flag
@@ -246,14 +253,32 @@ impl Pane {
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_render) {
-                //let loaded_image = img_cache.get_image_by_index(next_image_index_to_render as usize).unwrap().to_vec();
-                let loaded_image = img_cache
+
+                /*let loaded_image = img_cache
                     .get_image_by_index(next_image_index_to_render as usize)
                     .unwrap()
                     .as_vec()
                     .expect("Failed to convert CachedData to Vec<u8>");
                 let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-                self.current_image = handle;
+                self.current_image = handle;*/
+                // Retrieve the cached image (GPU or CPU)
+                if let Ok(cached_image) = img_cache.get_image_by_index(next_image_index_to_render as usize) {
+                    match cached_image {
+                        CachedData::Cpu(image_bytes) => {
+                            debug!("Setting CPU image as current_image");
+                            self.current_image = CachedData::Cpu(image_bytes.clone());
+                        }
+                        CachedData::Gpu(texture) => {
+                            debug!("Setting GPU texture as current_image");
+                            self.current_image = CachedData::Gpu(Arc::clone(&texture)); // ✅ Borrow before cloning
+                        }
+                    }
+                } else {
+                    debug!("Failed to retrieve next cached image.");
+                    return false;
+                }
+
+
                 img_cache.current_offset -= 1;
 
                 assert!(img_cache.current_offset >= -(CONFIG.cache_size as isize)); // e.g. >= -5
@@ -397,7 +422,41 @@ impl Pane {
 
         // Load initial images into the cache
         img_cache.load_initial_images().unwrap();
-        img_cache.print_cache();
+        ////img_cache.print_cache();
+        for (index, image_option) in img_cache.cached_data.iter().enumerate() {
+            match image_option {
+                Some(image_bytes) => {
+                    let image_info = format!("Image {} - Index {} - Size: {} bytes", index, img_cache.cached_image_indices[index], image_bytes.len());
+                    debug!("{}", image_info);
+                }
+                None => {
+                    let no_image_info = format!("No image at index {}", index);
+                    debug!("{}", no_image_info);
+                }
+            }
+        }
+
+
+        if let Ok(initial_image) = img_cache.get_initial_image() {
+            match initial_image {
+                CachedData::Gpu(texture) => {
+                    debug!("Using GPU texture for initial image");
+                    self.current_image = CachedData::Gpu(Arc::clone(texture));
+                    self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                    self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                }
+                CachedData::Cpu(image_bytes) => {
+                    debug!("Using CPU image for initial image");
+                    self.current_image = CachedData::Cpu(image_bytes.clone());
+                }
+            }
+        } else {
+            debug!("Failed to retrieve initial image");
+        }
+        
+        
+        
+
 
         let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
         debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
@@ -419,7 +478,7 @@ impl Pane {
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
 
-    pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {
+    /*pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {
         let img: iced::widget::Container<Message>  = if self.dir_loaded {
             container(column![
                 viewer::Viewer::new(self.current_image.clone())
@@ -434,7 +493,7 @@ impl Pane {
             ])
         };
         img
-    }
+    }*/
 }
 
 #[allow(dead_code)]
