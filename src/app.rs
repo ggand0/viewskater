@@ -638,7 +638,7 @@ pub enum Message {
     CopyFilename(usize),
     CopyFilePath(usize),
     KeyPressed(keyboard::Key, keyboard::Modifiers),
-    //KeyReleased(keyboard::Key, keyboard::Modifiers),
+    KeyReleased(keyboard::Key, keyboard::Modifiers),
     BackgroundColorChanged(Color),
 }
 
@@ -828,7 +828,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
 
-            /*Message::KeyPressed(key, modifiers) => {
+            Message::KeyPressed(key, modifiers) => {
                 let tasks = self.handle_key_pressed_event(key, modifiers);
                 if tasks.is_empty() {
                 } else {
@@ -841,7 +841,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 } else {
                     return Task::batch(tasks);
                 }
-            }*/
+            }
             Message::KeyPressed(key, modifiers) => {
                 //let tasks = self.handle_key_pressed_event(key, modifiers);
                 /*if tasks.is_empty() {
