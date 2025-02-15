@@ -59,7 +59,8 @@ pub struct Pane {
     pub prev_slider_value: u16,
     pub is_selected: bool,
     pub is_selected_cache: bool,
-    pub scene: Scene,
+    //pub scene: Scene,
+    pub scene: Option<Scene>,
 }
 
 impl Default for Pane {
@@ -75,7 +76,7 @@ impl Default for Pane {
             prev_slider_value: 0,
             is_selected: true,
             is_selected_cache: true,
-            scene: Scene::default(),
+            scene: None,
         }
     }
 }
@@ -140,7 +141,7 @@ impl Pane {
             prev_slider_value: 0,
             is_selected: true,
             is_selected_cache: true,
-            scene,
+            scene: Some(scene),
         }
     }
 

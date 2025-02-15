@@ -15,7 +15,7 @@ use other_os::*;
 use macos::*;
 
 //use iced::widget::{container, row, column, horizontal_space, text, button, shader, center};
-use iced_widget::{container, row, column, Row, Column, horizontal_space, text, button, shader, center};
+use iced_widget::{slider, container, row, column, Row, Column, horizontal_space, text, button, shader, center};
 //use iced::{Length, Color, alignment, Element, Alignment, Fill};
 //use iced::alignment::Horizontal;
 //use iced::font::Font;
@@ -95,6 +95,88 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
 }
 
 
+pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
+    let mb = app_menu::build_menu(app);
+    
+    let top_bar = container(
+        row!(mb, horizontal_space())
+            .align_y(alignment::Vertical::Center)
+    )
+    .align_y(alignment::Vertical::Center)
+    .width(Length::Fill);
+
+    /*let first_img = {        
+        let shader_widget = shader(&app.panes[0].scene)
+            .width(Fill)
+            .height(Fill);
+
+        container(center(shader_widget))
+            .width(Length::Fill)
+            .height(Length::Fill)
+    };*/
+    let first_img = {
+        let shader_widget = app.panes[0].scene.as_ref().map_or_else(
+            || container(text("No image loaded")),
+            |scene| {
+                let widget = shader(scene)
+                    .width(Fill)
+                    .height(Fill);
+                container(center(widget))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            },
+        );
+    
+        shader_widget
+    };
+    
+
+    let footer = if app.show_footer {
+        get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0)
+    } else {
+        container(text("")).height(0)
+    };
+
+    // Add slider inside the UI column
+    let background_color = app.background_color;
+    let slider_controls = container(
+        column![
+            text("Adjust Red Component").color(Color::WHITE),
+            slider(0.0..=1.0, background_color.r, move |r| {
+                Message::BackgroundColorChanged(Color {
+                    r,
+                    ..background_color
+                })
+            })
+            .step(0.01),
+        ]
+        .width(Length::Fill)
+        .height(Length::Shrink)
+        .spacing(10)
+        .padding(10)
+        .align_x(Horizontal::Center)
+    ).style(|_theme| container::Style {
+        background: Some(Color::from_rgb(0.2, 0.2, 0.2).into()), // Dark gray background
+        text_color: Some(Color::WHITE),
+        ..container::Style::default()
+    });
+
+    center(
+        container(
+            column![
+            //top_bar,
+            first_img,
+            slider_controls,
+            footer
+            ])
+            .width(Length::Fill)
+            .height(Length::Fill)
+    ).align_x(Horizontal::Center)
+    .into()
+}
+
+
+/*
 /// Build the main UI layout
 //pub fn build_ui(app: &DataViewer) -> container::Container<Message> {
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
@@ -130,7 +212,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             ////let shader = shader(&app.scene).width(Fill).height(Fill);
             let shader: iced_widget::Shader<Message, &Scene> = shader(
                 &app.panes[0].scene).width(Fill).height(Fill);
-                
+
             let first_img = if app.panes[0].dir_loaded {
                 container::<Message, WinitTheme, Renderer>(
                     //column![
@@ -143,8 +225,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         //center::<Message, WinitTheme, Renderer>(shader).into(),
                         Element::<'_, Message, WinitTheme, Renderer>::from(
                             center(shader)),
-
-
 
                         /*DualSlider::new(
                             0..=(app.panes[0].img_cache.num_files - 1) as u16,
@@ -167,25 +247,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             //container(
             //    column![top_bar, first_img.width(Length::Fill)],
             //)
-            /*container::<Message, WinitTheme, Renderer>(
-                //column![top_bar, first_img.width(Length::Fill)]
-                column::<Message, WinitTheme, Renderer>([
-                        top_bar, 
-                        //first_img.width(Length::Fill)])
-                        Element::<'_, Message, WinitTheme, Renderer>::from(first_img).width(Length::Fill),
-                    ]
-                )
-            )*/
-            /*let first_img_element: Element<'_, Message, WinitTheme, Renderer> = 
-                first_img.into();  // Ensures `first_img` matches expected type
-
-            container::<Message, WinitTheme, Renderer>(
-                column::<Message, WinitTheme, Renderer>([
-                    //top_bar,
-                    container::<Message, WinitTheme, Renderer>(first_img_element)
-                        .width(Length::Fill),
-                ])
-            )*/
             let first_img_element: Element<'_, Message, WinitTheme, Renderer> = first_img.into(); 
 
             container::<Message, WinitTheme, Renderer>(
@@ -271,3 +332,5 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
     container_all
 }
+
+*/
