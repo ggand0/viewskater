@@ -237,8 +237,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             };
 
             match event {
-
-                
                 WindowEvent::Focused(true) => {
                     // Handle window focus gain
                 }
@@ -334,32 +332,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 }
                 WindowEvent::Resized(size) => {
                     *resized = true;
-
-                    /*if size.width > 0 && size.height > 0 {
-                        //println!("Resized: {:?}", size);
-                        //scene.update_screen_rect(&queue, (size.width, size.height));
-
-                        // Reconfigure the surface
-                        surface.configure(
-                            &device,
-                            &wgpu::SurfaceConfiguration {
-                                format: *format,
-                                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                                width: size.width,
-                                height: size.height,
-                                present_mode: wgpu::PresentMode::Fifo,
-                                alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                                view_formats: vec![],
-                                desired_maximum_frame_latency: 2,
-                            },
-                        );
-                    }*/
                 }
                 WindowEvent::CloseRequested => {
                     event_loop.exit();
                 }
                 WindowEvent::CursorMoved { position, .. } => {
                     *cursor_position = Some(position);
+                }
+                /*
+                */
+                WindowEvent::KeyboardInput { ref event, .. } => {
+                    /*if let Some(key_code) = event.physical_key.as_ref() {
+                        let modifiers = event.modifiers;
+                        state.queue_message
+                        (Message::KeyPressed(*key_code, modifiers));
+                    }*/
                 }
                 _ => {}
             }
@@ -373,7 +360,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 match &event {
                     iced_core::event::Event::Mouse(_) | // Filters out mouse events
                     iced_core::event::Event::Touch(_) => {} // Filters out touch events too
-                    _ => debug!("Converted to Iced event: {:?}", event),
+                    _ => {
+                        debug!("Converted to Iced event: {:?}, modifiers: {:?}", event, modifiers);
+                        // Manually trigger your app’s message handling
+                        state.queue_message(Message::Event(
+                            event.clone())); 
+                    }
                 }
                 state.queue_event(event);
             }

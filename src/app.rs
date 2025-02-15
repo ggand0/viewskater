@@ -56,6 +56,7 @@ use crate::widgets::shader::scene::Scene;*/
 use pollster;
 use iced_wgpu::{wgpu, Engine, Renderer};
 use iced_winit::core::Theme as WinitTheme;
+
 //use iced_winit::core::{Color};
 use iced_widget::{slider, text_input};
 
@@ -72,6 +73,9 @@ use crate::ui_builder;
 use crate::loading;
 //use crate::widgets::modal;
 //use iced_widget::modal as widget_modal;
+
+use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
+
 
 
 
@@ -119,72 +123,9 @@ pub struct DataViewer {
     pub is_gpu_supported: bool,
 }
 
-/*impl Default for DataViewer {
-    fn default() -> Self {
-
-        // Check if the GPU supports the image format
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            dx12_shader_compiler: Default::default(),
-            flags: wgpu::InstanceFlags::empty(),
-            gles_minor_version: wgpu::Gles3MinorVersion::default(),
-        });
-
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }));
-
-        let (device, queue) = adapter
-            .as_ref()
-            .and_then(|adapter| {
-                let device_desc = wgpu::DeviceDescriptor {
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                    label: None,
-                    memory_hints: wgpu::MemoryHints::default(),
-                };
-                pollster::block_on(adapter.request_device(&device_desc, None)).ok()
-            })
-            .expect("Failed to create device and queue");
-
-        let is_gpu_supported = adapter.is_some();
-
-
-        Self {
-            title: String::from("ViewSkater"),
-            directory_path: None,
-            current_image_index: 0,
-            slider_value: 0,
-            prev_slider_value: 0,
-            ver_divider_position: None,
-            hor_divider_position: None,
-            is_slider_dual: false,
-            show_footer: true,
-            pane_layout: PaneLayout::SinglePane,
-            last_opened_pane: -1,
-            panes: vec![pane::Pane::default()],
-            loading_status: loading_status::LoadingStatus::default(),
-            skate_right: false,
-            skate_left: false,
-            update_counter: 0,
-            show_about: false,
-            device: Arc::new(device),
-            queue: Arc::new(queue),
-            is_gpu_supported: is_gpu_supported,
-        }
-    }
-
-
-
-
-    
-}*/
 
 impl DataViewer {
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
-        
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -399,6 +340,7 @@ impl DataViewer {
         tasks
     }
 
+    /**/
     fn handle_key_released_event(&mut self, key_code: keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         #[allow(unused_mut)]
         let mut tasks = Vec::new();
@@ -428,6 +370,136 @@ impl DataViewer {
 
         tasks
     }
+    /*fn handle_key_pressed_event(&mut self, key: KeyCode, modifiers: ModifiersState) -> Vec<Task<Message>> {
+        let mut tasks = Vec::new();
+    
+        match key {
+            KeyCode::Tab => {
+                debug!("Tab pressed");
+                self.toggle_footer();
+            }
+            KeyCode::Space | KeyCode::KeyB => {
+                debug!("Space or B pressed");
+                self.toggle_slider_type();
+            }
+            KeyCode::Digit1 => {
+                debug!("Key 1 pressed");
+                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
+                    self.panes[0].is_selected = !self.panes[0].is_selected;
+                }
+    
+                if modifiers.alt() && modifiers.control() {
+                    debug!("Alt+Ctrl+1 pressed");
+                    tasks.push(Task::perform(file_io::pick_file(), |result| {
+                        Message::FolderOpened(result, 0)
+                    }));
+                } else if modifiers.alt() {
+                    debug!("Alt+1 pressed");
+                    tasks.push(Task::perform(file_io::pick_folder(), |result| {
+                        Message::FolderOpened(result, 0)
+                    }));
+                } else if modifiers.control() {
+                    self.toggle_pane_layout(PaneLayout::SinglePane);
+                }
+            }
+            KeyCode::Digit2 => {
+                debug!("Key 2 pressed");
+                if self.pane_layout == PaneLayout::DualPane {
+                    if self.is_slider_dual {
+                        self.panes[1].is_selected = !self.panes[1].is_selected;
+                    }
+    
+                    if modifiers.alt() && modifiers.control() {
+                        debug!("Alt+Ctrl+2 pressed");
+                        tasks.push(Task::perform(file_io::pick_file(), |result| {
+                            Message::FolderOpened(result, 1)
+                        }));
+                    } else if modifiers.alt() {
+                        debug!("Alt+2 pressed");
+                        tasks.push(Task::perform(file_io::pick_folder(), |result| {
+                            Message::FolderOpened(result, 1)
+                        }));
+                    }
+                }
+    
+                if modifiers.control() {
+                    self.toggle_pane_layout(PaneLayout::DualPane);
+                }
+            }
+            KeyCode::KeyC | KeyCode::KeyW => {
+                if modifiers.control() {
+                    for pane in self.panes.iter_mut() {
+                        if pane.is_selected {
+                            pane.reset_state();
+                        }
+                    }
+                }
+            }
+            KeyCode::KeyQ => {
+                std::process::exit(0);
+            }
+            KeyCode::ArrowLeft | KeyCode::KeyA => {
+                if self.skate_right {
+                    self.skate_right = false;
+                    self.loading_status.reset_load_next_queue_items();
+                }
+    
+                if self.pane_layout == PaneLayout::DualPane
+                    && self.is_slider_dual
+                    && !self.panes.iter().any(|pane| pane.is_selected)
+                {
+                    debug!("No panes selected");
+                }
+    
+                if modifiers.shift() {
+                    self.skate_left = true;
+                } else {
+                    self.skate_left = false;
+                    let task = move_left_all(
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        &mut self.slider_value,
+                        &self.pane_layout,
+                        self.is_slider_dual,
+                        self.last_opened_pane as usize,
+                    );
+                    tasks.push(task);
+                }
+            }
+            KeyCode::ArrowRight | KeyCode::KeyD => {
+                if self.skate_left {
+                    self.skate_left = false;
+                    self.loading_status.reset_load_previous_queue_items();
+                }
+    
+                if self.pane_layout == PaneLayout::DualPane
+                    && self.is_slider_dual
+                    && !self.panes.iter().any(|pane| pane.is_selected)
+                {
+                    debug!("No panes selected");
+                }
+    
+                if modifiers.shift() {
+                    self.skate_right = true;
+                } else {
+                    self.skate_right = false;
+                    let task = move_right_all(
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        &mut self.slider_value,
+                        &self.pane_layout,
+                        self.is_slider_dual,
+                        self.last_opened_pane as usize,
+                    );
+                    tasks.push(task);
+                }
+            }
+            _ => {}
+        }
+    
+        tasks
+    }*/
+    
 
     fn toggle_slider_type(&mut self) {
         // When toggling from dual to single, reset pane.is_selected to true
@@ -479,7 +551,7 @@ impl DataViewer {
         self.show_footer = !self.show_footer;
     }
 
-    fn subscription(&self) -> Subscription<Message> {
+    /*fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
             events().map(|(_id, event)| Message::Event(iced::Event::Window(event))),
             keyboard::on_key_press(|key, modifiers| {
@@ -490,7 +562,7 @@ impl DataViewer {
             }),
 
         ])
-    }
+    }*/
 
     fn theme(&self) -> Theme {
         iced::Theme::custom(
@@ -566,7 +638,7 @@ pub enum Message {
     CopyFilename(usize),
     CopyFilePath(usize),
     KeyPressed(keyboard::Key, keyboard::Modifiers),
-    KeyReleased(keyboard::Key, keyboard::Modifiers),
+    //KeyReleased(keyboard::Key, keyboard::Modifiers),
     BackgroundColorChanged(Color),
 }
 
@@ -756,7 +828,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
 
-            Message::KeyPressed(key, modifiers) => {
+            /*Message::KeyPressed(key, modifiers) => {
                 let tasks = self.handle_key_pressed_event(key, modifiers);
                 if tasks.is_empty() {
                 } else {
@@ -769,6 +841,13 @@ impl iced_winit::runtime::Program for DataViewer {
                 } else {
                     return Task::batch(tasks);
                 }
+            }*/
+            Message::KeyPressed(key, modifiers) => {
+                //let tasks = self.handle_key_pressed_event(key, modifiers);
+                /*if tasks.is_empty() {
+                } else {
+                    return Task::batch(tasks);
+                }*/
             }
 
             Message::Event(event) => match event {
