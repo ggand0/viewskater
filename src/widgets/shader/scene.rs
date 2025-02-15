@@ -171,7 +171,7 @@ impl shader::Primitive for Primitive {
             let pipeline = storage.get_mut::<Pipeline>().unwrap();
             let texture = self.textures[self.current_texture_index].0.clone();
             let dim = self.textures[self.current_texture_index].1;
-            println!("Primitive::prepare: self.current_texture_index: {}", self.current_texture_index);
+            //println!("Primitive::prepare: self.current_texture_index: {}", self.current_texture_index);
 
             pipeline.update_vertices(device, bounds_relative);
             pipeline.update_texture(device, queue, texture);

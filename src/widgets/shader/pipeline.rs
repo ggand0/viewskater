@@ -67,9 +67,9 @@ impl Pipeline {
             1.0, // Scale x (width relative to the atlas)
             1.0, // Scale y (height relative to the atlas)
         ];
-        println!("atlas_size: {:?}", atlas_size); // atlas_size: (8192, 8192)
-        println!("image_dimensions: {:?}", image_dimensions);
-        println!("uniform_data: {:?}", uniform_data); // uniform_data: [0.5, 0.0, 0.43823242, 0.29248047]
+        //println!("atlas_size: {:?}", atlas_size); // atlas_size: (8192, 8192)
+        //println!("image_dimensions: {:?}", image_dimensions);
+        //println!("uniform_data: {:?}", uniform_data); // uniform_data: [0.5, 0.0, 0.43823242, 0.29248047]
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
@@ -165,8 +165,7 @@ impl Pipeline {
             0.0,  // Offset X (NDC)
             0.0, // Offset Y (NDC, flipped)
         ];
-
-        println!("DEBUG: screen_rect_data: {:?}", screen_rect_data);
+        //println!("DEBUG: screen_rect_data: {:?}", screen_rect_data);
 
 
         let screen_rect_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -332,10 +331,7 @@ impl Pipeline {
         shader_size: (u32, u32),  // ✅ Shader widget's size
         bounds_relative: (f32, f32, f32, f32), // ✅ Normalized bounds
     ) {
-        println!(
-            "DEBUG: Updating screen_rect -> Shader Size: {:?}, Bounds: {:?}",
-            shader_size, bounds_relative
-        );
+        
     
         let shader_width = shader_size.0 as f32;
         let shader_height = shader_size.1 as f32;
@@ -370,8 +366,12 @@ impl Pipeline {
             norm_offset_x,  // Offset X (NDC)
             norm_offset_y, // Offset Y (NDC, flipped)
         ];
-    
-        println!("DEBUG: screen_rect_data updated: {:?}", screen_rect_data);
+
+        //println!(
+        //    "DEBUG: Updating screen_rect -> Shader Size: {:?}, Bounds: {:?}",
+        //    shader_size, bounds_relative
+        //);
+        //println!("DEBUG: screen_rect_data updated: {:?}", screen_rect_data);
     
         // Update screen rect buffer
         queue.write_buffer(
@@ -401,7 +401,7 @@ impl Pipeline {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
     
-        println!("Updated vertex buffer with new bounds: {:?}", bounds_relative);
+        //println!("Updated vertex buffer with new bounds: {:?}", bounds_relative);
     }
     
 
