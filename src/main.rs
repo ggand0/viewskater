@@ -9,15 +9,16 @@ use iced_winit::futures;
 use iced_winit::runtime::program;
 use iced_winit::runtime::Debug;
 use iced_winit::winit;
-//use iced_wgpu::gpu::util::DeviceExt;
 use iced_wgpu::wgpu::util::DeviceExt;
+use iced_winit::winit::event::{ElementState};
+use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
 
-//mod scene;
-//use scene::Scene;
-//mod shader_widget;
-//mod shader_scene;
-//mod shader_pipeline;
-//use shader_widget::TextureShader;""
+
+// import keyboard
+//use iced_winit::conversion::keyboard_event;
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
+
 mod cache;
 use crate::cache::img_cache::LoadOperation;
 mod navigation;
@@ -34,7 +35,7 @@ mod loading;
 mod config;
 use crate::widgets::shader::scene::Scene;
 mod app;
-use crate::app::DataViewer;
+use crate::app::{Message, DataViewer};
 
 use iced_winit::Clipboard;
 
@@ -59,8 +60,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         Loading,
         Ready {
             window: Arc<winit::window::Window>,
-            //device: wgpu::Device,
-            //queue: wgpu::Queue,
             device: Arc<wgpu::Device>,
             queue: Arc<wgpu::Queue>,
             surface: wgpu::Surface<'static>,
@@ -162,39 +161,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     },
                 );
 
-                // Initialize scene with the image renderer
-                //let scene = Scene::new(&device, &queue, format);
-
-                let image_paths = vec![
-                    "image.jpg",
-                    //"image2.jpg",
-                    //"image3.jpg",
-                ]; // Replace with actual image paths
-
-                let textures = image_paths
-                    .iter()
-                    .map(|&path| {
-                        let (texture, dimensions) = Scene::create_texture_from_image(&device, &queue, path);
-                        (Arc::new(texture), dimensions)
-                    })
-                    .collect::<Vec<_>>();
-
-                // debug: check if textures are loaded
-                for (i, (texture, dimensions)) in textures.iter().enumerate() {
-                    println!("Texture {}: {:?}", i, dimensions);
-                }
-
-
-                // debug window size
-                println!("window size: {:?}", physical_size);
-
-                //let scene = Scene::new(&device, &queue, format, (physical_size.width, physical_size.height), "image.jpg");
-                //let scene = Scene::new(&device, &queue, format, (physical_size.width, physical_size.height), textures);
-
-                ////let shader_widget = TextureShader::new(&device, &queue);
-                //taViewer::new(Arc::new(device), Arc::new(queue));
-
-                
 
                 // Create shared Arc instances of device and queue
                 let device = Arc::new(device);
@@ -202,9 +168,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                 // Pass a cloned Arc reference to DataViewer
                 let shader_widget = DataViewer::new(Arc::clone(&device), Arc::clone(&queue));
-                
-                // print device
-                println!("Device: {:?}", device.clone());
 
 
                 // Initialize iced
@@ -274,10 +237,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             };
 
             match event {
+
+                
                 WindowEvent::Focused(true) => {
                     // Handle window focus gain
-                    //println!("Window focus regained. Requesting redraw.");
-                    //window.request_redraw();
                 }
                 WindowEvent::Focused(false) => {
                     event_loop.set_control_flow(ControlFlow::Wait);
@@ -328,21 +291,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                                 label: Some("Render Encoder"),
                             });
-                            //let program = state.program();
-
-                            // Clear the frame with a background color
-                            /*{
-                                let mut render_pass = Scene::clear(
-                                    &view,
-                                    &mut encoder,
-                                    Color::TRANSPARENT, // Adjust background color if needed
-                                );
-                                //drop(render_pass); // Ensure render pass is finished
-                                scene.draw_with_pass(&mut render_pass)
-                            }*/
-                            
-
-                            ////scene.draw(&mut encoder, &view);
 
                             // Render the iced program
                             renderer.present(
@@ -350,7 +298,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 device,
                                 queue,
                                 &mut encoder,
-                                None,
+                                //None,
+                                Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 0.5 }), // Force black background for debugging
                                 frame.texture.format(),
                                 &view,
                                 viewport,
@@ -360,7 +309,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                             // Submit the commands to the queue
                             engine.submit(queue, encoder);
-                            //queue.submit(Some(encoder.finish()));
                             frame.present();
 
                             // Update the mouse cursor
@@ -410,6 +358,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 WindowEvent::CloseRequested => {
                     event_loop.exit();
                 }
+                WindowEvent::CursorMoved { position, .. } => {
+                    *cursor_position = Some(position);
+                }
                 _ => {}
             }
 
@@ -419,6 +370,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 window.scale_factor(),
                 *modifiers,
             ) {
+                match &event {
+                    iced_core::event::Event::Mouse(_) | // Filters out mouse events
+                    iced_core::event::Event::Touch(_) => {} // Filters out touch events too
+                    _ => debug!("Converted to Iced event: {:?}", event),
+                }
                 state.queue_event(event);
             }
 
