@@ -311,6 +311,7 @@ impl DataViewer {
                 
             }
             Key::Named(Named::ArrowRight) | Key::Character("d") => {
+                debug!("Right key or 'D' key pressed!");
                 if self.skate_left {
                     self.skate_left = false;
 
@@ -650,7 +651,7 @@ impl iced_winit::runtime::Program for DataViewer {
 
     fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
         debug!("Received message: {:?}", message);
-        println!("Received message: {:?}", message);
+        //println!("Received message: {:?}", message);
 
         match message {
             Message::BackgroundColorChanged(color) => {
@@ -829,6 +830,7 @@ impl iced_winit::runtime::Program for DataViewer {
             }
 
             Message::KeyPressed(key, modifiers) => {
+                debug!("KeyPressed - Key pressed: {:?}", key);
                 let tasks = self.handle_key_pressed_event(key, modifiers);
                 if tasks.is_empty() {
                 } else {
@@ -842,15 +844,22 @@ impl iced_winit::runtime::Program for DataViewer {
                     return Task::batch(tasks);
                 }
             }
-            Message::KeyPressed(key, modifiers) => {
-                //let tasks = self.handle_key_pressed_event(key, modifiers);
-                /*if tasks.is_empty() {
-                } else {
-                    return Task::batch(tasks);
-                }*/
-            }
-
             Message::Event(event) => match event {
+                Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+                    debug!("KeyPressed - Key pressed: {:?}", key);
+                    let tasks = self.handle_key_pressed_event(key, modifiers);
+                    if !tasks.is_empty() {
+                        return Task::batch(tasks);
+                    }
+                }
+            
+                Event::Keyboard(iced_core::keyboard::Event::KeyReleased { key, modifiers, .. }) => {
+                    let tasks = self.handle_key_released_event(key, modifiers);
+                    if !tasks.is_empty() {
+                        return Task::batch(tasks);
+                    }
+                }
+                
                 // Only using for single pane layout
                 #[cfg(any(target_os = "macos", target_os = "windows"))]
                 Event::Window(iced::window::Event::FileDropped(dropped_paths, _position)) => {

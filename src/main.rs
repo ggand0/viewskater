@@ -361,7 +361,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     iced_core::event::Event::Mouse(_) | // Filters out mouse events
                     iced_core::event::Event::Touch(_) => {} // Filters out touch events too
                     _ => {
-                        debug!("Converted to Iced event: {:?}, modifiers: {:?}", event, modifiers);
+                        ////debug!("Converted to Iced event: {:?}, modifiers: {:?}", event, modifiers);
                         // Manually trigger your app’s message handling
                         state.queue_message(Message::Event(
                             event.clone())); 
