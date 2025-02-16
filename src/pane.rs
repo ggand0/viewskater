@@ -415,6 +415,7 @@ impl Pane {
             _file_paths,
             CONFIG.cache_size,
             is_gpu_supported,
+            initial_index,
             Some(device),
             Some(queue),
         )

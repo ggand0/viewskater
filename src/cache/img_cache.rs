@@ -166,6 +166,7 @@ impl ImageCache {
         image_paths: Vec<PathBuf>,
         cache_count: usize,
         is_gpu_supported: bool,
+        initial_inedx: usize,
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
     ) -> Result<Self, io::Error> {
@@ -191,7 +192,7 @@ impl ImageCache {
         Ok(ImageCache {
             image_paths,
             num_files: 0,
-            current_index: 0,
+            current_index: initial_inedx,
             current_offset: 0,
             cache_count,
             cached_data: cached_data,
