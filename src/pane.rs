@@ -206,18 +206,19 @@ impl Pane {
                     CachedData::Cpu(image_bytes) => {
                         debug!("Setting CPU image as current_image");
                         self.current_image = CachedData::Cpu(image_bytes.clone());
+                        
                     }
                     CachedData::Gpu(texture) => {
                         debug!("Setting GPU texture as current_image");
                         self.current_image = CachedData::Gpu(Arc::clone(&texture)); // ✅ Borrow before cloning
+                        self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                        self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }
                 }
             } else {
                 debug!("Failed to retrieve next cached image.");
                 return false;
             }
-
-
 
             img_cache.current_offset += 1;
 
@@ -271,6 +272,8 @@ impl Pane {
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
                             self.current_image = CachedData::Gpu(Arc::clone(&texture)); // ✅ Borrow before cloning
+                            self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                            self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                         }
                     }
                 } else {
