@@ -258,6 +258,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             match event {
                 WindowEvent::Focused(true) => {
                     // Handle window focus gain
+                    event_loop.set_control_flow(ControlFlow::Poll);
                 }
                 WindowEvent::Focused(false) => {
                     event_loop.set_control_flow(ControlFlow::Wait);
@@ -367,6 +368,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         (Message::KeyPressed(*key_code, modifiers));
                     }*/
                 }
+                WindowEvent::ModifiersChanged(new_modifiers) => {
+                    //debug!("ModifiersChanged event received: {:?}", new_modifiers);
+                    *modifiers = new_modifiers.state(); // ✅ Now updating `modifiers`
+                }
                 _ => {}
             }
 
@@ -431,11 +436,32 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         }
 
         fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Action<Message>) {
-            let Self::Ready {
+            /*let Self::Ready {
                 ref mut renderer,
                 state,
                 viewport,
                 ref mut debug, ..
+            } = self
+            else {
+                return;
+            };*/
+            let Self::Ready {
+                window,
+                device,
+                queue,
+                surface,
+                format,
+                engine,
+                renderer,
+                //scene,
+                state,
+                viewport,
+                cursor_position,
+                modifiers,
+                clipboard,
+                runtime,
+                resized,
+                debug,
             } = self
             else {
                 return;
@@ -445,7 +471,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
             match event {
                 Action::Widget(w) => {
-                    debug!("Processing widget event");
+                    //debug!("Processing widget event");
                     state.operate(
                         renderer,
                         std::iter::once(w),
@@ -455,7 +481,30 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 }
                 Action::Output(message) => {
                     debug!("Forwarding message to update(): {:?}", message);
+                    //debug!("Forwarding message to update(): {:?}", message);
                     state.queue_message(message); // Ensures the message gets triggered in the next `update()`
+
+
+                    /*let (_, task) = state.update(
+                        viewport.logical_size(),
+                        cursor_position
+                            .map(|p| {
+                                conversion::cursor_position(
+                                    p,
+                                    viewport.scale_factor(),
+                                )
+                            })
+                            .map(mouse::Cursor::Available)
+                            .unwrap_or(mouse::Cursor::Unavailable),
+                        renderer,
+                        &Theme::Dark,
+                        &renderer::Style {
+                            text_color: Color::WHITE,
+                        },
+                        clipboard,
+                        debug,
+                    );*/
+
                 }
                 _ => {}
             }

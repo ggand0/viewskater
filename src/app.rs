@@ -81,7 +81,7 @@ use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
 
 use iced::{
     clipboard, Pixels, Settings, Subscription,
-    event::Event, keyboard::{self, Key, key::Named},
+    event::Event,// keyboard::{self, Key, key::Named},
     widget::{self, button},
     font::{self, Font},
     window::{self, events},
@@ -91,6 +91,7 @@ use iced_winit::runtime::{Program, Task};
 use iced_widget::{center, shader, row, column, container, text};
 use iced_winit::core::{Color, Element, Length, Length::*, Theme};
 use iced_core::alignment::Horizontal;
+use iced_core::keyboard::{self, Key, key::Named};
 use crate::cache::img_cache::CachedData;
 
 #[derive(Debug, Clone, Copy)]
@@ -648,8 +649,8 @@ pub enum Message {
     PaneSelected(usize, bool),
     CopyFilename(usize),
     CopyFilePath(usize),
-    KeyPressed(keyboard::Key, keyboard::Modifiers),
-    KeyReleased(keyboard::Key, keyboard::Modifiers),
+    //KeyPressed(keyboard::Key, keyboard::Modifiers),
+    //KeyReleased(keyboard::Key, keyboard::Modifiers),
     BackgroundColorChanged(Color),
 }
 
@@ -884,8 +885,8 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
 
-            Message::KeyPressed(key, modifiers) => {
-                debug!("KeyPressed - Key pressed: {:?}", key);
+            /*Message::KeyPressed(key, modifiers) => {
+                debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
                 let tasks = self.handle_key_pressed_event(key, modifiers);
 
                 if tasks.is_empty() {
@@ -900,11 +901,13 @@ impl iced_winit::runtime::Program for DataViewer {
                 } else {
                     return Task::batch(tasks);
                 }
-            }
+            }*/
             Message::Event(event) => match event {
                 Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-                    debug!("KeyPressed - Key pressed: {:?}", key);
+                    debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
+                    debug!("modifiers.shift(): {}", modifiers.shift());
                     let tasks = self.handle_key_pressed_event(key, modifiers);
+
                     if !tasks.is_empty() {
                         return Task::batch(tasks);
                     }
