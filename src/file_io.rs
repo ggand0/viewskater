@@ -169,7 +169,6 @@ pub async fn load_images_async(
     queue: &Arc<wgpu::Queue>,
     load_operation: LoadOperation
 ) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
-    debug!("Loading images asynchronously...");
     let start = Instant::now();
 
     let futures = paths.into_iter().map(|path| {
@@ -181,7 +180,7 @@ pub async fn load_images_async(
 
     let results = join_all(futures).await;
     let duration = start.elapsed();
-    debug!("Finished loading images in {:?}", duration);
+    //debug!("Finished loading images in {:?}", duration);
 
     let images = results
         .into_iter()

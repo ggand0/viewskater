@@ -356,6 +356,7 @@ pub fn load_next_images_all(
 ) -> Task<Message> {
     // The updated get_target_indices_for_next function now returns Vec<Option<isize>>
     let target_indices = get_target_indices_for_next(panes);
+    debug!("load_next_images_all - target_indices: {:?}", target_indices);
 
     if target_indices.is_empty() {
         return Task::none();
@@ -449,6 +450,7 @@ fn get_target_indices_for_next(panes: &mut Vec<&mut Pane>) -> Vec<Option<isize>>
             None
         } else {
             let cache = &mut pane.img_cache;
+            debug!("get_target_indices_for_next - current_index: {}, current_offset: {}, cache_count: {}", cache.current_index, cache.current_offset, cache.cache_count);
             Some(cache.current_index as isize - cache.current_offset + cache.cache_count as isize + 1)
         }
     }).collect()
@@ -654,7 +656,7 @@ pub fn move_right_all(
     }
 
     if !are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
-        debug!("move_right_all() - setting next image...");
+        //debug!("move_right_all() - setting next image...");
         let did_render_happen: bool = set_next_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
 
         if did_render_happen {
@@ -663,7 +665,7 @@ pub fn move_right_all(
                 pane.is_next_image_loaded = true;
             }
 
-            debug!("move_right_all() - loading next images...");
+            //debug!("move_right_all() - loading next images...");
             tasks.push(load_next_images_all(
                 //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                 &device, &queue, is_gpu_supported,
@@ -681,7 +683,7 @@ pub fn move_right_all(
     }
 
     // print tasks
-    debug!("move_right_all() - tasks count: {}", tasks.len());
+    //debug!("move_right_all() - tasks count: {}", tasks.len());
 
     Task::batch(tasks)
 }

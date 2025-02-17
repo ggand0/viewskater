@@ -280,7 +280,7 @@ impl ImageCache {
 
     pub fn move_next(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
-            self.current_index += 1;
+            //self.current_index += 1;
             shift_cache_left(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
             Ok(false)
         } else {
@@ -290,7 +290,7 @@ impl ImageCache {
 
     pub fn move_prev(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
-            self.current_index -= 1;
+            //self.current_index -= 1;
             shift_cache_right(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
             Ok(false)
         } else {
@@ -609,7 +609,6 @@ pub fn load_images_by_indices(
     target_indices: Vec<Option<isize>>, 
     operation: LoadOperation
 ) -> Task<Message> {
-    debug!("load_images_by_indices");
     let mut paths = Vec::new();
 
     for (pane_index, pane) in panes.iter_mut().enumerate() {
@@ -654,11 +653,11 @@ pub fn load_images_by_indices(
     }*/
 
     if !paths.is_empty() {
-        debug!("load_images_by_indices - paths: {:?}", paths);
+        //debug!("load_images_by_indices - paths: {:?}", paths);
         let device_clone = Arc::clone(device);
         let queue_clone = Arc::clone(queue);
     
-        debug!("Task::perform about to be scheduled!");
+        //debug!("Task::perform about to be scheduled!");
     
         /*Task::perform(
             async move {
@@ -675,14 +674,14 @@ pub fn load_images_by_indices(
         Task::perform(
             async move {
                 let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
-                debug!("load_images_async executed, result: {:?}", result);
+                //debug!("load_images_async executed, result: {:?}", result);
                 result
             },
             Message::ImagesLoaded, // ✅ Make sure this exactly matches the Message variant
         )
         
     } else {
-        debug!("load_images_by_indices - No paths to load.");
+        //debug!("load_images_by_indices - No paths to load.");
         Task::none()
     }
     
@@ -696,7 +695,7 @@ pub fn load_images_by_operation(
     is_gpu_supported: bool,
     panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Task<Message> {
     if !loading_status.loading_queue.is_empty() {
-        debug!("load_images_by_operation - loading_status.loading_queue: {:?}", loading_status.loading_queue);
+        //debug!("load_images_by_operation - loading_status.loading_queue: {:?}", loading_status.loading_queue);
         if let Some(operation) = loading_status.loading_queue.pop_front() {
             loading_status.enqueue_image_being_loaded(operation.clone());
             match operation {
