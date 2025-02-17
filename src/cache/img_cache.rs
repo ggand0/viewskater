@@ -32,7 +32,9 @@ use log::{debug, info, warn, error};
 use iced_wgpu::{wgpu, Renderer};
 
 use crate::app::Message;
-use iced::Task;
+//use iced::Task;
+use iced_winit::runtime::Task;
+
 use crate::file_io::{load_images_async, empty_async_block_vec};
 use crate::loading_status::LoadingStatus;
 use crate::pane::Pane;   
@@ -76,7 +78,7 @@ impl LoadOperation {
 }
 
 
-
+#[derive(Debug, Clone)]
 pub enum CachedData {
     Cpu(Vec<u8>),          // CPU: Raw image bytes
     Gpu(Arc<wgpu::Texture>),    // GPU: Use Arc to allow cloning
@@ -190,8 +192,8 @@ impl ImageCache {
         }
 
         Ok(ImageCache {
-            image_paths,
-            num_files: 0,
+            image_paths: image_paths.clone(),
+            num_files: image_paths.len(),
             current_index: initial_inedx,
             current_offset: 0,
             cache_count,
@@ -545,6 +547,9 @@ impl ImageCache {
 
 
 pub fn load_images_by_operation_slider(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
     panes: &mut Vec<pane::Pane>,
     pane_index: usize,
     target_indices_and_cache: Vec<Option<(isize, usize)>>,
@@ -578,7 +583,13 @@ pub fn load_images_by_operation_slider(
 
         // If we have valid paths, proceed to load the images asynchronously
         if !paths.is_empty() {
-            let images_loading_task = load_images_async(paths, operation);
+            let device_clone = Arc::clone(device);
+            let queue_clone = Arc::clone(queue);
+
+            let images_loading_task = async move {
+                load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await
+            };
+
             Task::perform(images_loading_task, Message::ImagesLoaded)
         } else {
             Task::none()
@@ -591,6 +602,9 @@ pub fn load_images_by_operation_slider(
 
 
 pub fn load_images_by_indices(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
     panes: &mut Vec<&mut Pane>, 
     target_indices: Vec<Option<isize>>, 
     operation: LoadOperation
@@ -616,25 +630,83 @@ pub fn load_images_by_indices(
         }
     }
 
-    if !paths.is_empty() {
-        let images_loading_task = load_images_async(paths, operation);
-        Task::perform(images_loading_task, Message::ImagesLoaded)
+    /*if !paths.is_empty() {
+        debug!("load_images_by_indices - paths: {:?}", paths);
+        let device_clone = Arc::clone(device);
+        let queue_clone = Arc::clone(queue);
+    
+        /*let images_loading_task = async move {
+            load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await
+        };
+        Task::perform(images_loading_task, Message::ImagesLoaded)*/
+        debug!("Task is scheduled for execution");
+        Task::perform(
+            async move {
+                let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
+                debug!("load_images_async actually executed with result: {:?}", result);
+                result
+            },
+            Message::ImagesLoaded,
+        )
+
     } else {
         Task::none()
+    }*/
+
+    if !paths.is_empty() {
+        debug!("load_images_by_indices - paths: {:?}", paths);
+        let device_clone = Arc::clone(device);
+        let queue_clone = Arc::clone(queue);
+    
+        debug!("Task::perform about to be scheduled!");
+    
+        /*Task::perform(
+            async move {
+                debug!("Inside async move block! load_images_async will be called.");
+                let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
+                debug!("load_images_async executed, result: {:?}", result);
+                result
+            },
+            |res| {
+                debug!("Task::perform completed, sending Message::ImagesLoaded");
+                Message::ImagesLoaded(res)
+            },
+        )*/
+        Task::perform(
+            async move {
+                let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
+                debug!("load_images_async executed, result: {:?}", result);
+                result
+            },
+            Message::ImagesLoaded, // ✅ Make sure this exactly matches the Message variant
+        )
+        
+    } else {
+        debug!("load_images_by_indices - No paths to load.");
+        Task::none()
     }
+    
+
 }
 
 
-pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Task<Message> {
+pub fn load_images_by_operation(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
+    panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Task<Message> {
     if !loading_status.loading_queue.is_empty() {
+        debug!("load_images_by_operation - loading_status.loading_queue: {:?}", loading_status.loading_queue);
         if let Some(operation) = loading_status.loading_queue.pop_front() {
             loading_status.enqueue_image_being_loaded(operation.clone());
             match operation {
                 LoadOperation::LoadNext((ref _pane_indices, ref target_indicies)) => {
-                    load_images_by_indices(panes, target_indicies.clone(), operation)
+                    load_images_by_indices(device, queue, is_gpu_supported,
+                        panes, target_indicies.clone(), operation)
                 }
                 LoadOperation::LoadPrevious((ref _pane_indices, ref target_indicies)) => {
-                    load_images_by_indices(panes, target_indicies.clone(), operation)
+                    load_images_by_indices(device, queue, is_gpu_supported,
+                        panes, target_indicies.clone(), operation)
                 }
                 LoadOperation::ShiftNext((ref _pane_indices, ref _target_indicies)) => {
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
@@ -657,6 +729,9 @@ pub fn load_images_by_operation(panes: &mut Vec<&mut Pane>, loading_status: &mut
 }
 
 pub fn load_all_images_in_queue(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
 ) -> Task<Message> {
@@ -680,6 +755,9 @@ pub fn load_all_images_in_queue(
             LoadOperation::LoadPos((ref pane_index, ref target_indices_and_cache)) => {
                 // Handle LoadPos with the new structure of (image_index, cache_pos)
                 let task = load_images_by_operation_slider(
+                    device,
+                    queue,
+                    is_gpu_supported,
                     panes,
                     *pane_index,
                     target_indices_and_cache.clone(),

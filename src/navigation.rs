@@ -24,6 +24,7 @@ use crate::app::Message;
 use iced::Task;
 use std::io;
 use crate::Arc;
+use iced_wgpu::wgpu;
 use crate::cache::img_cache::{CachedData};
 
 #[allow(unused_imports)]
@@ -31,6 +32,9 @@ use log::{Level, debug, info, warn, error};
 
 
 fn get_loading_tasks_slider(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: usize,
@@ -84,14 +88,28 @@ fn get_loading_tasks_slider(
         loading_status.enqueue_image_load(load_operation);
 
         // Generate loading tasks
-        let local_tasks = load_all_images_in_queue(panes, loading_status);
+        //let local_tasks = load_all_images_in_queue(panes, loading_status);
+
+        // Convert `panes` into a vector of mutable references
+        let mut pane_refs: Vec<&mut Pane> = panes.iter_mut().collect();
+
+        // Call the function with `pane_refs`
+        let local_tasks = load_images_by_operation(
+            device, queue, is_gpu_supported,
+            &mut pane_refs, loading_status);
+
+
         tasks.push(local_tasks);
     }
 
     tasks
 }
 
+
 pub fn load_remaining_images(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: isize,
@@ -114,6 +132,7 @@ pub fn load_remaining_images(
 
         for cache_index in cache_indices {
             let local_tasks = get_loading_tasks_slider(
+                device, queue, is_gpu_supported,
                 panes, loading_status, cache_index, pos);
             tasks.extend(local_tasks);
         }
@@ -121,6 +140,7 @@ pub fn load_remaining_images(
         if let Some(pane) = panes.get_mut(pane_index as usize) {
             if pane.dir_loaded {
                 let local_tasks = get_loading_tasks_slider(
+                    device, queue, is_gpu_supported,
                     panes, loading_status, pane_index as usize, pos);
                 tasks.extend(local_tasks);
             } else {
@@ -325,6 +345,9 @@ pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
 }
 
 pub fn load_next_images_all(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
     panes: &mut Vec<&mut Pane>,
     pane_indices: Vec<usize>,
     loading_status: &mut LoadingStatus,
@@ -339,11 +362,14 @@ pub fn load_next_images_all(
     }
 
     // Updated calculate_loading_conditions_for_next to work with Vec<Option<isize>>
+    debug!("load_next_images_all - target_indices: {:?}", target_indices);
     if let Some((next_image_indices_to_load, is_image_index_within_bounds, any_out_of_bounds)) =
         calculate_loading_conditions_for_next(panes, &target_indices)
     {
         // The LoadOperation::LoadNext variant now takes Vec<Option<isize>>
         let load_next_operation = LoadOperation::LoadNext((pane_indices.clone(), next_image_indices_to_load.clone()));
+        debug!("load_next_images_all - next_image_indices_to_load: {:?}", next_image_indices_to_load);
+
 
         if should_enqueue_loading(
             is_image_index_within_bounds,
@@ -352,6 +378,7 @@ pub fn load_next_images_all(
             &load_next_operation,
             panes,
         ) {
+            debug!("load_next_images_all - should_enqueue_loading passed  - any_out_of_bounds: {}", any_out_of_bounds);
             if any_out_of_bounds {
                 loading_status.enqueue_image_load(LoadOperation::ShiftNext((
                     pane_indices,
@@ -360,7 +387,11 @@ pub fn load_next_images_all(
             } else {
                 loading_status.enqueue_image_load(load_next_operation);
             }
-            return load_images_by_operation(panes, loading_status);
+            debug!("load_next_images_all - running load_images_by_operation()");
+            return load_images_by_operation(
+                //Some(Arc::clone(&device)), Some(Arc::clone(&queue)), is_gpu_supported,
+                &device, &queue, is_gpu_supported,
+                panes, loading_status);
         }
     }
 
@@ -400,6 +431,8 @@ fn calculate_loading_conditions_for_next(
             next_image_indices_to_load.push(None);
         }
     }
+    debug!("calculate_loading_conditions_for_next - next_image_indices_to_load: {:?}", next_image_indices_to_load);
+    debug!("calculate_loading_conditions_for_next - is_image_index_within_bounds: {}", is_image_index_within_bounds);
 
     if next_image_indices_to_load.is_empty() {
         None
@@ -423,6 +456,9 @@ fn get_target_indices_for_next(panes: &mut Vec<&mut Pane>) -> Vec<Option<isize>>
 
 
 pub fn load_prev_images_all(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
     panes: &mut Vec<&mut Pane>,
     pane_indices: Vec<usize>,
     loading_status: &mut LoadingStatus,
@@ -454,7 +490,10 @@ pub fn load_prev_images_all(
             } else {
                 loading_status.enqueue_image_load(load_prev_operation);
             }
-            return load_images_by_operation(panes, loading_status);
+            return load_images_by_operation(
+                //Some(Arc::clone(&device)), Some(Arc::clone(&queue)), is_gpu_supported,
+                &device, &queue, is_gpu_supported,
+                panes, loading_status);
         }
     }
 
@@ -511,6 +550,9 @@ fn should_enqueue_loading(
     load_operation: &LoadOperation,
     panes: &mut Vec<&mut Pane>,
 ) -> bool {
+    //debug!("should_enqueue_loading - is_image_index_within_bounds: {}", is_image_index_within_bounds);
+    //debug!("should_enqueue_loading - are_next_image_indices_in_queue: {}", loading_status.are_next_image_indices_in_queue(image_indices_to_load.clone()));
+    //debug!("should_enqueue_loading - is_blocking_loading_ops_in_queue: {}", loading_status.is_blocking_loading_ops_in_queue(panes, load_operation.clone()));
     is_image_index_within_bounds &&
         loading_status.are_next_image_indices_in_queue(image_indices_to_load.clone()) &&
         !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation.clone())
@@ -538,8 +580,17 @@ fn get_target_indices_for_previous(panes: &mut Vec<&mut Pane>) -> Vec<Option<isi
 
 
 
-pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingStatus, slider_value: &mut u16,
-    pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize) -> Task<Message> {
+pub fn move_right_all(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
+    panes: &mut Vec<pane::Pane>, 
+    loading_status: &mut LoadingStatus,
+    slider_value: &mut u16,
+    pane_layout: &PaneLayout,
+    is_slider_dual: bool,
+    last_opened_pane: usize
+) -> Task<Message> {
     debug!("##########MOVE_RIGHT_ALL()##########");
 
     for pane in panes.iter_mut() {
@@ -587,6 +638,8 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftNext)
         {
             tasks.push(load_next_images_all(
+                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                &device, &queue, is_gpu_supported,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
 
@@ -611,7 +664,10 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
             }
 
             debug!("move_right_all() - loading next images...");
-            tasks.push(load_next_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+            tasks.push(load_next_images_all(
+                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                &device, &queue, is_gpu_supported,
+                &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
     }
 
@@ -624,12 +680,23 @@ pub fn move_right_all(panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingS
         *slider_value = (get_master_slider_value(&mut panes_to_load, pane_layout, is_slider_dual, last_opened_pane)) as u16;
     }
 
+    // print tasks
+    debug!("move_right_all() - tasks count: {}", tasks.len());
+
     Task::batch(tasks)
 }
 
 
 pub fn move_left_all(
-    panes: &mut Vec<pane::Pane>, loading_status: &mut LoadingStatus, slider_value: &mut u16, pane_layout: &PaneLayout, is_slider_dual: bool, last_opened_pane: usize
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
+    panes: &mut Vec<pane::Pane>,
+    loading_status: &mut LoadingStatus,
+    slider_value: &mut u16,
+    pane_layout: &PaneLayout,
+    is_slider_dual: bool,
+    last_opened_pane: usize
 ) -> Task<Message> {
     debug!("##########MOVE_LEFT_ALL()##########");
 
@@ -667,7 +734,10 @@ pub fn move_left_all(
         if !loading_status.is_operation_in_queues(LoadOperationType::LoadPrevious) ||
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftPrevious)
         {
-            tasks.push(load_prev_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+            tasks.push(load_prev_images_all(
+                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                &device, &queue, is_gpu_supported,
+                &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
         // If panes already reached the edge, mark their is_next_image_loaded as true
         // We already picked the pane with the largest dir size, so we don't have to worry about the rest
@@ -691,7 +761,10 @@ pub fn move_left_all(
             loading_status.is_prev_image_loaded = true;
 
             debug!("move_left_all() - loading prev images...");
-            tasks.push(load_prev_images_all(&mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+            tasks.push(load_prev_images_all(
+                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                &device, &queue, is_gpu_supported,
+                &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
     }
 

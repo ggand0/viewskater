@@ -91,6 +91,7 @@ use iced_winit::runtime::{Program, Task};
 use iced_widget::{center, shader, row, column, container, text};
 use iced_winit::core::{Color, Element, Length, Length::*, Theme};
 use iced_core::alignment::Horizontal;
+use crate::cache::img_cache::CachedData;
 
 #[derive(Debug, Clone, Copy)]
 pub enum MenuItem {
@@ -120,6 +121,8 @@ pub struct DataViewer {
     pub show_about: bool,
     pub device: Arc<wgpu::Device>,                     // Shared ownership using Arc
     pub queue: Arc<wgpu::Queue>,                       // Shared ownership using Arc
+    //pub device: Option<Arc<wgpu::Device>>,  // Now it's an Option
+    //pub queue: Option<Arc<wgpu::Queue>>,    // Now it's an Option
     pub is_gpu_supported: bool,
 }
 
@@ -304,6 +307,8 @@ impl DataViewer {
                     self.skate_left = false;
 
                     let task = move_left_all(
+                        //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                        &self.device, &self.queue, self.is_gpu_supported,
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
                     tasks.push(task);
@@ -329,9 +334,12 @@ impl DataViewer {
                     self.skate_right = false;
 
                     let task = move_right_all(
+                        //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                        &self.device, &self.queue, self.is_gpu_supported,
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
                     tasks.push(task);
+                    debug!("handle_key_pressed_event() - tasks count: {}", tasks.len());
                 }
             }
 
@@ -628,7 +636,9 @@ pub enum Message {
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     Event(Event),
-    ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
+    //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
+    ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
+
     OnVerResize(u16),
     OnHorResize(u16),
     ResetSplit(u16),
@@ -649,9 +659,9 @@ impl iced_winit::runtime::Program for DataViewer {
     type Message = Message;
     type Renderer = Renderer;
 
+    //fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
     fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
-        debug!("Received message: {:?}", message);
-        //println!("Received message: {:?}", message);
+        //debug!("Received message: {:?}", message);
 
         match message {
             Message::BackgroundColorChanged(color) => {
@@ -757,7 +767,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
             
-            Message::ImagesLoaded(result) => {
+            /*Message::ImagesLoaded(result) => {
                 match result {
                     Ok((image_data, operation)) => {
                         if let Some(op) = operation {
@@ -795,7 +805,49 @@ impl iced_winit::runtime::Program for DataViewer {
                         debug!("Image load failed: {:?}", err);
                     }
                 }
+            }*/
+
+            Message::ImagesLoaded(result) => {
+                debug!("ImagesLoaded result: {:?}", result);
+                match result {
+                    Ok((image_data, operation)) => {
+                        if let Some(op) = operation {
+                            let cloned_op = op.clone();
+                            match op {
+                                LoadOperation::LoadNext((ref pane_indices, ref target_indices))
+                                | LoadOperation::LoadPrevious((ref pane_indices, ref target_indices))
+                                | LoadOperation::ShiftNext((ref pane_indices, ref target_indices))
+                                | LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
+                                    let operation_type = cloned_op.operation_type();
+                                    
+                                    loading::handle_load_operation_all(
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        pane_indices,
+                                        target_indices.clone(),
+                                        image_data,  // Now using Vec<Option<CachedData>>
+                                        cloned_op,
+                                        operation_type,
+                                    );
+                                }
+                                LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
+                                    loading::handle_load_pos_operation(
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        pane_index,
+                                        target_indices_and_cache.clone(),
+                                        image_data,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        debug!("Image load failed: {:?}", err);
+                    }
+                }
             }
+            
 
             Message::SliderChanged(pane_index, value) => {
                 debug!("pane_index {} slider value: {}", pane_index, value);
@@ -823,17 +875,22 @@ impl iced_winit::runtime::Program for DataViewer {
                 debug!("slider released: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
                     return load_remaining_images(
+                        &self.device, &self.queue, self.is_gpu_supported,
                         &mut self.panes, &mut self.loading_status, pane_index, value as usize);
                 } else {
-                    return load_remaining_images(&mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
+                    return load_remaining_images(
+                        &self.device, &self.queue, self.is_gpu_supported,
+                        &mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
                 }
             }
 
             Message::KeyPressed(key, modifiers) => {
                 debug!("KeyPressed - Key pressed: {:?}", key);
                 let tasks = self.handle_key_pressed_event(key, modifiers);
+
                 if tasks.is_empty() {
                 } else {
+                    debug!(" Message::KeyPressed - returning tasks - tasks count: {}", tasks.len());
                     return Task::batch(tasks);
                 }
             }
@@ -891,6 +948,8 @@ impl iced_winit::runtime::Program for DataViewer {
         if self.skate_right {
             self.update_counter = 0;
             let task = move_right_all(
+                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                &self.device, &self.queue, self.is_gpu_supported,
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -902,6 +961,8 @@ impl iced_winit::runtime::Program for DataViewer {
         } else if self.skate_left {
             self.update_counter = 0;
             let task = move_left_all(
+                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                &self.device, &self.queue, self.is_gpu_supported,
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,

@@ -28,7 +28,8 @@ pub fn handle_load_operation_all(
     loading_status: &mut LoadingStatus,
     pane_indices: &Vec<usize>,
     target_indices: Vec<Option<isize>>,
-    image_data: Vec<Option<Vec<u8>>>,
+    //image_data: Vec<Option<Vec<u8>>>,
+    image_data: Vec<Option<CachedData>>,
     op: LoadOperation,  // Use the LoadOperation directly
     operation_type: LoadOperationType,
 ) {
@@ -70,9 +71,15 @@ pub fn handle_load_operation_all(
         if let Some(target_image_to_load) = target_image_to_load {
             if target_image_to_load == target_index {
                 // Convert `Option<Vec<u8>>` to `Option<CachedData>`
-                let mut converted_data = image_data[pane_index]
+                /*let mut converted_data = image_data[pane_index]
                     .clone()
-                    .map(CachedData::Cpu);
+                    .map(CachedData::Cpu);*/
+                let mut converted_data = match image_data[pane_index].clone() {
+                    Some(CachedData::Cpu(data)) => Some(CachedData::Cpu(data)),
+                    Some(CachedData::Gpu(texture)) => Some(CachedData::Gpu(Arc::clone(&texture))),
+                    None => None,
+                };
+                    
 
                 match op {
                     LoadOperation::LoadNext(..) => {
@@ -122,7 +129,8 @@ pub fn handle_load_pos_operation(
     loading_status: &mut LoadingStatus,
     pane_index: usize,
     target_indices_and_cache: Vec<Option<(isize, usize)>>,
-    image_data: Vec<Option<Vec<u8>>>,
+    //image_data: Vec<Option<Vec<u8>>>,
+    image_data: Vec<Option<CachedData>>,
 ) {
     // Remove the current LoadPos operation from the being_loaded queue
     loading_status.being_loaded_queue.pop_front();
@@ -141,16 +149,18 @@ pub fn handle_load_pos_operation(
                     // Load the image data into the cache if available
                     if let Some(image) = image_data_opt {
                         // Store the loaded image data in the cache at the specified cache position
-                        //cache.get_cached_data()[*cache_pos] = Some(image.clone());
-                        cache.set_cached_data(*cache_pos, CachedData::Cpu(image.clone())) ;
-                        cache.cached_image_indices[*cache_pos] = *target_index;
+                        //cache.set_cached_data(*cache_pos, CachedData::Cpu(image.clone())) ;
+                        //cache.cached_image_indices[*cache_pos] = *target_index;
+                        match image {
+                            CachedData::Cpu(data) => {
+                                cache.set_cached_data(*cache_pos, CachedData::Cpu(data.clone()));
+                            }
+                            CachedData::Gpu(texture) => {
+                                cache.set_cached_data(*cache_pos, CachedData::Gpu(Arc::clone(texture)));
+                            }
+                        }
+                        
 
-                        // If this is the current image, update the pane's current image
-                        /*if cache.current_index == target_index_usize {
-                            let loaded_image = cache.get_initial_image().unwrap().to_vec();
-                            let handle = iced::widget::image::Handle::from_bytes(loaded_image);
-                            pane.current_image = handle;
-                        }*/
                         if cache.current_index == target_index_usize {
                             // Reload current image if necessary
                             if let Ok(cached_image) = cache.get_initial_image() {

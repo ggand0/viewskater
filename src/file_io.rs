@@ -21,6 +21,11 @@ use log::{LevelFilter, Metadata, Record};
 use backtrace::Backtrace;
 use std::process::Command;
 
+use iced_wgpu::wgpu;
+use image::GenericImageView;
+use crate::cache::img_cache::CachedData;
+use std::fs::File;
+
 #[derive(Debug, Clone)]
 pub enum Error {
     DialogClosed,
@@ -53,7 +58,7 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
     }
 }
 
-#[allow(dead_code)]
+/*#[allow(dead_code)]
 async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
     // Load a single image asynchronously
     if let Some(path) = path {
@@ -96,8 +101,95 @@ pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadO
     }
 
     Ok((images, Some(load_operation)))
+}*/
+
+
+#[allow(dead_code)]
+async fn load_image_async(
+    path: Option<&str>, 
+    device: &Arc<wgpu::Device>, 
+    queue: &Arc<wgpu::Queue>
+) -> Result<Option<CachedData>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let file_path = Path::new(path);
+
+        match image::open(file_path) {
+            Ok(img) => {
+                let rgba_image = img.to_rgba8();
+                let (width, height) = img.dimensions();
+
+                let texture = device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("AsyncLoadedTexture"),
+                    size: wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+
+                queue.write_texture(
+                    wgpu::ImageCopyTexture {
+                        texture: &texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &rgba_image,
+                    wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * width),
+                        rows_per_image: None,
+                    },
+                    wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+
+                return Ok(Some(CachedData::Gpu(Arc::new(texture))));
+            }
+            Err(_) => return Err(std::io::ErrorKind::InvalidData),
+        }
+    }
+
+    Ok(None)
 }
 
+pub async fn load_images_async(
+    paths: Vec<Option<String>>, 
+    _is_gpu_supported: bool,
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    load_operation: LoadOperation
+) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
+    debug!("Loading images asynchronously...");
+    let start = Instant::now();
+
+    let futures = paths.into_iter().map(|path| {
+        async move {
+            let path_str = path.as_deref();
+            load_image_async(path_str, device, queue).await
+        }
+    });
+
+    let results = join_all(futures).await;
+    let duration = start.elapsed();
+    debug!("Finished loading images in {:?}", duration);
+
+    let images = results
+        .into_iter()
+        .map(|result| result.ok().flatten()) // Convert Ok(Some(image)) -> Some(image), otherwise None
+        .collect();
+
+    Ok((images, Some(load_operation)))
+}
 
 
 pub async fn pick_folder() -> Result<String, Error> {
@@ -143,14 +235,23 @@ pub async fn pick_file() -> Result<String, Error> {
     }
 }
 
-#[allow(dead_code)]
-pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
+
+/*pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
     Ok((None, Some(operation)))
 }
 
 pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
     Ok((vec![None; count], Some(operation)))
+}*/
+#[allow(dead_code)]
+pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<CachedData>, Option<LoadOperation>), std::io::ErrorKind> {
+    Ok((None, Some(operation)))
 }
+
+pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
+    Ok((vec![None; count], Some(operation)))
+}
+
 
 pub fn is_file(path: &Path) -> bool {
     fs::metadata(path).map(|metadata| metadata.is_file()).unwrap_or(false)
