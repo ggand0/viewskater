@@ -5617,6 +5617,8 @@ dependencies = [
  "iced_aw 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "iced_aw 0.11.0 (git+https://github.com/ggand0/iced_aw.git?rev=7897549ee9100b5095a9e934c3decdfbdbdc2818)",
  "iced_core 0.13.2",
+ "iced_futures 0.13.2",
+ "iced_runtime 0.13.2",
  "iced_wgpu 0.13.5",
  "iced_widget 0.13.4",
  "iced_winit 0.13.0",

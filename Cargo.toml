@@ -39,6 +39,8 @@ iced_winit = "0.13"
 iced_wgpu = "0.13.5"
 iced_widget = { version = "0.13", features = ["wgpu"] }
 iced_core = "0.13"
+iced_runtime = "0.13"
+iced_futures = { version = "0.13", features = ["tokio"] }
 
 iced = {version = "0.13", features = ["image", "tokio", "svg", "lazy", "debug"]}
 iced_aw = { version = "0.11.0", features = [
