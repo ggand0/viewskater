@@ -71,7 +71,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             format: wgpu::TextureFormat,
             engine: Engine,
             renderer: Renderer,
-            //scene: Scene,
             state: program::State<DataViewer>,
             cursor_position: Option<winit::dpi::PhysicalPosition<f64>>,
             clipboard: Clipboard,
@@ -241,7 +240,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 format,
                 engine,
                 renderer,
-                //scene,
                 state,
                 viewport,
                 cursor_position,
@@ -363,14 +361,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 WindowEvent::CursorMoved { position, .. } => {
                     *cursor_position = Some(position);
                 }
-                /*
-                */
                 WindowEvent::KeyboardInput { ref event, .. } => {
-                    /*if let Some(key_code) = event.physical_key.as_ref() {
-                        let modifiers = event.modifiers;
-                        state.queue_message
-                        (Message::KeyPressed(*key_code, modifiers));
-                    }*/
                 }
                 WindowEvent::ModifiersChanged(new_modifiers) => {
                     //debug!("ModifiersChanged event received: {:?}", new_modifiers);
@@ -420,26 +411,25 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     clipboard,
                     debug,
                 );
-                debug!(
-                    "state.update() returned task: {}",
-                    if task.is_some() { "Some(Task<Message>)" } else { "None" }
-                );
+                //debug!(
+                //    "state.update() returned task: {}",
+                //    if task.is_some() { "Some(Task<Message>)" } else { "None" }
+                //);
                 
 
-
                 let _ = 'runtime_call: {
-                    debug!("Executing Task::perform for"); // This will at least log that a task is picked up.
+                    //debug!("Executing Task::perform for"); // This will at least log that a task is picked up.
                     let Some(t) = task else {
-                        debug!("No task to execute");
+                        //debug!("No task to execute");
                         break 'runtime_call 1;
                     };
                     let Some(stream) = into_stream(t) else {
-                        debug!("Task could not be converted into a stream");
+                        //debug!("Task could not be converted into a stream");
                         break 'runtime_call 1;
                     };
 
                     runtime.run(stream);
-                    debug!("Task completed execution.");
+                    //debug!("Task completed execution.");
                     0
                 };
 
@@ -450,15 +440,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         }
 
         fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Action<Message>) {
-            /*let Self::Ready {
-                ref mut renderer,
-                state,
-                viewport,
-                ref mut debug, ..
-            } = self
-            else {
-                return;
-            };*/
             let Self::Ready {
                 window,
                 device,
@@ -467,7 +448,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 format,
                 engine,
                 renderer,
-                //scene,
                 state,
                 viewport,
                 cursor_position,
@@ -481,8 +461,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 return;
             };
 
-            debug!("user_event() received: {:?}", event);
-
+            //debug!("user_event() received: {:?}", event);
             match event {
                 Action::Widget(w) => {
                     //debug!("Processing widget event");
@@ -494,7 +473,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     );
                 }
                 Action::Output(message) => {
-                    debug!("Forwarding message to update(): {:?}", message);
+                    //debug!("Forwarding message to update(): {:?}", message);
                     state.queue_message(message); // Ensures the message gets triggered in the next `update()`
                 }
                 _ => {}

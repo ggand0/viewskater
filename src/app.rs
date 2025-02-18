@@ -793,7 +793,12 @@ impl iced_winit::runtime::Program for DataViewer {
             );
             task
         } else {
-            debug!("no skate mode detected");
+            // Log that there's no task to perform once
+            if self.update_counter == 0 {
+                debug!("No skate mode detected, update_counter: {}", self.update_counter);
+                self.update_counter += 1;
+            }
+
             iced_winit::runtime::Task::none()
         }
     }
