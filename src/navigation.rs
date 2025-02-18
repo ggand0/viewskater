@@ -1,7 +1,8 @@
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
+    //pub use iced;
+    pub use iced_custom as iced;
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -655,11 +656,13 @@ pub fn move_right_all(
         }
     }
 
+    debug!("move_right_all() - are_all_next_images_loaded(): {}", are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status));
+    debug!("move_right_all() - panes[0].is_next_image_loaded: {}", panes_to_load[0].is_next_image_loaded);
     if !are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
         //debug!("move_right_all() - setting next image...");
         let did_render_happen: bool = set_next_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
 
-        if did_render_happen {
+        if did_render_happen {// NOTE: I may need to edit the condition here
             loading_status.is_next_image_loaded = true;
             for pane in panes_to_load.iter_mut() {
                 pane.is_next_image_loaded = true;
@@ -731,6 +734,9 @@ pub fn move_left_all(
     debug!("move_left_all() - PROCESSING");
     if !are_panes_cached_prev(&mut panes_to_load, pane_layout, is_slider_dual) {
         debug!("move_left_all() - not all panes cached prev, skipping...");
+        loading_status.print_queue();
+        debug!("move_left_all() - loading_status.is_operation_in_queues(LoadOperationType::LoadPrevious): {}", loading_status.is_operation_in_queues(LoadOperationType::LoadPrevious));
+        debug!("move_left_all() - loading_status.is_operation_in_queues(LoadOperationType::ShiftPrevious): {}", loading_status.is_operation_in_queues(LoadOperationType::ShiftPrevious));
         // Since user tries to move the next image but image is not cached, enqueue loading the next image
         // Only do this when the loading queues don't have "Prev" operations
         if !loading_status.is_operation_in_queues(LoadOperationType::LoadPrevious) ||
@@ -751,7 +757,10 @@ pub fn move_left_all(
         }
     }
 
+
+    debug!("move_left_all() - are_all_prev_images_loaded(): {}", are_all_prev_images_loaded(&mut panes_to_load, is_slider_dual, loading_status));
     debug!("move_left_all() - loading_status.is_prev_image_loaded: {}", loading_status.is_prev_image_loaded);
+    
     if !are_all_prev_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
         debug!("move_left_all() - setting prev image...");
         let did_render_happen: bool = set_prev_image_all(&mut panes_to_load, pane_layout, is_slider_dual);

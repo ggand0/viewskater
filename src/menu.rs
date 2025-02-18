@@ -1,7 +1,7 @@
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
-    pub use iced_aw;
+    pub use iced_custom as iced;
+    pub use iced_aw as iced_aw; // TODO: Change this to iced_aw_custom
 }
 
 #[cfg(not(target_os = "linux"))]

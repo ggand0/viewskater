@@ -1,7 +1,8 @@
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
+    //pub use iced;
+    pub use iced_custom as iced;
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -280,8 +281,9 @@ impl ImageCache {
 
     pub fn move_next(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
-            //self.current_index += 1;
-            shift_cache_left(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
+            
+            //shift_cache_left(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
+            self.shift_cache_left(new_image);
             Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
@@ -290,8 +292,9 @@ impl ImageCache {
 
     pub fn move_prev(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
-            //self.current_index -= 1;
-            shift_cache_right(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
+            
+            //shift_cache_right(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
+            self.shift_cache_right(new_image);
             Ok(false)
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
@@ -312,6 +315,35 @@ impl ImageCache {
         } else {
             Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
         }
+    }
+
+    pub fn shift_cache_right(
+        &mut self, new_item: Option<CachedData>,
+    ) {
+        // Shift the elements in cached_images to the right
+        self.cached_data.pop(); // Remove the last (rightmost) element
+        self.cached_data.insert(0, new_item);
+
+        // Update indices
+        self.cached_image_indices.pop();
+        let prev_index = self.cached_image_indices[0] - 1;
+        self.cached_image_indices.insert(0, prev_index);
+
+        self.current_offset += 1;
+        debug!("shift_cache_right - current_offset: {}", self.current_offset);
+    }
+
+    fn shift_cache_left(&mut self, new_item: Option<CachedData>) {
+        self.cached_data.remove(0);
+        self.cached_data.push(new_item);
+
+        // Update indices
+        self.cached_image_indices.remove(0);
+        let next_index = self.cached_image_indices[self.cached_image_indices.len()-1] + 1;
+        self.cached_image_indices.push(next_index);
+
+        self.current_offset -= 1;
+        debug!("shift_cache_left - current_offset: {}", self.current_offset);
     }
 
     pub fn get_initial_image(&self) -> Result<&CachedData, io::Error> {
@@ -585,6 +617,7 @@ pub fn load_images_by_operation_slider(
         if !paths.is_empty() {
             let device_clone = Arc::clone(device);
             let queue_clone = Arc::clone(queue);
+            debug!("Task::perform started for {:?}", operation.clone());
 
             let images_loading_task = async move {
                 load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await
@@ -671,6 +704,7 @@ pub fn load_images_by_indices(
                 Message::ImagesLoaded(res)
             },
         )*/
+        debug!("Task::perform started for {:?}", operation.clone());
         Task::perform(
             async move {
                 let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
@@ -695,9 +729,10 @@ pub fn load_images_by_operation(
     is_gpu_supported: bool,
     panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Task<Message> {
     if !loading_status.loading_queue.is_empty() {
-        //debug!("load_images_by_operation - loading_status.loading_queue: {:?}", loading_status.loading_queue);
+        debug!("load_images_by_operation - loading_status.loading_queue: {:?}", loading_status.loading_queue);
         if let Some(operation) = loading_status.loading_queue.pop_front() {
             loading_status.enqueue_image_being_loaded(operation.clone());
+            debug!("load_images_by_operation - loading_status.being_loaded_queue: {:?}", loading_status.being_loaded_queue);
             match operation {
                 LoadOperation::LoadNext((ref _pane_indices, ref target_indicies)) => {
                     load_images_by_indices(device, queue, is_gpu_supported,

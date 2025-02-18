@@ -195,8 +195,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 );
 
                 // You should change this if you want to render continuously
-                event_loop.set_control_flow(ControlFlow::Wait);
-                //event_loop.set_control_flow(ControlFlow::Poll); // Forces continuous updates
+                //event_loop.set_control_flow(ControlFlow::Wait);
+                event_loop.set_control_flow(ControlFlow::Poll); // Forces continuous updates
 
                 let (p, worker) = iced_winit::Proxy::new(proxy.clone());
                 let Ok(executor) = iced_futures::backend::native::tokio::Executor::new() else {
@@ -388,7 +388,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         ////debug!("Converted to Iced event: {:?}, modifiers: {:?}", event, modifiers);
                         // Manually trigger your app’s message handling
                         state.queue_message(Message::Event(
-                            event.clone())); 
+                            event.clone()));
                     }
                 }
                 state.queue_event(event);
@@ -416,16 +416,26 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     clipboard,
                     debug,
                 );
+                debug!(
+                    "state.update() returned task: {}",
+                    if task.is_some() { "Some(Task<Message>)" } else { "None" }
+                );
+                
+
 
                 let _ = 'runtime_call: {
+                    debug!("Executing Task::perform for"); // This will at least log that a task is picked up.
                     let Some(t) = task else {
+                        debug!("No task to execute");
                         break 'runtime_call 1;
                     };
                     let Some(stream) = into_stream(t) else {
+                        debug!("Task could not be converted into a stream");
                         break 'runtime_call 1;
                     };
 
                     runtime.run(stream);
+                    debug!("Task completed execution.");
                     0
                 };
 
@@ -481,30 +491,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 }
                 Action::Output(message) => {
                     debug!("Forwarding message to update(): {:?}", message);
-                    //debug!("Forwarding message to update(): {:?}", message);
                     state.queue_message(message); // Ensures the message gets triggered in the next `update()`
-
-
-                    /*let (_, task) = state.update(
-                        viewport.logical_size(),
-                        cursor_position
-                            .map(|p| {
-                                conversion::cursor_position(
-                                    p,
-                                    viewport.scale_factor(),
-                                )
-                            })
-                            .map(mouse::Cursor::Available)
-                            .unwrap_or(mouse::Cursor::Unavailable),
-                        renderer,
-                        &Theme::Dark,
-                        &renderer::Style {
-                            text_color: Color::WHITE,
-                        },
-                        clipboard,
-                        debug,
-                    );*/
-
                 }
                 _ => {}
             }

@@ -4,7 +4,8 @@
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
+    //pub use iced;
+    pub use iced_custom as iced;
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -302,19 +303,24 @@ impl DataViewer {
                     debug!("No panes selected");
                 }
 
-                if modifiers.shift() {
-                    self.skate_left = true;
+                if self.skate_left {
+                    // will be handled at the end of update() to run move_left_all
                 } else {
-                    self.skate_left = false;
+                    if modifiers.shift() {
+                        self.skate_left = true;
+                    } else {
+                        self.skate_left = false;
 
-                    let task = move_left_all(
-                        //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                        &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, &mut self.slider_value,
-                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    tasks.push(task);
+                        debug!("move_left_all from handle_key_pressed_event()");
+                        let task = move_left_all(
+                            //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
+                            &self.device, &self.queue, self.is_gpu_supported,
+                            &mut self.panes, &mut self.loading_status, &mut self.slider_value,
+                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                        tasks.push(task);
+                    }
                 }
-                
+
             }
             Key::Named(Named::ArrowRight) | Key::Character("d") => {
                 debug!("Right key or 'D' key pressed!");
@@ -350,7 +356,6 @@ impl DataViewer {
         tasks
     }
 
-    /**/
     fn handle_key_released_event(&mut self, key_code: keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         #[allow(unused_mut)]
         let mut tasks = Vec::new();
@@ -380,136 +385,6 @@ impl DataViewer {
 
         tasks
     }
-    /*fn handle_key_pressed_event(&mut self, key: KeyCode, modifiers: ModifiersState) -> Vec<Task<Message>> {
-        let mut tasks = Vec::new();
-    
-        match key {
-            KeyCode::Tab => {
-                debug!("Tab pressed");
-                self.toggle_footer();
-            }
-            KeyCode::Space | KeyCode::KeyB => {
-                debug!("Space or B pressed");
-                self.toggle_slider_type();
-            }
-            KeyCode::Digit1 => {
-                debug!("Key 1 pressed");
-                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
-                    self.panes[0].is_selected = !self.panes[0].is_selected;
-                }
-    
-                if modifiers.alt() && modifiers.control() {
-                    debug!("Alt+Ctrl+1 pressed");
-                    tasks.push(Task::perform(file_io::pick_file(), |result| {
-                        Message::FolderOpened(result, 0)
-                    }));
-                } else if modifiers.alt() {
-                    debug!("Alt+1 pressed");
-                    tasks.push(Task::perform(file_io::pick_folder(), |result| {
-                        Message::FolderOpened(result, 0)
-                    }));
-                } else if modifiers.control() {
-                    self.toggle_pane_layout(PaneLayout::SinglePane);
-                }
-            }
-            KeyCode::Digit2 => {
-                debug!("Key 2 pressed");
-                if self.pane_layout == PaneLayout::DualPane {
-                    if self.is_slider_dual {
-                        self.panes[1].is_selected = !self.panes[1].is_selected;
-                    }
-    
-                    if modifiers.alt() && modifiers.control() {
-                        debug!("Alt+Ctrl+2 pressed");
-                        tasks.push(Task::perform(file_io::pick_file(), |result| {
-                            Message::FolderOpened(result, 1)
-                        }));
-                    } else if modifiers.alt() {
-                        debug!("Alt+2 pressed");
-                        tasks.push(Task::perform(file_io::pick_folder(), |result| {
-                            Message::FolderOpened(result, 1)
-                        }));
-                    }
-                }
-    
-                if modifiers.control() {
-                    self.toggle_pane_layout(PaneLayout::DualPane);
-                }
-            }
-            KeyCode::KeyC | KeyCode::KeyW => {
-                if modifiers.control() {
-                    for pane in self.panes.iter_mut() {
-                        if pane.is_selected {
-                            pane.reset_state();
-                        }
-                    }
-                }
-            }
-            KeyCode::KeyQ => {
-                std::process::exit(0);
-            }
-            KeyCode::ArrowLeft | KeyCode::KeyA => {
-                if self.skate_right {
-                    self.skate_right = false;
-                    self.loading_status.reset_load_next_queue_items();
-                }
-    
-                if self.pane_layout == PaneLayout::DualPane
-                    && self.is_slider_dual
-                    && !self.panes.iter().any(|pane| pane.is_selected)
-                {
-                    debug!("No panes selected");
-                }
-    
-                if modifiers.shift() {
-                    self.skate_left = true;
-                } else {
-                    self.skate_left = false;
-                    let task = move_left_all(
-                        &mut self.panes,
-                        &mut self.loading_status,
-                        &mut self.slider_value,
-                        &self.pane_layout,
-                        self.is_slider_dual,
-                        self.last_opened_pane as usize,
-                    );
-                    tasks.push(task);
-                }
-            }
-            KeyCode::ArrowRight | KeyCode::KeyD => {
-                if self.skate_left {
-                    self.skate_left = false;
-                    self.loading_status.reset_load_previous_queue_items();
-                }
-    
-                if self.pane_layout == PaneLayout::DualPane
-                    && self.is_slider_dual
-                    && !self.panes.iter().any(|pane| pane.is_selected)
-                {
-                    debug!("No panes selected");
-                }
-    
-                if modifiers.shift() {
-                    self.skate_right = true;
-                } else {
-                    self.skate_right = false;
-                    let task = move_right_all(
-                        &mut self.panes,
-                        &mut self.loading_status,
-                        &mut self.slider_value,
-                        &self.pane_layout,
-                        self.is_slider_dual,
-                        self.last_opened_pane as usize,
-                    );
-                    tasks.push(task);
-                }
-            }
-            _ => {}
-        }
-    
-        tasks
-    }*/
-    
 
     fn toggle_slider_type(&mut self) {
         // When toggling from dual to single, reset pane.is_selected to true
@@ -767,46 +642,6 @@ impl iced_winit::runtime::Program for DataViewer {
                     debug!("pane_index: {}, is_selected: {}", index, pane.is_selected);
                 }
             }
-            
-            /*Message::ImagesLoaded(result) => {
-                match result {
-                    Ok((image_data, operation)) => {
-                        if let Some(op) = operation {
-                            let cloned_op = op.clone();
-                            match op {
-                                LoadOperation::LoadNext((ref pane_indices, ref target_indices))
-                                | LoadOperation::LoadPrevious((ref pane_indices, ref target_indices))
-                                | LoadOperation::ShiftNext((ref pane_indices, ref target_indices))
-                                | LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
-                                    let operation_type = cloned_op.operation_type();
-            
-                                    loading::handle_load_operation_all(
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        pane_indices,
-                                        target_indices.clone(),
-                                        image_data,
-                                        cloned_op,
-                                        operation_type,
-                                    );
-                                }
-                                LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
-                                    loading::handle_load_pos_operation(
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        pane_index,
-                                        target_indices_and_cache.clone(),
-                                        image_data,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        debug!("Image load failed: {:?}", err);
-                    }
-                }
-            }*/
 
             Message::ImagesLoaded(result) => {
                 debug!("ImagesLoaded result: {:?}", result);
@@ -885,23 +720,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
 
-            /*Message::KeyPressed(key, modifiers) => {
-                debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
-                let tasks = self.handle_key_pressed_event(key, modifiers);
-
-                if tasks.is_empty() {
-                } else {
-                    debug!(" Message::KeyPressed - returning tasks - tasks count: {}", tasks.len());
-                    return Task::batch(tasks);
-                }
-            }
-            Message::KeyReleased(key, modifiers) => {
-                let tasks = self.handle_key_released_event(key, modifiers);
-                if tasks.is_empty() {
-                } else {
-                    return Task::batch(tasks);
-                }
-            }*/
             Message::Event(event) => match event {
                 Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                     debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
@@ -933,25 +751,25 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 }
                 #[cfg(target_os = "linux")]
-                Event::Window(iced::window::Event::FileDropped(dropped_path)) => {
+                Event::Window(iced::window::Event::FileDropped(dropped_path, _)) => {
                     match self.pane_layout {
                         PaneLayout::SinglePane => {
                             debug!("File dropped: {:?}", dropped_path);
-                            self.initialize_dir_path(dropped_path, 0);
+                            //self.initialize_dir_path(dropped_path, 0);
+                            self.initialize_dir_path(dropped_path[0].clone(), 0);
                         },
                         PaneLayout::DualPane => {}
                     }
                 }
 
-                //_ => return Task::none(),
-                _ => return iced_winit::runtime::Task::none()
+                //_ => return iced_winit::runtime::Task::none()
+                _ => {}
             },
         }
 
         if self.skate_right {
             self.update_counter = 0;
             let task = move_right_all(
-                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                 &self.device, &self.queue, self.is_gpu_supported,
                 &mut self.panes,
                 &mut self.loading_status,
@@ -963,8 +781,8 @@ impl iced_winit::runtime::Program for DataViewer {
             task
         } else if self.skate_left {
             self.update_counter = 0;
+            debug!("move_left_all from self.skate_left block");
             let task = move_left_all(
-                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                 &self.device, &self.queue, self.is_gpu_supported,
                 &mut self.panes,
                 &mut self.loading_status,
@@ -976,8 +794,6 @@ impl iced_winit::runtime::Program for DataViewer {
             task
         } else {
             debug!("no skate mode detected");
-            //let task = Task::none();
-            //task
             iced_winit::runtime::Task::none()
         }
     }
