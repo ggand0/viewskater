@@ -264,6 +264,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     event_loop.set_control_flow(ControlFlow::Wait);
                 }
                 WindowEvent::RedrawRequested => {
+                    // Update window title dynamically based on the current image
+                    let new_title = state.program().title();
+                    window.set_title(&new_title);
+
                     if *resized {
                         let size = window.inner_size();
 

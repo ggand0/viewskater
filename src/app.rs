@@ -459,7 +459,7 @@ impl DataViewer {
         )
     }
 
-    fn title(&self) -> String {
+    pub fn title(&self) -> String {
         match self.pane_layout  {
             PaneLayout::SinglePane => {
                 if self.panes[0].dir_loaded {
