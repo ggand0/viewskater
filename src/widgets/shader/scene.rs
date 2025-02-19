@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use crate::cache::img_cache::CachedData;
 
+//#[derive(Clone)]
 pub struct Scene {
     pub texture: Option<Arc<wgpu::Texture>>, // Store the active texture
     pub texture_size: (u32, u32),            // Store texture dimensions
@@ -83,7 +84,7 @@ impl shader::Primitive for Primitive {
                 device,
                 queue,
                 format,
-                self.texture.clone(), // ✅ Use the current texture
+                self.texture.clone(), // Use the current texture
                 //elf.atlas_size,
                 shader_size,
                 self.texture_size,
@@ -93,7 +94,7 @@ impl shader::Primitive for Primitive {
             let pipeline = storage.get_mut::<Pipeline>().unwrap();
 
             pipeline.update_vertices(device, bounds_relative);
-            pipeline.update_texture(device, queue, self.texture.clone()); // ✅ Update with current texture
+            pipeline.update_texture(device, queue, self.texture.clone()); // Update with current texture
             pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
         }
     }
@@ -122,8 +123,8 @@ impl<Message> shader::Program<Message> for Scene {
     ) -> Self::Primitive {
         if let Some(texture) = &self.texture {
             Primitive::new(
-                Arc::clone(texture),  // ✅ Pass the current GPU texture
-                self.texture_size,    // ✅ Pass the correct dimensions
+                Arc::clone(texture),  // Pass the current GPU texture
+                self.texture_size,    // Pass the correct dimensions
                 bounds,
             )
         } else {

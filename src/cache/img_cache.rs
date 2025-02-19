@@ -745,7 +745,7 @@ pub fn load_images_by_indices(
                 //debug!("load_images_async executed, result: {:?}", result);
                 result
             },
-            Message::ImagesLoaded, // ✅ Make sure this exactly matches the Message variant
+            Message::ImagesLoaded, // Make sure this exactly matches the Message variant
         )
         
     } else {

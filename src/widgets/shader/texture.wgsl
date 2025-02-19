@@ -43,5 +43,5 @@ fn fs_main(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32> {
 @fragment
 fn fs_main(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32> {
     let color = textureSample(my_texture, my_sampler, tex_coords);
-    return vec4(color.rgb, color.a); // ✅ Preserve transparency for blending
+    return vec4(color.rgb, color.a); // Preserve transparency for blending
 }

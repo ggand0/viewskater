@@ -277,7 +277,7 @@ impl Pane {
                         }
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
-                            self.current_image = CachedData::Gpu(Arc::clone(&texture)); // ✅ Borrow before cloning
+                            self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
                             self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                         }

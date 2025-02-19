@@ -430,7 +430,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 }
                 WindowEvent::ModifiersChanged(new_modifiers) => {
                     //debug!("ModifiersChanged event received: {:?}", new_modifiers);
-                    *modifiers = new_modifiers.state(); // ✅ Now updating `modifiers`
+                    *modifiers = new_modifiers.state(); // Now updating `modifiers`
                 }
                 _ => {}
             }

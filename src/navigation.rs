@@ -292,7 +292,7 @@ async fn load_current_slider_image(
 
     let device_clone = Arc::clone(device);
     let queue_clone = Arc::clone(queue);
-    //let panes_clone = panes.to_vec(); // ✅ Convert `&mut Vec<Pane>` to `Vec<Pane>` for async safety
+    //let panes_clone = panes.to_vec(); // Convert `&mut Vec<Pane>` to `Vec<Pane>` for async safety
     let mut pane = &mut panes[0];
 
     debug!("Task::perform started for slider pos {}", pos);

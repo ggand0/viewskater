@@ -327,9 +327,9 @@ impl Pipeline {
     pub fn update_screen_uniforms(
         &self,
         queue: &wgpu::Queue,
-        image_dimensions: (u32, u32), // ✅ Image dimensions
-        shader_size: (u32, u32),  // ✅ Shader widget's size
-        bounds_relative: (f32, f32, f32, f32), // ✅ Normalized bounds
+        image_dimensions: (u32, u32),           // Image dimensions
+        shader_size: (u32, u32),                // Shader widget's size
+        bounds_relative: (f32, f32, f32, f32),  // Normalized bounds
     ) {
         
     
@@ -411,7 +411,7 @@ impl Pipeline {
         &self,
         queue: &wgpu::Queue,
         image_dimensions: (u32, u32),
-        shader_size: (u32, u32), // ✅ Clearly represents the shader widget's size
+        shader_size: (u32, u32), // Clearly represents the shader widget's size
         window_size: (u32, u32),
     ) {
         println!(
@@ -460,8 +460,8 @@ impl Pipeline {
         let screen_rect_data = [
             scaled_width / shader_width,  // Normalized scaled width
             scaled_height / shader_height, // Normalized scaled height
-            norm_offset_x, // ✅ Now properly centered X
-            norm_offset_y, // ✅ Now properly centered Y
+            norm_offset_x, // Now properly centered X
+            norm_offset_y, // Now properly centered Y
         ];
     
         println!("DEBUG: screen_rect_data: {:?}", screen_rect_data);
