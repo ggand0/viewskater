@@ -82,6 +82,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             viewport: Viewport,
             modifiers: ModifiersState,
             resized: bool,
+            redraw: bool,
             debug: Debug,
         },
     }
@@ -183,6 +184,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 let mut debug = Debug::new();
                 let engine = Engine::new(
                     &adapter, &device, &queue, format, None);
+                engine.create_image_cache(&device); // Manually create image cache
+                
                 let mut renderer = Renderer::new(
                     &device, &engine, Font::default(), Pixels::from(16));
 
@@ -221,6 +224,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     runtime,
                     viewport,
                     resized: false,
+                    redraw: false,
                     debug,
                 };
             }
@@ -247,6 +251,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 clipboard,
                 runtime,
                 resized,
+                redraw,
                 debug,
             } = self
             else {
@@ -262,7 +267,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     event_loop.set_control_flow(ControlFlow::Wait);
                 }
                 WindowEvent::RedrawRequested => {
-                    if *resized {
+                    //println!("RedrawRequested event received");
+                    /*if *resized {
                         // Update window title dynamically based on the current image
                         let new_title = state.program().title();
                         window.set_title(&new_title);
@@ -313,6 +319,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             });
 
                             // Render the iced program
+                            debug!("renderer.present()");
                             renderer.present(
                                 engine,
                                 device,
@@ -337,6 +344,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     state.mouse_interaction(),
                                 ),
                             );
+                            *redraw = false;
                         }
                         Err(error) => match error {
                             wgpu::SurfaceError::OutOfMemory => {
@@ -350,7 +358,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 window.request_redraw();
                             }
                         },
-                    }
+                    }*/
                 }
                 WindowEvent::Resized(size) => {
                     *resized = true;
@@ -359,7 +367,64 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     event_loop.exit();
                 }
                 WindowEvent::CursorMoved { position, .. } => {
+                    //println!("CursorMoved event received");
                     *cursor_position = Some(position);
+
+                    /*if *redraw {
+                        window.request_redraw();
+
+
+                        match surface.get_current_texture() {
+                            Ok(frame) => {
+                                // v0: render with wgpu
+                                // v1: render with iced's shader widget
+                                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("Render Encoder"),
+                                });
+    
+                                // Render the iced program
+                                debug!("renderer.present()");
+                                renderer.present(
+                                    engine,
+                                    device,
+                                    queue,
+                                    &mut encoder,
+                                    //None,
+                                    Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 0.5 }), // Force black background for debugging
+                                    frame.texture.format(),
+                                    &view,
+                                    viewport,
+                                    &debug.overlay(),
+                                );
+    
+    
+                                // Submit the commands to the queue
+                                engine.submit(queue, encoder);
+                                frame.present();
+    
+                                // Update the mouse cursor
+                                window.set_cursor(
+                                    iced_winit::conversion::mouse_interaction(
+                                        state.mouse_interaction(),
+                                    ),
+                                );
+                                *redraw = false;
+                            }
+                            Err(error) => match error {
+                                wgpu::SurfaceError::OutOfMemory => {
+                                    panic!(
+                                        "Swapchain error: {error}. \
+                                            Rendering cannot continue."
+                                    );
+                                }
+                                _ => {
+                                    // Retry rendering on the next frame
+                                    window.request_redraw();
+                                }
+                            },
+                        }
+                    }*/
                 }
                 WindowEvent::KeyboardInput { ref event, .. } => {
                 }
@@ -377,13 +442,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 *modifiers,
             ) {
                 match &event {
-                    iced_core::event::Event::Mouse(_) | // Filters out mouse events
-                    iced_core::event::Event::Touch(_) => {} // Filters out touch events too
+                    //iced_core::event::Event::Mouse(_) | // Filters out mouse events
+                    //iced_core::event::Event::Touch(_) => {} // Filters out touch events too
                     _ => {
                         ////debug!("Converted to Iced event: {:?}, modifiers: {:?}", event, modifiers);
                         // Manually trigger your app’s message handling
-                        state.queue_message(Message::Event(
-                            event.clone()));
+                        state.queue_message(Message::Event(event.clone()));
                     }
                 }
                 state.queue_event(event);
@@ -411,11 +475,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     clipboard,
                     debug,
                 );
-                //debug!(
-                //    "state.update() returned task: {}",
-                //    if task.is_some() { "Some(Task<Message>)" } else { "None" }
-                //);
-                
+
 
                 let _ = 'runtime_call: {
                     //debug!("Executing Task::perform for"); // This will at least log that a task is picked up.
@@ -434,10 +494,88 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 };
 
                 // and request a redraw
-                window.request_redraw();
+                //debug!("Requesting redraw");
+                //window.request_redraw();
+                *redraw = true;
+            }
+
+            // 🔹 **Separate Render Pass**
+            if *resized {
+                // Update window title dynamically based on the current image
+                let new_title = state.program().title();
+                window.set_title(&new_title);
+
+                let size = window.inner_size();
+
+                *viewport = Viewport::with_physical_size(
+                    Size::new(size.width, size.height),
+                    window.scale_factor(),
+                );
+
+                surface.configure(
+                    device,
+                    &wgpu::SurfaceConfiguration {
+                        format: *format,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                        width: size.width,
+                        height: size.height,
+                        present_mode: wgpu::PresentMode::AutoVsync,
+                        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                        view_formats: vec![],
+                        desired_maximum_frame_latency: 2,
+                    },
+                );
+
+                *resized = false;
+            }
+            if *redraw {
+                *redraw = false;
+                
+                match surface.get_current_texture() {
+                    Ok(frame) => {
+                        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Render Encoder"),
+                        });
+
+                        //debug!("renderer.present()");
+                        renderer.present(
+                            engine,
+                            device,
+                            queue,
+                            &mut encoder,
+                            Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 0.5 }), // Debug background
+                            frame.texture.format(),
+                            &view,
+                            viewport,
+                            &debug.overlay(),
+                        );
+
+                        // Submit the commands to the queue
+                        engine.submit(queue, encoder);
+                        frame.present();
+
+                        // Update the mouse cursor
+                        window.set_cursor(
+                            iced_winit::conversion::mouse_interaction(
+                                state.mouse_interaction(),
+                            ),
+                        );
+                    }
+                    Err(error) => match error {
+                        wgpu::SurfaceError::OutOfMemory => {
+                            panic!("Swapchain error: {error}. Rendering cannot continue.");
+                        }
+                        _ => {
+                            // Retry rendering on the next frame
+                            window.request_redraw();
+                        }
+                    },
+                }
             }
             
         }
+        
 
         fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Action<Message>) {
             let Self::Ready {
@@ -455,6 +593,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 clipboard,
                 runtime,
                 resized,
+                redraw,
                 debug,
             } = self
             else {
@@ -473,7 +612,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     );
                 }
                 Action::Output(message) => {
-                    //debug!("Forwarding message to update(): {:?}", message);
+                    debug!("Forwarding message to update(): {:?}", message);
                     state.queue_message(message); // Ensures the message gets triggered in the next `update()`
                 }
                 _ => {}
