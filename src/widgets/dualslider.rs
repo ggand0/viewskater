@@ -46,7 +46,7 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-use iced::event::{self, Event};
+/*use iced::event::{self, Event};
 use iced::keyboard;
 use iced::mouse;
 use iced::touch;
@@ -58,7 +58,24 @@ use iced::{
     },
     Background, Color, Element, Length, Point, Rectangle, Size,
     Theme, Pixels, Border, border
+};*/
+
+
+use iced_core::border::{self, Border};
+use iced_core::keyboard;
+use iced_core::event;
+use iced_core::keyboard::key::{self, Key};
+use iced_core::layout;
+use iced_core::mouse;
+use iced_core::renderer;
+use iced_core::touch;
+use iced_core::widget::tree::{self, Tree};
+use iced_core::window;
+use iced_core::{
+    self, Background, Clipboard, Color, Element, Event, Layout, Length, Pixels,
+    Point, Rectangle, Shell, Size, Theme, Widget,
 };
+
 use std::ops::RangeInclusive;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};

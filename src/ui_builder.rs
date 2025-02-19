@@ -106,21 +106,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
 
-    /*let first_img = {
-        let shader_widget = app.panes[0].scene.as_ref().map_or_else(
-            || container(text("No image loaded")),
-            |scene| {
-                let widget = shader(scene)
-                    .width(Fill)
-                    .height(Fill);
-                container(center(widget))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            },
-        );
-    
-        shader_widget
-    };*/
     let first_img = if app.panes[0].dir_loaded {
         if let Some(scene) = &app.panes[0].scene {
             let shader_widget = shader(scene)
@@ -134,7 +119,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             container(text("No image loaded"))
         }
     } else {
-        container(text(""))
+        container(text("")).height(Length::Fill)
     };
     
     
@@ -145,11 +130,11 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         container(text("")).height(0)
     };
 
-    // Add slider inside the UI column
-    let background_color = app.background_color;
+    // Mockup slider
+    /*let background_color = app.background_color;
     let slider_controls = container(
         column![
-            text("Adjust Red Component").color(Color::WHITE),
+            text("UI is still broken").color(Color::WHITE),
             slider(0.0..=1.0, background_color.r, move |r| {
                 Message::BackgroundColorChanged(Color {
                     r,
@@ -167,7 +152,37 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         background: Some(Color::from_rgb(0.2, 0.2, 0.2).into()), // Dark gray background
         text_color: Some(Color::WHITE),
         ..container::Style::default()
-    });
+    });*/
+
+    /*
+    DualSlider::new(
+        0..=(app.panes[0].img_cache.num_files - 1) as u16,
+        app.slider_value,
+        -1,
+        Message::SliderChanged,
+        Message::SliderReleased
+    )
+    .width(Length::Fill)
+    */
+
+    let slider = if app.panes[0].dir_loaded && app.panes[0].img_cache.num_files > 1 {
+        container(DualSlider::new(
+            0..=(app.panes[0].img_cache.num_files - 1) as u16,
+            app.slider_value,
+            -1, // Assuming this was for marking inactive/unused handle
+            Message::SliderChanged,
+            Message::SliderReleased,
+        )
+        .width(Length::Fill))
+    } else {
+        container(text("")).height(0) // Empty when no images are loaded
+    };
+
+    let slider_controls = slider
+        .width(Length::Fill)
+        .height(Length::Shrink)
+        .padding(10)
+        .align_x(Horizontal::Center);
 
     center(
         container(

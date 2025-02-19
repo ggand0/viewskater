@@ -44,6 +44,7 @@ use crate::widgets::shader::scene::Scene;
 
 use crate::config::CONFIG;
 use iced_wgpu::{wgpu};
+use iced_core::image::Handle;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -55,6 +56,8 @@ pub struct Pane {
     pub dir_loaded: bool,
     pub img_cache: ImageCache,
     pub current_image: CachedData, // <-- Now stores either CPU or GPU image
+    //pub cpu_preview_image: Option<CachedData>, // for CPU previews
+    pub cpu_preview_image: Option<Handle>,
     pub is_next_image_loaded: bool, // whether the next image in cache is loaded
     pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
     pub slider_value: u16,
@@ -79,6 +82,7 @@ impl Default for Pane {
             is_selected: true,
             is_selected_cache: true,
             scene: None,
+            cpu_preview_image: None,
         }
     }
 }
@@ -125,6 +129,7 @@ impl Pane {
             dir_loaded: false,
             img_cache: ImageCache::default(),
             current_image: CachedData::Cpu(vec![]),
+            cpu_preview_image: None,
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -211,7 +216,7 @@ impl Pane {
                     }
                     CachedData::Gpu(texture) => {
                         debug!("Setting GPU texture as current_image");
-                        self.current_image = CachedData::Gpu(Arc::clone(&texture)); // ✅ Borrow before cloning
+                        self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
                         self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }

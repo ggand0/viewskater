@@ -22,6 +22,7 @@ use macos::*;
 use std::path::PathBuf;
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -126,6 +127,8 @@ pub struct DataViewer {
     //pub device: Option<Arc<wgpu::Device>>,  // Now it's an Option
     //pub queue: Option<Arc<wgpu::Queue>>,    // Now it's an Option
     pub is_gpu_supported: bool,
+    pub last_slider_update: Instant,
+    pub is_slider_moving: bool,
 }
 
 
@@ -154,6 +157,8 @@ impl DataViewer {
             queue,    // Store the Arc<queue>
             is_gpu_supported: true,
             background_color: Color::WHITE,
+            last_slider_update: Instant::now(),
+            is_slider_moving: false,
         }
     }
 
@@ -172,6 +177,8 @@ impl DataViewer {
         self.skate_right = false;
         self.update_counter = 0;
         self.show_about = false;
+        self.last_slider_update = Instant::now();
+        self.is_slider_moving = false;
     }
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
@@ -511,6 +518,7 @@ pub enum Message {
     FolderOpened(Result<String, file_io::Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
+    SliderImageLoaded(Result<(usize, Arc<wgpu::Texture>), usize>), 
     Event(Event),
     //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
@@ -683,16 +691,90 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 }
             }
+
+            Message::SliderImageLoaded(result) => {
+                debug!("SliderImageLoaded result: {:?}", result);
+                
+                match result {
+                    Ok((pos, texture)) => {
+                        let pane = &mut self.panes[0]; // Assuming single-pane slider
+            
+                        // 🔹 Remove processed request from queue
+                        if let Some(scene) = pane.scene.as_mut() {
+                            scene.update_texture(Arc::clone(&texture));
+                        } else {
+                            pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
+                        }
+            
+                        debug!("Slider image fully processed for pos {}", pos);
+                    }
+                    Err(pos) => {
+                        debug!("Failed to load slider image for pos {}", pos);
+                    }
+                }
+            
+                
+            }
+            
+            
+            Message::SliderChanged(pane_index, value) => {
+                self.is_slider_moving = true;
+                let now = Instant::now();
+            
+                // Throttle slider updates (only process one every 100ms)
+                if now.duration_since(self.last_slider_update) < Duration::from_millis(100) {
+                    return Task::none();
+                }
+                self.last_slider_update = now;
+            
+                debug!("pane_index {} slider value: {}", pane_index, value);
+            
+                // Enqueue image loading in a controlled manner
+                if pane_index == -1 {
+                    self.prev_slider_value = self.slider_value;
+                    self.slider_value = value;
+                    debug!("slider - enqueue update_pos");
+            
+                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index as isize, value as usize);
+                } else {
+                    let pane = &mut self.panes[pane_index as usize];
+                    let pane_index = pane_index as usize;
+            
+                    pane.prev_slider_value = pane.slider_value;
+                    pane.slider_value = value;
+                    debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
+            
+                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index as isize, value as usize);
+                }
+            }
             
 
-            Message::SliderChanged(pane_index, value) => {
+            /*Message::SliderChanged(pane_index, value) => {
+                self.is_slider_moving = true;
+                let now = Instant::now();
+
+                // Ignore updates if the last update was too recent (throttle)
+                //if now.duration_since(self.last_slider_update) < Duration::from_millis(50) {
+                if now.duration_since(self.last_slider_update) < Duration::from_millis(100) {
+                //if now.duration_since(self.last_slider_update) < Duration::from_millis(1000) {
+                    return Task::none();
+                }
+
+                self.last_slider_update = now;
+
+
                 debug!("pane_index {} slider value: {}", pane_index, value);
+
                 // -1 means the master slider (broadcast operation to all panes)
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
                     debug!("slider - update_pos");
-                    return update_pos(&mut self.panes, pane_index as isize, value as usize);
+                    update_pos(
+                        &self.device, &self.queue,
+                        &mut self.panes, pane_index as isize, value as usize,
+                        //self.is_slider_moving
+                    );
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
                     let _pane_index_org = pane_index.clone();
@@ -704,10 +786,15 @@ impl iced_winit::runtime::Program for DataViewer {
                     debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
                     debug!("pane_index {} slider value: {}", pane_index, pane.slider_value);
 
-                    return update_pos(&mut self.panes, pane_index as isize, value as usize);
+                    update_pos(
+                        &self.device, &self.queue,
+                        &mut self.panes, pane_index as isize, value as usize,
+                        //self.is_slider_moving
+                    );
                 }
-            }
+            }*/
             Message::SliderReleased(pane_index, value) => {
+                self.is_slider_moving = false;
                 debug!("slider released: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
                     return load_remaining_images(

@@ -19,6 +19,7 @@ use macos::*;
 use crate::pane;
 use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_operation, load_all_images_in_queue};
 use crate::pane::{Pane, get_master_slider_value};
+use crate::widgets::shader::scene::Scene;
 use crate::menu::PaneLayout;
 use crate::loading_status::LoadingStatus;
 use crate::app::Message;
@@ -155,7 +156,64 @@ pub fn load_remaining_images(
     Task::batch(tasks)
 }
 
-fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), io::Error> {
+
+use crate::cache::cache_utils::load_image_resized;
+
+async fn load_current_slider_image(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    pane: &Pane,
+    pos: usize,
+) -> Result<(usize, Arc<wgpu::Texture>), usize> {
+    debug!("load_current_slider_image: Loading image at pos {}", pos);
+    let img_cache = &pane.img_cache;
+
+    // 🔹 Prevent redundant loads
+    if img_cache.current_index == pos {
+        return Ok((pos, img_cache.slider_texture.as_ref().unwrap().clone()));
+    }
+
+    //let img_path = img_cache.image_paths.get(pos).ok_or(pos)?;
+    let img_path = match img_cache.image_paths.get(pos) {
+        Some(path) => {
+            debug!("load_current_slider_image: Loading image {}", path.display());
+            path
+        }
+        None => {
+            debug!("load_current_slider_image: Image path missing for position {}", pos);
+            return Err(pos);
+        }
+    };
+
+    // 🔹 Use the existing `slider_texture`
+    //let texture = img_cache.slider_texture.as_ref().unwrap();
+
+    // mut
+    //let mut texture = img_cache.slider_texture.clone().unwrap();
+    let mut texture = match img_cache.slider_texture.clone() {
+        Some(tex) => {
+            debug!("load_current_slider_image: Using existing texture for {}", img_path.display());
+            tex
+        }
+        None => {
+            debug!("load_current_slider_image: slider_texture is None at pos {}", pos);
+            return Err(pos);
+        }
+    };
+    
+
+    // 🔹 Load image asynchronously into the existing texture
+    if let Err(err) = load_image_resized(img_path, true, device, queue, &mut texture).await {
+        debug!("Failed to load image {}: {}", img_path.display(), err);
+        return Err(pos);
+    }
+
+    Ok((pos, Arc::clone(&texture)))
+}
+
+
+
+/*fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), io::Error> {
     // Load the image at pos synchronously into the center position of cache
     // Assumes that the image at pos is already in the cache
     let img_cache = &mut pane.img_cache;
@@ -179,7 +237,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
             img_cache.current_index = pos;
 
             //if let CachedData::Cpu(ref data) = img_cache.get_initial_image().unwrap() {
-            //    pane.current_image = CachedData::Cpu(data.clone()); // ✅ Correct assignment
+            //    pane.current_image = CachedData::Cpu(data.clone());
             //}
             // Retrieve the newly loaded image from cache
             if let Ok(cached_image) = img_cache.get_initial_image() {
@@ -190,7 +248,14 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
                     }
                     CachedData::Gpu(texture) => {
                         debug!("Setting GPU texture as current_image");
-                        pane.current_image = CachedData::Gpu(Arc::clone(texture));
+                        //pane.current_image = CachedData::Gpu(Arc::clone(texture));
+                        //pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                        //pane.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                        if let Some(scene) = pane.scene.as_mut() {
+                            scene.update_texture(Arc::clone(&texture));
+                        } else {
+                            pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
+                        }
                     }
                 }
             } else {
@@ -205,9 +270,107 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize ) -> Result<(), i
             Err(err)
         }
     }
+}*/
+
+
+//wip
+/*pub fn update_pos(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    panes: &mut Vec<Pane>,
+    pane_index: isize,
+    pos: usize,
+) -> Task<Message> {
+    let is_slider_move = true;
+
+    // 🔹 Prevent excessive enqueuing
+    const MAX_QUEUE_SIZE: usize = 3;
+    if panes[0].img_cache.loading_queue_slider.len() > MAX_QUEUE_SIZE {
+        panes[0].img_cache.loading_queue_slider.pop_front();
+    }
+    panes[0].img_cache.loading_queue_slider.push_back(pos);
+
+    let device_clone = Arc::clone(device);
+    let queue_clone = Arc::clone(queue);
+    //let panes_clone = panes.to_vec(); // ✅ Convert `&mut Vec<Pane>` to `Vec<Pane>` for async safety
+    let mut pane = &mut panes[0];
+
+    debug!("Task::perform started for slider pos {}", pos);
+
+    let images_loading_task = async move {
+        let pane_index_usize = if pane_index == -1 { 0 } else { pane_index as usize };
+
+        let result = load_current_slider_image(&device_clone, &queue_clone, &mut pane, pos).await;
+
+        result
+    };
+
+    Task::perform(images_loading_task, Message::SliderImageLoaded)
+}*/
+
+pub fn update_pos(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    panes: &mut Vec<Pane>, // Immutable
+    pane_index: isize,
+    pos: usize,
+) -> Task<Message> {
+    let is_slider_move = true;
+
+    // Prevent excessive enqueuing
+    const MAX_QUEUE_SIZE: usize = 3;
+    if panes[0].img_cache.loading_queue_slider.len() > MAX_QUEUE_SIZE {
+        panes[0].img_cache.loading_queue_slider.pop_front();
+    }
+    panes[0].img_cache.loading_queue_slider.push_back(pos);
+
+    let device_clone = Arc::clone(device);
+    let queue_clone = Arc::clone(queue);
+
+    // Extract only the required data from ImageCache to avoid `Send` errors
+    let img_cache = panes.get(0).map(|pane| {
+        (
+            pane.img_cache.image_paths.clone(), // Clone only image paths
+            pane.img_cache.slider_texture.clone(), // Clone Arc<wgpu::Texture>
+        )
+    });
+
+    debug!("Task::perform started for slider pos {}", pos);
+
+    let images_loading_task = async move {
+        debug!("update_pos: async block");
+        debug!("img_cache: {:?}", img_cache);
+        match img_cache {
+            Some((image_paths, texture)) => {
+                debug!("update_pos: (image_paths, texture) block");
+                if let Some(texture) = texture {
+                    debug!("update_pos: texture block");
+                    let img_path = image_paths.get(pos).ok_or(pos)?;
+                    let mut texture_clone = texture.clone();
+
+                    if let Err(err) = load_image_resized(img_path, true, &device_clone, &queue_clone, &mut texture_clone).await {
+                        debug!("Failed to load image {}: {}", img_path.display(), err);
+                        return Err(pos);
+                    }
+                    Ok((pos, texture))
+                } else {
+                    Err(pos) // If no texture, return error
+                }
+            }
+            None => Err(pos), // If no pane exists, return error
+        }
+    };
+
+    Task::perform(images_loading_task, Message::SliderImageLoaded) // Now fully Send-safe
 }
 
-pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) -> Task<Message> {
+
+
+
+/*pub fn update_pos(
+    device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>,
+    panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) -> Task<Message> {
+    let is_slider_move = true;
     // TODO: clear the global loading queue here
 
     if pane_index == -1 {
@@ -217,7 +380,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
         let mut tasks = Vec::new();
         for (cache_index, pane) in panes.iter_mut().enumerate() {
             if pane.dir_loaded {
-                match load_current_slider_image(pane, pos) {
+                match load_current_slider_image(device, queue, pane, pos, is_slider_move) {
                     Ok(()) => {
                         debug!("update_pos - Image loaded successfully for pane {}", cache_index);
                     }
@@ -235,7 +398,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
         let pane_index = pane_index as usize;
         let pane = &mut panes[pane_index];
         if pane.dir_loaded {
-            match load_current_slider_image(pane, pos) {
+            match load_current_slider_image(device, queue, pane, pos, is_slider_move) {
                 Ok(()) => {
                     debug!("update_pos - Image loaded successfully for pane {}", pane_index);
                 }
@@ -247,7 +410,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize) ->
 
         Task::none()
     }
-}
+}*/
 
 
 // Function to initialize image_load_state for all panes

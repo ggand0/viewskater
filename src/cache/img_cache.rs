@@ -140,9 +140,11 @@ pub struct ImageCache {
     pub cache_states: Vec<bool>,            // States of cache validity
     pub loading_queue: VecDeque<LoadOperation>,
     pub being_loaded_queue: VecDeque<LoadOperation>,    // Queue of image indices being loaded
+    pub loading_queue_slider: VecDeque<usize>,
 
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
+    pub slider_texture: Option<Arc<wgpu::Texture>>,
 }
 
 impl Default for ImageCache {
@@ -157,8 +159,10 @@ impl Default for ImageCache {
             cache_states: Vec::new(),
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
+            loading_queue_slider: VecDeque::new(),
             cached_data: Vec::new(),
             backend: Box::new(CpuImageCache {}),
+            slider_texture: None,
         }
     }
 }
@@ -173,9 +177,12 @@ impl ImageCache {
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
     ) -> Result<Self, io::Error> {
+        let device_ref = device.clone();
         let backend: Box<dyn ImageCacheBackend> = if is_gpu_supported {
             if let (Some(device), Some(queue)) = (device, queue) {
                 Box::new(GpuImageCache::new(device, queue))
+
+                
             } else {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -192,6 +199,31 @@ impl ImageCache {
             cached_data.push(None);
         }
 
+
+        // 🔹 Create a fixed-size texture for slider previews if using GPU
+        let slider_texture = if is_gpu_supported {
+            if let Some(device) = device_ref {
+                Some(Arc::new(device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("SliderTexture"),
+                    size: wgpu::Extent3d {
+                        width: 1280, // Fixed 720p resolution
+                        height: 720,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                })))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Ok(ImageCache {
             image_paths: image_paths.clone(),
             num_files: image_paths.len(),
@@ -203,7 +235,9 @@ impl ImageCache {
             cache_states: vec![false; cache_count * 2 + 1],
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
+            loading_queue_slider: VecDeque::new(),
             backend,
+            slider_texture,
         })
     }
 
