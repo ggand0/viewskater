@@ -33,6 +33,65 @@ use crate::cache::img_cache::{CachedData};
 use log::{Level, debug, info, warn, error};
 
 
+fn load_full_res_image(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
+    panes: &mut Vec<pane::Pane>,
+    pane_index: isize,
+    pos: usize,
+) -> Task<Message> {
+    debug!("load_full_res_image: Reloading full-resolution image at pos {}", pos);
+
+    let pane = if pane_index == -1 {
+        panes.get_mut(0) // Apply to all panes if global slider
+    } else {
+        panes.get_mut(pane_index as usize)
+    };
+
+    if let Some(pane) = pane {
+        let img_cache = &mut pane.img_cache;
+        let img_path = match img_cache.image_paths.get(pos) {
+            Some(path) => path.clone(),
+            None => {
+                debug!("Image path missing for pos {}", pos);
+                return Task::none();
+            }
+        };
+
+        // Get or create a texture
+        let mut texture = img_cache.cached_data.get(pos)
+            .and_then(|opt| opt.as_ref())
+            .and_then(|cached| match cached {
+                CachedData::Gpu(tex) => Some(tex.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1))); // Placeholder
+
+        // Load the full-resolution image synchronously
+        if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture) {
+            debug!("Failed to load full-res image {}: {}", img_path.display(), err);
+            return Task::none();
+        }
+
+        // Store the full-resolution texture in the cache
+        let loaded_image = CachedData::Gpu(texture.clone().into());
+        img_cache.cached_data[pos] = Some(loaded_image.clone());
+        img_cache.cached_image_indices[pos] = pos as isize;
+        img_cache.current_index = pos;
+
+        // Update the currently displayed image
+        pane.current_image = loaded_image;
+
+        debug!("Full-res image loaded successfully at pos {}", pos);
+        return Task::none();
+    }
+
+    Task::none()
+}
+
+
+
 fn get_loading_tasks_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -157,7 +216,7 @@ pub fn load_remaining_images(
 }
 
 
-use crate::cache::cache_utils::load_image_resized;
+use crate::cache::cache_utils::{load_image_resized, load_image_resized_sync, create_gpu_texture};
 
 async fn load_current_slider_image(
     device: &wgpu::Device,
@@ -186,10 +245,6 @@ async fn load_current_slider_image(
     };
 
     // 🔹 Use the existing `slider_texture`
-    //let texture = img_cache.slider_texture.as_ref().unwrap();
-
-    // mut
-    //let mut texture = img_cache.slider_texture.clone().unwrap();
     let mut texture = match img_cache.slider_texture.clone() {
         Some(tex) => {
             debug!("load_current_slider_image: Using existing texture for {}", img_path.display());
@@ -272,41 +327,6 @@ async fn load_current_slider_image(
     }
 }*/
 
-
-//wip
-/*pub fn update_pos(
-    device: &Arc<wgpu::Device>,
-    queue: &Arc<wgpu::Queue>,
-    panes: &mut Vec<Pane>,
-    pane_index: isize,
-    pos: usize,
-) -> Task<Message> {
-    let is_slider_move = true;
-
-    // 🔹 Prevent excessive enqueuing
-    const MAX_QUEUE_SIZE: usize = 3;
-    if panes[0].img_cache.loading_queue_slider.len() > MAX_QUEUE_SIZE {
-        panes[0].img_cache.loading_queue_slider.pop_front();
-    }
-    panes[0].img_cache.loading_queue_slider.push_back(pos);
-
-    let device_clone = Arc::clone(device);
-    let queue_clone = Arc::clone(queue);
-    //let panes_clone = panes.to_vec(); // Convert `&mut Vec<Pane>` to `Vec<Pane>` for async safety
-    let mut pane = &mut panes[0];
-
-    debug!("Task::perform started for slider pos {}", pos);
-
-    let images_loading_task = async move {
-        let pane_index_usize = if pane_index == -1 { 0 } else { pane_index as usize };
-
-        let result = load_current_slider_image(&device_clone, &queue_clone, &mut pane, pos).await;
-
-        result
-    };
-
-    Task::perform(images_loading_task, Message::SliderImageLoaded)
-}*/
 
 pub fn update_pos(
     device: &Arc<wgpu::Device>,
