@@ -502,8 +502,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             // 🔹 **Separate Render Pass**
             if *resized {
                 // Update window title dynamically based on the current image
-                let new_title = state.program().title();
-                window.set_title(&new_title);
+                //let new_title = state.program().title();
+                //window.set_title(&new_title);
 
                 let size = window.inner_size();
 
@@ -530,6 +530,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             }
             if *redraw {
                 *redraw = false;
+                
+                // Update window title dynamically based on the current image
+                let new_title = state.program().title();
+                window.set_title(&new_title);
+
                 
                 match surface.get_current_texture() {
                     Ok(frame) => {
