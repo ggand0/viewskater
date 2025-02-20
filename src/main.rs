@@ -35,7 +35,7 @@ mod app;
 use crate::app::{Message, DataViewer};
 
 use iced_winit::Clipboard;
-use iced_runtime::Action;
+use iced_runtime::{Action, Task};
 use iced_runtime::task::into_stream;
 use iced_winit::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 
@@ -46,6 +46,24 @@ use winit::{
 };
 
 use std::sync::Arc;
+use std::borrow::Cow;
+
+use iced_wgpu::graphics::text::font_system;
+
+fn register_font_manually(font_data: &'static [u8]) {
+    use std::sync::RwLockWriteGuard;
+
+    // Get a mutable reference to the font system
+    let font_system = font_system();
+    let mut font_system_guard: RwLockWriteGuard<_> = font_system
+        .write()
+        .expect("Failed to acquire font system lock");
+
+    // Load the font into the global font system
+    font_system_guard.load_font(Cow::Borrowed(font_data));
+}
+
+
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
     // Adapted event loop logic from benediktweihs’ fork of Iced:
@@ -185,6 +203,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 let engine = Engine::new(
                     &adapter, &device, &queue, format, None);
                 engine.create_image_cache(&device); // Manually create image cache
+
+                // 🔹 Manually register fonts
+                register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
+                register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
+                register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
                 
                 let mut renderer = Renderer::new(
                     &device, &engine, Font::default(), Pixels::from(16));
@@ -530,7 +553,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             }
             if *redraw {
                 *redraw = false;
-                
+
                 // Update window title dynamically based on the current image
                 let new_title = state.program().title();
                 window.set_title(&new_title);
