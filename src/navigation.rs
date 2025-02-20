@@ -545,10 +545,11 @@ pub fn load_next_images_all(
         ) {
             debug!("load_next_images_all - should_enqueue_loading passed  - any_out_of_bounds: {}", any_out_of_bounds);
             if any_out_of_bounds {
-                loading_status.enqueue_image_load(LoadOperation::ShiftNext((
+                // Now that we use the integration setup, can we disable this?
+                /*loading_status.enqueue_image_load(LoadOperation::ShiftNext((
                     pane_indices,
                     target_indices.clone(),
-                )));
+                )));*/
             } else {
                 loading_status.enqueue_image_load(load_next_operation);
             }
@@ -651,8 +652,9 @@ pub fn load_prev_images_all(
             panes,
         ) {
             if any_none_index {
+                // Now that we use the integration setup, can we disable this??
                 // Use ShiftPrevious if any index is out of bounds (`None`)
-                loading_status.enqueue_image_load(LoadOperation::ShiftPrevious((pane_indices, target_indices)));
+                //loading_status.enqueue_image_load(LoadOperation::ShiftPrevious((pane_indices, target_indices)));
             } else {
                 loading_status.enqueue_image_load(load_prev_operation);
             }
