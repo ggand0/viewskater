@@ -698,6 +698,23 @@ impl iced_winit::runtime::Program for DataViewer {
                 match result {
                     Ok((pos, texture)) => {
                         let pane = &mut self.panes[0]; // Assuming single-pane slider
+                        let img_cache = &mut pane.img_cache;
+
+                        // Update indices in the cache
+                        let target_index: usize;
+                        if pos < img_cache.cache_count {
+                            target_index = pos;
+                            img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
+                        } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
+                            //target_index = img_cache.image_paths.len() - pos;
+                            target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
+                            img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
+                        } else {
+                            target_index = img_cache.cache_count;
+                            img_cache.current_offset = 0;
+                        }
+                        img_cache.cached_image_indices[target_index] = pos as isize;
+                        img_cache.current_index = pos;
             
                         // 🔹 Remove processed request from queue
                         if let Some(scene) = pane.scene.as_mut() {
