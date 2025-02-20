@@ -128,7 +128,7 @@ async fn load_image_async(
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
                 });
@@ -249,6 +249,10 @@ pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Cache
 
 pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
     Ok((vec![None; count], Some(operation)))
+}
+
+pub async fn literal_empty_async_block() -> Result<(), std::io::ErrorKind> {
+    Ok(())
 }
 
 
