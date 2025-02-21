@@ -29,18 +29,28 @@ pollster = "0.4.0"
 tracing-subscriber = "0.3"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "69a425da03f227a8fd0e654eeb1e2d8c271e4411", features = [
-#        "image", "tokio", "svg", "lazy", "wgpu"]  }
-iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = [
-    "image", "tokio", "svg", "lazy", "wgpu"
-] }
+#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = [
+#    "image", "tokio", "svg", "lazy", "wgpu"
+#] }
 
 #iced_aw_custom = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "7897549ee9100b5095a9e934c3decdfbdbdc2818", features = [
-iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "a6008baadc357d116acb2b0caa8b14fed1bf717e", features = [
-    "menu", "quad" ] }
+#iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "a6008baadc357d116acb2b0caa8b14fed1bf717e", features = [
+#    "menu", "quad" ] }
+#iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
 
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# debug setup with local iced
+#iced_custom = { package = "iced", path = "../iced", features=["image", "tokio", "svg", "lazy", "wgpu", "advanced"] }
+#iced_winit = { path = "../iced/winit" }
+#iced_wgpu = { path = "../iced/wgpu" }
+#iced_widget = { path = "../iced/widget", features = ["wgpu", "image"] }
+#iced_core = { path = "../iced/core" }
+#iced_runtime = { path = "../iced/runtime" }
+#iced_futures = { path = "../iced/futures", features = ["tokio"] }
+#iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
+
+# v1 setup
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = [
     "image", "tokio", "svg", "lazy", "wgpu"
 ] }
@@ -50,11 +60,11 @@ iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.g
 iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
 iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
 iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = ["tokio"] }
-#iced_renderer = { git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = ["wgpu"] }
 iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "a6008baadc357d116acb2b0caa8b14fed1bf717e", features = [
     "menu", "quad" ] }
 
 
+# v0 setup
 #iced_winit = "0.13"
 #iced_wgpu = "0.13.5"
 #iced_widget = { version = "0.13", features = ["wgpu"] }
@@ -66,6 +76,7 @@ iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", 
 #    "menu",
 #    "quad",
 #] }
+
 
 [dev-dependencies]
 cargo-bundle = "0.6.0"
