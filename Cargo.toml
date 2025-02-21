@@ -29,14 +29,22 @@ pollster = "0.4.0"
 tracing-subscriber = "0.3"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = [
-#    "image", "tokio", "svg", "lazy", "wgpu"
-#] }
-
+#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "69a425da03f227a8fd0e654eeb1e2d8c271e4411", features = [
+#        "image", "tokio", "svg", "lazy", "wgpu"]  }
 #iced_aw_custom = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "7897549ee9100b5095a9e934c3decdfbdbdc2818", features = [
-#iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "a6008baadc357d116acb2b0caa8b14fed1bf717e", features = [
-#    "menu", "quad" ] }
-#iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
+iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = [
+    "image", "tokio", "svg", "lazy", "wgpu"
+] }
+iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
+iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
+iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = ["wgpu"] }
+iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
+iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
+iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = ["tokio"] }
+#iced_renderer = { git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = ["wgpu"] }
+iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "a6008baadc357d116acb2b0caa8b14fed1bf717e", features = [
+    "menu", "quad" ] }
+
 
 
 [target.'cfg(target_os = "linux")'.dependencies]

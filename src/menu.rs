@@ -7,7 +7,7 @@ mod other_os {
 #[cfg(not(target_os = "linux"))]
 mod macos {
     pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
+    pub use iced_aw as iced_aw;
 }
 
 #[cfg(target_os = "linux")]
