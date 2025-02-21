@@ -811,16 +811,18 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }*/
             Message::SliderReleased(pane_index, value) => {
+                let last_valid_pos = self.slider_value as usize;
+                
                 self.is_slider_moving = false;
                 debug!("slider released: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
                     return load_remaining_images(
                         &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index, value as usize);
+                        &mut self.panes, &mut self.loading_status, pane_index, last_valid_pos);
                 } else {
                     return load_remaining_images(
                         &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
+                        &mut self.panes, &mut self.loading_status, pane_index as isize, last_valid_pos);
                 }
             }
 

@@ -126,7 +126,16 @@ pub trait ImageCacheBackend {
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
     ) -> Result<(), io::Error>;
-    fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error>;
+    //fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error>;
+    fn load_pos(
+        &mut self,
+        new_image: Option<CachedData>,
+        pos: usize,
+        image_index: isize,
+        cached_data: &mut Vec<Option<CachedData>>,
+        cached_image_indices: &mut Vec<isize>,
+        cache_count: usize,
+    ) -> Result<bool, io::Error>;
 }
 
 
@@ -261,7 +270,16 @@ impl ImageCache {
         pos: usize,
         data_index: isize,
     ) -> Result<bool, io::Error> {
-        self.backend.load_pos(new_data, pos, data_index)
+        //self.backend.load_pos(new_data, pos, data_index)
+
+        self.backend.load_pos(
+            new_data,
+            pos,
+            data_index,
+            &mut self.cached_data,
+            &mut self.cached_image_indices,
+            self.cache_count,
+        )
     }
 
     pub fn load_initial_images(&mut self) -> Result<(), io::Error> {

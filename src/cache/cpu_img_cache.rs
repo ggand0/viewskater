@@ -63,7 +63,16 @@ impl ImageCacheBackend for CpuImageCache {
         Ok(())
     }
 
-    fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error> {
+    //fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error> {
+    fn load_pos(
+        &mut self,
+        new_image: Option<CachedData>,
+        pos: usize,
+        image_index: isize,
+        cached_data: &mut Vec<Option<CachedData>>,
+        cached_image_indices: &mut Vec<isize>,
+        cache_count: usize,
+    ) -> Result<bool, io::Error> {
         match new_image {
             Some(CachedData::Cpu(_)) => {
                 println!("CpuCache: Setting image at position {}", pos);

@@ -133,6 +133,7 @@ pub fn handle_load_pos_operation(
     //image_data: Vec<Option<Vec<u8>>>,
     image_data: Vec<Option<CachedData>>,
 ) {
+    debug!("Handling LoadPos operation");
     // Remove the current LoadPos operation from the being_loaded queue
     loading_status.being_loaded_queue.pop_front();
 

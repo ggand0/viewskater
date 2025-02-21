@@ -74,10 +74,24 @@ fn load_full_res_image(
             return Task::none();
         }
 
+        // Get the index inside cache array
+        let target_index: usize;
+        if pos < img_cache.cache_count {
+            target_index = pos;
+            img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
+        } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
+            //target_index = img_cache.image_paths.len() - pos;
+            target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
+            img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
+        } else {
+            target_index = img_cache.cache_count;
+            img_cache.current_offset = 0;
+        }
+
         // Store the full-resolution texture in the cache
         let loaded_image = CachedData::Gpu(texture.clone().into());
-        img_cache.cached_data[pos] = Some(loaded_image.clone());
-        img_cache.cached_image_indices[pos] = pos as isize;
+        img_cache.cached_data[target_index] = Some(loaded_image.clone());
+        img_cache.cached_image_indices[target_index] = pos as isize;
         img_cache.current_index = pos;
 
         // Update the currently displayed image
@@ -150,14 +164,17 @@ fn get_loading_tasks_slider(
 
         // Generate loading tasks
         //let local_tasks = load_all_images_in_queue(panes, loading_status);
+        let local_tasks = load_all_images_in_queue(device, queue, is_gpu_supported, panes, loading_status);
 
         // Convert `panes` into a vector of mutable references
         let mut pane_refs: Vec<&mut Pane> = panes.iter_mut().collect();
 
+        // NOTE: temporary workaround to make it compile
         // Call the function with `pane_refs`
-        let local_tasks = load_images_by_operation(
+        /*let local_tasks = load_images_by_operation(
             device, queue, is_gpu_supported,
-            &mut pane_refs, loading_status);
+            &mut pane_refs, loading_status);*/
+        //debug!("get_loading_tasks_slider - local_tasks.len(): {}", local_tasks.len());
 
 
         tasks.push(local_tasks);
@@ -183,6 +200,10 @@ pub fn load_remaining_images(
 
     let mut tasks = Vec::new();
 
+    // 🔹 First, load the full-resolution image **synchronously**
+    let full_res_task = load_full_res_image(device, queue, is_gpu_supported, panes, pane_index, pos);
+    tasks.push(full_res_task); // Ensure it's executed first
+
     if pane_index == -1 {
         // Dynamic loading: load the central image synchronously, and others asynchronously
         let cache_indices: Vec<usize> = panes
@@ -195,6 +216,7 @@ pub fn load_remaining_images(
             let local_tasks = get_loading_tasks_slider(
                 device, queue, is_gpu_supported,
                 panes, loading_status, cache_index, pos);
+            debug!("load_remaining_images - local_tasks.len(): {}", local_tasks.len());
             tasks.extend(local_tasks);
         }
     } else {
@@ -211,6 +233,7 @@ pub fn load_remaining_images(
     }
 
     loading_status.print_queue();
+    debug!("load_remaining_images - tasks.len(): {}", tasks.len());
 
     Task::batch(tasks)
 }
@@ -358,13 +381,13 @@ pub fn update_pos(
     debug!("Task::perform started for slider pos {}", pos);
 
     let images_loading_task = async move {
-        debug!("update_pos: async block");
-        debug!("img_cache: {:?}", img_cache);
+        //debug!("update_pos: async block");
+        //debug!("img_cache: {:?}", img_cache);
         match img_cache {
             Some((image_paths, texture)) => {
-                debug!("update_pos: (image_paths, texture) block");
+                //debug!("update_pos: (image_paths, texture) block");
                 if let Some(texture) = texture {
-                    debug!("update_pos: texture block");
+                    //debug!("update_pos: texture block");
                     let img_path = image_paths.get(pos).ok_or(pos)?;
                     let mut texture_clone = texture.clone();
 

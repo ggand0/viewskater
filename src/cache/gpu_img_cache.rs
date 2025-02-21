@@ -208,10 +208,32 @@ impl ImageCacheBackend for GpuImageCache {
     }
 
 
-    fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error> {
+    fn load_pos(
+        &mut self,
+        new_image: Option<CachedData>,
+        pos: usize,
+        image_index: isize,
+        cached_data: &mut Vec<Option<CachedData>>,
+        cached_image_indices: &mut Vec<isize>,
+        cache_count: usize,
+    ) -> Result<bool, io::Error> {
         println!("GpuCache: Setting image at position {}", pos);
-        // Placeholder logic for setting position in GPU cache
-        Err(io::Error::new(io::ErrorKind::Unsupported, "GPU load_pos not implemented"))
+    
+        if pos >= cached_data.len() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Position out of bounds"));
+        }
+    
+        // Store the new GPU texture in the cache
+        cached_data[pos] = new_image;
+        cached_image_indices[pos] = image_index;
+    
+        // Debugging output
+        println!("Updated GPU cache at position {} with image index {}", pos, image_index);
+    
+        // If the position corresponds to the center of the cache, return true to trigger a reload
+        let should_reload = pos == cache_count;
+        Ok(should_reload)
     }
+    
 
 }
