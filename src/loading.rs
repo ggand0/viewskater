@@ -1,7 +1,8 @@
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
+    //pub use iced;
+    pub use iced_custom as iced;
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -17,18 +18,20 @@ use macos::*;
 
 #[allow(unused_imports)]
 use log::{debug, error};
+use crate::Arc;
 use crate::pane;
 use crate::loading_status::LoadingStatus;
-use crate::image_cache::LoadOperationType;
-use crate::image_cache::LoadOperation;
-
+use crate::cache::img_cache::{LoadOperation, LoadOperationType};
+use crate::cache::img_cache::{CachedData};
+use crate::widgets::shader::scene::Scene;
 
 pub fn handle_load_operation_all(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_indices: &Vec<usize>,
     target_indices: Vec<Option<isize>>,
-    image_data: Vec<Option<Vec<u8>>>,
+    //image_data: Vec<Option<Vec<u8>>>,
+    image_data: Vec<Option<CachedData>>,
     op: LoadOperation,  // Use the LoadOperation directly
     operation_type: LoadOperationType,
 ) {
@@ -69,28 +72,57 @@ pub fn handle_load_operation_all(
 
         if let Some(target_image_to_load) = target_image_to_load {
             if target_image_to_load == target_index {
+                // Convert `Option<Vec<u8>>` to `Option<CachedData>`
+                /*let mut converted_data = image_data[pane_index]
+                    .clone()
+                    .map(CachedData::Cpu);*/
+                let mut converted_data = match image_data[pane_index].clone() {
+                    Some(CachedData::Cpu(data)) => Some(CachedData::Cpu(data)),
+                    Some(CachedData::Gpu(texture)) => Some(CachedData::Gpu(Arc::clone(&texture))),
+                    None => None,
+                };
+                    
+
                 match op {
                     LoadOperation::LoadNext(..) => {
-                        cache.move_next(image_data[pane_index].clone(), target_index).unwrap();
+                        //cache.move_next(converted_data.clone(), target_index).unwrap();
+                        cache.move_next(Some(converted_data.take()).expect("Failed to move next"), target_index).unwrap();
                     }
                     LoadOperation::LoadPrevious(..) => {
-                        cache.move_prev(image_data[pane_index].clone(), target_index).unwrap();
+                        //cache.move_prev(converted_data.clone(), target_index).unwrap();
+                        cache.move_prev(Some(converted_data.take()).expect("Failed to move previous"), target_index).unwrap();
                     }
                     LoadOperation::ShiftNext(..) => {
-                        cache.move_next_edge(image_data[pane_index].clone(), target_index).unwrap();
+                        //cache.move_next_edge(converted_data.clone(), target_index).unwrap();
+                        cache.move_next_edge(Some(converted_data.take()).expect("Failed to move next edge"), target_index).unwrap();
                     }
                     LoadOperation::ShiftPrevious(..) => {
-                        cache.move_prev_edge(image_data[pane_index].clone(), target_index).unwrap();
+                        //cache.move_prev_edge(converted_data.clone(), target_index).unwrap();
+                        cache.move_prev_edge(Some(converted_data.take()).expect("Failed to move previous edge"), target_index).unwrap();
                     }
                     LoadOperation::LoadPos((_, ref _target_indices_and_cache)) => {
                         // LoadPos is covered in `handle_load_pos_operation()`
                     }
                 }
+
                 // Reload current image if necessary
-                let loaded_image = cache.get_initial_image().unwrap().to_vec();
-                let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-                pane.current_image = handle;
+                if let Ok(cached_image) = cache.get_initial_image() {
+                    match cached_image {
+                        CachedData::Cpu(data) => {
+                            debug!("Setting CPU image as current_image");
+                            pane.current_image = CachedData::Cpu(data.clone());
+                        }
+                        CachedData::Gpu(texture) => {
+                            debug!("Setting GPU texture as current_image");
+                            pane.current_image = CachedData::Gpu(Arc::clone(&texture));
+                            //pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                            //pane.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                        }
+                    }
+                }
+
             }
+
         }
     }
 }
@@ -101,10 +133,15 @@ pub fn handle_load_pos_operation(
     loading_status: &mut LoadingStatus,
     pane_index: usize,
     target_indices_and_cache: Vec<Option<(isize, usize)>>,
-    image_data: Vec<Option<Vec<u8>>>,
+    //image_data: Vec<Option<Vec<u8>>>,
+    image_data: Vec<Option<CachedData>>,
 ) {
+    debug!("Handling LoadPos operation");
     // Remove the current LoadPos operation from the being_loaded queue
     loading_status.being_loaded_queue.pop_front();
+
+    // Log (target_index, cache_pos) pairs
+    let mut processed_indices: Vec<(isize, usize)> = Vec::new();
 
     // Access the pane that needs to update its cache and images
     if let Some(pane) = panes.get_mut(pane_index) {
@@ -112,7 +149,10 @@ pub fn handle_load_pos_operation(
 
         // Iterate over the target indices and cache positions along with image data
         for (target_opt, image_data_opt) in target_indices_and_cache.iter().zip(image_data.iter()) {
+            debug!("Target index and cache position: {:?}", target_opt);
+
             if let Some((target_index, cache_pos)) = target_opt {
+                processed_indices.extend(target_opt.clone());
                 let target_index_usize = *target_index as usize;
 
                 // Ensure that the target index is within valid bounds
@@ -120,14 +160,33 @@ pub fn handle_load_pos_operation(
                     // Load the image data into the cache if available
                     if let Some(image) = image_data_opt {
                         // Store the loaded image data in the cache at the specified cache position
-                        cache.cached_images[*cache_pos] = Some(image.clone());
-                        cache.cached_image_indices[*cache_pos] = *target_index;
+                        //cache.set_cached_data(*cache_pos, CachedData::Cpu(image.clone())) ;
+                        //cache.cached_image_indices[*cache_pos] = *target_index;
+                        match image {
+                            CachedData::Cpu(data) => {
+                                cache.set_cached_data(*cache_pos, CachedData::Cpu(data.clone()));
+                            }
+                            CachedData::Gpu(texture) => {
+                                cache.set_cached_data(*cache_pos, CachedData::Gpu(Arc::clone(texture)));
+                            }
+                        }
+                        
 
-                        // If this is the current image, update the pane's current image
                         if cache.current_index == target_index_usize {
-                            let loaded_image = cache.get_initial_image().unwrap().to_vec();
-                            let handle = iced::widget::image::Handle::from_bytes(loaded_image);
-                            pane.current_image = handle;
+                            // Reload current image if necessary
+                            if let Ok(cached_image) = cache.get_initial_image() {
+                                match cached_image {
+                                    CachedData::Cpu(data) => {
+                                        debug!("Setting CPU image as current_image");
+                                        pane.current_image = CachedData::Cpu(data.clone());
+                                    }
+                                    CachedData::Gpu(texture) => {
+                                        debug!("Setting GPU texture as current_image");
+                                        pane.current_image = CachedData::Gpu(Arc::clone(&texture));
+                                    }
+                                }
+                            }
+
                         }
                     } else {
                         debug!("No image data available for target index: {}", target_index);
@@ -137,5 +196,7 @@ pub fn handle_load_pos_operation(
                 }
             }
         }
+
+        debug!("Processed indices: {:?}", processed_indices);
     }
 }

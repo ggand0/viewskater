@@ -1,13 +1,13 @@
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
-    pub use iced_aw;
+    pub use iced_custom as iced;
+    pub use iced_aw as iced_aw; // TODO: Change this to iced_aw_custom
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
     pub use iced_custom as iced;
-    pub use iced_aw_custom as iced_aw;
+    pub use iced_aw as iced_aw;
 }
 
 #[cfg(target_os = "linux")]
@@ -30,7 +30,7 @@ use iced_aw::{menu_bar, menu_items};
 use iced_aw::MenuBar;
 use iced_aw::style::{menu_bar::primary, Status};
 
-use crate::{Message, DataViewer};
+use crate::{app::Message, DataViewer};
 use crate::widgets::toggler;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

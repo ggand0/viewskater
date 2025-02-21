@@ -34,14 +34,13 @@
 
 #[cfg(target_os = "linux")]
 mod other_os {
-    pub use iced;
-    //pub use iced_widget;
+    //pub use iced;
+    pub use iced_custom as iced;
 }
 
 #[cfg(not(target_os = "linux"))]
 mod macos {
     pub use iced_custom as iced;
-    //pub use iced_widget_custom as iced_widget;
 }
 
 #[cfg(target_os = "linux")]
@@ -444,7 +443,7 @@ where
             }
     
             #[cfg(target_os = "linux")]
-            Event::Window(iced::window::Event::FileDropped(path)) => {
+            Event::Window(iced::window::Event::FileDropped(path, _)) => {
                 let mut index = 0;
                 debug!("layout children length: {}", layout.children().count());
                 for child_layout in layout.children() {
@@ -469,7 +468,8 @@ where
                     }*/
             
                     if bounds.contains(cursor.position().unwrap_or_default()) {
-                        shell.publish((self.on_drop)(index, path.to_string_lossy().to_string()));
+                        //shell.publish((self.on_drop)(index, path.to_string_lossy().to_string()));
+                        shell.publish((self.on_drop)(index, path[0].to_string_lossy().to_string()));
                         break;
                     }
                     index += 1;
