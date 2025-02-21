@@ -96,6 +96,8 @@ fn load_full_res_image(
 
         // Update the currently displayed image
         pane.current_image = loaded_image;
+        pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture))))); 
+        pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
 
         debug!("Full-res image loaded successfully at pos {}", pos);
         return Task::none();
@@ -161,6 +163,8 @@ fn get_loading_tasks_slider(
         // Enqueue the batched LoadPos operation with (image index, cache position) pairs
         let load_operation = LoadOperation::LoadPos((pane_index, target_indices_and_cache));
         loading_status.enqueue_image_load(load_operation);
+        debug!("get_loading_tasks_slider - loading_status.loading_queue: {:?}", loading_status.loading_queue);
+        loading_status.print_queue();
 
         // Generate loading tasks
         //let local_tasks = load_all_images_in_queue(panes, loading_status);
@@ -179,6 +183,10 @@ fn get_loading_tasks_slider(
 
         tasks.push(local_tasks);
     }
+
+    debug!("get_loading_tasks_slider - loading_status addr: {:p}", loading_status);
+    loading_status.print_queue();
+
 
     tasks
 }
@@ -231,6 +239,8 @@ pub fn load_remaining_images(
             }
         }
     }
+
+    debug!("load_remaining_images - loading_status addr: {:p}", loading_status);
 
     loading_status.print_queue();
     debug!("load_remaining_images - tasks.len(): {}", tasks.len());
@@ -804,6 +814,13 @@ pub fn move_right_all(
 ) -> Task<Message> {
     debug!("##########MOVE_RIGHT_ALL()##########");
 
+    // Prevent movement while LoadPos is still in the queue
+    loading_status.print_queue();
+    if loading_status.is_operation_in_queues(LoadOperationType::LoadPos) {
+        debug!("move_right_all() - LoadPos operation in queue, skipping move_right_all()");
+        return Task::none();
+    }
+
     for pane in panes.iter_mut() {
         pane.print_state();
     }
@@ -912,6 +929,12 @@ pub fn move_left_all(
     last_opened_pane: usize
 ) -> Task<Message> {
     debug!("##########MOVE_LEFT_ALL()##########");
+
+    // Prevent movement while LoadPos is still in the queue
+    if loading_status.is_operation_in_queues(LoadOperationType::LoadPos) {
+        debug!("move_left_all() - LoadPos operation in queue, skipping move_right_all()");
+        return Task::none();
+    }
 
     // Collect mutable references to the panes that haven't reached the edge
     let mut panes_to_load: Vec<&mut pane::Pane> = vec![];

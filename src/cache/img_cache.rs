@@ -399,13 +399,13 @@ impl ImageCache {
     }
 
     pub fn get_initial_image(&self) -> Result<&CachedData, io::Error> {
-        debug!("get_initial_image - current_index: {}", self.current_index);
+        //debug!("get_initial_image - current_index: {}", self.current_index);
         let cache_index = (self.cache_count as isize + self.current_offset) as usize;
-        debug!("get_initial_image - cache_index: {}", cache_index);
-        debug!("get_initial_image - cached_data.len(): {}", self.cached_data.len());
+        //debug!("get_initial_image - cache_index: {}", cache_index);
+        //debug!("get_initial_image - cached_data.len(): {}", self.cached_data.len());
         
         if let Some(image_data_option) = self.cached_data.get(cache_index) {
-            debug!("get_initial_image2");
+            //debug!("get_initial_image2");
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
@@ -556,6 +556,13 @@ impl ImageCache {
         index < 0 && index >= -(self.cache_count as isize) ||
         index >= 0 && index < self.image_paths.len() as isize ||
         index >= self.image_paths.len() as isize && index < self.image_paths.len() as isize + self.cache_count as isize
+    }
+
+    pub fn is_operation_in_queues(&self, operation: LoadOperationType) -> bool {
+        debug!("img_cache.loading_queue: {:?}", self.loading_queue);
+        debug!("img_cache.being_loaded_queue: {:?}", self.being_loaded_queue);
+        self.loading_queue.iter().any(|op| op.operation_type() == operation) ||
+        self.being_loaded_queue.iter().any(|op| op.operation_type() == operation)
     }
 
     pub fn is_operation_blocking(&self, operation: LoadOperationType) -> bool {
@@ -837,6 +844,7 @@ pub fn load_all_images_in_queue(
 
     // Process each operation in the loading queue
     while let Some(operation) = loading_status.loading_queue.pop_front() {
+        loading_status.enqueue_image_being_loaded(operation.clone());
         match operation {
             LoadOperation::LoadPos((ref pane_index, ref target_indices_and_cache)) => {
                 // Handle LoadPos with the new structure of (image_index, cache_pos)

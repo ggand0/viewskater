@@ -652,7 +652,8 @@ impl iced_winit::runtime::Program for DataViewer {
             }
 
             Message::ImagesLoaded(result) => {
-                debug!("ImagesLoaded result: {:?}", result);
+                //debug!("ImagesLoaded result: {:?}", result);
+                debug!("ImagesLoaded");
                 match result {
                     Ok((image_data, operation)) => {
                         if let Some(op) = operation {
@@ -693,7 +694,13 @@ impl iced_winit::runtime::Program for DataViewer {
             }
 
             Message::SliderImageLoaded(result) => {
-                debug!("SliderImageLoaded result: {:?}", result);
+                // if slider is already released, ignore the result
+                if !self.is_slider_moving {
+                    debug!("Slider is not moving, ignoring SliderImageLoaded result");
+                    return Task::none();
+                } else {
+                    debug!("SliderImageLoaded result: {:?}", result);
+                }
                 
                 match result {
                     Ok((pos, texture)) => {
@@ -814,7 +821,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 let last_valid_pos = self.slider_value as usize;
                 
                 self.is_slider_moving = false;
-                debug!("slider released: pane_index: {}, value: {}", pane_index, value);
+                debug!("SLIDER RELEASED: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
                     return load_remaining_images(
                         &self.device, &self.queue, self.is_gpu_supported,

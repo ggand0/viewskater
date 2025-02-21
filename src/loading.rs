@@ -23,6 +23,7 @@ use crate::pane;
 use crate::loading_status::LoadingStatus;
 use crate::cache::img_cache::{LoadOperation, LoadOperationType};
 use crate::cache::img_cache::{CachedData};
+use crate::widgets::shader::scene::Scene;
 
 pub fn handle_load_operation_all(
     panes: &mut Vec<pane::Pane>,
@@ -114,6 +115,8 @@ pub fn handle_load_operation_all(
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
                             pane.current_image = CachedData::Gpu(Arc::clone(&texture));
+                            //pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                            //pane.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                         }
                     }
                 }
@@ -137,13 +140,19 @@ pub fn handle_load_pos_operation(
     // Remove the current LoadPos operation from the being_loaded queue
     loading_status.being_loaded_queue.pop_front();
 
+    // Log (target_index, cache_pos) pairs
+    let mut processed_indices: Vec<(isize, usize)> = Vec::new();
+
     // Access the pane that needs to update its cache and images
     if let Some(pane) = panes.get_mut(pane_index) {
         let cache = &mut pane.img_cache;
 
         // Iterate over the target indices and cache positions along with image data
         for (target_opt, image_data_opt) in target_indices_and_cache.iter().zip(image_data.iter()) {
+            debug!("Target index and cache position: {:?}", target_opt);
+
             if let Some((target_index, cache_pos)) = target_opt {
+                processed_indices.extend(target_opt.clone());
                 let target_index_usize = *target_index as usize;
 
                 // Ensure that the target index is within valid bounds
@@ -187,5 +196,7 @@ pub fn handle_load_pos_operation(
                 }
             }
         }
+
+        debug!("Processed indices: {:?}", processed_indices);
     }
 }

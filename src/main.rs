@@ -47,7 +47,6 @@ use winit::{
 
 use std::sync::Arc;
 use std::borrow::Cow;
-
 use iced_wgpu::graphics::text::font_system;
 
 fn register_font_manually(font_data: &'static [u8]) {
@@ -204,7 +203,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     &adapter, &device, &queue, format, None);
                 engine.create_image_cache(&device); // Manually create image cache
 
-                // 🔹 Manually register fonts
+                // Manually register fonts
                 register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
                 register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
                 register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
@@ -641,7 +640,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     );
                 }
                 Action::Output(message) => {
-                    debug!("Forwarding message to update(): {:?}", message);
+                    ////debug!("Forwarding message to update(): {:?}", message);
                     state.queue_message(message); // Ensures the message gets triggered in the next `update()`
                 }
                 _ => {}
