@@ -154,6 +154,10 @@ pub struct ImageCache {
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
     pub slider_texture: Option<Arc<wgpu::Texture>>,
+
+    // Texture pool: Preallocated reusable textures
+    pub texture_pool: Vec<Arc<wgpu::Texture>>,
+    pub texture_usage: HashMap<isize, usize>, // Mapping: image index → texture pool index
 }
 
 impl Default for ImageCache {
@@ -172,9 +176,13 @@ impl Default for ImageCache {
             cached_data: Vec::new(),
             backend: Box::new(CpuImageCache {}),
             slider_texture: None,
+            texture_pool: Vec::new(),
+            texture_usage: HashMap::new(),
         }
     }
 }
+
+use std::collections::HashMap;
 
 // Constructor, cached_data getter / setter, and type specific methods
 impl ImageCache {
@@ -187,6 +195,7 @@ impl ImageCache {
         queue: Option<Arc<wgpu::Queue>>,
     ) -> Result<Self, io::Error> {
         let device_ref = device.clone();
+
         let backend: Box<dyn ImageCacheBackend> = if is_gpu_supported {
             if let (Some(device), Some(queue)) = (device, queue) {
                 Box::new(GpuImageCache::new(device, queue))
@@ -210,7 +219,7 @@ impl ImageCache {
 
 
         // 🔹 Create a fixed-size texture for slider previews if using GPU
-        let slider_texture = if is_gpu_supported {
+        /*let slider_texture = if is_gpu_supported {
             if let Some(device) = device_ref {
                 Some(Arc::new(device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("SliderTexture"),
@@ -231,7 +240,57 @@ impl ImageCache {
             }
         } else {
             None
+        };*/
+        let slider_texture = if is_gpu_supported {
+            device_ref.as_ref().map(|device| {
+                Arc::new(device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("SliderTexture"),
+                    size: wgpu::Extent3d {
+                        width: 1280, // Fixed 720p resolution
+                        height: 720,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                }))
+            })
+        } else {
+            None
         };
+
+        let mut texture_pool = Vec::new();
+        if is_gpu_supported {
+            if let Some(ref device) = device_ref {
+                for _ in 0..cache_count {
+                    let texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("PooledTexture"),
+                        size: wgpu::Extent3d {
+                            width: 4096, // Default size, will be updated when needed
+                            height: 4096,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    });
+
+                    texture_pool.push(Arc::new(texture));
+                }
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "GPU support enabled but device not provided",
+                ));
+            }
+        }
+
 
         Ok(ImageCache {
             image_paths: image_paths.clone(),
@@ -247,6 +306,8 @@ impl ImageCache {
             loading_queue_slider: VecDeque::new(),
             backend,
             slider_texture,
+            texture_pool,
+            texture_usage: HashMap::new(),
         })
     }
 
@@ -637,7 +698,8 @@ impl ImageCache {
 }
 
 
-pub fn load_images_by_operation_slider(
+// v0: gpu caching
+/*pub fn load_images_by_operation_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     is_gpu_supported: bool,
@@ -702,7 +764,6 @@ pub fn load_images_by_indices(
     operation: LoadOperation
 ) -> Task<Message> {
     let mut paths = Vec::new();
-
     for (pane_index, pane) in panes.iter_mut().enumerate() {
         let img_cache = &mut pane.img_cache;
 
@@ -721,48 +782,9 @@ pub fn load_images_by_indices(
         }
     }
 
-    /*if !paths.is_empty() {
-        debug!("load_images_by_indices - paths: {:?}", paths);
-        let device_clone = Arc::clone(device);
-        let queue_clone = Arc::clone(queue);
-    
-        /*let images_loading_task = async move {
-            load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await
-        };
-        Task::perform(images_loading_task, Message::ImagesLoaded)*/
-        debug!("Task is scheduled for execution");
-        Task::perform(
-            async move {
-                let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
-                debug!("load_images_async actually executed with result: {:?}", result);
-                result
-            },
-            Message::ImagesLoaded,
-        )
-
-    } else {
-        Task::none()
-    }*/
-
     if !paths.is_empty() {
-        //debug!("load_images_by_indices - paths: {:?}", paths);
         let device_clone = Arc::clone(device);
         let queue_clone = Arc::clone(queue);
-    
-        //debug!("Task::perform about to be scheduled!");
-    
-        /*Task::perform(
-            async move {
-                debug!("Inside async move block! load_images_async will be called.");
-                let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
-                debug!("load_images_async executed, result: {:?}", result);
-                result
-            },
-            |res| {
-                debug!("Task::perform completed, sending Message::ImagesLoaded");
-                Message::ImagesLoaded(res)
-            },
-        )*/
         debug!("Task::perform started for {:?}", operation.clone());
         Task::perform(
             async move {
@@ -772,14 +794,125 @@ pub fn load_images_by_indices(
             },
             Message::ImagesLoaded, // Make sure this exactly matches the Message variant
         )
-        
     } else {
-        //debug!("load_images_by_indices - No paths to load.");
         Task::none()
     }
-    
+}*/
 
+// v1: gpu caching with texture pool
+use std::sync::Mutex;
+pub fn load_images_by_operation_slider(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
+    panes: &mut Vec<pane::Pane>,
+    pane_index: usize,
+    target_indices_and_cache: Vec<Option<(isize, usize)>>,
+    operation: LoadOperation
+) -> Task<Message> {
+    let mut paths = Vec::new();
+
+    // Ensure we access the correct pane by the pane_index
+    if let Some(pane) = panes.get_mut(pane_index) {
+        let img_cache = &mut pane.img_cache;
+
+        // Loop over the target indices and cache positions
+        for target in target_indices_and_cache.iter() {
+            if let Some((target_index, cache_pos)) = target {
+                if let Some(path) = img_cache.image_paths.get(*target_index as usize) {
+                    if let Some(s) = path.to_str() {
+                        paths.push(Some(s.to_string()));
+                    } else {
+                        paths.push(None);
+                    }
+
+                    // Store the target image at the specified cache position
+                    img_cache.cached_image_indices[*cache_pos] = *target_index;
+                } else {
+                    paths.push(None);
+                }
+            } else {
+                paths.push(None);
+            }
+        }
+
+        // If we have valid paths, proceed to load the images asynchronously
+        if !paths.is_empty() {
+            let device_clone = Arc::clone(device);
+            let queue_clone = Arc::clone(queue);
+            let texture_pool = img_cache.texture_pool.clone();
+            let texture_usage = Arc::new(Mutex::new(img_cache.texture_usage.clone()));
+
+            debug!("Task::perform started for {:?}", operation.clone());
+
+            Task::perform(
+                async move {
+                    load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, &texture_pool, texture_usage, operation).await
+                },
+                Message::ImagesLoaded,
+            )
+        } else {
+            Task::none()
+        }
+    } else {
+        debug!("Pane not found for pane_index: {}", pane_index);
+        Task::none()
+    }
 }
+
+
+pub fn load_images_by_indices(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
+    panes: &mut Vec<&mut Pane>,
+    target_indices: Vec<Option<isize>>, 
+    operation: LoadOperation
+) -> Task<Message> {
+    let mut paths = Vec::new();
+    let mut texture_pool: Vec<Arc<wgpu::Texture>> = Vec::new();
+
+    for (pane_index, pane) in panes.iter_mut().enumerate() {
+        let img_cache = &mut pane.img_cache;
+
+        if let Some(target_index) = target_indices[pane_index] {
+            if let Some(path) = img_cache.image_paths.get(target_index as usize) {
+                if let Some(s) = path.to_str() {
+                    paths.push(Some(s.to_string()));
+                } else {
+                    paths.push(None);
+                }
+            } else {
+                paths.push(None);
+            }
+        } else {
+            paths.push(None);
+        }
+
+        if texture_pool.is_empty() {
+            texture_pool = img_cache.texture_pool.clone(); // Clone Arc-wrapped textures
+        }
+    }
+
+    if !paths.is_empty() {
+        let device_clone = Arc::clone(device);
+        let queue_clone = Arc::clone(queue);
+        let texture_usage = Arc::new(Mutex::new(HashMap::new()));
+
+        debug!("Task::perform started for {:?}", operation.clone());
+        Task::perform(
+            async move {
+                load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, &texture_pool, texture_usage, operation).await
+            },
+            Message::ImagesLoaded,
+        )
+    } else {
+        Task::none()
+    }
+}
+
+
+
 
 
 pub fn load_images_by_operation(

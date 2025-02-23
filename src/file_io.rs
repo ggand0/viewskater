@@ -58,6 +58,7 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
     }
 }
 
+// v0: before gpu caching (cpu only)
 /*#[allow(dead_code)]
 async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
     // Load a single image asynchronously
@@ -104,7 +105,8 @@ pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadO
 }*/
 
 
-#[allow(dead_code)]
+// v1: gpu caching
+/*#[allow(dead_code)]
 async fn load_image_async(
     path: Option<&str>, 
     device: &Arc<wgpu::Device>, 
@@ -188,7 +190,103 @@ pub async fn load_images_async(
         .collect();
 
     Ok((images, Some(load_operation)))
+}*/
+
+// v2: gpu caching with texture pool
+use std::collections::HashMap;
+//use std::sync::Mutex;
+async fn load_image_async(
+    path: Option<&str>, 
+    device: &Arc<wgpu::Device>, 
+    queue: &Arc<wgpu::Queue>,
+    texture_pool: &Vec<Arc<wgpu::Texture>>, 
+    texture_usage: Arc<Mutex<HashMap<isize, usize>>>,  // Changed from &mut to Arc<Mutex<...>>
+    image_index: isize,
+) -> Result<Option<CachedData>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let file_path = Path::new(path);
+
+        match image::open(file_path) {
+            Ok(img) => {
+                let rgba_image = img.to_rgba8();
+                let (width, height) = img.dimensions();
+
+                let pool_index = {
+                    let mut usage = texture_usage.lock().unwrap(); // Lock to access safely
+                    let idx = usage.len() % texture_pool.len();
+                    usage.insert(image_index, idx);
+                    idx
+                };
+
+                let texture = Arc::clone(&texture_pool[pool_index]);
+
+                queue.write_texture(
+                    wgpu::ImageCopyTexture {
+                        texture: &texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &rgba_image,
+                    wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * width),
+                        rows_per_image: None,
+                    },
+                    wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+
+                return Ok(Some(CachedData::Gpu(texture)));
+            }
+            Err(_) => return Err(std::io::ErrorKind::InvalidData),
+        }
+    }
+
+    Ok(None)
 }
+
+
+pub async fn load_images_async(
+    paths: Vec<Option<String>>, 
+    _is_gpu_supported: bool,
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    texture_pool: &Vec<Arc<wgpu::Texture>>,
+    texture_usage: Arc<Mutex<HashMap<isize, usize>>>, // Wrap in Arc<Mutex<>>
+    load_operation: LoadOperation
+) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
+    let start = Instant::now();
+
+    let futures = paths.into_iter().enumerate().map(|(i, path)| {
+        let texture_usage = Arc::clone(&texture_usage); // Clone reference for async move
+        async move {
+            let path_str = path.as_deref();
+            let image_index = i as isize;
+
+            let result = load_image_async(
+                path_str, device, queue, texture_pool, texture_usage.clone(), image_index
+            ).await;
+
+            result
+        }
+    });
+
+    let results = join_all(futures).await;
+    let duration = start.elapsed();
+    debug!("Finished loading images in {:?}", duration);
+
+    let images = results
+        .into_iter()
+        .map(|result| result.ok().flatten()) // Convert Ok(Some(image)) -> Some(image), otherwise None
+        .collect();
+
+    Ok((images, Some(load_operation)))
+}
+
 
 
 pub async fn pick_folder() -> Result<String, Error> {
