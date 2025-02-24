@@ -6,6 +6,14 @@ use image::GenericImageView;
 use std::sync::Arc;
 
 use crate::cache::img_cache::CachedData;
+use std::time::Instant;
+use crate::utils::timing::TimingStats;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
+static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("Shader Update"))
+});
 
 //#[derive(Clone)]
 pub struct Scene {
@@ -93,9 +101,12 @@ impl shader::Primitive for Primitive {
         } else {
             let pipeline = storage.get_mut::<Pipeline>().unwrap();
 
+            let start = Instant::now();
             pipeline.update_vertices(device, bounds_relative);
             pipeline.update_texture(device, queue, self.texture.clone()); // Update with current texture
             pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
+            let duration = start.elapsed();
+            SHADER_UPDATE_STATS.lock().unwrap().add_measurement(duration);
         }
     }
 

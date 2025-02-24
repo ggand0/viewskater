@@ -3,6 +3,17 @@ use iced_wgpu::wgpu::util::DeviceExt;
 use std::sync::Arc;
 use iced_core::Rectangle;
 
+use crate::utils::timing::TimingStats;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
+static TEXTURE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("Texture Update"))
+});
+static SHADER_RENDER_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("Shader Render"))
+});
+
 pub struct Pipeline {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
@@ -331,8 +342,6 @@ impl Pipeline {
         shader_size: (u32, u32),                // Shader widget's size
         bounds_relative: (f32, f32, f32, f32),  // Normalized bounds
     ) {
-        
-    
         let shader_width = shader_size.0 as f32;
         let shader_height = shader_size.1 as f32;
         let image_width = image_dimensions.0 as f32;
@@ -484,6 +493,7 @@ impl Pipeline {
     pub fn update_texture(&mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue, new_texture: Arc<wgpu::Texture>) {
+
         self.texture = new_texture.clone(); // Update stored texture reference
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {

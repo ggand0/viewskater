@@ -26,6 +26,16 @@ use image::GenericImageView;
 use crate::cache::img_cache::CachedData;
 use std::fs::File;
 
+use crate::utils::timing::TimingStats;
+use once_cell::sync::Lazy;
+
+static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("Image Load"))
+});
+static GPU_UPLOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("GPU Upload"))
+});
+
 #[derive(Debug, Clone)]
 pub enum Error {
     DialogClosed,
@@ -112,12 +122,16 @@ async fn load_image_async(
 ) -> Result<Option<CachedData>, std::io::ErrorKind> {
     if let Some(path) = path {
         let file_path = Path::new(path);
+        let start = Instant::now();
 
         match image::open(file_path) {
             Ok(img) => {
                 let rgba_image = img.to_rgba8();
                 let (width, height) = img.dimensions();
+                let duration = start.elapsed();
+                IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
 
+                let upload_start = Instant::now();
                 let texture = device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("AsyncLoadedTexture"),
                     size: wgpu::Extent3d {
@@ -152,6 +166,8 @@ async fn load_image_async(
                         depth_or_array_layers: 1,
                     },
                 );
+                let upload_duration = upload_start.elapsed();
+                GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
 
                 return Ok(Some(CachedData::Gpu(Arc::new(texture))));
             }
