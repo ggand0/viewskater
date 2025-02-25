@@ -165,11 +165,35 @@ pub fn get_file_index(files: &[PathBuf], file: &PathBuf) -> Option<usize> {
     files.iter().position(|f| f.file_name() == Some(file_name))
 }
 
-pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
+use std::error::Error as StdError;
+use std::io;
+
+#[derive(Debug)]
+pub enum ImageError {
+    NoImagesFound,
+    DirectoryError(io::Error),
+    // Add other error types as needed
+}
+
+impl std::fmt::Display for ImageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ImageError::NoImagesFound => write!(f, "No supported images found in directory"),
+            ImageError::DirectoryError(e) => write!(f, "Directory error: {}", e),
+        }
+    }
+}
+
+impl StdError for ImageError {}
+
+pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageError> {
     let mut image_paths: Vec<PathBuf> = Vec::new();
     let allowed_extensions = ["jpg", "jpeg", "png", /* Add other image extensions */];
 
-    if let Ok(paths) = fs::read_dir(directory_path) {
+    let dir_entries = fs::read_dir(directory_path)
+        .map_err(|e| ImageError::DirectoryError(e))?;
+
+    /*if let Ok(paths) = fs::read_dir(directory_path) {
         for entry in paths.flatten() {
             if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
                 // Check if the extension is among allowed extensions
@@ -180,9 +204,26 @@ pub fn get_image_paths(directory_path: &Path) -> Vec<PathBuf> {
         }
     }
 
-    // Sort paths like Nautilus file viewer. `image_paths.sort()` does not work as expected
+    // Sort paths like Nautilus file viewer. (`image_paths.sort()` won't achieve this)
     alphanumeric_sort::sort_path_slice(&mut image_paths);
     image_paths
+        
+    */
+    for entry in dir_entries.flatten() {
+        if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
+            if allowed_extensions.contains(&extension.to_lowercase().as_str()) {
+                image_paths.push(entry.path());
+            }
+        }
+    }
+
+    // Sort paths like Nautilus file viewer. (`image_paths.sort()` won't achieve this)
+    if !image_paths.is_empty() {
+        alphanumeric_sort::sort_path_slice(&mut image_paths);
+        Ok(image_paths)
+    } else {
+        Err(ImageError::NoImagesFound)
+    }
 }
 
 

@@ -31,10 +31,9 @@ use iced::{Element, Length};
 
 use crate::menu::PaneLayout;
 use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
-
 use crate::image_cache::ImageCache;
-
 use crate::config::CONFIG;
+use crate::file_io::ImageError;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -202,115 +201,118 @@ impl Pane {
     }
 
 
-    #[allow(unused_assignments)]
     pub fn initialize_dir_path(&mut self, pane_layout: &PaneLayout,
         pane_file_lengths: &[usize], _pane_index: usize, path: PathBuf,
         is_slider_dual: bool, slider_value: &mut u16) {
-        let mut _file_paths: Vec<PathBuf> = Vec::new();
+        let mut _file_paths: Vec<PathBuf>;
         let initial_index: usize;
-        let mut is_dir_size_bigger: bool = false;
 
-        if is_file(&path) {
+        // Get directory path and image files
+        let (dir_path, paths_result) = if is_file(&path) {
             debug!("Dropped path is a file");
             let directory = path.parent().unwrap_or(Path::new(""));
             let dir = directory.to_string_lossy().to_string();
-            self.directory_path = Some(dir);
-
-            _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
-            let file_index = get_file_index(&_file_paths, &path);
-
-            let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-            is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
-                true
-            } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
-                true
-            } else {
-                _file_paths.len() >= *longest_file_length
-            };
-            debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
-
-            if let Some(file_index) = file_index {
-                debug!("File index: {}", file_index);
-                initial_index = file_index;
-                let current_slider_value = file_index as u16;
-                debug!("current_slider_value: {:?}", current_slider_value);
-                if is_slider_dual {
-                    *slider_value = current_slider_value;
-                    self.slider_value = current_slider_value;
-                } else {
-                    if is_dir_size_bigger {
-                        *slider_value = current_slider_value;
-                    }
-                }
-                debug!("slider_value: {:?}", *slider_value);
-            } else {
-                debug!("File index not found");
-                return;
-            }
-
+            (dir.clone(), file_io::get_image_paths(Path::new(&dir)))
         } else if is_directory(&path) {
             debug!("Dropped path is a directory");
-            self.directory_path = Some(path.to_string_lossy().to_string());
-            _file_paths = file_io::get_image_paths(Path::new(&self.directory_path.clone().unwrap()));
-            initial_index = 0;
-
-            let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-            is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
-                true
-            } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
-                true
-            } else {
-                _file_paths.len() >= *longest_file_length
-            };
-            debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
-            let current_slider_value = 0;
-            debug!("current_slider_value: {:?}", current_slider_value);
-            if is_slider_dual {
-                *slider_value = current_slider_value;
-                self.slider_value = current_slider_value;
-            } else {
-                if is_dir_size_bigger {
-                    *slider_value = current_slider_value;
-                }
-            }
-            debug!("slider_value: {:?}", *slider_value);
+            let dir = path.to_string_lossy().to_string();
+            (dir, file_io::get_image_paths(&path))
         } else {
-            debug!("Dropped path does not exist or cannot be accessed");
-            // Handle the case where the path does not exist or cannot be accessed
+            error!("Dropped path does not exist or cannot be accessed");
             return;
+        };
+
+        // Handle the result from get_image_paths
+        _file_paths = match paths_result {
+            Ok(paths) => paths,
+            Err(ImageError::NoImagesFound) => {
+                error!("No supported images found in directory");
+                // TODO: Show a message to the user that no images were found
+                return;
+            }
+            Err(e) => {
+                error!("Error reading directory: {}", e);
+                // TODO: Show error message to user
+                return;
+            }
+        };
+
+        self.directory_path = Some(dir_path);
+        let mut is_dir_size_bigger = false;
+
+        // Determine initial index and update slider
+        if is_file(&path) {
+            let file_index = get_file_index(&_file_paths, &path);
+            initial_index = match file_index {
+                Some(idx) => {
+                    debug!("File index: {}", idx);
+                    idx
+                }
+                None => {
+                    debug!("File index not found");
+                    return;
+                }
+            };
+        } else {
+            initial_index = 0;
         }
 
-        // Sort
-        debug!("File paths: {}", _file_paths.len());
-        self.dir_loaded = true;
-
-        // Instantiate a new image cache and load the initial images
-        let mut img_cache =  ImageCache::new(
-            _file_paths,
-            CONFIG.cache_size,
-            initial_index,
-        ).unwrap();
-        img_cache.load_initial_images().unwrap();
-        img_cache.print_cache();
-        
-
-        let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
-        let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-        self.current_image = handle;
-
+        // Calculate if directory size is bigger than other panes
         let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-        
+        is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
+            true
+        } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+            true
+        } else {
+            _file_paths.len() >= *longest_file_length
+        };
         debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+
+        // Update slider value
         let current_slider_value = initial_index as u16;
         debug!("current_slider_value: {:?}", current_slider_value);
         if is_slider_dual {
-            //*slider_value = current_slider_value;
-        } else {
-            if is_dir_size_bigger {
-                *slider_value = current_slider_value;
-            }
+            *slider_value = current_slider_value;
+            self.slider_value = current_slider_value;
+        } else if is_dir_size_bigger {
+            *slider_value = current_slider_value;
         }
         debug!("slider_value: {:?}", *slider_value);
+
+        // Sort and load images
+        debug!("File paths: {}", _file_paths.len());
+        self.dir_loaded = true;
+
+        // Initialize image cache
+        let mut img_cache = match ImageCache::new(
+            _file_paths,
+            CONFIG.cache_size,
+            initial_index,
+        ) {
+            Ok(cache) => cache,
+            Err(e) => {
+                error!("Failed to create image cache: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = img_cache.load_initial_images() {
+            error!("Failed to load initial images: {}", e);
+            return;
+        }
+        img_cache.print_cache();
+
+        // Load the initial image
+        match img_cache.get_initial_image() {
+            Ok(image_data) => {
+                let handle = iced::widget::image::Handle::from_bytes(image_data.to_vec());
+                self.current_image = handle;
+            }
+            Err(e) => {
+                error!("Failed to get initial image: {}", e);
+                return;
+            }
+        }
 
         let file_paths = img_cache.image_paths.clone();
         debug!("file_paths.len() {:?}", file_paths.len());
