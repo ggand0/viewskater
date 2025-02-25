@@ -8,6 +8,7 @@ It aims to alleviate the challenges of exploring and comparing numerous images. 
 - Dynamic image caching on CPU memory
 - Continuous image rendering via key presses and the slider UI
 - Dual pane view for side-by-side image comparison
+- Currently only supports JPG and PNG images
 
 ## Installation
 Download the pre-built binaries from the [releases page](https://github.com/ggand0/viewskater/releases), or build it locally:
