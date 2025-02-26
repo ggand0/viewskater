@@ -124,6 +124,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     .width(Length::Fill)
                     .height(Length::Fill)
             }
+            /*container(text("DEBUG"))
+                .width(Length::Fill)
+                .height(Length::Fill)*/
         } else {
             // GPU mode: Use shader widget
             if let Some(scene) = &app.panes[0].scene {

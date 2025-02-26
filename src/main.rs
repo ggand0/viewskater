@@ -480,7 +480,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
             // If there are events pending
             if !state.is_queue_empty() {
-                debug!("📝 Processing state update");
+                //debug!("📝 Processing state update");
+                debug!("📝 Starting state update");
+                let start = std::time::Instant::now();
                 let (_, task) = state.update(
                     viewport.logical_size(),
                     cursor_position
@@ -500,6 +502,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     clipboard,
                     debug,
                 );
+                debug!("📊 State update took: {:?}", start.elapsed());
 
 
                 let _ = 'runtime_call: {
@@ -517,7 +520,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     //debug!("Task completed execution.");
                     0
                 };
-                debug!("✅ State update complete");
+                //debug!("✅ State update complete");
 
                 // and request a redraw
                 //debug!("Requesting redraw");
@@ -561,10 +564,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 let new_title = state.program().title();
                 window.set_title(&new_title);
 
-                debug!("🖼️ Starting render pass");
+                //debug!("🖼️ Starting render pass");
                 match surface.get_current_texture() {
                     Ok(frame) => {
-                        debug!("📊 Got texture frame, starting renderer.present()");
+                        //debug!("📊 Got texture frame, starting renderer.present()");
                         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
                         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                             label: Some("Render Encoder"),
@@ -594,7 +597,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 state.mouse_interaction(),
                             ),
                         );
-                        debug!("🏁 Render pass complete");
+                        //debug!("🏁 Render pass complete");
                     }
                     Err(error) => match error {
                         wgpu::SurfaceError::OutOfMemory => {

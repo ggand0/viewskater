@@ -538,6 +538,9 @@ pub enum Message {
     BackgroundColorChanged(Color),
 }
 
+
+
+
 //impl DataViewer {
 impl iced_winit::runtime::Program for DataViewer {
     type Theme = WinitTheme;
@@ -547,6 +550,7 @@ impl iced_winit::runtime::Program for DataViewer {
     //fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
     fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
         //debug!("Received message: {:?}", message);
+        let start = Instant::now();
 
         match message {
             Message::BackgroundColorChanged(color) => {
@@ -892,6 +896,8 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
+            let duration = start.elapsed();
+            debug!("move_right_all took {:?}", duration);
             task
         } else if self.skate_left {
             self.update_counter = 0;
@@ -905,6 +911,8 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
+            let duration = start.elapsed();
+            debug!("move_left_all took {:?}", duration);
             task
         } else {
             // Log that there's no task to perform once
@@ -912,7 +920,8 @@ impl iced_winit::runtime::Program for DataViewer {
                 debug!("No skate mode detected, update_counter: {}", self.update_counter);
                 self.update_counter += 1;
             }
-
+            let duration = start.elapsed();
+            debug!("No skate mode detected, took {:?}", duration);
             iced_winit::runtime::Task::none()
         }
     }
