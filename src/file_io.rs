@@ -113,7 +113,7 @@ pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadO
     Ok((images, Some(load_operation)))
 }*/
 
-async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, std::io::ErrorKind> {
+/*async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, std::io::ErrorKind> {
     if let Some(path) = path {
         let file_path = Path::new(path);
         let start = Instant::now();
@@ -126,6 +126,27 @@ async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, 
                 Ok(Some(CachedData::Cpu(rgba_image.to_vec())))
             }
             Err(_) => Err(std::io::ErrorKind::InvalidData),
+        }
+    } else {
+        Ok(None)
+    }
+}*/
+#[allow(dead_code)]
+async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, std::io::ErrorKind> {
+    // Load a single image asynchronously
+    if let Some(path) = path {
+        let file_path = Path::new(path);
+        match tokio::fs::File::open(file_path).await {
+            Ok(mut file) => {
+                let mut buffer = Vec::new();
+                if file.read_to_end(&mut buffer).await.is_ok() {
+                    //Ok(Some(buffer))
+                    Ok(Some(CachedData::Cpu(buffer)))
+                } else {
+                    Err(std::io::ErrorKind::InvalidData)
+                }
+            }
+            Err(e) => Err(e.kind()),
         }
     } else {
         Ok(None)
@@ -204,6 +225,7 @@ pub async fn load_images_async(
     load_operation: LoadOperation
 ) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
+    debug!("load_images_async - is_gpu_supported: {}", is_gpu_supported);
 
     let futures = paths.into_iter().map(|path| {
         let device = Arc::clone(device);
@@ -211,8 +233,10 @@ pub async fn load_images_async(
         async move {
             let path_str = path.as_deref();
             if is_gpu_supported {
+                debug!("load_images_async - loading image from GPU");
                 load_image_gpu_async(path_str, &device, &queue).await
             } else {
+                debug!("load_images_async - loading image from CPU");
                 load_image_cpu_async(path_str).await
             }
         }
