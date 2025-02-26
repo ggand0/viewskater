@@ -113,9 +113,27 @@ pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadO
     Ok((images, Some(load_operation)))
 }*/
 
+async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let file_path = Path::new(path);
+        let start = Instant::now();
+
+        match image::open(file_path) {
+            Ok(img) => {
+                let rgba_image = img.to_rgba8();
+                let duration = start.elapsed();
+                IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
+                Ok(Some(CachedData::Cpu(rgba_image.to_vec())))
+            }
+            Err(_) => Err(std::io::ErrorKind::InvalidData),
+        }
+    } else {
+        Ok(None)
+    }
+}
 
 #[allow(dead_code)]
-async fn load_image_async(
+async fn load_image_gpu_async(
     path: Option<&str>, 
     device: &Arc<wgpu::Device>, 
     queue: &Arc<wgpu::Queue>
@@ -180,7 +198,7 @@ async fn load_image_async(
 
 pub async fn load_images_async(
     paths: Vec<Option<String>>, 
-    _is_gpu_supported: bool,
+    is_gpu_supported: bool,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     load_operation: LoadOperation
@@ -188,24 +206,29 @@ pub async fn load_images_async(
     let start = Instant::now();
 
     let futures = paths.into_iter().map(|path| {
+        let device = Arc::clone(device);
+        let queue = Arc::clone(queue);
         async move {
             let path_str = path.as_deref();
-            load_image_async(path_str, device, queue).await
+            if is_gpu_supported {
+                load_image_gpu_async(path_str, &device, &queue).await
+            } else {
+                load_image_cpu_async(path_str).await
+            }
         }
     });
 
     let results = join_all(futures).await;
     let duration = start.elapsed();
-    //debug!("Finished loading images in {:?}", duration);
+    debug!("Finished loading images in {:?}", duration);
 
     let images = results
         .into_iter()
-        .map(|result| result.ok().flatten()) // Convert Ok(Some(image)) -> Some(image), otherwise None
+        .map(|result| result.ok().flatten())
         .collect();
 
     Ok((images, Some(load_operation)))
 }
-
 
 pub async fn pick_folder() -> Result<String, Error> {
     let handle= rfd::AsyncFileDialog::new()

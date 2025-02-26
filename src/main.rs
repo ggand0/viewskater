@@ -1,4 +1,3 @@
-
 use iced_wgpu::graphics::Viewport;
 use iced_wgpu::{wgpu, Engine, Renderer};
 use iced_winit::{conversion, Proxy};
@@ -221,8 +220,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 );
 
                 // You should change this if you want to render continuously
-                //event_loop.set_control_flow(ControlFlow::Wait);
-                event_loop.set_control_flow(ControlFlow::Poll); // Forces continuous updates
+                event_loop.set_control_flow(ControlFlow::Wait);
+                //event_loop.set_control_flow(ControlFlow::Poll); // Forces continuous updates
 
                 let (p, worker) = iced_winit::Proxy::new(proxy.clone());
                 let Ok(executor) = iced_futures::backend::native::tokio::Executor::new() else {
@@ -285,13 +284,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             match event {
                 WindowEvent::Focused(true) => {
                     // Handle window focus gain
-                    event_loop.set_control_flow(ControlFlow::Poll);
+                    //event_loop.set_control_flow(ControlFlow::Poll);
                 }
                 WindowEvent::Focused(false) => {
                     event_loop.set_control_flow(ControlFlow::Wait);
                 }
                 WindowEvent::RedrawRequested => {
-                    //println!("RedrawRequested event received");
+                    debug!("🎨 RedrawRequested event received");
                     /*if *resized {
                         // Update window title dynamically based on the current image
                         let new_title = state.program().title();
@@ -451,6 +450,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     }*/
                 }
                 WindowEvent::KeyboardInput { ref event, .. } => {
+                    debug!("🔑 KeyboardInput received: {:?}", event);
                 }
                 WindowEvent::ModifiersChanged(new_modifiers) => {
                     //debug!("ModifiersChanged event received: {:?}", new_modifiers);
@@ -465,12 +465,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 window.scale_factor(),
                 *modifiers,
             ) {
+                debug!("🔄 Converted to Iced event: {:?}", event);
                 match &event {
                     //iced_core::event::Event::Mouse(_) | // Filters out mouse events
                     //iced_core::event::Event::Touch(_) => {} // Filters out touch events too
                     _ => {
                         ////debug!("Converted to Iced event: {:?}, modifiers: {:?}", event, modifiers);
-                        // Manually trigger your app’s message handling
+                        // Manually trigger your app's message handling
                         state.queue_message(Message::Event(event.clone()));
                     }
                 }
@@ -479,7 +480,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
             // If there are events pending
             if !state.is_queue_empty() {
-                // We update iced
+                debug!("📝 Processing state update");
                 let (_, task) = state.update(
                     viewport.logical_size(),
                     cursor_position
@@ -516,6 +517,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     //debug!("Task completed execution.");
                     0
                 };
+                debug!("✅ State update complete");
 
                 // and request a redraw
                 //debug!("Requesting redraw");
@@ -559,9 +561,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 let new_title = state.program().title();
                 window.set_title(&new_title);
 
-                
+                debug!("🖼️ Starting render pass");
                 match surface.get_current_texture() {
                     Ok(frame) => {
+                        debug!("📊 Got texture frame, starting renderer.present()");
                         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
                         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                             label: Some("Render Encoder"),
@@ -591,9 +594,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 state.mouse_interaction(),
                             ),
                         );
+                        debug!("🏁 Render pass complete");
                     }
                     Err(error) => match error {
                         wgpu::SurfaceError::OutOfMemory => {
+                            panic!("Swapchain error: {error}. Rendering cannot continue.");
+                        }
+                        wgpu::SurfaceError::Lost => {
                             panic!("Swapchain error: {error}. Rendering cannot continue.");
                         }
                         _ => {

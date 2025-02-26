@@ -813,6 +813,7 @@ pub fn move_right_all(
     last_opened_pane: usize
 ) -> Task<Message> {
     debug!("##########MOVE_RIGHT_ALL()##########");
+    debug!("is_gpu_supported: {}", is_gpu_supported);
 
     // Prevent movement while LoadPos is still in the queue
     loading_status.print_queue();

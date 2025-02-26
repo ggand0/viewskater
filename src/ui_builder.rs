@@ -37,7 +37,7 @@ use crate::Scene;
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 use iced_widget::Container;
-
+use crate::cache::img_cache::CachedData;
 
 //fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -107,16 +107,38 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     .width(Length::Fill);
 
     let first_img = if app.panes[0].dir_loaded {
-        if let Some(scene) = &app.panes[0].scene {
-            let shader_widget = shader(scene)
-                .width(Fill)
-                .height(Fill);
-    
-            container(center(shader_widget))
-                .width(Length::Fill)
-                .height(Length::Fill)
+        if !app.is_gpu_supported {
+            // CPU mode: Use image widget
+            match &app.panes[0].current_image {
+                CachedData::Cpu(image_data) => {
+                    let handle = iced_widget::image::Handle::from_bytes(image_data.clone());
+                    container(
+                        iced_widget::image::Image::new(handle)
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                }
+                _ => container(text("No image loaded"))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            }
         } else {
-            container(text("No image loaded"))
+            // GPU mode: Use shader widget
+            if let Some(scene) = &app.panes[0].scene {
+                let shader_widget = shader(scene)
+                    .width(Fill)
+                    .height(Fill);
+        
+                container(center(shader_widget))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            } else {
+                container(text("No image loaded"))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            }
         }
     } else {
         container(text("")).height(Length::Fill)
@@ -169,13 +191,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         container(DualSlider::new(
             0..=(app.panes[0].img_cache.num_files - 1) as u16,
             app.slider_value,
-            -1, // Assuming this was for marking inactive/unused handle
+            -1,
             Message::SliderChanged,
             Message::SliderReleased,
         )
         .width(Length::Fill))
     } else {
-        container(text("")).height(0) // Empty when no images are loaded
+        container(text("")).height(0)
     };
 
     let slider_controls = slider
@@ -187,10 +209,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     center(
         container(
             column![
-            //top_bar,
-            first_img,
-            slider_controls,
-            footer
+                first_img,
+                slider_controls,
+                footer
             ])
             .width(Length::Fill)
             .height(Length::Fill)

@@ -155,7 +155,8 @@ impl DataViewer {
             show_about: false,
             device,   // Store the Arc<device>
             queue,    // Store the Arc<queue>
-            is_gpu_supported: true,
+            //is_gpu_supported: true,
+            is_gpu_supported: false, // for testing
             background_color: Color::WHITE,
             last_slider_update: Instant::now(),
             is_slider_moving: false,
