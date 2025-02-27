@@ -34,6 +34,7 @@ use crate::widgets::shader::scene::Scene;
 mod app;
 use crate::app::{Message, DataViewer};
 mod utils;
+mod atlas;
 
 
 use iced_winit::Clipboard;

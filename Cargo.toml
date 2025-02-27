@@ -27,6 +27,7 @@ bytemuck = { version = "1.0", features = ["derive"] }
 wgpu = "23.0"
 pollster = "0.4.0"
 tracing-subscriber = "0.3"
+guillotiere = "0.6"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 #iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", rev = "69a425da03f227a8fd0e654eeb1e2d8c271e4411", features = [
@@ -41,7 +42,7 @@ iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.g
 iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
 iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
 iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = ["tokio"] }
-#iced_renderer = { git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = ["wgpu"] }
+iced_graphics = { git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
 iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "a6008baadc357d116acb2b0caa8b14fed1bf717e", features = [
     "menu", "quad" ] }
 
@@ -68,6 +69,7 @@ iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.g
 iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
 iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
 iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58", features = ["tokio"] }
+iced_graphics = { git = "https://github.com/ggand0/iced.git", rev = "ea76d7320e0967e2ec3d028d3d833c1d9ce53b58" }
 iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", rev = "a6008baadc357d116acb2b0caa8b14fed1bf717e", features = [
     "menu", "quad" ] }
 
