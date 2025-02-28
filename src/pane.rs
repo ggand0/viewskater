@@ -46,6 +46,7 @@ use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::config::CONFIG;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
+use crate::cache::img_cache::CacheStrategy;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -445,7 +446,7 @@ impl Pane {
         let mut img_cache = ImageCache::new(
             _file_paths,
             CONFIG.cache_size,
-            is_gpu_supported,
+            CacheStrategy::Atlas,
             initial_index,
             Some(device),
             Some(queue),

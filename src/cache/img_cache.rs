@@ -264,39 +264,40 @@ impl ImageCache {
     pub fn new(
         image_paths: Vec<PathBuf>,
         cache_count: usize,
-        is_gpu_supported: bool,
-        initial_inedx: usize,
+        cache_strategy: CacheStrategy,
+        initial_index: usize,
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
         wgpu_backend: wgpu::Backend,
     ) -> Result<Self, io::Error> {
-        let device_ref = device.clone();
-        let backend: Box<dyn ImageCacheBackend> = if is_gpu_supported {
-            if let (Some(device), Some(queue)) = (device, queue) {
-                Box::new(GpuImageCache::new(device, queue))
-
-                
-            } else {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "GPU support enabled but device/queue not provided",
-                ));
-            }
-
-        } else {
-            Box::new(CpuImageCache {})
-        };
-
         let mut cached_data = Vec::new();
         for _ in 0..(cache_count * 2 + 1) {
             cached_data.push(None);
         }
 
+        // Initialize the image cache with the basic structure
+        let mut image_cache = ImageCache {
+            image_paths: image_paths.clone(),
+            num_files: image_paths.len(),
+            current_index: initial_index,
+            current_offset: 0,
+            cache_count,
+            cached_data,
+            cached_image_indices: vec![-1; cache_count * 2 + 1],
+            cache_states: vec![false; cache_count * 2 + 1],
+            loading_queue: VecDeque::new(),
+            being_loaded_queue: VecDeque::new(),
+            loading_queue_slider: VecDeque::new(),
+            wgpu_backend,
+            slider_texture: None,
+            atlas: None,
+            backend: Box::new(CpuImageCache {}), // Temporary CPU backend, will be replaced
+        };
 
-        // 🔹 Create a fixed-size texture for slider previews if using GPU
-        let slider_texture = if is_gpu_supported {
-            if let Some(device) = device_ref {
-                Some(Arc::new(device.create_texture(&wgpu::TextureDescriptor {
+        // Initialize the slider texture if using GPU
+        if cache_strategy.is_gpu_based() {
+            if let Some(device) = device.clone() {
+                image_cache.slider_texture = Some(Arc::new(device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("SliderTexture"),
                     size: wgpu::Extent3d {
                         width: 1280, // Fixed 720p resolution
@@ -309,31 +310,26 @@ impl ImageCache {
                     format: wgpu::TextureFormat::Rgba8UnormSrgb,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
-                })))
-            } else {
-                None
+                })));
             }
-        } else {
-            None
-        };
+        }
 
-        Ok(ImageCache {
-            image_paths: image_paths.clone(),
-            num_files: image_paths.len(),
-            current_index: initial_inedx,
-            current_offset: 0,
-            cache_count,
-            cached_data: cached_data,
-            cached_image_indices: vec![-1; cache_count * 2 + 1],
-            cache_states: vec![false; cache_count * 2 + 1],
-            loading_queue: VecDeque::new(),
-            being_loaded_queue: VecDeque::new(),
-            loading_queue_slider: VecDeque::new(),
-            wgpu_backend: wgpu_backend,
-            slider_texture,
-            atlas: None,
-            backend: backend,
-        })
+        // Initialize the atlas if using Atlas strategy
+        if let CacheStrategy::Atlas = cache_strategy {
+            if let Some(device_ref) = device.clone() {
+                image_cache.initialize_atlas(&device_ref)?;
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Atlas strategy selected but device not provided",
+                ));
+            }
+        }
+
+        // Initialize the appropriate backend
+        image_cache.init_cache(device, queue, cache_strategy)?;
+
+        Ok(image_cache)
     }
 
     pub fn get_cached_data(&self, index: usize) -> Option<&CachedData> {
