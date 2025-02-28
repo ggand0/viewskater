@@ -41,9 +41,10 @@ use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
 use crate::cache::img_cache::ImageCache;
 use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::scene::Scene;
-
+use crate::atlas::entry::{self, Entry};
+use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::config::CONFIG;
-use iced_wgpu::{wgpu};
+use iced_wgpu::wgpu;
 use iced_core::image::Handle;
 
 #[allow(unused_imports)]
@@ -219,9 +220,20 @@ impl Pane {
                     }
                     CachedData::Gpu(texture) => {
                         debug!("Setting GPU texture as current_image");
-                        self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
+                        self.current_image = CachedData::Gpu(Arc::clone(&texture)); 
                         self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                    }
+                    CachedData::Atlas { atlas, entry } => {  // Use struct pattern with named fields
+                        debug!("Setting Atlas as current_image");
+                        self.current_image = CachedData::Atlas {  // Create with named fields
+                            atlas: Arc::clone(atlas),
+                            entry: entry.clone(),
+                        };
+                        
+                        // If you need to update scene with the atlas, add that here
+                        // For example:
+                        // self.scene = Some(Scene::new_with_atlas(...));
                     }
                 }
             } else {
@@ -283,6 +295,13 @@ impl Pane {
                             self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
                             self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                        }
+                        CachedData::Atlas { atlas, entry } => {  // Use struct pattern with named fields
+                            debug!("Setting Atlas as current_image");
+                            self.current_image = CachedData::Atlas {  // Create with named fields
+                                atlas: Arc::clone(atlas),
+                                entry: entry.clone(),
+                            };
                         }
                     }
                 } else {
@@ -462,6 +481,27 @@ impl Pane {
                 CachedData::Cpu(image_bytes) => {
                     debug!("Using CPU image for initial image");
                     self.current_image = CachedData::Cpu(image_bytes.clone());
+                }
+                CachedData::Atlas { atlas, entry } => {
+                    debug!("Using Atlas entry for initial image");
+                    self.current_image = CachedData::Atlas {
+                        atlas: Arc::clone(atlas),
+                        entry: entry.clone(),
+                    };
+                    
+                    // Get size information from the entry
+                    let size = match &entry {
+                        entry::Entry::Contiguous(allocation) => allocation.size(),
+                        entry::Entry::Fragmented { size, .. } => *size,
+                    };
+                    
+                    // Create or update the atlas scene
+                    // We need to access the actual atlas inside the RwLock
+                    if let Ok(atlas_guard) = atlas.read() {
+                        let atlas_scene = AtlasScene::new(Arc::new(atlas_guard.clone()));
+                        atlas_scene.update_image(entry.clone(), size.width, size.height);
+                        self.scene = Some(Scene::AtlasScene(atlas_scene));
+                    }
                 }
             }
         } else {

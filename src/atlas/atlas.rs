@@ -23,7 +23,7 @@ use iced_wgpu::wgpu;
 
 #[derive(Debug)]
 pub struct Atlas {
-    texture: wgpu::Texture,
+    pub texture: wgpu::Texture,
     texture_view: wgpu::TextureView,
     texture_bind_group: wgpu::BindGroup,
     texture_layout: Arc<wgpu::BindGroupLayout>,
