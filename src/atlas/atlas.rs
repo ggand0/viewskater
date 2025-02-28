@@ -72,7 +72,7 @@ impl Atlas {
             ..Default::default()
         });
 
-        let texture_bind_group =
+        /*let texture_bind_group =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("iced_wgpu::image texture atlas bind group"),
                 layout: &texture_layout,
@@ -80,7 +80,55 @@ impl Atlas {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(&texture_view),
                 }],
-            });
+            });*/
+
+        // Create a sampler for the atlas
+        let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Atlas Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        // Create a uniform buffer (Dummy for now, will be updated later)
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Atlas Uniform Buffer"),
+            size: std::mem::size_of::<f32>() as wgpu::BufferAddress * 8, // Ensure correct size
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Fix the Bind Group to include all 3 expected bindings
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("iced_wgpu::image texture atlas bind group"),
+            layout: &texture_layout,
+            entries: &[
+                // Binding 0: Texture View
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                // Binding 1: Sampler
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&atlas_sampler),
+                },
+                // Binding 2: Uniform Buffer
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &uniform_buffer,
+                        offset: 0,
+                        size: None,
+                    }),
+                },
+            ],
+        });
+
 
         Atlas {
             texture,
@@ -454,16 +502,52 @@ impl Atlas {
                 ..Default::default()
             });
 
+        // Create a sampler for the atlas
+        let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Atlas Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        // Create a uniform buffer (Dummy for now, will be updated later)
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Atlas Uniform Buffer"),
+            size: std::mem::size_of::<f32>() as wgpu::BufferAddress * 8, // Ensure correct size
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Update the bind group with all 3 required bindings
         self.texture_bind_group =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("iced_wgpu::image texture atlas bind group"),
                 layout: &self.texture_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self.texture_view,
-                    ),
-                }],
+                entries: &[
+                    // Binding 0: Texture View
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&self.texture_view),
+                    },
+                    // Binding 1: Sampler
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&atlas_sampler),
+                    },
+                    // Binding 2: Uniform Buffer
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &uniform_buffer,
+                            offset: 0,
+                            size: None,
+                        }),
+                    },
+                ],
             });
     }
 }
