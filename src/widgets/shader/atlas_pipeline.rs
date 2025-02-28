@@ -39,11 +39,13 @@ impl Vertex {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
 struct AtlasUniforms {
-    atlas_coords: [f32; 4],  // x, y, width, height in atlas
-    layer: f32,               // atlas layer
-    image_size: [f32; 2],    // original image dimensions
-    _padding: f32,           // Padding for alignment
+    atlas_coords: [f32; 4],  // 16 bytes
+    layer: f32,              // 4 bytes
+    _padding1: [f32; 3],     // 12 bytes (align vec2<f32> to 16-byte boundary)
+    image_size: [f32; 2],    // 8 bytes
+    _padding2: [f32; 2],     // 8 bytes (ensure struct is 48 bytes)
 }
+
 
 pub struct AtlasPipeline {
     pipeline: wgpu::RenderPipeline,
@@ -299,7 +301,8 @@ impl AtlasPipeline {
                     ],
                     layer: allocation.layer() as f32,
                     image_size: [image_size.0 as f32, image_size.1 as f32],
-                    _padding: 0.0,
+                    _padding1: [0.0; 3],
+                    _padding2: [0.0; 2],
                 }
             }
             Entry::Fragmented { fragments, size } => {
@@ -318,7 +321,8 @@ impl AtlasPipeline {
                         ],
                         layer: layer as f32,
                         image_size: [size.width as f32, size.height as f32],
-                        _padding: 0.0,
+                        _padding1: [0.0; 3],
+                        _padding2: [0.0; 2],
                     }
                 } else {
                     // Default values if no fragments
@@ -326,7 +330,8 @@ impl AtlasPipeline {
                         atlas_coords: [0.0, 0.0, 1.0, 1.0],
                         layer: 0.0,
                         image_size: [image_size.0 as f32, image_size.1 as f32],
-                        _padding: 0.0,
+                        _padding1: [0.0; 3],
+                        _padding2: [0.0; 2],
                     }
                 }
             }
