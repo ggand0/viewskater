@@ -495,13 +495,13 @@ impl Pane {
                         entry::Entry::Fragmented { size, .. } => *size,
                     };
                     
-                    // Create or update the atlas scene
-                    // We need to access the actual atlas inside the RwLock
-                    if let Ok(atlas_guard) = atlas.read() {
-                        let atlas_scene = AtlasScene::new(Arc::new(atlas_guard.clone()));
-                        atlas_scene.update_image(entry.clone(), size.width, size.height);
-                        self.scene = Some(Scene::AtlasScene(atlas_scene));
-                    }
+                    // Create the atlas scene with the Arc<RwLock<Atlas>>
+                    // No need to access the atlas guard here as AtlasScene now works with RwLock
+                    let mut atlas_scene = AtlasScene::new(Arc::clone(atlas));
+                    
+                    // Update the atlas scene with the entry
+                    atlas_scene.update_image(entry.clone(), size.width, size.height);
+                    self.scene = Some(Scene::AtlasScene(atlas_scene));
                 }
             }
         } else {

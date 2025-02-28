@@ -24,6 +24,8 @@ use crate::loading_status::LoadingStatus;
 use crate::cache::img_cache::{LoadOperation, LoadOperationType};
 use crate::cache::img_cache::{CachedData};
 use crate::widgets::shader::scene::Scene;
+use crate::widgets::shader::atlas_scene::AtlasScene;
+use crate::atlas::entry;
 
 pub fn handle_load_operation_all(
     panes: &mut Vec<pane::Pane>,
@@ -73,12 +75,13 @@ pub fn handle_load_operation_all(
         if let Some(target_image_to_load) = target_image_to_load {
             if target_image_to_load == target_index {
                 // Convert `Option<Vec<u8>>` to `Option<CachedData>`
-                /*let mut converted_data = image_data[pane_index]
-                    .clone()
-                    .map(CachedData::Cpu);*/
                 let mut converted_data = match image_data[pane_index].clone() {
                     Some(CachedData::Cpu(data)) => Some(CachedData::Cpu(data)),
                     Some(CachedData::Gpu(texture)) => Some(CachedData::Gpu(Arc::clone(&texture))),
+                    Some(CachedData::Atlas { atlas, entry }) => Some(CachedData::Atlas {
+                        atlas: Arc::clone(&atlas),
+                        entry: entry.clone(),
+                    }),
                     None => None,
                 };
                     
@@ -115,14 +118,29 @@ pub fn handle_load_operation_all(
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
                             pane.current_image = CachedData::Gpu(Arc::clone(&texture));
-                            //pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
-                            //pane.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                            pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
+                        }
+                        CachedData::Atlas { atlas, entry } => {
+                            debug!("Setting Atlas entry as current_image");
+                            pane.current_image = CachedData::Atlas {
+                                atlas: Arc::clone(atlas),
+                                entry: entry.clone(),
+                            };
+                            
+                            // Get size information from the entry
+                            let size = match entry {
+                                entry::Entry::Contiguous(allocation) => allocation.size(),
+                                entry::Entry::Fragmented { size, .. } => *size,
+                            };
+                            
+                            // Create the atlas scene
+                            let mut atlas_scene = AtlasScene::new(Arc::clone(atlas));
+                            atlas_scene.update_image(entry.clone(), size.width, size.height);
+                            pane.scene = Some(Scene::AtlasScene(atlas_scene));
                         }
                     }
                 }
-
             }
-
         }
     }
 }
@@ -160,8 +178,6 @@ pub fn handle_load_pos_operation(
                     // Load the image data into the cache if available
                     if let Some(image) = image_data_opt {
                         // Store the loaded image data in the cache at the specified cache position
-                        //cache.set_cached_data(*cache_pos, CachedData::Cpu(image.clone())) ;
-                        //cache.cached_image_indices[*cache_pos] = *target_index;
                         match image {
                             CachedData::Cpu(data) => {
                                 cache.set_cached_data(*cache_pos, CachedData::Cpu(data.clone()));
@@ -169,9 +185,14 @@ pub fn handle_load_pos_operation(
                             CachedData::Gpu(texture) => {
                                 cache.set_cached_data(*cache_pos, CachedData::Gpu(Arc::clone(texture)));
                             }
+                            CachedData::Atlas { atlas, entry } => {
+                                cache.set_cached_data(*cache_pos, CachedData::Atlas {
+                                    atlas: Arc::clone(atlas),
+                                    entry: entry.clone(),
+                                });
+                            }
                         }
                         
-
                         if cache.current_index == target_index_usize {
                             // Reload current image if necessary
                             if let Ok(cached_image) = cache.get_initial_image() {
@@ -183,10 +204,28 @@ pub fn handle_load_pos_operation(
                                     CachedData::Gpu(texture) => {
                                         debug!("Setting GPU texture as current_image");
                                         pane.current_image = CachedData::Gpu(Arc::clone(&texture));
+                                        pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
+                                    }
+                                    CachedData::Atlas { atlas, entry } => {
+                                        debug!("Setting Atlas entry as current_image");
+                                        pane.current_image = CachedData::Atlas {
+                                            atlas: Arc::clone(atlas),
+                                            entry: entry.clone(),
+                                        };
+                                        
+                                        // Get size information from the entry
+                                        let size = match entry {
+                                            entry::Entry::Contiguous(allocation) => allocation.size(),
+                                            entry::Entry::Fragmented { size, .. } => *size,
+                                        };
+                                        
+                                        // Create the atlas scene
+                                        let mut atlas_scene = AtlasScene::new(Arc::clone(atlas));
+                                        atlas_scene.update_image(entry.clone(), size.width, size.height);
+                                        pane.scene = Some(Scene::AtlasScene(atlas_scene));
                                     }
                                 }
                             }
-
                         }
                     } else {
                         debug!("No image data available for target index: {}", target_index);
