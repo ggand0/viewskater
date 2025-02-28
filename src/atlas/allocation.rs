@@ -3,7 +3,7 @@
 use iced_core::Size;
 use crate::atlas::{atlas, allocator};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Allocation {
     Partial {
         layer: usize,

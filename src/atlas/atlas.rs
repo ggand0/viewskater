@@ -19,6 +19,7 @@ use iced_graphics::color;
 use std::sync::Arc;
 use std::time::Instant;
 use log::debug;
+use iced_wgpu::wgpu;
 
 #[derive(Debug)]
 pub struct Atlas {
@@ -100,7 +101,8 @@ impl Atlas {
 
     pub fn upload(
         &mut self,
-        device: &wgpu::Device,
+        //device: &wgpu::Device,
+        device: Arc<wgpu::Device>,
         encoder: &mut wgpu::CommandEncoder,
         width: u32,
         height: u32,
@@ -112,7 +114,7 @@ impl Atlas {
 
             // We grow the internal texture after allocating if necessary
             let new_layers = self.layers.len() - current_size;
-            self.grow(new_layers, device, encoder);
+            self.grow(new_layers, &device, encoder);
 
             entry
         };
@@ -147,7 +149,7 @@ impl Atlas {
                     padding,
                     0,
                     allocation,
-                    device,
+                    &device,
                     encoder,
                 );
             }
@@ -163,7 +165,7 @@ impl Atlas {
                         padding,
                         offset,
                         &fragment.allocation,
-                        device,
+                        &device,
                         encoder,
                     );
                 }

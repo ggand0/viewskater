@@ -39,6 +39,7 @@ impl Allocator {
     }
 }
 
+#[derive(Clone)]
 pub struct Region {
     allocation: guillotiere::Allocation,
 }

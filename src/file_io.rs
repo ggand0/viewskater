@@ -29,6 +29,13 @@ use std::fs::File;
 use crate::utils::timing::TimingStats;
 use once_cell::sync::Lazy;
 
+//use crate::cache::cache_strategy::CacheStrategy;
+use crate::cache::img_cache::CacheStrategy;
+use crate::atlas::atlas::Atlas;
+use crate::atlas::entry;
+
+use std::sync::RwLock;
+
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
 });
@@ -154,27 +161,106 @@ async fn load_image_gpu_async(
     Ok(None)
 }
 
-pub async fn load_images_async(
-    paths: Vec<Option<String>>, 
-    is_gpu_supported: bool,
+async fn load_image_atlas_async(
+    path: Option<&str>,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
+    atlas: &Arc<RwLock<Atlas>>
+) -> Result<Option<CachedData>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let file_path = Path::new(path);
+        let start = Instant::now();
+
+        match image::open(file_path) {
+            Ok(img) => {
+                let rgba_image = img.to_rgba8();
+                let (width, height) = img.dimensions();
+                let duration = start.elapsed();
+                IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
+
+                // Create a command encoder for atlas upload
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Atlas Upload Encoder"),
+                });
+
+                let upload_start = Instant::now();
+                
+                // Use a block scope to ensure the guard is dropped
+                let entry_result = {
+                    // Get a write lock to the Atlas - this will be dropped at end of this scope
+                    let mut atlas_guard = atlas.write().unwrap();
+                    
+                    // Now we can call upload on the mutable reference
+                    atlas_guard.upload(
+                        device.clone(), 
+                        &mut encoder, 
+                        width, 
+                        height, 
+                        &rgba_image
+                    )
+                }; // <-- atlas_guard is definitely dropped here
+                
+                if let Some(entry) = entry_result {
+                    // Submit the upload command
+                    queue.submit(std::iter::once(encoder.finish()));
+                    
+                    let upload_duration = upload_start.elapsed();
+                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                    
+                    return Ok(Some(CachedData::Atlas {
+                        atlas: Arc::clone(atlas),
+                        entry,
+                    }));
+                } else {
+                    // Atlas upload failed, fall back to individual texture
+                    debug!("Atlas upload failed for {}, falling back to individual texture", path);
+                    return load_image_gpu_async(Some(path), device, queue).await;
+                }
+            }
+            Err(_) => return Err(std::io::ErrorKind::InvalidData),
+        }
+    }
+
+    Ok(None)
+}
+
+pub async fn load_images_async(
+    paths: Vec<Option<String>>, 
+    cache_strategy: CacheStrategy,
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    atlas: Option<Arc<RwLock<Atlas>>>,
     load_operation: LoadOperation
 ) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
-    debug!("load_images_async - is_gpu_supported: {}", is_gpu_supported);
+    debug!("load_images_async - cache_strategy: {:?}", cache_strategy);
 
     let futures = paths.into_iter().map(|path| {
         let device = Arc::clone(device);
         let queue = Arc::clone(queue);
+        let atlas_clone = atlas.clone();
+        
         async move {
             let path_str = path.as_deref();
-            if is_gpu_supported {
-                debug!("load_images_async - loading image from GPU");
-                load_image_gpu_async(path_str, &device, &queue).await
-            } else {
-                debug!("load_images_async - loading image from CPU");
-                load_image_cpu_async(path_str).await
+            match cache_strategy {
+                CacheStrategy::Cpu => {
+                    debug!("load_images_async - loading image with CPU strategy");
+                    load_image_cpu_async(path_str).await
+                },
+                CacheStrategy::Gpu => {
+                    debug!("load_images_async - loading image with GPU strategy");
+                    load_image_gpu_async(path_str, &device, &queue).await
+                },
+                CacheStrategy::Atlas => {
+                    debug!("load_images_async - loading image with Atlas strategy");
+                    if let Some(atlas) = atlas_clone {
+                        load_image_atlas_async(path_str, &device, &queue, &atlas).await
+                    } else {
+                        // Fall back to GPU if atlas isn't available
+                        debug!("Atlas not available, falling back to GPU strategy");
+                        load_image_gpu_async(path_str, &device, &queue).await
+                    }
+                }
             }
         }
     });

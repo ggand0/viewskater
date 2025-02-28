@@ -195,9 +195,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 // Create shared Arc instances of device and queue
                 let device = Arc::new(device);
                 let queue = Arc::new(queue);
+                let backend = adapter.get_info().backend;
 
                 // Pass a cloned Arc reference to DataViewer
-                let shader_widget = DataViewer::new(Arc::clone(&device), Arc::clone(&queue));
+                let shader_widget = DataViewer::new(
+                    Arc::clone(&device), Arc::clone(&queue), backend);
 
 
                 // Initialize iced
@@ -293,97 +295,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 }
                 WindowEvent::RedrawRequested => {
                     //println!("RedrawRequested event received");
-                    /*if *resized {
-                        // Update window title dynamically based on the current image
-                        let new_title = state.program().title();
-                        window.set_title(&new_title);
-
-                        let size = window.inner_size();
-
-                        *viewport = Viewport::with_physical_size(
-                            Size::new(size.width, size.height),
-                            window.scale_factor(),
-                        );
-
-                        surface.configure(
-                            device,
-                            &wgpu::SurfaceConfiguration {
-                                format: *format,
-                                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                                width: size.width,
-                                height: size.height,
-                                present_mode: wgpu::PresentMode::AutoVsync,
-                                alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                                view_formats: vec![],
-                                desired_maximum_frame_latency: 2,
-                            },
-                        );
-
-                        *resized = false;
-                    }
-
-                    match surface.get_current_texture() {
-                        Ok(frame) => {
-                            // v0: render with wgpu
-                            /*let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                label: Some("Render Encoder"),
-                            });
-
-                            // Call scene.draw with the encoder and the texture view
-                            scene.draw(&mut encoder, &view);
-
-                            // Submit the commands to the queue
-                            queue.submit(Some(encoder.finish()));
-                            frame.present();*/
-
-                            // v1: render with iced's shader widget
-                            let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                label: Some("Render Encoder"),
-                            });
-
-                            // Render the iced program
-                            debug!("renderer.present()");
-                            renderer.present(
-                                engine,
-                                device,
-                                queue,
-                                &mut encoder,
-                                //None,
-                                Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 0.5 }), // Force black background for debugging
-                                frame.texture.format(),
-                                &view,
-                                viewport,
-                                &debug.overlay(),
-                            );
-
-
-                            // Submit the commands to the queue
-                            engine.submit(queue, encoder);
-                            frame.present();
-
-                            // Update the mouse cursor
-                            window.set_cursor(
-                                iced_winit::conversion::mouse_interaction(
-                                    state.mouse_interaction(),
-                                ),
-                            );
-                            *redraw = false;
-                        }
-                        Err(error) => match error {
-                            wgpu::SurfaceError::OutOfMemory => {
-                                panic!(
-                                    "Swapchain error: {error}. \
-                                        Rendering cannot continue."
-                                );
-                            }
-                            _ => {
-                                // Retry rendering on the next frame
-                                window.request_redraw();
-                            }
-                        },
-                    }*/
                 }
                 WindowEvent::Resized(size) => {
                     *resized = true;
@@ -394,62 +305,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 WindowEvent::CursorMoved { position, .. } => {
                     //println!("CursorMoved event received");
                     *cursor_position = Some(position);
-
-                    /*if *redraw {
-                        window.request_redraw();
-
-
-                        match surface.get_current_texture() {
-                            Ok(frame) => {
-                                // v0: render with wgpu
-                                // v1: render with iced's shader widget
-                                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: Some("Render Encoder"),
-                                });
-    
-                                // Render the iced program
-                                debug!("renderer.present()");
-                                renderer.present(
-                                    engine,
-                                    device,
-                                    queue,
-                                    &mut encoder,
-                                    //None,
-                                    Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 0.5 }), // Force black background for debugging
-                                    frame.texture.format(),
-                                    &view,
-                                    viewport,
-                                    &debug.overlay(),
-                                );
-    
-    
-                                // Submit the commands to the queue
-                                engine.submit(queue, encoder);
-                                frame.present();
-    
-                                // Update the mouse cursor
-                                window.set_cursor(
-                                    iced_winit::conversion::mouse_interaction(
-                                        state.mouse_interaction(),
-                                    ),
-                                );
-                                *redraw = false;
-                            }
-                            Err(error) => match error {
-                                wgpu::SurfaceError::OutOfMemory => {
-                                    panic!(
-                                        "Swapchain error: {error}. \
-                                            Rendering cannot continue."
-                                    );
-                                }
-                                _ => {
-                                    // Retry rendering on the next frame
-                                    window.request_redraw();
-                                }
-                            },
-                        }
-                    }*/
                 }
                 WindowEvent::KeyboardInput { ref event, .. } => {
                 }

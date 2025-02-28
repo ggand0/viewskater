@@ -66,6 +66,7 @@ pub struct Pane {
     pub is_selected_cache: bool,
     //pub scene: Scene,
     pub scene: Option<Scene>,
+    pub backend: wgpu::Backend,
 }
 
 impl Default for Pane {
@@ -83,13 +84,14 @@ impl Default for Pane {
             is_selected_cache: true,
             scene: None,
             cpu_preview_image: None,
+            backend: wgpu::Backend::Vulkan,
         }
     }
 }
 
 impl Pane {
     #[allow(dead_code)]
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
         // debuggign with sample image
         /*let image_paths = vec![
             "image.jpg",
@@ -137,6 +139,7 @@ impl Pane {
             is_selected: true,
             is_selected_cache: true,
             scene: Some(scene),
+            backend: backend,
         }
     }
 
@@ -427,6 +430,7 @@ impl Pane {
             initial_index,
             Some(device),
             Some(queue),
+            self.backend,
         )
         .unwrap();
 

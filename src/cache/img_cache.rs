@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use std::io;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use image::GenericImageView;
 
 
 #[allow(unused_imports)]
@@ -47,6 +48,11 @@ use crate::cache::gpu_img_cache::GpuImageCache;
 use crate::cache::cache_utils::{shift_cache_left, shift_cache_right, load_pos};
 use std::path::Path;
 
+//use crate::cache::cache_strategy::CacheStrategy;
+use crate::atlas::atlas::Atlas;
+use crate::atlas::entry;
+
+use std::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LoadOperation {
@@ -78,17 +84,59 @@ impl LoadOperation {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CacheStrategy {
+    Cpu,         // Use CPU memory for image caching
+    Gpu,         // Use individual GPU textures
+    Atlas,       // Use texture atlas for GPU caching
+}
+
+impl CacheStrategy {
+    pub fn is_gpu_based(&self) -> bool {
+        match self {
+            CacheStrategy::Cpu => false,
+            CacheStrategy::Gpu | CacheStrategy::Atlas => true,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum CachedData {
-    Cpu(Vec<u8>),          // CPU: Raw image bytes
-    Gpu(Arc<wgpu::Texture>),    // GPU: Use Arc to allow cloning
+    Cpu(Vec<u8>),                // CPU: Raw image bytes
+    Gpu(Arc<wgpu::Texture>),     // GPU: Use Arc to allow cloning
+    Atlas {
+        atlas: Arc<RwLock<Atlas>>,  // Changed to RwLock
+        entry: entry::Entry,
+    }
 }
 
 impl CachedData {
     pub fn take(self) -> Option<Self> {
         Some(self)
     }
+
+    pub fn width(&self) -> u32 {
+        match self {
+            CachedData::Cpu(bytes) => {
+                // Attempt to decode image to get dimensions
+                if let Ok(img) = image::load_from_memory(bytes) {
+                    img.width()
+                } else {
+                    0
+                }
+            },
+            CachedData::Gpu(texture) => texture.width(),
+            CachedData::Atlas { entry, .. } => {
+                if let entry::Entry::Contiguous(allocation) = entry {
+                    allocation.size().width
+                } else {
+                    0
+                }
+            }
+        }
+    }
+    
+    // Similar implementation for height()
 }
 
 impl CachedData {
@@ -101,6 +149,18 @@ impl CachedData {
                 let height = texture.height();
                 4 * (width as usize) * (height as usize) // 4 bytes per pixel (RGBA8)
             }
+            CachedData::Atlas { entry, .. } => {
+                // The Entry already has size info, so no need to access Atlas
+                match entry {
+                    entry::Entry::Contiguous(allocation) => {
+                        let size = allocation.size();
+                        (size.width as usize) * (size.height as usize) * 4
+                    },
+                    entry::Entry::Fragmented { size, .. } => {
+                        (size.width as usize) * (size.height as usize) * 4
+                    }
+                }
+            }
         }
     }
 
@@ -111,6 +171,24 @@ impl CachedData {
                 io::ErrorKind::Unsupported,
                 "GPU data cannot be converted to a Vec<u8>",
             )),
+            CachedData::Atlas { entry, .. } => {
+                // Get size directly by pattern matching on entry
+                let size = match entry {
+                    entry::Entry::Contiguous(allocation) => allocation.size(),
+                    entry::Entry::Fragmented { size, .. } => *size,
+                };
+                
+                // Now use the size to create the vector
+                let mut data = vec![0; size.width as usize * size.height as usize * 4];
+                /*let mut offset = 0;
+
+                for y in 0..size.height {
+                    for x in 0..size.width {
+            
+                    }
+                }*/
+                Ok(data)
+            }
         }
     }
 }
@@ -154,6 +232,8 @@ pub struct ImageCache {
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
     pub slider_texture: Option<Arc<wgpu::Texture>>,
+    pub atlas: Option<Arc<RwLock<Atlas>>>,
+    pub wgpu_backend: wgpu::Backend,
 }
 
 impl Default for ImageCache {
@@ -172,6 +252,8 @@ impl Default for ImageCache {
             cached_data: Vec::new(),
             backend: Box::new(CpuImageCache {}),
             slider_texture: None,
+            atlas: None,
+            wgpu_backend: wgpu::Backend::Vulkan,
         }
     }
 }
@@ -185,6 +267,7 @@ impl ImageCache {
         initial_inedx: usize,
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
+        wgpu_backend: wgpu::Backend,
     ) -> Result<Self, io::Error> {
         let device_ref = device.clone();
         let backend: Box<dyn ImageCacheBackend> = if is_gpu_supported {
@@ -245,8 +328,10 @@ impl ImageCache {
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
             loading_queue_slider: VecDeque::new(),
-            backend,
+            wgpu_backend: wgpu_backend,
             slider_texture,
+            atlas: None,
+            backend: backend,
         })
     }
 
@@ -291,6 +376,67 @@ impl ImageCache {
             &mut self.cached_image_indices,
             &mut self.current_offset,
         )
+    }
+
+    pub fn get_atlas(&self) -> Option<&Arc<RwLock<Atlas>>> {
+        self.atlas.as_ref()
+    }
+    
+    pub fn initialize_atlas(&mut self, device: &wgpu::Device) -> Result<(), io::Error> {
+        // Create texture bind group layout for the atlas
+        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Atlas Texture Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        
+        // Create the atlas with initial layers and wrap in RwLock
+        let atlas = Atlas::new(device, self.wgpu_backend, texture_layout.into());
+        self.atlas = Some(Arc::new(RwLock::new(atlas)));
+        
+        Ok(())
+    }
+    
+    pub fn shift_cache_left(&mut self, new_item: Option<CachedData>) {
+        // Before removing the first item, deallocate any atlas entry it might have
+        if let Some(Some(CachedData::Atlas { entry, atlas })) = self.cached_data.first() {
+            // Get a write lock to the atlas for deallocation
+            if let Ok(mut atlas_guard) = atlas.write() {
+                // Deallocate the atlas entry
+                // Implementation will depend on your atlas design
+            }
+        }
+        
+        self.cached_data.remove(0);
+        self.cached_data.push(new_item);
+
+        // Update indices
+        self.cached_image_indices.remove(0);
+        if !self.cached_image_indices.is_empty() {
+            let next_index = self.cached_image_indices[self.cached_image_indices.len()-1] + 1;
+            self.cached_image_indices.push(next_index);
+        } else {
+            self.cached_image_indices.push(0);
+        }
+
+        self.current_offset -= 1;
+        debug!("shift_cache_left - current_offset: {}", self.current_offset);
     }
 }
 
@@ -385,19 +531,6 @@ impl ImageCache {
         debug!("shift_cache_right - current_offset: {}", self.current_offset);
     }
 
-    fn shift_cache_left(&mut self, new_item: Option<CachedData>) {
-        self.cached_data.remove(0);
-        self.cached_data.push(new_item);
-
-        // Update indices
-        self.cached_image_indices.remove(0);
-        let next_index = self.cached_image_indices[self.cached_image_indices.len()-1] + 1;
-        self.cached_image_indices.push(next_index);
-
-        self.current_offset -= 1;
-        debug!("shift_cache_left - current_offset: {}", self.current_offset);
-    }
-
     pub fn get_initial_image(&self) -> Result<&CachedData, io::Error> {
         //debug!("get_initial_image - current_index: {}", self.current_index);
         let cache_index = (self.cache_count as isize + self.current_offset) as usize;
@@ -420,28 +553,7 @@ impl ImageCache {
                 "Invalid cache index",
             ))
         }
-    }/**/
-
-    /*pub fn get_initial_image(&self) -> Result<&CachedData, io::Error> {
-        debug!("get_initial_image - current_index: {}, cache_count: {}, current_offset: {}", 
-            self.current_index, self.cache_count, self.current_offset);
-    
-        let cache_index = self.cached_image_indices.iter()
-            .position(|&idx| idx == self.current_index as isize);
-    
-        if let Some(cache_index) = cache_index {
-            debug!("get_initial_image - Found current_index at cache position: {}", cache_index);
-            if let Some(image_data) = &self.cached_data[cache_index] {
-                return Ok(image_data);
-            } else {
-                debug!("get_initial_image - Cache entry found but empty!");
-                return Err(io::Error::new(io::ErrorKind::Other, "Image data is not cached"));
-            }
-        } else {
-            debug!("get_initial_image - current_index not found in cached_image_indices!");
-            return Err(io::Error::new(io::ErrorKind::Other, "Invalid cache index"));
-        }
-    }*/
+    }
     
 
     #[allow(dead_code)]
@@ -634,13 +746,15 @@ impl ImageCache {
         }
         false
     }
+
 }
 
 
 pub fn load_images_by_operation_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
+    //is_gpu_supported: bool,
     panes: &mut Vec<pane::Pane>,
     pane_index: usize,
     target_indices_and_cache: Vec<Option<(isize, usize)>>,
@@ -677,9 +791,11 @@ pub fn load_images_by_operation_slider(
             let device_clone = Arc::clone(device);
             let queue_clone = Arc::clone(queue);
             debug!("Task::perform started for {:?}", operation.clone());
+            
 
             let images_loading_task = async move {
-                load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await
+                load_images_async(
+                    paths, cache_strategy, &device_clone, &queue_clone, None, operation).await
             };
 
             Task::perform(images_loading_task, Message::ImagesLoaded)
@@ -696,7 +812,7 @@ pub fn load_images_by_operation_slider(
 pub fn load_images_by_indices(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
     panes: &mut Vec<&mut Pane>, 
     target_indices: Vec<Option<isize>>, 
     operation: LoadOperation
@@ -721,71 +837,47 @@ pub fn load_images_by_indices(
         }
     }
 
-    /*if !paths.is_empty() {
-        debug!("load_images_by_indices - paths: {:?}", paths);
+    if !paths.is_empty() {
         let device_clone = Arc::clone(device);
         let queue_clone = Arc::clone(queue);
-    
-        /*let images_loading_task = async move {
-            load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await
+        
+        // Get a reference to the atlas if using Atlas strategy
+        let atlas = if matches!(cache_strategy, CacheStrategy::Atlas) {
+            // We should have an atlas in at least one pane if using Atlas strategy
+            // In practice, we'd have a shared atlas for all panes
+            panes.iter_mut()
+                .find_map(|pane| pane.img_cache.get_atlas())
+                .map(Arc::clone)
+        } else {
+            None
         };
-        Task::perform(images_loading_task, Message::ImagesLoaded)*/
-        debug!("Task is scheduled for execution");
+
+        debug!("Task::perform started for {:?}", operation.clone());
         Task::perform(
             async move {
-                let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
-                debug!("load_images_async actually executed with result: {:?}", result);
+                let result = load_images_async(
+                    paths, 
+                    cache_strategy, 
+                    &device_clone, 
+                    &queue_clone, 
+                    atlas,
+                    operation
+                ).await;
                 result
             },
             Message::ImagesLoaded,
         )
-
-    } else {
-        Task::none()
-    }*/
-
-    if !paths.is_empty() {
-        //debug!("load_images_by_indices - paths: {:?}", paths);
-        let device_clone = Arc::clone(device);
-        let queue_clone = Arc::clone(queue);
-    
-        //debug!("Task::perform about to be scheduled!");
-    
-        /*Task::perform(
-            async move {
-                debug!("Inside async move block! load_images_async will be called.");
-                let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
-                debug!("load_images_async executed, result: {:?}", result);
-                result
-            },
-            |res| {
-                debug!("Task::perform completed, sending Message::ImagesLoaded");
-                Message::ImagesLoaded(res)
-            },
-        )*/
-        debug!("Task::perform started for {:?}", operation.clone());
-        Task::perform(
-            async move {
-                let result = load_images_async(paths, is_gpu_supported, &device_clone, &queue_clone, operation).await;
-                //debug!("load_images_async executed, result: {:?}", result);
-                result
-            },
-            Message::ImagesLoaded, // Make sure this exactly matches the Message variant
-        )
         
     } else {
-        //debug!("load_images_by_indices - No paths to load.");
         Task::none()
     }
-    
-
 }
 
 
 pub fn load_images_by_operation(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
     panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Task<Message> {
     if !loading_status.loading_queue.is_empty() {
         debug!("load_images_by_operation - loading_status.loading_queue: {:?}", loading_status.loading_queue);
@@ -794,11 +886,11 @@ pub fn load_images_by_operation(
             debug!("load_images_by_operation - loading_status.being_loaded_queue: {:?}", loading_status.being_loaded_queue);
             match operation {
                 LoadOperation::LoadNext((ref _pane_indices, ref target_indicies)) => {
-                    load_images_by_indices(device, queue, is_gpu_supported,
+                    load_images_by_indices(device, queue, cache_strategy,
                         panes, target_indicies.clone(), operation)
                 }
                 LoadOperation::LoadPrevious((ref _pane_indices, ref target_indicies)) => {
-                    load_images_by_indices(device, queue, is_gpu_supported,
+                    load_images_by_indices(device, queue, cache_strategy,
                         panes, target_indicies.clone(), operation)
                 }
                 LoadOperation::ShiftNext((ref _pane_indices, ref _target_indicies)) => {
@@ -824,7 +916,8 @@ pub fn load_images_by_operation(
 pub fn load_all_images_in_queue(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    //is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
 ) -> Task<Message> {
@@ -851,7 +944,7 @@ pub fn load_all_images_in_queue(
                 let task = load_images_by_operation_slider(
                     device,
                     queue,
-                    is_gpu_supported,
+                    cache_strategy,
                     panes,
                     *pane_index,
                     target_indices_and_cache.clone(),

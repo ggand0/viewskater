@@ -103,6 +103,8 @@ pub enum MenuItem {
     Help
 }
 
+use crate::cache::img_cache::CacheStrategy;
+
 pub struct DataViewer {
     pub background_color: Color,//debug
     pub title: String,
@@ -127,13 +129,15 @@ pub struct DataViewer {
     //pub device: Option<Arc<wgpu::Device>>,  // Now it's an Option
     //pub queue: Option<Arc<wgpu::Queue>>,    // Now it's an Option
     pub is_gpu_supported: bool,
+    pub cache_strategy: CacheStrategy,
     pub last_slider_update: Instant,
     pub is_slider_moving: bool,
+    pub backend: wgpu::Backend,
 }
 
 
 impl DataViewer {
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -146,7 +150,7 @@ impl DataViewer {
             show_footer: true,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
-            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue))],
+            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend)],
             //panes: vec![pane::Pane::new()],
             loading_status: loading_status::LoadingStatus::default(),
             skate_right: false,
@@ -159,6 +163,8 @@ impl DataViewer {
             background_color: Color::WHITE,
             last_slider_update: Instant::now(),
             is_slider_moving: false,
+            backend: backend,
+            cache_strategy: CacheStrategy::Atlas,
         }
     }
 
@@ -321,7 +327,7 @@ impl DataViewer {
                         debug!("move_left_all from handle_key_pressed_event()");
                         let task = move_left_all(
                             //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                            &self.device, &self.queue, self.is_gpu_supported,
+                            &self.device, &self.queue, self.cache_strategy,
                             &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                             &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
                         tasks.push(task);
@@ -349,7 +355,7 @@ impl DataViewer {
 
                     let task = move_right_all(
                         //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                        &self.device, &self.queue, self.is_gpu_supported,
+                        &self.device, &self.queue, self.cache_strategy,
                         &mut self.panes, &mut self.loading_status, &mut self.slider_value,
                         &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
                     tasks.push(task);
@@ -883,7 +889,7 @@ impl iced_winit::runtime::Program for DataViewer {
         if self.skate_right {
             self.update_counter = 0;
             let task = move_right_all(
-                &self.device, &self.queue, self.is_gpu_supported,
+                &self.device, &self.queue, self.cache_strategy,
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -896,7 +902,7 @@ impl iced_winit::runtime::Program for DataViewer {
             self.update_counter = 0;
             debug!("move_left_all from self.skate_left block");
             let task = move_left_all(
-                &self.device, &self.queue, self.is_gpu_supported,
+                &self.device, &self.queue, self.cache_strategy,
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,

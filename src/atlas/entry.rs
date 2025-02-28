@@ -1,9 +1,9 @@
 //use crate::core::Size;
 //use crate::image::atlas;
 use iced_core::Size;
-use crate::atlas::atlas;
+use crate::atlas::{atlas, allocation};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Entry {
     Contiguous(atlas::Allocation),
     Fragmented {
@@ -22,7 +22,7 @@ impl Entry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Fragment {
     pub position: (u32, u32),
     pub allocation: atlas::Allocation,
