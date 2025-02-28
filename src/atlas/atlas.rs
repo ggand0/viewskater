@@ -304,7 +304,7 @@ impl Atlas {
         None
     }
 
-    fn deallocate(&mut self, allocation: &Allocation) {
+    pub fn deallocate(&mut self, allocation: &Allocation) {
         log::debug!("Deallocating atlas: {allocation:?}");
 
         match allocation {

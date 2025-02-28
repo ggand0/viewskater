@@ -45,6 +45,7 @@ use crate::pane;
 
 use crate::cache::cpu_img_cache::CpuImageCache;
 use crate::cache::gpu_img_cache::GpuImageCache;
+use crate::cache::atlas_img_cache::AtlasImageCache;
 use crate::cache::cache_utils::{shift_cache_left, shift_cache_right, load_pos};
 use std::path::Path;
 
@@ -437,6 +438,78 @@ impl ImageCache {
 
         self.current_offset -= 1;
         debug!("shift_cache_left - current_offset: {}", self.current_offset);
+    }
+
+    pub fn init_cache(
+        &mut self,
+        device: Option<Arc<wgpu::Device>>,
+        queue: Option<Arc<wgpu::Queue>>,
+        cache_strategy: CacheStrategy,
+    ) -> Result<(), io::Error> {
+        let backend: Box<dyn ImageCacheBackend> = match cache_strategy {
+            CacheStrategy::Cpu => {
+                Box::new(CpuImageCache {})
+            },
+            CacheStrategy::Gpu => {
+                if let (Some(device), Some(queue)) = (device, queue) {
+                    Box::new(GpuImageCache::new(device, queue))
+                } else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "GPU strategy selected but device/queue not provided",
+                    ));
+                }
+            },
+            CacheStrategy::Atlas => {
+                if let (Some(device), Some(queue)) = (device.clone(), queue.clone()) {
+                    // If we don't have an atlas yet, create one
+                    if self.atlas.is_none() {
+                        // Create texture bind group layout for the atlas
+                        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                            label: Some("Atlas Texture Layout"),
+                            entries: &[
+                                wgpu::BindGroupLayoutEntry {
+                                    binding: 0,
+                                    visibility: wgpu::ShaderStages::FRAGMENT,
+                                    ty: wgpu::BindingType::Texture {
+                                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                                        multisampled: false,
+                                    },
+                                    count: None,
+                                },
+                                wgpu::BindGroupLayoutEntry {
+                                    binding: 1,
+                                    visibility: wgpu::ShaderStages::FRAGMENT,
+                                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                                    count: None,
+                                },
+                            ],
+                        });
+                        
+                        let atlas = Atlas::new(device.as_ref(), self.wgpu_backend, texture_layout.into()); // 4 initial layers
+                        self.atlas = Some(Arc::new(RwLock::new(atlas)));
+                    }
+                    
+                    // Create the Atlas backend
+                    Box::new(AtlasImageCache::new(
+                        device, 
+                        queue,
+                        self.wgpu_backend,
+                        Arc::clone(self.atlas.as_ref().unwrap())
+                    ))
+                } else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Atlas strategy selected but device/queue not provided",
+                    ));
+                }
+            }
+        };
+
+        //self.backend = Some(backend);
+        self.backend = backend;
+        Ok(())
     }
 }
 
