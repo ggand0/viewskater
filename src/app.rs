@@ -164,7 +164,8 @@ impl DataViewer {
             last_slider_update: Instant::now(),
             is_slider_moving: false,
             backend: backend,
-            cache_strategy: CacheStrategy::Atlas,
+            //cache_strategy: CacheStrategy::Atlas,
+            cache_strategy: CacheStrategy::Cpu,
         }
     }
 

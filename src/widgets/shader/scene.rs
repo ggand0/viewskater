@@ -18,6 +18,7 @@ use crate::widgets::shader::texture_scene::TexturePrimitive;
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use crate::app::Message;
 use crate::atlas::atlas::Atlas;
+use crate::widgets::shader::cpu_scene::{CpuScene, CpuPrimitive};
 
 static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Shader Update"))
@@ -27,12 +28,14 @@ static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
 pub enum Scene {
     TextureScene(TextureScene),
     AtlasScene(AtlasScene),
+    CpuScene(CpuScene),
 }
 
 #[derive(Debug)]
 pub enum ScenePrimitive {
     Texture(TexturePrimitive),
     Atlas(AtlasPrimitive),
+    Cpu(CpuPrimitive),
 }
 
 impl Scene {
@@ -40,6 +43,9 @@ impl Scene {
         match initial_image {
             Some(CachedData::Gpu(texture)) => {
                 Scene::TextureScene(TextureScene::new(Some(&CachedData::Gpu(Arc::clone(texture)))))
+            }
+            Some(CachedData::Cpu(image_bytes)) => {
+                Scene::CpuScene(CpuScene::new(image_bytes.clone()))
             }
             Some(CachedData::Atlas { atlas, entry }) => {
                 if let Ok(atlas_guard) = atlas.read() {
@@ -62,15 +68,46 @@ impl Scene {
         }
     }
 
-    pub fn update_texture(&mut self, new_texture: Arc<wgpu::Texture>) {
-        if let Scene::TextureScene(scene) = self {
-            scene.update_texture(new_texture);
+    pub fn update_texture(&mut self, texture: Arc<wgpu::Texture>) {
+        match self {
+            Scene::TextureScene(scene) => scene.update_texture(texture),
+            Scene::AtlasScene(_) => {
+                // Not applicable for atlas scene
+            }
+            Scene::CpuScene(_) => {
+                // Not applicable for CPU scene
+            }
         }
     }
 
     pub fn update_atlas_entry(&mut self, entry: entry::Entry, width: u32, height: u32) {
         if let Scene::AtlasScene(scene) = self {
             scene.update_image(entry, width, height);
+        }
+    }
+
+    pub fn update_cpu_image(&mut self, image_bytes: Vec<u8>) {
+        if let Scene::CpuScene(scene) = self {
+            scene.update_image(image_bytes);
+        }
+    }
+
+    pub fn has_valid_dimensions(&self) -> bool {
+        match self {
+            Scene::TextureScene(scene) => scene.texture_size.0 > 0 && scene.texture_size.1 > 0,
+            Scene::AtlasScene(_) => true, // Atlas scenes manage their own dimensions
+            Scene::CpuScene(scene) => scene.texture_size.0 > 0 && scene.texture_size.1 > 0,
+        }
+    }
+
+    pub fn ensure_texture(&mut self, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) {
+        match self {
+            Scene::CpuScene(cpu_scene) => {
+                cpu_scene.ensure_texture(&device, &queue);
+            }
+            _ => {
+                // Other scene types already have textures managed
+            }
         }
     }
 }
@@ -87,14 +124,16 @@ impl<Message> shader::Program<Message> for Scene {
     ) -> Self::Primitive {
         match self {
             Scene::TextureScene(scene) => {
-                //let texture_primitive = scene.draw(&(), cursor, bounds);
                 let texture_primitive = <TextureScene as iced_widget::shader::Program<Message>>::draw(scene, &(), cursor, bounds);
                 ScenePrimitive::Texture(texture_primitive)
             }
             Scene::AtlasScene(scene) => {
-                //let atlas_primitive = scene.draw(&(), cursor, bounds);
                 let atlas_primitive = <AtlasScene as iced_widget::shader::Program<Message>>::draw(scene, &(), cursor, bounds);
                 ScenePrimitive::Atlas(atlas_primitive)
+            }
+            Scene::CpuScene(scene) => {
+                let cpu_primitive = <CpuScene as iced_widget::shader::Program<Message>>::draw(scene, &(), cursor, bounds);
+                ScenePrimitive::Cpu(cpu_primitive)
             }
         }
     }
@@ -117,6 +156,9 @@ impl shader::Primitive for ScenePrimitive {
             ScenePrimitive::Atlas(primitive) => {
                 primitive.prepare(device, queue, format, storage, bounds, viewport)
             }
+            ScenePrimitive::Cpu(primitive) => {
+                primitive.prepare(device, queue, format, storage, bounds, viewport)
+            }
         }
     }
 
@@ -132,6 +174,9 @@ impl shader::Primitive for ScenePrimitive {
                 primitive.render(encoder, storage, target, clip_bounds)
             }
             ScenePrimitive::Atlas(primitive) => {
+                primitive.render(encoder, storage, target, clip_bounds)
+            }
+            ScenePrimitive::Cpu(primitive) => {
                 primitive.render(encoder, storage, target, clip_bounds)
             }
         }

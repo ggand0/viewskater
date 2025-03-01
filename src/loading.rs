@@ -114,6 +114,7 @@ pub fn handle_load_operation_all(
                         CachedData::Cpu(data) => {
                             debug!("Setting CPU image as current_image");
                             pane.current_image = CachedData::Cpu(data.clone());
+                            pane.scene = Some(Scene::new(Some(&CachedData::Cpu(data.clone()))));
                         }
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
@@ -200,6 +201,7 @@ pub fn handle_load_pos_operation(
                                     CachedData::Cpu(data) => {
                                         debug!("Setting CPU image as current_image");
                                         pane.current_image = CachedData::Cpu(data.clone());
+                                        pane.scene = Some(Scene::new(Some(&CachedData::Cpu(data.clone()))));
                                     }
                                     CachedData::Gpu(texture) => {
                                         debug!("Setting GPU texture as current_image");
