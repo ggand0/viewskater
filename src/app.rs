@@ -1,4 +1,3 @@
-
 #![windows_subsystem = "windows"]
 
 #[warn(unused_imports)]
@@ -78,7 +77,13 @@ use crate::loading;
 
 use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
 
+use crate::utils::timing::TimingStats;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
 
+static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("App Update"))
+});
 
 
 use iced::{
@@ -542,6 +547,7 @@ pub enum Message {
     //KeyPressed(keyboard::Key, keyboard::Modifiers),
     //KeyReleased(keyboard::Key, keyboard::Modifiers),
     BackgroundColorChanged(Color),
+    TimerTick,
 }
 
 //impl DataViewer {
@@ -553,7 +559,7 @@ impl iced_winit::runtime::Program for DataViewer {
     //fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
     fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
         //debug!("Received message: {:?}", message);
-
+        let update_start = Instant::now();
         match message {
             Message::BackgroundColorChanged(color) => {
                 self.background_color = color;
@@ -885,6 +891,11 @@ impl iced_winit::runtime::Program for DataViewer {
                 //_ => return iced_winit::runtime::Task::none()
                 _ => {}
             },
+            Message::TimerTick => {
+                // Implementation of TimerTick message
+                // This is a placeholder and should be replaced with the actual implementation
+                debug!("TimerTick received");
+            }
         }
 
         if self.skate_right {
@@ -898,6 +909,9 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
+            let update_end = Instant::now();
+            let update_duration = update_end.duration_since(update_start);
+            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else if self.skate_left {
             self.update_counter = 0;
@@ -911,6 +925,9 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
+            let update_end = Instant::now();
+            let update_duration = update_end.duration_since(update_start);
+            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else {
             // Log that there's no task to perform once
@@ -918,6 +935,9 @@ impl iced_winit::runtime::Program for DataViewer {
                 debug!("No skate mode detected, update_counter: {}", self.update_counter);
                 self.update_counter += 1;
             }
+            let update_end = Instant::now();
+            let update_duration = update_end.duration_since(update_start);
+            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
 
             iced_winit::runtime::Task::none()
         }

@@ -11,6 +11,8 @@ use iced_winit::winit;
 use iced_wgpu::wgpu::util::DeviceExt;
 use iced_winit::winit::event::{ElementState};
 use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
+use std::task::Wake;
+use std::task::Waker;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -35,7 +37,6 @@ use crate::app::{Message, DataViewer};
 mod utils;
 mod atlas;
 
-
 use iced_winit::Clipboard;
 use iced_runtime::{Action, Task};
 use iced_runtime::task::into_stream;
@@ -55,6 +56,12 @@ use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use std::time::Duration;
 use crate::utils::timing::TimingStats;
+use iced_winit::futures::futures::task;
+use iced_winit::core::window;
+use iced_futures::futures::channel::oneshot;
+
+// Import the correct channel types
+use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
 
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
@@ -79,12 +86,31 @@ fn register_font_manually(font_data: &'static [u8]) {
     font_system_guard.load_font(Cow::Borrowed(font_data));
 }
 
+// Add these new types for control flow
+enum Control {
+    ChangeFlow(winit::event_loop::ControlFlow),
+    CreateWindow {
+        id: window::Id,
+        settings: window::Settings,
+        title: String,
+        monitor: Option<winit::monitor::MonitorHandle>,
+        on_open: oneshot::Sender<()>,
+    },
+    Exit,
+}
 
+enum Event<T: 'static> {
+    EventLoopAwakened(winit::event::Event<T>),
+    WindowCreated {
+        id: window::Id,
+        window: winit::window::Window,
+        exit_on_close_request: bool,
+        make_visible: bool,
+        on_open: oneshot::Sender<()>,
+    },
+}
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
-    // Adapted event loop logic from benediktweihs' fork of Iced:
-    // https://github.com/benediktweihs/iced (checked on 2025-02-17)
-
     // Initialize tracing for debugging
     tracing_subscriber::fmt::init();
 
@@ -94,9 +120,20 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         .unwrap();
     let proxy: EventLoopProxy<Action<Message>> = event_loop.create_proxy();
 
+    // Create channels for event and control communication
+    // Use std::sync::mpsc explicitly
+    let (event_sender, event_receiver): (StdSender<Event<Action<Message>>>, StdReceiver<Event<Action<Message>>>) = 
+        std_mpsc::channel();
+    let (control_sender, control_receiver): (StdSender<Control>, StdReceiver<Control>) = 
+        std_mpsc::channel();
+
     #[allow(clippy::large_enum_variant)]
     enum Runner {
-        Loading(EventLoopProxy<Action<Message>>),
+        Loading {
+            proxy: EventLoopProxy<Action<Message>>,
+            event_sender: StdSender<Event<Action<Message>>>,
+            control_receiver: StdReceiver<Control>,
+        },
         Ready {
             window: Arc<winit::window::Window>,
             device: Arc<wgpu::Device>,
@@ -110,466 +147,558 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             clipboard: Clipboard,
             runtime: iced_futures::Runtime<
                 iced_futures::backend::native::tokio::Executor,
-                    Proxy<Message>,
-                    Action<Message>,
-                >,
+                Proxy<Message>,
+                Action<Message>,
+            >,
             viewport: Viewport,
             modifiers: ModifiersState,
             resized: bool,
             redraw: bool,
             debug: Debug,
+            event_sender: StdSender<Event<Action<Message>>>,
+            control_receiver: StdReceiver<Control>,
+            context: task::Context<'static>,
         },
     }
 
-    impl winit::application::ApplicationHandler<Action<Message>> for Runner {
-        fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-            if let Self::Loading(proxy) = self {
-                println!("resumed()...");
-                let window = Arc::new(
-                    event_loop
-                        .create_window(
-                            winit::window::WindowAttributes::default(),
-                        )
-                        .expect("Create window"),
-                );
+    impl Runner {
+        fn process_event(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+            event: Event<Action<Message>>,
+        ) {
+            if event_loop.exiting() {
+                return;
+            }
 
-                let physical_size = window.inner_size();
-                let viewport = Viewport::with_physical_size(
-                    Size::new(physical_size.width, physical_size.height),
-                    window.scale_factor(),
-                );
-                let clipboard = Clipboard::connect(window.clone());
-                let backend = wgpu::util::backend_bits_from_env().unwrap_or_default();
-
-                let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-                    backends: backend,
-                    ..Default::default()
-                });
-                let surface = instance
-                    .create_surface(window.clone())
-                    .expect("Create window surface");
-
-                let (format, adapter, device, queue) =
-                    futures::futures::executor::block_on(async {
-                        let adapter =
-                            wgpu::util::initialize_adapter_from_env_or_default(
-                                &instance,
-                                Some(&surface),
-                            )
-                            .await
-                            .expect("Create adapter");
-
-                            let adapter_features = adapter.features();
-
-                            let capabilities = surface.get_capabilities(&adapter);
-                            
-                            let (device, queue) = adapter
-                                .request_device(
-                                    &wgpu::DeviceDescriptor {
-                                        label: None,
-                                        required_features: adapter_features & wgpu::Features::default(),
-                                        required_limits: wgpu::Limits::default(),
-                                    },
-                                    None,
-                                )
-                                .await
-                                .expect("Request device");
-                            
-                            (
-                                capabilities
-                                    .formats
-                                    .iter()
-                                    .copied()
-                                    .find(wgpu::TextureFormat::is_srgb)
-                                    .or_else(|| {
-                                        capabilities.formats.first().copied()
-                                    })
-                                    .expect("Get preferred format"),
-                                adapter,
-                                device,
-                                queue,
-                            )
-                    });
-
-                surface.configure(
-                    &device,
-                    &wgpu::SurfaceConfiguration {
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                        format,
-                        width: physical_size.width,
-                        height: physical_size.height,
-                        //present_mode: wgpu::PresentMode::AutoVsync,
-                        present_mode: wgpu::PresentMode::Immediate,
-                        alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                        view_formats: vec![],
-                        desired_maximum_frame_latency: 2,
-                    },
-                );
-
-
-                // Create shared Arc instances of device and queue
-                let device = Arc::new(device);
-                let queue = Arc::new(queue);
-                let backend = adapter.get_info().backend;
-
-                // Pass a cloned Arc reference to DataViewer
-                let shader_widget = DataViewer::new(
-                    Arc::clone(&device), Arc::clone(&queue), backend);
-
-
-                // Initialize iced
-                let mut debug = Debug::new();
-                let engine = Engine::new(
-                    &adapter, &device, &queue, format, None);
-                engine.create_image_cache(&device); // Manually create image cache
-
-                // Manually register fonts
-                register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
-                register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
-                register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
-                
-                let mut renderer = Renderer::new(
-                    &device, &engine, Font::default(), Pixels::from(16));
-
-                let state = program::State::new(
-                    shader_widget,
-                    viewport.logical_size(),
-                    &mut renderer,
-                    &mut debug,
-                );
-
-                // You should change this if you want to render continuously
-                //event_loop.set_control_flow(ControlFlow::Wait);
-                event_loop.set_control_flow(ControlFlow::Poll); // Forces continuous updates
-
-                let (p, worker) = iced_winit::Proxy::new(proxy.clone());
-                let Ok(executor) = iced_futures::backend::native::tokio::Executor::new() else {
-                    panic!("could not create runtime")
-                };
-                executor.spawn(worker);
-                let mut runtime = iced_futures::Runtime::new(executor, p);
-
-
-                *self = Self::Ready {
+            match self {
+                Runner::Loading { .. } => {
+                    // Handle events while loading
+                    match event {
+                        Event::EventLoopAwakened(winit::event::Event::NewEvents(_)) => {
+                            // Continue loading
+                        }
+                        Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
+                            // Continue loading
+                        }
+                        _ => {}
+                    }
+                }
+                Runner::Ready {
                     window,
-                    device: Arc::clone(&device),
-                    queue: Arc::clone(&queue),
+                    device,
+                    queue,
                     surface,
                     format,
                     engine,
                     renderer,
-                    //scene,
                     state,
-                    cursor_position: None,
-                    modifiers: ModifiersState::default(),
+                    viewport,
+                    cursor_position,
+                    modifiers,
                     clipboard,
                     runtime,
-                    viewport,
-                    resized: false,
-                    redraw: false,
+                    resized,
+                    redraw,
                     debug,
-                };
+                    control_receiver,
+                    ..
+                } => {
+                    // Handle events in ready state
+                    match event {
+                        Event::EventLoopAwakened(winit::event::Event::WindowEvent {
+                            window_id,
+                            event: window_event,
+                        }) => {
+                            let window_event_start = Instant::now();
+                            
+                            match window_event {
+                                WindowEvent::Focused(true) => {
+                                    event_loop.set_control_flow(ControlFlow::Poll);
+                                }
+                                WindowEvent::Focused(false) => {
+                                    event_loop.set_control_flow(ControlFlow::Wait);
+                                }
+                                WindowEvent::Resized(size) => {
+                                    *resized = true;
+                                }
+                                WindowEvent::CloseRequested => {
+                                    event_loop.exit();
+                                }
+                                WindowEvent::CursorMoved { position, .. } => {
+                                    *cursor_position = Some(position);
+                                }
+                                WindowEvent::ModifiersChanged(new_modifiers) => {
+                                    *modifiers = new_modifiers.state();
+                                }
+                                _ => {}
+                            }
+
+                            *redraw = true;
+
+                            // Map window event to iced event
+                            if let Some(event) = iced_winit::conversion::window_event(
+                                window_event,
+                                window.scale_factor(),
+                                *modifiers,
+                            ) {
+                                match &event {
+                                    _ => {
+                                        state.queue_message(Message::Event(event.clone()));
+                                    }
+                                }
+                                state.queue_event(event);
+                                *redraw = true;
+                            }
+
+                            // If there are events pending
+                            if !state.is_queue_empty() {
+                                // We update iced
+                                let update_start = Instant::now();
+                                let (_, task) = state.update(
+                                    viewport.logical_size(),
+                                    cursor_position
+                                        .map(|p| {
+                                            conversion::cursor_position(
+                                                p,
+                                                viewport.scale_factor(),
+                                            )
+                                        })
+                                        .map(mouse::Cursor::Available)
+                                        .unwrap_or(mouse::Cursor::Unavailable),
+                                    renderer,
+                                    &Theme::Dark,
+                                    &renderer::Style {
+                                        text_color: Color::WHITE,
+                                    },
+                                    clipboard,
+                                    debug,
+                                );
+
+                                let update_time = update_start.elapsed();
+                                STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
+
+                                let _ = 'runtime_call: {
+                                    let Some(t) = task else {
+                                        break 'runtime_call 1;
+                                    };
+                                    let Some(stream) = into_stream(t) else {
+                                        break 'runtime_call 1;
+                                    };
+
+                                    runtime.run(stream);
+                                    0
+                                };
+                            }
+
+                            // Handle resizing
+                            if *resized {
+                                let size = window.inner_size();
+
+                                *viewport = Viewport::with_physical_size(
+                                    Size::new(size.width, size.height),
+                                    window.scale_factor(),
+                                );
+
+                                surface.configure(
+                                    device,
+                                    &wgpu::SurfaceConfiguration {
+                                        format: *format,
+                                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                                        width: size.width,
+                                        height: size.height,
+                                        present_mode: wgpu::PresentMode::AutoVsync,
+                                        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                                        view_formats: vec![],
+                                        desired_maximum_frame_latency: 2,
+                                    },
+                                );
+
+                                *resized = false;
+                            }
+
+                            // Render if needed
+                            if *redraw {
+                                *redraw = false;
+                                
+                                let frame_start = Instant::now();
+
+                                // Update window title dynamically based on the current image
+                                let new_title = state.program().title();
+                                window.set_title(&new_title);
+
+                                match surface.get_current_texture() {
+                                    Ok(frame) => {
+                                        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                            label: Some("Render Encoder"),
+                                        });
+
+                                        let present_start = Instant::now();
+                                        renderer.present(
+                                            engine,
+                                            device,
+                                            queue,
+                                            &mut encoder,
+                                            Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }),
+                                            frame.texture.format(),
+                                            &view,
+                                            viewport,
+                                            &debug.overlay(),
+                                        );
+                                        let present_time = present_start.elapsed();
+                                        debug!("Renderer present took {:?}", present_time);
+
+                                        // Submit the commands to the queue
+                                        let submit_start = Instant::now();
+                                        engine.submit(queue, encoder);
+                                        let submit_time = submit_start.elapsed();
+                                        debug!("Command submission took {:?}", submit_time);
+                                        
+                                        let present_frame_start = Instant::now();
+                                        frame.present();
+                                        let present_frame_time = present_frame_start.elapsed();
+                                        debug!("Frame presentation took {:?}", present_frame_time);
+
+                                        // Update the mouse cursor
+                                        window.set_cursor(
+                                            iced_winit::conversion::mouse_interaction(
+                                                state.mouse_interaction(),
+                                            ),
+                                        );
+                                        
+                                        let total_frame_time = frame_start.elapsed();
+                                        debug!("Total frame time: {:?}", total_frame_time);
+                                    }
+                                    Err(error) => match error {
+                                        wgpu::SurfaceError::OutOfMemory => {
+                                            panic!("Swapchain error: {error}. Rendering cannot continue.");
+                                        }
+                                        _ => {
+                                            // Retry rendering on the next frame
+                                            window.request_redraw();
+                                        }
+                                    },
+                                }
+
+                                // Record frame time
+                                if let Ok(mut frame_times) = FRAME_TIMES.lock() {
+                                    let now = Instant::now();
+                                    frame_times.push(now);
+                                    
+                                    // Calculate FPS every second
+                                    if frame_times.len() > 1 {
+                                        let oldest = frame_times[0];
+                                        let elapsed = now.duration_since(oldest);
+                                        
+                                        if elapsed.as_secs() >= 1 {
+                                            let fps = frame_times.len() as f32 / elapsed.as_secs_f32();
+                                            info!("Current FPS: {:.1}", fps);
+                                            
+                                            // Keep only recent frames
+                                            let cutoff = now - Duration::from_secs(1);
+                                            frame_times.retain(|&t| t > cutoff);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Record window event time
+                            let window_event_time = window_event_start.elapsed();
+                            WINDOW_EVENT_STATS.lock().unwrap().add_measurement(window_event_time);
+                        }
+                        Event::EventLoopAwakened(winit::event::Event::UserEvent(action)) => {
+                            match action {
+                                Action::Widget(w) => {
+                                    state.operate(
+                                        renderer,
+                                        std::iter::once(w),
+                                        Size::new(viewport.physical_size().width as f32, viewport.physical_size().height as f32),
+                                        debug,
+                                    );
+                                }
+                                Action::Output(message) => {
+                                    state.queue_message(message);
+                                }
+                                _ => {}
+                            }
+                            *redraw = true;
+                        }
+                        Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
+                            // Process any pending control messages
+                            loop {
+                                match control_receiver.try_recv() {
+                                    Ok(control) => match control {
+                                        Control::ChangeFlow(flow) => {
+                                            use winit::event_loop::ControlFlow;
+
+                                            match (event_loop.control_flow(), flow) {
+                                                (
+                                                    ControlFlow::WaitUntil(current),
+                                                    ControlFlow::WaitUntil(new),
+                                                ) if new < current => {}
+                                                (
+                                                    ControlFlow::WaitUntil(target),
+                                                    ControlFlow::Wait,
+                                                ) if target > Instant::now() => {}
+                                                _ => {
+                                                    event_loop.set_control_flow(flow);
+                                                }
+                                            }
+                                        }
+                                        Control::Exit => {
+                                            event_loop.exit();
+                                        }
+                                        _ => {}
+                                    },
+                                    Err(_) => break,
+                                }
+                            }
+
+                            // Request a redraw if needed
+                            if *redraw {
+                                window.request_redraw();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    impl winit::application::ApplicationHandler<Action<Message>> for Runner {
+        fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+            match self {
+                Self::Loading { proxy, event_sender, control_receiver } => {
+                    println!("resumed()...");
+                    let window = Arc::new(
+                        event_loop
+                            .create_window(
+                                winit::window::WindowAttributes::default(),
+                            )
+                            .expect("Create window"),
+                    );
+
+                    let physical_size = window.inner_size();
+                    let viewport = Viewport::with_physical_size(
+                        Size::new(physical_size.width, physical_size.height),
+                        window.scale_factor(),
+                    );
+                    let clipboard = Clipboard::connect(window.clone());
+                    let backend = wgpu::util::backend_bits_from_env().unwrap_or_default();
+
+                    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                        backends: backend,
+                        ..Default::default()
+                    });
+                    let surface = instance
+                        .create_surface(window.clone())
+                        .expect("Create window surface");
+
+                    let (format, adapter, device, queue) =
+                        futures::futures::executor::block_on(async {
+                            let adapter =
+                                wgpu::util::initialize_adapter_from_env_or_default(
+                                    &instance,
+                                    Some(&surface),
+                                )
+                                .await
+                                .expect("Create adapter");
+
+                                let adapter_features = adapter.features();
+
+                                let capabilities = surface.get_capabilities(&adapter);
+                                
+                                let (device, queue) = adapter
+                                    .request_device(
+                                        &wgpu::DeviceDescriptor {
+                                            label: None,
+                                            required_features: adapter_features & wgpu::Features::default(),
+                                            required_limits: wgpu::Limits::default(),
+                                        },
+                                        None,
+                                    )
+                                    .await
+                                    .expect("Request device");
+                                
+                                (
+                                    capabilities
+                                        .formats
+                                        .iter()
+                                        .copied()
+                                        .find(wgpu::TextureFormat::is_srgb)
+                                        .or_else(|| {
+                                            capabilities.formats.first().copied()
+                                        })
+                                        .expect("Get preferred format"),
+                                    adapter,
+                                    device,
+                                    queue,
+                                )
+                        });
+
+                    surface.configure(
+                        &device,
+                        &wgpu::SurfaceConfiguration {
+                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                            format,
+                            width: physical_size.width,
+                            height: physical_size.height,
+                            present_mode: wgpu::PresentMode::Immediate,
+                            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                            view_formats: vec![],
+                            desired_maximum_frame_latency: 2,
+                        },
+                    );
+
+                    // Create shared Arc instances of device and queue
+                    let device = Arc::new(device);
+                    let queue = Arc::new(queue);
+                    let backend = adapter.get_info().backend;
+
+                    // Pass a cloned Arc reference to DataViewer
+                    let shader_widget = DataViewer::new(
+                        Arc::clone(&device), Arc::clone(&queue), backend);
+
+                    // Initialize iced
+                    let mut debug = Debug::new();
+                    let engine = Engine::new(
+                        &adapter, &device, &queue, format, None);
+                    engine.create_image_cache(&device); // Manually create image cache
+
+                    // Manually register fonts
+                    register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
+                    register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
+                    register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
+                    
+                    let mut renderer = Renderer::new(
+                        &device, &engine, Font::default(), Pixels::from(16));
+
+                    let state = program::State::new(
+                        shader_widget,
+                        viewport.logical_size(),
+                        &mut renderer,
+                        &mut debug,
+                    );
+
+                    // Set control flow
+                    event_loop.set_control_flow(ControlFlow::Poll);
+
+                    let (p, worker) = iced_winit::Proxy::new(proxy.clone());
+                    let Ok(executor) = iced_futures::backend::native::tokio::Executor::new() else {
+                        panic!("could not create runtime")
+                    };
+                    executor.spawn(worker);
+                    let runtime = iced_futures::Runtime::new(executor, p);
+
+                    // Create a proper static waker
+                    let waker = {
+                        // Create a waker that does nothing
+                        struct NoopWaker;
+                        
+                        impl Wake for NoopWaker {
+                            fn wake(self: Arc<Self>) {}
+                            fn wake_by_ref(self: &Arc<Self>) {}
+                        }
+                        
+                        // Create a waker and leak it to make it 'static
+                        let waker_arc = Arc::new(NoopWaker);
+                        let waker = Waker::from(waker_arc);
+                        Box::leak(Box::new(waker))
+                    };
+
+                    let context = task::Context::from_waker(waker);
+
+                    // Create a new Ready state with the event_sender and control_receiver
+                    // Note: We don't clone the receiver as it's not clonable
+                    let event_sender = event_sender.clone();
+                    
+                    // Move the control_receiver into the Ready state
+                    // We need to take ownership of it from the Loading state
+                    let control_receiver = std::mem::replace(control_receiver, std_mpsc::channel().1);
+
+                    *self = Self::Ready {
+                        window,
+                        device,
+                        queue,
+                        surface,
+                        format,
+                        engine,
+                        renderer,
+                        state,
+                        cursor_position: None,
+                        modifiers: ModifiersState::default(),
+                        clipboard,
+                        runtime,
+                        viewport,
+                        resized: false,
+                        redraw: true,
+                        debug,
+                        event_sender,
+                        control_receiver,
+                        context,
+                    };
+                }
+                Self::Ready { .. } => {
+                    // Already initialized
+                }
             }
         }
 
         fn window_event(
             &mut self,
             event_loop: &winit::event_loop::ActiveEventLoop,
-            _window_id: winit::window::WindowId,
+            window_id: winit::window::WindowId,
             event: WindowEvent,
         ) {
-            info!("window_event() received");
-            let window_event_start = Instant::now();
-            let Self::Ready {
-                window,
-                device,
-                queue,
-                surface,
-                format,
-                engine,
-                renderer,
-                state,
-                viewport,
-                cursor_position,
-                modifiers,
-                clipboard,
-                runtime,
-                resized,
-                redraw,
-                debug,
-            } = self
-            else {
-                return;
-            };
-
-            match event {
-                WindowEvent::Focused(true) => {
-                    // Handle window focus gain
-                    event_loop.set_control_flow(ControlFlow::Poll);
-                }
-                WindowEvent::Focused(false) => {
-                    event_loop.set_control_flow(ControlFlow::Wait);
-                }
-                WindowEvent::RedrawRequested => {
-                    //println!("RedrawRequested event received");
-                }
-                WindowEvent::Resized(size) => {
-                    *resized = true;
-                }
-                WindowEvent::CloseRequested => {
-                    event_loop.exit();
-                }
-                WindowEvent::CursorMoved { position, .. } => {
-                    //println!("CursorMoved event received");
-                    *cursor_position = Some(position);
-                }
-                WindowEvent::KeyboardInput { ref event, .. } => {
-                }
-                WindowEvent::ModifiersChanged(new_modifiers) => {
-                    //debug!("ModifiersChanged event received: {:?}", new_modifiers);
-                    *modifiers = new_modifiers.state(); // Now updating `modifiers`
-                }
-                _ => {}
-            }
-
-            *redraw = true;
-
-            // Map window event to iced event
-            if let Some(event) = iced_winit::conversion::window_event(
-                event,
-                window.scale_factor(),
-                *modifiers,
-            ) {
-                match &event {
-                    //iced_core::event::Event::Mouse(_) | // Filters out mouse events
-                    //iced_core::event::Event::Touch(_) => {} // Filters out touch events too
-                    _ => {
-                        ////debug!("Converted to Iced event: {:?}, modifiers: {:?}", event, modifiers);
-                        // Manually trigger your app's message handling
-                        state.queue_message(Message::Event(event.clone()));
-                    }
-                }
-                state.queue_event(event);
-                *redraw = true;
-            }
-
-            // If there are events pending
-            if !state.is_queue_empty() {
-                // We update iced
-                let update_start = Instant::now();
-                let (_, task) = state.update(
-                    viewport.logical_size(),
-                    cursor_position
-                        .map(|p| {
-                            conversion::cursor_position(
-                                p,
-                                viewport.scale_factor(),
-                            )
-                        })
-                        .map(mouse::Cursor::Available)
-                        .unwrap_or(mouse::Cursor::Unavailable),
-                    renderer,
-                    &Theme::Dark,
-                    &renderer::Style {
-                        text_color: Color::WHITE,
-                    },
-                    clipboard,
-                    debug,
-                );
-
-                let update_time = update_start.elapsed();
-                STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
-
-                let _ = 'runtime_call: {
-                    //debug!("Executing Task::perform for"); // This will at least log that a task is picked up.
-                    let Some(t) = task else {
-                        //debug!("No task to execute");
-                        break 'runtime_call 1;
-                    };
-                    let Some(stream) = into_stream(t) else {
-                        //debug!("Task could not be converted into a stream");
-                        break 'runtime_call 1;
-                    };
-
-                    runtime.run(stream);
-                    //debug!("Task completed execution.");
-                    0
-                };
-
-                // and request a redraw
-                //debug!("Requesting redraw");
-                //window.request_redraw();
-                //*redraw = true;
-            }
-
-            // 🔹 **Separate Render Pass**
-            if *resized {
-                // Update window title dynamically based on the current image
-                //let new_title = state.program().title();
-                //window.set_title(&new_title);
-
-                let size = window.inner_size();
-
-                *viewport = Viewport::with_physical_size(
-                    Size::new(size.width, size.height),
-                    window.scale_factor(),
-                );
-
-                surface.configure(
-                    device,
-                    &wgpu::SurfaceConfiguration {
-                        format: *format,
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                        width: size.width,
-                        height: size.height,
-                        present_mode: wgpu::PresentMode::AutoVsync,
-                        alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                        view_formats: vec![],
-                        desired_maximum_frame_latency: 2,
-                    },
-                );
-
-                *resized = false;
-            }
-            if *redraw {
-                *redraw = false;
-                
-                let frame_start = Instant::now();
-
-                // Update window title dynamically based on the current image
-                let new_title = state.program().title();
-                window.set_title(&new_title);
-
-                
-                match surface.get_current_texture() {
-                    Ok(frame) => {
-                        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("Render Encoder"),
-                        });
-
-                        //debug!("renderer.present()");
-                        let present_start = Instant::now();
-                        renderer.present(
-                            engine,
-                            device,
-                            queue,
-                            &mut encoder,
-                            //Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 0.5 }), // Debug background
-                            Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }), // Debug background
-                            frame.texture.format(),
-                            &view,
-                            viewport,
-                            &debug.overlay(),
-                        );
-                        let present_time = present_start.elapsed();
-                        debug!("Renderer present took {:?}", present_time);
-
-                        // Submit the commands to the queue
-                        let submit_start = Instant::now();
-                        engine.submit(queue, encoder);
-                        let submit_time = submit_start.elapsed();
-                        debug!("Command submission took {:?}", submit_time);
-                        
-                        let present_frame_start = Instant::now();
-                        frame.present();
-                        let present_frame_time = present_frame_start.elapsed();
-                        debug!("Frame presentation took {:?}", present_frame_time);
-
-                        // Update the mouse cursor
-                        window.set_cursor(
-                            iced_winit::conversion::mouse_interaction(
-                                state.mouse_interaction(),
-                            ),
-                        );
-                        
-                        let total_frame_time = frame_start.elapsed();
-                        debug!("Total frame time: {:?}", total_frame_time);
-                    }
-                    Err(error) => match error {
-                        wgpu::SurfaceError::OutOfMemory => {
-                            panic!("Swapchain error: {error}. Rendering cannot continue.");
-                        }
-                        _ => {
-                            // Retry rendering on the next frame
-                            window.request_redraw();
-                        }
-                    },
-                }
-
-                // Record frame time
-                if let Ok(mut frame_times) = FRAME_TIMES.lock() {
-                    let now = Instant::now();
-                    frame_times.push(now);
-                    
-                    // Calculate FPS every second
-                    if frame_times.len() > 1 {
-                        let oldest = frame_times[0];
-                        let elapsed = now.duration_since(oldest);
-                        
-                        if elapsed.as_secs() >= 1 {
-                            let fps = frame_times.len() as f32 / elapsed.as_secs_f32();
-                            info!("Current FPS: {:.1}", fps);
-                            
-                            // Keep only recent frames
-                            let cutoff = now - Duration::from_secs(1);
-                            frame_times.retain(|&t| t > cutoff);
-                        }
-                    }
-                }
-            }
-
-            // Record window event time
-            let window_event_time = window_event_start.elapsed();
-            WINDOW_EVENT_STATS.lock().unwrap().add_measurement(window_event_time);
-            
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::WindowEvent {
+                    window_id,
+                    event,
+                }),
+            );
         }
-        
 
-        fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Action<Message>) {
-            let Self::Ready {
-                window,
-                device,
-                queue,
-                surface,
-                format,
-                engine,
-                renderer,
-                state,
-                viewport,
-                cursor_position,
-                modifiers,
-                clipboard,
-                runtime,
-                resized,
-                redraw,
-                debug,
-            } = self
-            else {
-                return;
-            };
-
-            //debug!("user_event() received: {:?}", event);
-            match event {
-                Action::Widget(w) => {
-                    //debug!("Processing widget event");
-                    state.operate(
-                        renderer,
-                        std::iter::once(w),
-                        Size::new(viewport.physical_size().width as f32, viewport.physical_size().height as f32),
-                        debug,
-                    );
-                }
-                Action::Output(message) => {
-                    ////debug!("Forwarding message to update(): {:?}", message);
-                    state.queue_message(message); // Ensures the message gets triggered in the next `update()`
-                }
-                _ => {}
-            }
+        fn user_event(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+            action: Action<Message>,
+        ) {
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::UserEvent(action)),
+            );
         }
-        
+
+        fn about_to_wait(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+        ) {
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::AboutToWait),
+            );
+        }
+
+        fn new_events(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+            cause: winit::event::StartCause,
+        ) {
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::NewEvents(cause)),
+            );
+        }
     }
 
-    let mut runner = Runner::Loading(proxy);
+    let mut runner = Runner::Loading {
+        proxy,
+        event_sender,
+        control_receiver,
+    };
+    
     event_loop.run_app(&mut runner)
 }
