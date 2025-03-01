@@ -4,6 +4,8 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::hash::{Hash, Hasher};
 use log::{debug, info, warn};
+use image::GenericImageView;
+use iced_wgpu::wgpu::util::DeviceExt;
 
 /// A simple cache for GPU textures created from CPU images.
 /// This avoids recreating textures for the same image data.
@@ -35,6 +37,12 @@ impl TextureCache {
         image_bytes: &[u8],
         dimensions: (u32, u32),
     ) -> Option<Arc<wgpu::Texture>> {
+        // Safety check for empty data
+        if image_bytes.is_empty() {
+            warn!("TextureCache: Cannot create texture from empty image data");
+            return None;
+        }
+        
         // Calculate a simple hash of the image data
         let hash = self.hash_image(image_bytes);
 
@@ -53,24 +61,32 @@ impl TextureCache {
         match image::load_from_memory(image_bytes) {
             Ok(img) => {
                 let rgba = img.to_rgba8();
+                let dimensions = img.dimensions();
                 
-                // Create new texture
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("Cached CPU Image Texture"),
-                    size: wgpu::Extent3d {
-                        width: dimensions.0,
-                        height: dimensions.1,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                });
+                if dimensions.0 == 0 || dimensions.1 == 0 {
+                    warn!("TextureCache: Invalid image dimensions: {}x{}", dimensions.0, dimensions.1);
+                    return None;
+                }
                 
-                // Write image data to texture
+                // Create the texture
+                let texture = device.create_texture(
+                    &wgpu::TextureDescriptor {
+                        label: Some("CPU Image Texture"),
+                        size: wgpu::Extent3d {
+                            width: dimensions.0,
+                            height: dimensions.1,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    }
+                );
+                
+                // Write the image data to the texture
                 queue.write_texture(
                     wgpu::ImageCopyTexture {
                         texture: &texture,
@@ -78,7 +94,7 @@ impl TextureCache {
                         origin: wgpu::Origin3d::ZERO,
                         aspect: wgpu::TextureAspect::All,
                     },
-                    &rgba,
+                    bytemuck::cast_slice(rgba.as_raw()),
                     wgpu::ImageDataLayout {
                         offset: 0,
                         bytes_per_row: Some(4 * dimensions.0),
@@ -91,11 +107,10 @@ impl TextureCache {
                     },
                 );
                 
-                // Cache the texture
                 let texture_arc = Arc::new(texture);
                 self.textures.insert(hash, Arc::clone(&texture_arc));
                 
-                // Periodically clean up old textures
+                // Maybe clean up old textures
                 self.maybe_cleanup();
                 
                 Some(texture_arc)

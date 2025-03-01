@@ -72,6 +72,12 @@ impl CpuScene {
             let start = Instant::now();
             debug!("CpuScene::ensure_texture - Using cached or creating texture from {} bytes", self.image_bytes.len());
             
+            // Validate image data before attempting to create texture
+            if self.image_bytes.is_empty() {
+                error!("CpuScene::ensure_texture - Empty image data, cannot create texture");
+                return None;
+            }
+            
             if let Ok(mut cache) = TEXTURE_CACHE.lock() {
                 if let Some(texture) = cache.get_or_create_texture(
                     device, 
@@ -89,10 +95,16 @@ impl CpuScene {
                     }
                     
                     debug!("CpuScene::ensure_texture - Retrieved texture in {:?}", elapsed);
+                } else {
+                    error!("CpuScene::ensure_texture - Failed to create or retrieve texture from cache");
                 }
             } else {
                 warn!("CpuScene::ensure_texture - Failed to acquire texture cache lock");
             }
+        }
+        
+        if self.texture.is_none() {
+            warn!("CpuScene::ensure_texture - No texture available after ensure_texture call");
         }
         
         self.texture.clone()

@@ -17,7 +17,7 @@ use other_os::*;
 use macos::*;
 
 #[allow(unused_imports)]
-use log::{debug, error};
+use log::{debug, error, warn};
 use crate::Arc;
 use crate::pane;
 use crate::loading_status::LoadingStatus;
@@ -32,9 +32,8 @@ pub fn handle_load_operation_all(
     loading_status: &mut LoadingStatus,
     pane_indices: &Vec<usize>,
     target_indices: Vec<Option<isize>>,
-    //image_data: Vec<Option<Vec<u8>>>,
     image_data: Vec<Option<CachedData>>,
-    op: LoadOperation,  // Use the LoadOperation directly
+    op: LoadOperation,
     operation_type: LoadOperationType,
 ) {
     loading_status.being_loaded_queue.pop_front();
@@ -85,22 +84,17 @@ pub fn handle_load_operation_all(
                     None => None,
                 };
                     
-
                 match op {
                     LoadOperation::LoadNext(..) => {
-                        //cache.move_next(converted_data.clone(), target_index).unwrap();
                         cache.move_next(Some(converted_data.take()).expect("Failed to move next"), target_index).unwrap();
                     }
                     LoadOperation::LoadPrevious(..) => {
-                        //cache.move_prev(converted_data.clone(), target_index).unwrap();
                         cache.move_prev(Some(converted_data.take()).expect("Failed to move previous"), target_index).unwrap();
                     }
                     LoadOperation::ShiftNext(..) => {
-                        //cache.move_next_edge(converted_data.clone(), target_index).unwrap();
                         cache.move_next_edge(Some(converted_data.take()).expect("Failed to move next edge"), target_index).unwrap();
                     }
                     LoadOperation::ShiftPrevious(..) => {
-                        //cache.move_prev_edge(converted_data.clone(), target_index).unwrap();
                         cache.move_prev_edge(Some(converted_data.take()).expect("Failed to move previous edge"), target_index).unwrap();
                     }
                     LoadOperation::LoadPos((_, ref _target_indices_and_cache)) => {
@@ -115,6 +109,18 @@ pub fn handle_load_operation_all(
                             debug!("Setting CPU image as current_image");
                             pane.current_image = CachedData::Cpu(data.clone());
                             pane.scene = Some(Scene::new(Some(&CachedData::Cpu(data.clone()))));
+                            
+                            // Ensure texture is created immediately to avoid black screens
+                            if let Some(device) = &pane.device {
+                                if let Some(queue) = &pane.queue {
+                                    if let Some(scene) = &mut pane.scene {
+                                        debug!("Ensuring texture is created for loaded image");
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                    }
+                                }
+                            } else {
+                                warn!("Cannot create texture: device or queue not available");
+                            }
                         }
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
@@ -152,7 +158,6 @@ pub fn handle_load_pos_operation(
     loading_status: &mut LoadingStatus,
     pane_index: usize,
     target_indices_and_cache: Vec<Option<(isize, usize)>>,
-    //image_data: Vec<Option<Vec<u8>>>,
     image_data: Vec<Option<CachedData>>,
 ) {
     debug!("Handling LoadPos operation");
