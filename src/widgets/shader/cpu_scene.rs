@@ -78,13 +78,21 @@ impl CpuScene {
                 return None;
             }
             
+            let cache_start = Instant::now();
             if let Ok(mut cache) = TEXTURE_CACHE.lock() {
+                let cache_lock_time = cache_start.elapsed();
+                debug!("CpuScene::ensure_texture - Acquired texture cache lock in {:?}", cache_lock_time);
+                
+                let texture_start = Instant::now();
                 if let Some(texture) = cache.get_or_create_texture(
                     device, 
                     queue, 
                     &self.image_bytes, 
                     self.texture_size
                 ) {
+                    let texture_time = texture_start.elapsed();
+                    debug!("CpuScene::ensure_texture - get_or_create_texture took {:?}", texture_time);
+                    
                     self.texture = Some(Arc::clone(&texture));
                     self.needs_update = false;
                     
@@ -148,6 +156,7 @@ impl shader::Primitive for CpuPrimitive {
         bounds: &Rectangle,
         viewport: &Viewport,
     ) {
+        let prepare_start = Instant::now();
         let scale_factor = viewport.scale_factor() as f32;
         let viewport_size = viewport.physical_size();
 
@@ -170,6 +179,7 @@ impl shader::Primitive for CpuPrimitive {
         if let Some(texture) = &self.texture {
             if !storage.has::<TexturePipeline>() {
                 debug!("Creating new TexturePipeline for CPU image");
+                let pipeline_start = Instant::now();
                 storage.store(TexturePipeline::new(
                     device,
                     queue,
@@ -179,17 +189,33 @@ impl shader::Primitive for CpuPrimitive {
                     self.texture_size,
                     bounds_relative,
                 ));
+                let pipeline_time = pipeline_start.elapsed();
+                debug!("Created new TexturePipeline in {:?}", pipeline_time);
             } else {
                 debug!("Updating existing TexturePipeline for CPU image");
                 let pipeline = storage.get_mut::<TexturePipeline>().unwrap();
                 
+                let vertices_start = Instant::now();
                 pipeline.update_vertices(device, bounds_relative);
+                let vertices_time = vertices_start.elapsed();
+                debug!("Updated vertices in {:?}", vertices_time);
+                
+                let texture_update_start = Instant::now();
                 pipeline.update_texture(device, queue, texture.clone());
+                let texture_update_time = texture_update_start.elapsed();
+                debug!("Updated texture in {:?}", texture_update_time);
+                
+                let uniforms_start = Instant::now();
                 pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
+                let uniforms_time = uniforms_start.elapsed();
+                debug!("Updated uniforms in {:?}", uniforms_time);
             }
         } else {
             warn!("No texture available for rendering");
         }
+        
+        let prepare_time = prepare_start.elapsed();
+        debug!("CpuPrimitive prepare completed in {:?}", prepare_time);
     }
 
     fn render(
@@ -199,10 +225,13 @@ impl shader::Primitive for CpuPrimitive {
         target: &wgpu::TextureView,
         clip_bounds: &Rectangle<u32>,
     ) {
+        let render_start = Instant::now();
         if self.texture.is_some() {
             if let Some(pipeline) = storage.get::<TexturePipeline>() {
                 debug!("Rendering CPU image with TexturePipeline");
                 pipeline.render(target, encoder, clip_bounds);
+                let render_time = render_start.elapsed();
+                debug!("Rendered CPU image in {:?}", render_time);
             } else {
                 warn!("TexturePipeline not found in storage");
             }

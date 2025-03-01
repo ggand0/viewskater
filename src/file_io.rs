@@ -80,11 +80,23 @@ async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, 
     // Load a single image asynchronously
     if let Some(path) = path {
         let file_path = Path::new(path);
+        let start = Instant::now();
+        debug!("load_image_cpu_async - Starting to load: {}", path);
+        
         match tokio::fs::File::open(file_path).await {
             Ok(mut file) => {
+                let file_open_time = start.elapsed();
+                debug!("load_image_cpu_async - File opened in {:?}", file_open_time);
+                
+                let read_start = Instant::now();
                 let mut buffer = Vec::new();
                 if file.read_to_end(&mut buffer).await.is_ok() {
-                    //Ok(Some(buffer))
+                    let read_time = read_start.elapsed();
+                    debug!("load_image_cpu_async - Read {} bytes in {:?}", buffer.len(), read_time);
+                    
+                    let total_time = start.elapsed();
+                    debug!("load_image_cpu_async - Total load time: {:?}", total_time);
+                    
                     Ok(Some(CachedData::Cpu(buffer)))
                 } else {
                     Err(std::io::ErrorKind::InvalidData)

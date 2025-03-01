@@ -1,4 +1,3 @@
-
 use iced_wgpu::graphics::Viewport;
 use iced_wgpu::{wgpu, Engine, Renderer};
 use iced_winit::{conversion, Proxy};
@@ -51,6 +50,14 @@ use winit::{
 use std::sync::Arc;
 use std::borrow::Cow;
 use iced_wgpu::graphics::text::font_system;
+use std::time::Instant;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use std::time::Duration;
+
+static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
+    Mutex::new(Vec::with_capacity(120))
+});
 
 fn register_font_manually(font_data: &'static [u8]) {
     use std::sync::RwLockWriteGuard;
@@ -68,7 +75,7 @@ fn register_font_manually(font_data: &'static [u8]) {
 
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
-    // Adapted event loop logic from benediktweihs’ fork of Iced:
+    // Adapted event loop logic from benediktweihs' fork of Iced:
     // https://github.com/benediktweihs/iced (checked on 2025-02-17)
 
     // Initialize tracing for debugging
@@ -184,7 +191,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         format,
                         width: physical_size.width,
                         height: physical_size.height,
-                        present_mode: wgpu::PresentMode::AutoVsync,
+                        //present_mode: wgpu::PresentMode::AutoVsync,
+                        present_mode: wgpu::PresentMode::Immediate,
                         alpha_mode: wgpu::CompositeAlphaMode::Auto,
                         view_formats: vec![],
                         desired_maximum_frame_latency: 2,
@@ -326,11 +334,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     //iced_core::event::Event::Touch(_) => {} // Filters out touch events too
                     _ => {
                         ////debug!("Converted to Iced event: {:?}, modifiers: {:?}", event, modifiers);
-                        // Manually trigger your app’s message handling
+                        // Manually trigger your app's message handling
                         state.queue_message(Message::Event(event.clone()));
                     }
                 }
                 state.queue_event(event);
+                *redraw = true;
             }
 
             // If there are events pending
@@ -376,7 +385,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 // and request a redraw
                 //debug!("Requesting redraw");
                 //window.request_redraw();
-                *redraw = true;
+                //*redraw = true;
             }
 
             // 🔹 **Separate Render Pass**
@@ -410,6 +419,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             }
             if *redraw {
                 *redraw = false;
+                
+                let frame_start = Instant::now();
 
                 // Update window title dynamically based on the current image
                 let new_title = state.program().title();
@@ -424,6 +435,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         });
 
                         //debug!("renderer.present()");
+                        let present_start = Instant::now();
                         renderer.present(
                             engine,
                             device,
@@ -436,10 +448,19 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             viewport,
                             &debug.overlay(),
                         );
+                        let present_time = present_start.elapsed();
+                        debug!("Renderer present took {:?}", present_time);
 
                         // Submit the commands to the queue
+                        let submit_start = Instant::now();
                         engine.submit(queue, encoder);
+                        let submit_time = submit_start.elapsed();
+                        debug!("Command submission took {:?}", submit_time);
+                        
+                        let present_frame_start = Instant::now();
                         frame.present();
+                        let present_frame_time = present_frame_start.elapsed();
+                        debug!("Frame presentation took {:?}", present_frame_time);
 
                         // Update the mouse cursor
                         window.set_cursor(
@@ -447,6 +468,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 state.mouse_interaction(),
                             ),
                         );
+                        
+                        let total_frame_time = frame_start.elapsed();
+                        debug!("Total frame time: {:?}", total_frame_time);
                     }
                     Err(error) => match error {
                         wgpu::SurfaceError::OutOfMemory => {
@@ -457,6 +481,27 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             window.request_redraw();
                         }
                     },
+                }
+
+                // Record frame time
+                if let Ok(mut frame_times) = FRAME_TIMES.lock() {
+                    let now = Instant::now();
+                    frame_times.push(now);
+                    
+                    // Calculate FPS every second
+                    if frame_times.len() > 1 {
+                        let oldest = frame_times[0];
+                        let elapsed = now.duration_since(oldest);
+                        
+                        if elapsed.as_secs() >= 1 {
+                            let fps = frame_times.len() as f32 / elapsed.as_secs_f32();
+                            info!("Current FPS: {:.1}", fps);
+                            
+                            // Keep only recent frames
+                            let cutoff = now - Duration::from_secs(1);
+                            frame_times.retain(|&t| t > cutoff);
+                        }
+                    }
                 }
             }
             
