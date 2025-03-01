@@ -9,11 +9,17 @@ use log::{debug, info, warn, error};
 use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
+use crate::cache::texture_cache::TextureCache;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
 static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("CPU Shader Update"))
+});
+
+// Global texture cache
+static TEXTURE_CACHE: Lazy<Mutex<TextureCache>> = Lazy::new(|| {
+    Mutex::new(TextureCache::new())
 });
 
 #[derive(Debug)]
@@ -64,57 +70,16 @@ impl CpuScene {
     pub fn ensure_texture(&mut self, device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Option<Arc<wgpu::Texture>> {
         if self.needs_update || self.texture.is_none() {
             let start = Instant::now();
-            debug!("CpuScene::ensure_texture - Creating texture from {} bytes", self.image_bytes.len());
+            debug!("CpuScene::ensure_texture - Using cached or creating texture from {} bytes", self.image_bytes.len());
             
-            // Load image using image crate
-            match image::load_from_memory(&self.image_bytes) {
-                Ok(img) => {
-                    let rgba = img.to_rgba8();
-                    let dimensions = img.dimensions();
-                    debug!("CpuScene::ensure_texture - Loaded image with dimensions: {}x{}", dimensions.0, dimensions.1);
-                    self.texture_size = dimensions;
-                    
-                    // Create new texture
-                    let texture = device.create_texture(&wgpu::TextureDescriptor {
-                        label: Some("CPU Image Texture"),
-                        size: wgpu::Extent3d {
-                            width: dimensions.0,
-                            height: dimensions.1,
-                            depth_or_array_layers: 1,
-                        },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                        view_formats: &[],
-                    });
-                    
-                    // Write image data to texture
-                    queue.write_texture(
-                        wgpu::ImageCopyTexture {
-                            texture: &texture,
-                            mip_level: 0,
-                            origin: wgpu::Origin3d::ZERO,
-                            aspect: wgpu::TextureAspect::All,
-                        },
-                        &rgba,
-                        wgpu::ImageDataLayout {
-                            offset: 0,
-                            bytes_per_row: Some(4 * dimensions.0),
-                            rows_per_image: Some(dimensions.1),
-                        },
-                        wgpu::Extent3d {
-                            width: dimensions.0,
-                            height: dimensions.1,
-                            depth_or_array_layers: 1,
-                        },
-                    );
-                    
-                    debug!("CpuScene::ensure_texture - Texture created and data copied");
-                    
-                    // Update the texture reference
-                    self.texture = Some(Arc::new(texture));
+            if let Ok(mut cache) = TEXTURE_CACHE.lock() {
+                if let Some(texture) = cache.get_or_create_texture(
+                    device, 
+                    queue, 
+                    &self.image_bytes, 
+                    self.texture_size
+                ) {
+                    self.texture = Some(Arc::clone(&texture));
                     self.needs_update = false;
                     
                     // Timing statistics
@@ -123,12 +88,10 @@ impl CpuScene {
                         stats.add_measurement(elapsed);
                     }
                     
-                    debug!("CpuScene::ensure_texture - Created CPU texture with dimensions: {}x{}", dimensions.0, dimensions.1);
-                },
-                Err(e) => {
-                    error!("CpuScene::ensure_texture - Failed to load image: {:?}", e);
-                    return None;
+                    debug!("CpuScene::ensure_texture - Retrieved texture in {:?}", elapsed);
                 }
+            } else {
+                warn!("CpuScene::ensure_texture - Failed to acquire texture cache lock");
             }
         }
         
