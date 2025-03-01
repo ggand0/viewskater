@@ -54,9 +54,16 @@ use std::time::Instant;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use std::time::Duration;
+use crate::utils::timing::TimingStats;
 
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
+});
+static STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("State Update"))
+});
+static WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("Window Event"))
 });
 
 fn register_font_manually(font_data: &'static [u8]) {
@@ -271,6 +278,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             _window_id: winit::window::WindowId,
             event: WindowEvent,
         ) {
+            info!("window_event() received");
+            let window_event_start = Instant::now();
             let Self::Ready {
                 window,
                 device,
@@ -323,6 +332,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 _ => {}
             }
 
+            *redraw = true;
+
             // Map window event to iced event
             if let Some(event) = iced_winit::conversion::window_event(
                 event,
@@ -345,6 +356,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             // If there are events pending
             if !state.is_queue_empty() {
                 // We update iced
+                let update_start = Instant::now();
                 let (_, task) = state.update(
                     viewport.logical_size(),
                     cursor_position
@@ -365,6 +377,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     debug,
                 );
 
+                let update_time = update_start.elapsed();
+                STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
 
                 let _ = 'runtime_call: {
                     //debug!("Executing Task::perform for"); // This will at least log that a task is picked up.
@@ -504,6 +518,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     }
                 }
             }
+
+            // Record window event time
+            let window_event_time = window_event_start.elapsed();
+            WINDOW_EVENT_STATS.lock().unwrap().add_measurement(window_event_time);
             
         }
         
