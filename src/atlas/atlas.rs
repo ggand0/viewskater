@@ -149,7 +149,6 @@ impl Atlas {
 
     pub fn upload(
         &mut self,
-        //device: &wgpu::Device,
         device: Arc<wgpu::Device>,
         encoder: &mut wgpu::CommandEncoder,
         width: u32,
@@ -180,11 +179,13 @@ impl Atlas {
 
         let mut padded_data = vec![0; padded_data_size];
 
+        // Flip the image vertically during upload by copying rows in reverse order
         for row in 0..height as usize {
-            let offset = row * padded_width;
-
-            padded_data[offset..offset + 4 * width as usize].copy_from_slice(
-                &data[row * 4 * width as usize..(row + 1) * 4 * width as usize],
+            let dst_offset = row * padded_width;
+            let src_offset = (height as usize - 1 - row) * 4 * width as usize;
+            
+            padded_data[dst_offset..dst_offset + 4 * width as usize].copy_from_slice(
+                &data[src_offset..src_offset + 4 * width as usize],
             );
         }
 
