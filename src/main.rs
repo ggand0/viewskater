@@ -153,6 +153,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             viewport: Viewport,
             modifiers: ModifiersState,
             resized: bool,
+            moved: bool,                // Flag to track window movement
             redraw: bool,
             debug: Debug,
             event_sender: StdSender<Event<Action<Message>>>,
@@ -199,6 +200,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     clipboard,
                     runtime,
                     resized,
+                    moved,
                     redraw,
                     debug,
                     control_receiver,
@@ -215,6 +217,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             match window_event {
                                 WindowEvent::Focused(true) => {
                                     event_loop.set_control_flow(ControlFlow::Poll);
+                                    *moved = false;
                                 }
                                 WindowEvent::Focused(false) => {
                                     event_loop.set_control_flow(ControlFlow::Wait);
@@ -222,11 +225,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 WindowEvent::Resized(size) => {
                                     *resized = true;
                                 }
+                                WindowEvent::Moved(_) => {
+                                    *moved = true;
+                                    debug!("Window moved");
+                                }
                                 WindowEvent::CloseRequested => {
                                     event_loop.exit();
                                 }
                                 WindowEvent::CursorMoved { position, .. } => {
                                     *cursor_position = Some(position);
+                                }
+                                WindowEvent::MouseInput { state, .. } => {
+                                    debug!("Mouse input detected: {:?} {:?}", state, *moved);
+                                    if state == ElementState::Released {
+                                        *moved = false; // Reset flag when mouse is released
+                                    }
                                 }
                                 WindowEvent::ModifiersChanged(new_modifiers) => {
                                     *modifiers = new_modifiers.state();
@@ -324,8 +337,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 let frame_start = Instant::now();
 
                                 // Update window title dynamically based on the current image
-                                let new_title = state.program().title();
-                                window.set_title(&new_title);
+                                debug!("moved: {}", *moved);
+                                if !*moved {
+                                    debug!("Updating window title");
+                                    let new_title = state.program().title();
+                                    window.set_title(&new_title);
+                                }
 
                                 match surface.get_current_texture() {
                                     Ok(frame) => {
@@ -545,7 +562,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             format,
                             width: physical_size.width,
                             height: physical_size.height,
-                            present_mode: wgpu::PresentMode::Immediate,
+                            present_mode: wgpu::PresentMode::AutoVsync,
                             alpha_mode: wgpu::CompositeAlphaMode::Auto,
                             view_formats: vec![],
                             desired_maximum_frame_latency: 2,
@@ -633,6 +650,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         runtime,
                         viewport,
                         resized: false,
+                        moved: false,
                         redraw: true,
                         debug,
                         event_sender,
