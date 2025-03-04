@@ -171,7 +171,7 @@ impl DataViewer {
             is_slider_moving: false,
             backend: backend,
             //cache_strategy: CacheStrategy::Atlas,
-            cache_strategy: CacheStrategy::Gpu,
+            cache_strategy: CacheStrategy::Cpu,
         }
     }
 
@@ -531,7 +531,7 @@ pub enum Message {
     FolderOpened(Result<String, file_io::Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
-    SliderImageLoaded(Result<(usize, Arc<wgpu::Texture>), usize>), 
+    SliderImageLoaded(Result<(usize, CachedData), usize>), 
     Event(Event),
     //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
@@ -710,14 +710,14 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::SliderImageLoaded(result) => {
                 // if slider is already released, ignore the result
                 if !self.is_slider_moving {
-                    debug!("Slider is not moving, ignoring SliderImageLoaded result");
+                    //debug!("Slider is not moving, ignoring SliderImageLoaded result");
                     return Task::none();
                 } else {
-                    debug!("SliderImageLoaded result: {:?}", result);
+                    //debug!("SliderImageLoaded result: {:?}", result);
                 }
                 
                 match result {
-                    Ok((pos, texture)) => {
+                    Ok((pos, cached_data)) => {
                         let pane = &mut self.panes[0]; // Assuming single-pane slider
                         let img_cache = &mut pane.img_cache;
 
@@ -727,7 +727,6 @@ impl iced_winit::runtime::Program for DataViewer {
                             target_index = pos;
                             img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
                         } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
-                            //target_index = img_cache.image_paths.len() - pos;
                             target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
                             img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
                         } else {
@@ -737,11 +736,42 @@ impl iced_winit::runtime::Program for DataViewer {
                         img_cache.cached_image_indices[target_index] = pos as isize;
                         img_cache.current_index = pos;
             
-                        // 🔹 Remove processed request from queue
-                        if let Some(scene) = pane.scene.as_mut() {
-                            scene.update_texture(Arc::clone(&texture));
-                        } else {
-                            pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
+                        // Handle different cache data types
+                        match cached_data {
+                            CachedData::Gpu(texture) => {
+                                // Handle GPU texture case
+                                if let Some(scene) = pane.scene.as_mut() {
+                                    scene.update_texture(Arc::clone(&texture));
+                                } else {
+                                    pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
+                                }
+                            },
+                            CachedData::Cpu(bytes) => {
+                                // Handle CPU data case
+                                /*if let Some(scene) = pane.scene.as_mut() {
+                                    // Update the scene with CPU data
+                                    pane.current_image = CachedData::Cpu(bytes.clone());
+                                    
+                                    // Ensure the texture is created from CPU data
+                                    scene.ensure_texture(Arc::clone(&self.device), Arc::clone(&self.queue));
+                                } else {
+                                    pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
+                                    pane.scene.as_mut().unwrap().ensure_texture(Arc::clone(&self.device), Arc::clone(&self.queue));
+                                }*/
+                                pane.current_image = CachedData::Cpu(bytes.clone());
+                                pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
+                                // Ensure texture is created for CPU images
+                                if let Some(scene) = &mut pane.scene {
+                                    scene.ensure_texture(Arc::clone(&self.device), Arc::clone(&self.queue));
+                                }
+                            },
+                            CachedData::Atlas { atlas, entry } => {
+                                // Handle Atlas case (though you mentioned this isn't needed for slider)
+                                debug!("Atlas entry handling in slider (unexpected)");
+                                if let Some(scene) = pane.scene.as_mut() {
+                                    // TODO: Handle atlas
+                                }
+                            }
                         }
             
                         debug!("Slider image fully processed for pos {}", pos);
@@ -756,16 +786,20 @@ impl iced_winit::runtime::Program for DataViewer {
             
             
             Message::SliderChanged(pane_index, value) => {
+                
                 self.is_slider_moving = true;
                 let now = Instant::now();
-            
-                // Throttle slider updates (only process one every 100ms)
-                if now.duration_since(self.last_slider_update) < Duration::from_millis(100) {
+                if now.duration_since(self.last_slider_update) < Duration::from_millis(5) {
                     return Task::none();
                 }
+            
+                // We can still keep throttling logic if needed
                 self.last_slider_update = now;
             
                 debug!("pane_index {} slider value: {}", pane_index, value);
+            
+                // Choose synchronous loading for slider movements for better responsiveness
+                let use_sync = false;  // You could make this a config option
             
                 // Enqueue image loading in a controlled manner
                 if pane_index == -1 {
@@ -773,7 +807,7 @@ impl iced_winit::runtime::Program for DataViewer {
                     self.slider_value = value;
                     debug!("slider - enqueue update_pos");
             
-                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index as isize, value as usize);
+                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index, value as usize, self.cache_strategy, use_sync);
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
                     let pane_index = pane_index as usize;
@@ -782,7 +816,7 @@ impl iced_winit::runtime::Program for DataViewer {
                     pane.slider_value = value;
                     debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
             
-                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index as isize, value as usize);
+                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index as isize, value as usize, self.cache_strategy, use_sync);
                 }
             }
             
