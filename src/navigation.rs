@@ -27,7 +27,7 @@ use iced::Task;
 use std::io;
 use crate::Arc;
 use iced_wgpu::wgpu;
-use crate::cache::img_cache::{CachedData};
+use crate::cache::img_cache::{CachedData, CacheStrategy};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -168,7 +168,7 @@ fn get_loading_tasks_slider(
 
         // Generate loading tasks
         //let local_tasks = load_all_images_in_queue(panes, loading_status);
-        let local_tasks = load_all_images_in_queue(device, queue, is_gpu_supported, panes, loading_status);
+        let local_tasks = load_all_images_in_queue(device, queue, CacheStrategy::Gpu, panes, loading_status);
 
         // Convert `panes` into a vector of mutable references
         let mut pane_refs: Vec<&mut Pane> = panes.iter_mut().collect();
@@ -564,7 +564,8 @@ pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
 pub fn load_next_images_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    //is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
     panes: &mut Vec<&mut Pane>,
     pane_indices: Vec<usize>,
     loading_status: &mut LoadingStatus,
@@ -599,17 +600,18 @@ pub fn load_next_images_all(
             debug!("load_next_images_all - should_enqueue_loading passed  - any_out_of_bounds: {}", any_out_of_bounds);
             if any_out_of_bounds {
                 // Now that we use the integration setup, can we disable this?
-                /*loading_status.enqueue_image_load(LoadOperation::ShiftNext((
+                loading_status.enqueue_image_load(LoadOperation::ShiftNext((
                     pane_indices,
                     target_indices.clone(),
-                )));*/
+                )));
+                /**/
             } else {
                 loading_status.enqueue_image_load(load_next_operation);
             }
             debug!("load_next_images_all - running load_images_by_operation()");
             return load_images_by_operation(
                 //Some(Arc::clone(&device)), Some(Arc::clone(&queue)), is_gpu_supported,
-                &device, &queue, is_gpu_supported,
+                &device, &queue, cache_strategy,
                 panes, loading_status);
         }
     }
@@ -678,7 +680,8 @@ fn get_target_indices_for_next(panes: &mut Vec<&mut Pane>) -> Vec<Option<isize>>
 pub fn load_prev_images_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    //is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
     panes: &mut Vec<&mut Pane>,
     pane_indices: Vec<usize>,
     loading_status: &mut LoadingStatus,
@@ -707,13 +710,13 @@ pub fn load_prev_images_all(
             if any_none_index {
                 // Now that we use the integration setup, can we disable this??
                 // Use ShiftPrevious if any index is out of bounds (`None`)
-                //loading_status.enqueue_image_load(LoadOperation::ShiftPrevious((pane_indices, target_indices)));
+                loading_status.enqueue_image_load(LoadOperation::ShiftPrevious((pane_indices, target_indices)));
             } else {
                 loading_status.enqueue_image_load(load_prev_operation);
             }
             return load_images_by_operation(
                 //Some(Arc::clone(&device)), Some(Arc::clone(&queue)), is_gpu_supported,
-                &device, &queue, is_gpu_supported,
+                &device, &queue, cache_strategy,
                 panes, loading_status);
         }
     }
@@ -804,7 +807,7 @@ fn get_target_indices_for_previous(panes: &mut Vec<&mut Pane>) -> Vec<Option<isi
 pub fn move_right_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
     panes: &mut Vec<pane::Pane>, 
     loading_status: &mut LoadingStatus,
     slider_value: &mut u16,
@@ -867,7 +870,7 @@ pub fn move_right_all(
         {
             tasks.push(load_next_images_all(
                 //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                &device, &queue, is_gpu_supported,
+                &device, &queue, cache_strategy,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
 
@@ -896,7 +899,7 @@ pub fn move_right_all(
             //debug!("move_right_all() - loading next images...");
             tasks.push(load_next_images_all(
                 //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                &device, &queue, is_gpu_supported,
+                &device, &queue, cache_strategy,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
     }
@@ -920,7 +923,8 @@ pub fn move_right_all(
 pub fn move_left_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    //is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     slider_value: &mut u16,
@@ -975,7 +979,7 @@ pub fn move_left_all(
         {
             tasks.push(load_prev_images_all(
                 //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                &device, &queue, is_gpu_supported,
+                &device, &queue, cache_strategy,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
         // If panes already reached the edge, mark their is_next_image_loaded as true
@@ -1005,7 +1009,7 @@ pub fn move_left_all(
             debug!("move_left_all() - loading prev images...");
             tasks.push(load_prev_images_all(
                 //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                &device, &queue, is_gpu_supported,
+                &device, &queue, cache_strategy,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
     }

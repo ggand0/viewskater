@@ -29,6 +29,13 @@ use std::fs::File;
 use crate::utils::timing::TimingStats;
 use once_cell::sync::Lazy;
 
+//use crate::cache::cache_strategy::CacheStrategy;
+use crate::cache::img_cache::CacheStrategy;
+use crate::atlas::atlas::Atlas;
+use crate::atlas::entry;
+
+use std::sync::RwLock;
+
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
 });
@@ -68,16 +75,29 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
     }
 }
 
-/*#[allow(dead_code)]
-async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io::ErrorKind> {
+#[allow(dead_code)]
+async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, std::io::ErrorKind> {
     // Load a single image asynchronously
     if let Some(path) = path {
         let file_path = Path::new(path);
+        let start = Instant::now();
+        debug!("load_image_cpu_async - Starting to load: {}", path);
+        
         match tokio::fs::File::open(file_path).await {
             Ok(mut file) => {
+                let file_open_time = start.elapsed();
+                debug!("load_image_cpu_async - File opened in {:?}", file_open_time);
+                
+                let read_start = Instant::now();
                 let mut buffer = Vec::new();
                 if file.read_to_end(&mut buffer).await.is_ok() {
-                    Ok(Some(buffer))
+                    let read_time = read_start.elapsed();
+                    debug!("load_image_cpu_async - Read {} bytes in {:?}", buffer.len(), read_time);
+                    
+                    let total_time = start.elapsed();
+                    debug!("load_image_cpu_async - Total load time: {:?}", total_time);
+                    
+                    Ok(Some(CachedData::Cpu(buffer)))
                 } else {
                     Err(std::io::ErrorKind::InvalidData)
                 }
@@ -89,33 +109,8 @@ async fn load_image_async(path: Option<&str>) -> Result<Option<Vec<u8>>, std::io
     }
 }
 
-pub async fn load_images_async(paths: Vec<Option<String>>, load_operation: LoadOperation) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
-    let start = Instant::now();
-    let futures = paths.into_iter().map(|path| {
-        let future = async move {
-            let path_str = path.as_deref();
-            load_image_async(path_str).await
-        };
-        future
-    });
-    let results = join_all(futures).await;
-    let duration = start.elapsed();
-    debug!("Finished loading images in {:?}", duration);
-
-    let mut images = Vec::new();
-    for result in results {
-        match result {
-            Ok(image_data) => images.push(image_data),
-            Err(_) => images.push(None),
-        }
-    }
-
-    Ok((images, Some(load_operation)))
-}*/
-
-
 #[allow(dead_code)]
-async fn load_image_async(
+async fn load_image_gpu_async(
     path: Option<&str>, 
     device: &Arc<wgpu::Device>, 
     queue: &Arc<wgpu::Queue>
@@ -178,29 +173,117 @@ async fn load_image_async(
     Ok(None)
 }
 
-pub async fn load_images_async(
-    paths: Vec<Option<String>>, 
-    _is_gpu_supported: bool,
+async fn load_image_atlas_async(
+    path: Option<&str>,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
+    atlas: &Arc<RwLock<Atlas>>
+) -> Result<Option<CachedData>, std::io::ErrorKind> {
+    if let Some(path) = path {
+        let file_path = Path::new(path);
+        let start = Instant::now();
+
+        match image::open(file_path) {
+            Ok(img) => {
+                let rgba_image = img.to_rgba8();
+                let (width, height) = img.dimensions();
+                let duration = start.elapsed();
+                IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
+
+                // Create a command encoder for atlas upload
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Atlas Upload Encoder"),
+                });
+
+                let upload_start = Instant::now();
+                
+                // Use a block scope to ensure the guard is dropped
+                let entry_result = {
+                    // Get a write lock to the Atlas - this will be dropped at end of this scope
+                    let mut atlas_guard = atlas.write().unwrap();
+                    
+                    // Now we can call upload on the mutable reference
+                    atlas_guard.upload(
+                        device.clone(), 
+                        &mut encoder, 
+                        width, 
+                        height, 
+                        &rgba_image
+                    )
+                }; // <-- atlas_guard is definitely dropped here
+                
+                if let Some(entry) = entry_result {
+                    // Submit the upload command
+                    queue.submit(std::iter::once(encoder.finish()));
+                    
+                    let upload_duration = upload_start.elapsed();
+                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                    
+                    return Ok(Some(CachedData::Atlas {
+                        atlas: Arc::clone(atlas),
+                        entry,
+                    }));
+                } else {
+                    // Atlas upload failed, fall back to individual texture
+                    debug!("Atlas upload failed for {}, falling back to individual texture", path);
+                    return load_image_gpu_async(Some(path), device, queue).await;
+                }
+            }
+            Err(_) => return Err(std::io::ErrorKind::InvalidData),
+        }
+    }
+
+    Ok(None)
+}
+
+pub async fn load_images_async(
+    paths: Vec<Option<String>>, 
+    cache_strategy: CacheStrategy,
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    atlas: Option<Arc<RwLock<Atlas>>>,
     load_operation: LoadOperation
 ) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
+    debug!("load_images_async - cache_strategy: {:?}", cache_strategy);
 
     let futures = paths.into_iter().map(|path| {
+        let device = Arc::clone(device);
+        let queue = Arc::clone(queue);
+        let atlas_clone = atlas.clone();
+        
         async move {
             let path_str = path.as_deref();
-            load_image_async(path_str, device, queue).await
+            match cache_strategy {
+                CacheStrategy::Cpu => {
+                    debug!("load_images_async - loading image with CPU strategy");
+                    load_image_cpu_async(path_str).await
+                },
+                CacheStrategy::Gpu => {
+                    debug!("load_images_async - loading image with GPU strategy");
+                    load_image_gpu_async(path_str, &device, &queue).await
+                },
+                CacheStrategy::Atlas => {
+                    debug!("load_images_async - loading image with Atlas strategy");
+                    if let Some(atlas) = atlas_clone {
+                        load_image_atlas_async(path_str, &device, &queue, &atlas).await
+                    } else {
+                        // Fall back to GPU if atlas isn't available
+                        debug!("Atlas not available, falling back to GPU strategy");
+                        load_image_gpu_async(path_str, &device, &queue).await
+                    }
+                }
+            }
         }
     });
 
     let results = join_all(futures).await;
     let duration = start.elapsed();
-    //debug!("Finished loading images in {:?}", duration);
+    debug!("Finished loading images in {:?}", duration);
 
     let images = results
         .into_iter()
-        .map(|result| result.ok().flatten()) // Convert Ok(Some(image)) -> Some(image), otherwise None
+        .map(|result| result.ok().flatten())
         .collect();
 
     Ok((images, Some(load_operation)))

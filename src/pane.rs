@@ -41,10 +41,12 @@ use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
 use crate::cache::img_cache::ImageCache;
 use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::scene::Scene;
-
+use crate::atlas::entry::{self, Entry};
+use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::config::CONFIG;
-use iced_wgpu::{wgpu};
+use iced_wgpu::wgpu;
 use iced_core::image::Handle;
+use crate::cache::img_cache::CacheStrategy;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -66,6 +68,9 @@ pub struct Pane {
     pub is_selected_cache: bool,
     //pub scene: Scene,
     pub scene: Option<Scene>,
+    pub backend: wgpu::Backend,
+    pub device: Option<Arc<wgpu::Device>>,
+    pub queue: Option<Arc<wgpu::Queue>>,
 }
 
 impl Default for Pane {
@@ -83,13 +88,16 @@ impl Default for Pane {
             is_selected_cache: true,
             scene: None,
             cpu_preview_image: None,
+            backend: wgpu::Backend::Vulkan,
+            device: None,
+            queue: None,
         }
     }
 }
 
 impl Pane {
     #[allow(dead_code)]
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
         // debuggign with sample image
         /*let image_paths = vec![
             "image.jpg",
@@ -137,6 +145,9 @@ impl Pane {
             is_selected: true,
             is_selected_cache: true,
             scene: Some(scene),
+            backend: backend,
+            device: Some(device),
+            queue: Some(queue),
         }
     }
 
@@ -194,7 +205,7 @@ impl Pane {
 
         if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
         ) {
-            let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
+            let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1; 
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
@@ -212,13 +223,35 @@ impl Pane {
                     CachedData::Cpu(image_bytes) => {
                         debug!("Setting CPU image as current_image");
                         self.current_image = CachedData::Cpu(image_bytes.clone());
+                        self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
+                    
+                        // Ensure texture is created for CPU images
+                        if let Some(device) = &self.device {
+                            if let Some(queue) = &self.queue {
+                                if let Some(scene) = &mut self.scene {
+                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                }
+                            }
+                        }
+
                         
                     }
                     CachedData::Gpu(texture) => {
                         debug!("Setting GPU texture as current_image");
-                        self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
+                        self.current_image = CachedData::Gpu(Arc::clone(&texture)); 
                         self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                    }
+                    CachedData::Atlas { atlas, entry } => {  // Use struct pattern with named fields
+                        debug!("Setting Atlas as current_image");
+                        self.current_image = CachedData::Atlas {  // Create with named fields
+                            atlas: Arc::clone(atlas),
+                            entry: entry.clone(),
+                        };
+                        
+                        // If you need to update scene with the atlas, add that here
+                        // For example:
+                        // self.scene = Some(Scene::new_with_atlas(...));
                     }
                 }
             } else {
@@ -274,12 +307,28 @@ impl Pane {
                         CachedData::Cpu(image_bytes) => {
                             debug!("Setting CPU image as current_image");
                             self.current_image = CachedData::Cpu(image_bytes.clone());
+                            self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
+                                // Ensure texture is created for CPU images
+                            if let Some(device) = &self.device {
+                                if let Some(queue) = &self.queue {
+                                    if let Some(scene) = &mut self.scene {
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                    }
+                                }
+                            }
                         }
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
                             self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
                             self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                        }
+                        CachedData::Atlas { atlas, entry } => {  // Use struct pattern with named fields
+                            debug!("Setting Atlas as current_image");
+                            self.current_image = CachedData::Atlas {  // Create with named fields
+                                atlas: Arc::clone(atlas),
+                                entry: entry.clone(),
+                            };
                         }
                     }
                 } else {
@@ -419,14 +468,20 @@ impl Pane {
         let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
         self.current_image = handle;*/
 
+        // Clone device and queue before passing to ImageCache to avoid the move
+        let device_clone = Arc::clone(&device);
+        let queue_clone = Arc::clone(&queue);
+
         // Instantiate a new image cache based on GPU support
         let mut img_cache = ImageCache::new(
             _file_paths,
             CONFIG.cache_size,
-            is_gpu_supported,
+            //CacheStrategy::Atlas,
+            CacheStrategy::Cpu,
             initial_index,
-            Some(device),
-            Some(queue),
+            Some(device_clone),
+            Some(queue_clone),
+            self.backend,
         )
         .unwrap();
 
@@ -454,10 +509,41 @@ impl Pane {
                     self.current_image = CachedData::Gpu(Arc::clone(texture));
                     self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                     self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+
+                    /*if let Some(scene) = &mut self.scene {
+                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue));
+                    }*/
                 }
                 CachedData::Cpu(image_bytes) => {
                     debug!("Using CPU image for initial image");
                     self.current_image = CachedData::Cpu(image_bytes.clone());
+                    self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
+                    
+                    // Ensure texture is created for CPU images
+                    if let Some(scene) = &mut self.scene {
+                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue));
+                    }
+                }
+                CachedData::Atlas { atlas, entry } => {
+                    debug!("Using Atlas entry for initial image");
+                    self.current_image = CachedData::Atlas {
+                        atlas: Arc::clone(atlas),
+                        entry: entry.clone(),
+                    };
+                    
+                    // Get size information from the entry
+                    let size = match &entry {
+                        entry::Entry::Contiguous(allocation) => allocation.size(),
+                        entry::Entry::Fragmented { size, .. } => *size,
+                    };
+                    
+                    // Create the atlas scene with the Arc<RwLock<Atlas>>
+                    // No need to access the atlas guard here as AtlasScene now works with RwLock
+                    let mut atlas_scene = AtlasScene::new(Arc::clone(atlas));
+                    
+                    // Update the atlas scene with the entry
+                    atlas_scene.update_image(entry.clone(), size.width, size.height);
+                    self.scene = Some(Scene::AtlasScene(atlas_scene));
                 }
             }
         } else {
@@ -486,6 +572,8 @@ impl Pane {
         
         self.img_cache = img_cache;
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
+
+        
     }
 
     /*pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {

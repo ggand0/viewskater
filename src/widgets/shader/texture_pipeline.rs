@@ -14,7 +14,7 @@ static SHADER_RENDER_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Shader Render"))
 });
 
-pub struct Pipeline {
+pub struct TexturePipeline {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
@@ -28,7 +28,7 @@ pub struct Pipeline {
     bounds: (f32, f32, f32, f32), // Store shader widget bounds
 }
 
-impl Pipeline {
+impl TexturePipeline {
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
