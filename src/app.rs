@@ -77,7 +77,7 @@ use crate::loading;
 //use iced_widget::modal as widget_modal;
 
 use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
-
+use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -171,7 +171,7 @@ impl DataViewer {
             is_slider_moving: false,
             backend: backend,
             //cache_strategy: CacheStrategy::Atlas,
-            cache_strategy: CacheStrategy::Cpu,
+            cache_strategy: CacheStrategy::Gpu,
         }
     }
 
@@ -708,115 +708,118 @@ impl iced_winit::runtime::Program for DataViewer {
             }
 
             Message::SliderImageLoaded(result) => {
-                // if slider is already released, ignore the result
-                if !self.is_slider_moving {
-                    //debug!("Slider is not moving, ignoring SliderImageLoaded result");
+                // Get timing metrics
+                let now = Instant::now();
+                let is_moving = self.is_slider_moving;
+                
+                debug!("SLIDER_DEBUG: SliderImageLoaded called (slider moving: {})", is_moving);
+                
+                // Skip if slider is already released
+                if !is_moving {
+                    debug!("SLIDER_DEBUG: Slider not moving, ignoring result");
                     return Task::none();
-                } else {
-                    //debug!("SliderImageLoaded result: {:?}", result);
                 }
                 
                 match result {
                     Ok((pos, cached_data)) => {
-                        let pane = &mut self.panes[0]; // Assuming single-pane slider
-                        let img_cache = &mut pane.img_cache;
-
-                        // Update indices in the cache
-                        let target_index: usize;
-                        if pos < img_cache.cache_count {
-                            target_index = pos;
-                            img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
-                        } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
-                            target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
-                            img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
+                        // Get time since this position was requested
+                        let request_time = if let Ok(metrics) = navigation_slider::SLIDER_METRICS.lock() {
+                            metrics.get(&pos).cloned()
                         } else {
-                            target_index = img_cache.cache_count;
-                            img_cache.current_offset = 0;
+                            None
+                        };
+                        
+                        let elapsed = request_time.map(|time| now.duration_since(time));
+                        debug!("SLIDER_DEBUG: Got result for pos {} after {:?}", pos, elapsed);
+                        
+                        // Skip if this isn't the current slider position
+                        let current_pos = self.slider_value as usize;
+                        if current_pos != pos {
+                            debug!("SLIDER_DEBUG: Ignoring outdated pos {} (current: {})", pos, current_pos);
+                            return Task::none();
                         }
-                        img_cache.cached_image_indices[target_index] = pos as isize;
-                        img_cache.current_index = pos;
-            
-                        // Handle different cache data types
+                        
+                        debug!("SLIDER_DEBUG: Processing result for current pos {}", pos);
+                        let pane = &mut self.panes[0];
+                        
+                        // Time the update operation
+                        let update_start = Instant::now();
+                        
                         match cached_data {
                             CachedData::Gpu(texture) => {
-                                // Handle GPU texture case
+                                debug!("SLIDER_DEBUG: Updating GPU texture for pos {}", pos);
                                 if let Some(scene) = pane.scene.as_mut() {
                                     scene.update_texture(Arc::clone(&texture));
                                 } else {
                                     pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
                                 }
+                                pane.current_image = CachedData::Gpu(Arc::clone(&texture));
                             },
                             CachedData::Cpu(bytes) => {
-                                // Handle CPU data case
-                                /*if let Some(scene) = pane.scene.as_mut() {
-                                    // Update the scene with CPU data
-                                    pane.current_image = CachedData::Cpu(bytes.clone());
-                                    
-                                    // Ensure the texture is created from CPU data
-                                    scene.ensure_texture(Arc::clone(&self.device), Arc::clone(&self.queue));
-                                } else {
-                                    pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
-                                    pane.scene.as_mut().unwrap().ensure_texture(Arc::clone(&self.device), Arc::clone(&self.queue));
-                                }*/
+                                debug!("SLIDER_DEBUG: Updating from CPU data for pos {} ({} bytes)", pos, bytes.len());
                                 pane.current_image = CachedData::Cpu(bytes.clone());
                                 pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
+                                
                                 // Ensure texture is created for CPU images
-                                if let Some(scene) = &mut pane.scene {
+                                if let Some(scene) = pane.scene.as_mut() {
                                     scene.ensure_texture(Arc::clone(&self.device), Arc::clone(&self.queue));
                                 }
                             },
-                            CachedData::Atlas { atlas, entry } => {
-                                // Handle Atlas case (though you mentioned this isn't needed for slider)
-                                debug!("Atlas entry handling in slider (unexpected)");
-                                if let Some(scene) = pane.scene.as_mut() {
-                                    // TODO: Handle atlas
-                                }
+                            _ => {
+                                debug!("SLIDER_DEBUG: Unexpected cache data type for pos {}", pos);
                             }
                         }
-            
-                        debug!("Slider image fully processed for pos {}", pos);
-                    }
+                        
+                        let update_time = update_start.elapsed();
+                        debug!("SLIDER_DEBUG: Scene update for pos {} took {:?}", pos, update_time);
+                        
+                        // Skip updating indices until slider release for performance
+                        debug!("SLIDER_DEBUG: Image fully processed for pos {}", pos);
+                    },
                     Err(pos) => {
-                        debug!("Failed to load slider image for pos {}", pos);
+                        debug!("SLIDER_DEBUG: Failed to load image for pos {}", pos);
                     }
                 }
-            
-                
+
             }
             
             
             Message::SliderChanged(pane_index, value) => {
+                let now = Instant::now();
+                let prev_value = self.slider_value;
+                
+                // Calculate velocity of slider movement
+                let delta = (value as i32 - prev_value as i32).abs();
+                debug!("SLIDER_DEBUG: SliderChanged from {} to {} (delta: {})", prev_value, value, delta);
                 
                 self.is_slider_moving = true;
-                let now = Instant::now();
-                if now.duration_since(self.last_slider_update) < Duration::from_millis(5) {
-                    return Task::none();
-                }
-            
-                // We can still keep throttling logic if needed
+                
+                // Track time since last update
+                let time_since_last = now.duration_since(self.last_slider_update);
+                debug!("SLIDER_DEBUG: Time since last slider update: {:?}", time_since_last);
                 self.last_slider_update = now;
-            
-                debug!("pane_index {} slider value: {}", pane_index, value);
-            
-                // Choose synchronous loading for slider movements for better responsiveness
-                let use_sync = false;  // You could make this a config option
-            
-                // Enqueue image loading in a controlled manner
+                
+                // Log queue size
+                if let Some(pane) = self.panes.get(0) {
+                    let queue_len = pane.img_cache.loading_queue_slider.len();
+                    debug!("SLIDER_DEBUG: Current slider queue size: {}", queue_len);
+                }
+                
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    debug!("slider - enqueue update_pos");
-            
-                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index, value as usize, self.cache_strategy, use_sync);
+                    debug!("SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
+                    
+                    return navigation_slider::update_pos(&self.device, &self.queue, &mut self.panes, pane_index, value as usize, self.cache_strategy, false);
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
-                    let pane_index = pane_index as usize;
-            
+                    let pane_index_usize = pane_index as usize;
+                    
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
-                    debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
-            
-                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index as isize, value as usize, self.cache_strategy, use_sync);
+                    debug!("SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", pane_index_usize, value);
+                    
+                    return navigation_slider::update_pos(&self.device, &self.queue, &mut self.panes, pane_index, value as usize, self.cache_strategy, false);
                 }
             }
             
@@ -866,19 +869,15 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }*/
             Message::SliderReleased(pane_index, value) => {
-                let last_valid_pos = self.slider_value as usize;
+                debug!("SLIDER_DEBUG: SliderReleased event received");
+                let slider_move_duration = self.last_slider_update.elapsed();
+                debug!("SLIDER_DEBUG: Slider was moving for {:?}", slider_move_duration);
                 
                 self.is_slider_moving = false;
-                debug!("SLIDER RELEASED: pane_index: {}, value: {}", pane_index, value);
-                if pane_index == -1 {
-                    return load_remaining_images(
-                        &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index, last_valid_pos);
-                } else {
-                    return load_remaining_images(
-                        &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index as isize, last_valid_pos);
-                }
+                
+                // Now we can do the more intensive cache index updates
+                let pos = self.slider_value as usize;
+                debug!("SLIDER_DEBUG: Final slider position: {}", pos);
             }
 
             Message::Event(event) => match event {

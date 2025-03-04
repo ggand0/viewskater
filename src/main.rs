@@ -339,9 +339,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 let frame_start = Instant::now();
 
                                 // Update window title dynamically based on the current image
-                                debug!("moved: {}", *moved);
+                                //debug!("moved: {}", *moved);
                                 if !*moved {
-                                    debug!("Updating window title");
+                                    //debug!("Updating window title");
                                     let new_title = state.program().title();
                                     window.set_title(&new_title);
                                 }
@@ -442,6 +442,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     );
                                 }
                                 Action::Output(message) => {
+                                    debug!("Output message: {:?}", message);
                                     state.queue_message(message);
                                 }
                                 _ => {}
