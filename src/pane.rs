@@ -47,6 +47,7 @@ use crate::config::CONFIG;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
 use crate::cache::img_cache::CacheStrategy;
+use crate::widgets::shader::cpu_scene::CpuScene;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -66,8 +67,8 @@ pub struct Pane {
     pub prev_slider_value: u16,
     pub is_selected: bool,
     pub is_selected_cache: bool,
-    //pub scene: Scene,
     pub scene: Option<Scene>,
+    pub slider_scene: Option<Scene>, // Make sure this is Scene, not CpuScene
     pub backend: wgpu::Backend,
     pub device: Option<Arc<wgpu::Device>>,
     pub queue: Option<Arc<wgpu::Queue>>,
@@ -87,6 +88,7 @@ impl Default for Pane {
             is_selected: true,
             is_selected_cache: true,
             scene: None,
+            slider_scene: None, // Default to None
             cpu_preview_image: None,
             backend: wgpu::Backend::Vulkan,
             device: None,
@@ -96,41 +98,10 @@ impl Default for Pane {
 }
 
 impl Pane {
-    #[allow(dead_code)]
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
-        // debuggign with sample image
-        /*let image_paths = vec![
-            "image.jpg",
-            //"image2.jpg",
-            //"image3.jpg",
-        ]; // Replace with actual image paths
-
-        let textures = image_paths
-            .iter()
-            .map(|&path| {
-                let (texture, dimensions) = Scene::create_texture_from_image(
-                    &device, &queue, path);
-                (Arc::new(texture), dimensions)
-            })
-            .collect::<Vec<_>>();
-
-        let image_data: Vec<(Vec<u8>, (u32, u32))> = image_paths
-            .into_iter()
-            .map(|img| {
-                let img = image::open(img).unwrap();
-                let rgba_image = img.to_rgba8();
-                let dimensions = img.dimensions();
-                (rgba_image.into_raw(), dimensions)
-            })
-            .collect();
-
-        println!("Loaded textures: {:?}", textures.iter().map(|(_, d)| d).collect::<Vec<_>>());
-        println!("Loaded image_data: {:?}", image_data.iter().map(|(_, d)| d).collect::<Vec<_>>());
-
-        let scene = Scene::new(textures, image_data);*/
-
         let scene = Scene::new(None);
-
+        // Create a dedicated CPU-based scene for slider
+        let slider_scene = Scene::CpuScene(CpuScene::new(vec![]));
 
         Self {
             directory_path: None,
@@ -145,6 +116,7 @@ impl Pane {
             is_selected: true,
             is_selected_cache: true,
             scene: Some(scene),
+            slider_scene: Some(slider_scene),
             backend: backend,
             device: Some(device),
             queue: Some(queue),
@@ -477,7 +449,7 @@ impl Pane {
             _file_paths,
             CONFIG.cache_size,
             //CacheStrategy::Atlas,
-            CacheStrategy::Gpu,
+            CacheStrategy::Cpu,
             initial_index,
             Some(device_clone),
             Some(queue_clone),

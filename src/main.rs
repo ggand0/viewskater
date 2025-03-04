@@ -442,7 +442,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     );
                                 }
                                 Action::Output(message) => {
-                                    debug!("Output message: {:?}", message);
+                                    //debug!("Output message: {:?}", message);
                                     state.queue_message(message);
                                 }
                                 _ => {}

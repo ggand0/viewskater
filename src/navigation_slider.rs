@@ -48,6 +48,11 @@ pub static SLIDER_METRICS: Lazy<Mutex<HashMap<usize, Instant>>> = Lazy::new(|| {
     Mutex::new(HashMap::new())
 });
 
+const FAST_SLIDER_THRESHOLD: usize = 5; // If delta > 5, use lightweight preview
+const MAX_CONCURRENT_GPU_LOADS: usize = 1; // Limit concurrent GPU loads
+const SLIDER_RESIZE_WIDTH: u32 = 800;  // Width for slider images
+const SLIDER_RESIZE_HEIGHT: u32 = 600; // Height for slider images
+
 fn load_full_res_image(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -204,6 +209,7 @@ fn get_loading_tasks_slider(
     tasks
 }
 
+
 pub fn load_remaining_images(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -260,6 +266,7 @@ pub fn load_remaining_images(
     Task::batch(tasks)
 }
 
+/*
 async fn load_current_slider_image(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -307,6 +314,7 @@ async fn load_current_slider_image(
 
     Ok((pos, Arc::clone(&texture)))
 }
+*/
 
 fn create_async_loading_task(
     device: &Arc<wgpu::Device>,
@@ -467,16 +475,17 @@ fn update_slider_cache_indices(img_cache: &mut ImageCache, pos: usize) {
 }
 
 pub fn update_pos(
-    device: &Arc<wgpu::Device>,
-    queue: &Arc<wgpu::Queue>,
+    //device: &Arc<wgpu::Device>,
+    //queue: &Arc<wgpu::Queue>,
     panes: &mut Vec<Pane>,
     pane_index: isize,
     pos: usize,
     cache_strategy: CacheStrategy,
-    use_sync: bool,  // Keep the parameter but default to async
+    use_sync: bool,
 ) -> Task<Message> {
     let start_time = Instant::now();
-    debug!("SLIDER_DEBUG: update_pos called for pos {} (strategy: {:?})", pos, cache_strategy);
+    
+    debug!("SLIDER_DEBUG: update_pos called for pos {} (use_sync: {})", pos, use_sync);
     
     // Store timing for this position
     if let Ok(mut metrics) = SLIDER_METRICS.lock() {
@@ -486,149 +495,191 @@ pub fn update_pos(
     // Store the latest requested position atomically
     LATEST_SLIDER_POS.store(pos, Ordering::SeqCst);
     
-    // Log queue info
-    let queue_size = panes[0].img_cache.loading_queue_slider.len();
-    debug!("SLIDER_DEBUG: Queue size before adding pos {}: {}", pos, queue_size);
-    
-    // Manage queue size
-    const MAX_QUEUE_SIZE: usize = 2;
-    if panes[0].img_cache.loading_queue_slider.len() > MAX_QUEUE_SIZE {
-        let removed = panes[0].img_cache.loading_queue_slider.pop_front();
-        debug!("SLIDER_DEBUG: Removed outdated position {:?} from queue", removed);
-    }
-    panes[0].img_cache.loading_queue_slider.push_back(pos);
-    
-    // Always use async for slider movements
-    let device_clone = Arc::clone(device);
-    let queue_clone = Arc::clone(queue);
-    let strategy = cache_strategy;
-
-    let img_cache = panes.get(0).map(|pane| {
-        (
-            pane.img_cache.image_paths.clone(),
-            pane.img_cache.slider_texture.clone(),
-        )
-    });
-
-    let total_images = img_cache.as_ref().map(|(paths, _)| paths.len()).unwrap_or(0);
-    debug!("SLIDER_DEBUG: Creating task for pos {} ({}/{})", pos, pos, total_images);
-
-    // Create the async task
-    let images_loading_task = async move {
-        let load_start = Instant::now();
-        
-        // Check if this is still the latest position
-        let latest = LATEST_SLIDER_POS.load(Ordering::SeqCst);
-        if latest != pos {
-            debug!("SLIDER_DEBUG: Skipping outdated pos {} (latest is {})", pos, latest);
-            return Err(pos);
+    // Clear queue for new positions
+    if pane_index == -1 {
+        let queue_size = panes[0].img_cache.loading_queue_slider.len();
+        if queue_size > 0 {
+            debug!("SLIDER_DEBUG: Clearing slider queue (size: {})", queue_size);
+            panes[0].img_cache.loading_queue_slider.clear();
         }
-        
-        match img_cache {
-            Some((image_paths, texture)) => {
-                let img_path = match image_paths.get(pos) {
-                    Some(path) => path,
-                    None => {
-                        debug!("SLIDER_DEBUG: No image at pos {} (total: {})", pos, image_paths.len());
-                        return Err(pos);
-                    }
-                };
-                
-                debug!("SLIDER_DEBUG: Loading image at path {} for pos {}", img_path.display(), pos);
-                
-                match strategy {
-                    CacheStrategy::Gpu => {
-                        // GPU texture loading path
-                        if let Some(texture) = texture {
-                            let texture_start = Instant::now();
-                            let mut texture_clone = texture.clone();
-                            
-                            // Check again if still relevant
-                            if LATEST_SLIDER_POS.load(Ordering::SeqCst) != pos {
-                                debug!("SLIDER_DEBUG: Pos {} outdated before GPU loading", pos);
-                                return Err(pos);
-                            }
-                            
-                            debug!("SLIDER_DEBUG: Started GPU loading for pos {}", pos);
-                            if let Err(err) = load_image_resized(img_path, true, &device_clone, &queue_clone, &mut texture_clone).await {
-                                debug!("SLIDER_DEBUG: Failed to load GPU image {}: {}", img_path.display(), err);
-                                return Err(pos);
-                            }
-                            
-                            let texture_time = texture_start.elapsed();
-                            debug!("SLIDER_DEBUG: GPU texture loading for pos {} took {:?}", pos, texture_time);
-                            
-                            // Final check before completing
-                            let latest = LATEST_SLIDER_POS.load(Ordering::SeqCst);
-                            if latest != pos {
-                                debug!("SLIDER_DEBUG: Pos {} outdated after GPU loading (latest: {})", pos, latest);
-                                return Err(pos);
-                            }
-                            
-                            debug!("SLIDER_DEBUG: Successfully loaded GPU image for pos {}", pos);
-                            Ok((pos, CachedData::Gpu(texture)))
-                        } else {
-                            debug!("SLIDER_DEBUG: No texture available for GPU loading at pos {}", pos);
-                            Err(pos)
-                        }
-                    },
-                    CacheStrategy::Cpu => {
-                        // CPU loading path
-                        let cpu_start = Instant::now();
-                        
-                        // Check if still relevant before expensive operation
-                        if LATEST_SLIDER_POS.load(Ordering::SeqCst) != pos {
-                            debug!("SLIDER_DEBUG: Pos {} outdated before CPU loading", pos);
-                            return Err(pos);
-                        }
-                        
-                        debug!("SLIDER_DEBUG: Started CPU loading for pos {}", pos);
-                        match image::open(img_path) {
-                            Ok(img) => {
-                                let resize_start = Instant::now();
-                                // Faster resize for slider
-                                let img = img.resize(600, 400, image::imageops::FilterType::Nearest);
-                                let resize_time = resize_start.elapsed();
-                                debug!("SLIDER_DEBUG: Resize for pos {} took {:?}", pos, resize_time);
-                                
-                                let encode_start = Instant::now();
-                                let mut bytes: Vec<u8> = Vec::new();
-                                if let Err(err) = img.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageOutputFormat::Png) {
-                                    debug!("SLIDER_DEBUG: Failed to encode CPU image {}: {}", img_path.display(), err);
-                                    return Err(pos);
-                                }
-                                let encode_time = encode_start.elapsed();
-                                debug!("SLIDER_DEBUG: Encoding for pos {} took {:?}", pos, encode_time);
-                                
-                                // Final check
-                                let latest = LATEST_SLIDER_POS.load(Ordering::SeqCst);
-                                if latest != pos {
-                                    debug!("SLIDER_DEBUG: Pos {} outdated after CPU loading (latest: {})", pos, latest);
-                                    return Err(pos);
-                                }
-                                
-                                let cpu_time = cpu_start.elapsed();
-                                debug!("SLIDER_DEBUG: CPU loading for pos {} took {:?} (total)", pos, cpu_time);
-                                Ok((pos, CachedData::Cpu(bytes)))
-                            },
-                            Err(err) => {
-                                debug!("SLIDER_DEBUG: Failed to open image {}: {}", img_path.display(), err);
-                                Err(pos)
-                            }
-                        }
-                    },
-                    _ => {
-                        debug!("SLIDER_DEBUG: Atlas strategy not supported for slider at pos {}", pos);
-                        Err(pos)
+        panes[0].img_cache.loading_queue_slider.push_back(pos);
+    } else {
+        let pane = &mut panes[pane_index as usize];
+        let queue_size = pane.img_cache.loading_queue_slider.len();
+        if queue_size > 0 {
+            debug!("SLIDER_DEBUG: Clearing slider queue (size: {})", queue_size);
+            pane.img_cache.loading_queue_slider.clear();
+        }
+        pane.img_cache.loading_queue_slider.push_back(pos);
+    }
+    
+    // If sync mode is requested, load synchronously
+    if use_sync {
+        // For synchronous loading, directly update panes
+        if pane_index == -1 {
+            // Global slider affects all panes
+            let mut results = Vec::new();
+            for pane in panes.iter_mut() {
+                if pane.dir_loaded {
+                    results.push(load_current_slider_image(pane, pos));
+                }
+            }
+            
+            // Check for any errors and log them
+            for (i, result) in results.iter().enumerate() {
+                if let Err(err) = result {
+                    debug!("SLIDER_DEBUG: Sync loading failed for pane {}: {}", i, err);
+                }
+            }
+        } else {
+            if let Some(pane) = panes.get_mut(pane_index as usize) {
+                if pane.dir_loaded {
+                    if let Err(err) = load_current_slider_image(pane, pos) {
+                        debug!("SLIDER_DEBUG: Sync loading failed: {}", err);
                     }
                 }
             }
-            None => {
-                debug!("SLIDER_DEBUG: No image cache available for pos {}", pos);
-                Err(pos)
-            }
         }
+        
+        return Task::none();
+    }
+    
+    // For async loading, prepare clones for async block
+    //let device_clone = Arc::clone(device);
+    //let queue_clone = Arc::clone(queue);
+    
+    // Clone the image path before entering async block to avoid Send issues
+    let pane_to_load = if pane_index == -1 { 0 } else { pane_index as usize };
+    let image_path = if let Some(pane) = panes.get(pane_to_load) {
+        if pos < pane.img_cache.image_paths.len() {
+            Some(pane.img_cache.image_paths[pos].clone())
+        } else {
+            None
+        }
+    } else {
+        None
     };
+    
+    if let Some(img_path) = image_path {
+        let images_loading_task = async move {
+            let load_start = Instant::now();
+            debug!("SLIDER_DEBUG: Loading image at path {} for pos {}", img_path.display(), pos);
+            
+            // Always use CPU mode during slider movement for performance
+            match image::open(&img_path) {
+                Ok(img) => {
+                    // Check if our position is still relevant
+                    if LATEST_SLIDER_POS.load(Ordering::SeqCst) != pos {
+                        debug!("SLIDER_DEBUG: Pos {} outdated after opening image", pos);
+                        return Err(pos);
+                    }
+                    
+                    // Resize to smaller dimensions for slider
+                    let resized = img.resize(
+                        800, // Width for slider
+                        600, // Height for slider
+                        image::imageops::FilterType::Triangle
+                    );
+                    
+                    // Encode as PNG for quick processing
+                    let mut bytes: Vec<u8> = Vec::new();
+                    if let Err(err) = resized.write_to(
+                        &mut std::io::Cursor::new(&mut bytes), 
+                        image::ImageOutputFormat::Png
+                    ) {
+                        debug!("SLIDER_DEBUG: Failed to encode image: {}", err);
+                        return Err(pos);
+                    }
+                    
+                    if LATEST_SLIDER_POS.load(Ordering::SeqCst) != pos {
+                        debug!("SLIDER_DEBUG: Pos {} outdated after processing", pos);
+                        return Err(pos);
+                    }
+                    
+                    let cpu_time = load_start.elapsed();
+                    debug!("SLIDER_DEBUG: CPU loading for pos {} took {:?}", pos, cpu_time);
+                    
+                    Ok((pos, CachedData::Cpu(bytes)))
+                },
+                Err(err) => {
+                    debug!("SLIDER_DEBUG: Failed to open image at {}: {}", img_path.display(), err);
+                    Err(pos)
+                }
+            }
+        };
 
-    Task::perform(images_loading_task, Message::SliderImageLoaded)
+        Task::perform(images_loading_task, Message::SliderImageLoaded)
+    } else {
+        debug!("SLIDER_DEBUG: No valid image path found for pos {}", pos);
+        Task::perform(async move { Err(pos) }, Message::SliderImageLoaded)
+    }
+}
+
+// Result<(usize, Arc<wgpu::Texture>), usize> {
+fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io::Error> {
+    // Load the image at pos synchronously 
+    let img_cache = &mut pane.img_cache;
+    
+    // Update indices in the cache
+    let target_index: usize;
+    if pos < img_cache.cache_count {
+        target_index = pos;
+        img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
+    } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
+        target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
+        img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
+    } else {
+        target_index = img_cache.cache_count;
+        img_cache.current_offset = 0;
+    }
+    
+    img_cache.cached_image_indices[target_index] = pos as isize;
+    img_cache.current_index = pos;
+    
+    // Get direct access to the image file for CPU loading
+    let img_path = match img_cache.image_paths.get(pos) {
+        Some(path) => path,
+        None => return Err(io::Error::new(io::ErrorKind::NotFound, "Image path not found")),
+    };
+    
+    // Always load from file directly for best slider performance
+    match image::open(img_path) {
+        Ok(img) => {
+            // Resize the image to smaller dimensions for slider
+            /*let resized = img.resize(
+                800, // Width for slider
+                600, // Height for slider
+                image::imageops::FilterType::Triangle
+            );*/
+            
+            // Create the CPU bytes
+            let mut bytes: Vec<u8> = Vec::new();
+            if let Err(err) = img.write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageOutputFormat::Png
+            ) {
+                debug!("Failed to encode slider image: {}", err);
+                return Err(io::Error::new(io::ErrorKind::Other, "Failed to encode image"));
+            }
+            
+            // Update the current image to CPU data
+            pane.current_image = CachedData::Cpu(bytes.clone());
+            pane.slider_scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
+        
+            // Ensure texture is created for CPU images
+            if let Some(device) = &pane.device {
+                if let Some(queue) = &pane.queue {
+                    if let Some(scene) = &mut pane.slider_scene {
+                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                    }
+                }
+            }
+            
+            Ok(())
+        },
+        Err(err) => {
+            debug!("Failed to open image for slider: {}", err);
+            Err(io::Error::new(io::ErrorKind::Other, format!("Failed to open image: {}", err)))
+        }
+    }
 }

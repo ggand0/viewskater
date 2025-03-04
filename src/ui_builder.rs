@@ -106,8 +106,16 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
 
+    // Choose the appropriate scene based on slider movement state
     let first_img = if app.panes[0].dir_loaded {
-        if let Some(scene) = &app.panes[0].scene {
+        // Select the scene - use slider_scene when moving, otherwise use main scene
+        let scene_to_use = if app.is_slider_moving && app.panes[0].slider_scene.is_some() {
+            app.panes[0].slider_scene.as_ref()
+        } else {
+            app.panes[0].scene.as_ref()
+        };
+        
+        if let Some(scene) = scene_to_use {
             let shader_widget = shader(scene)
                 .width(Fill)
                 .height(Fill);
@@ -121,7 +129,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     } else {
         container(text("")).height(Length::Fill)
     };
-    
     
 
     let footer = if app.show_footer {
@@ -169,7 +176,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         container(DualSlider::new(
             0..=(app.panes[0].img_cache.num_files - 1) as u16,
             app.slider_value,
-            -1, // Assuming this was for marking inactive/unused handle
+            -1,
             Message::SliderChanged,
             Message::SliderReleased,
         )
