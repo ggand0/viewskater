@@ -423,6 +423,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             // Record window event time
                             let window_event_time = window_event_start.elapsed();
                             WINDOW_EVENT_STATS.lock().unwrap().add_measurement(window_event_time);
+
+                            // Introduce a short sleep to yield control to the OS and improve responsiveness.
+                            // This prevents the event loop from monopolizing the CPU, preventing lags.
+                            // A small delay (300µs) seems to be enough to avoid lag while maintaining high performance.
+                            std::thread::sleep(std::time::Duration::from_micros(300));
                         }
                         Event::EventLoopAwakened(winit::event::Event::UserEvent(action)) => {
                             match action {
