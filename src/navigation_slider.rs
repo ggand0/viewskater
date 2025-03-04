@@ -32,8 +32,9 @@ use crate::Arc;
 use iced_wgpu::wgpu;
 use crate::cache::img_cache::{CachedData, CacheStrategy};
 use crate::cache::cache_utils::{load_image_resized, load_image_resized_sync, create_gpu_texture};
-
-
+use image;
+use std::path::PathBuf;
+use crate::cache::img_cache::ImageCache;
 
 fn load_full_res_image(
     device: &Arc<wgpu::Device>,
@@ -107,8 +108,6 @@ fn load_full_res_image(
 
     Task::none()
 }
-
-
 
 fn get_loading_tasks_slider(
     device: &Arc<wgpu::Device>,
@@ -193,7 +192,6 @@ fn get_loading_tasks_slider(
     tasks
 }
 
-
 pub fn load_remaining_images(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -250,7 +248,6 @@ pub fn load_remaining_images(
     Task::batch(tasks)
 }
 
-
 async fn load_current_slider_image(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -299,12 +296,172 @@ async fn load_current_slider_image(
     Ok((pos, Arc::clone(&texture)))
 }
 
+fn create_async_loading_task(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    img_cache: Option<(Vec<PathBuf>, Option<Arc<wgpu::Texture>>)>,
+    pos: usize,
+    strategy: CacheStrategy,
+) -> impl std::future::Future<Output = Result<(usize, CachedData), usize>> {
+    let device_clone = Arc::clone(device);
+    let queue_clone = Arc::clone(queue);
+
+    async move {
+        match img_cache {
+            Some((image_paths, texture)) => {
+                let img_path = image_paths.get(pos).ok_or(pos)?;
+                
+                match strategy {
+                    CacheStrategy::Gpu => {
+                        if let Some(texture) = texture {
+                            let mut texture_clone = texture.clone();
+                            if let Err(err) = load_image_resized(img_path, true, &device_clone, &queue_clone, &mut texture_clone).await {
+                                debug!("Failed to load image {}: {}", img_path.display(), err);
+                                return Err(pos);
+                            }
+                            Ok((pos, CachedData::Gpu(texture)))
+                        } else {
+                            Err(pos)
+                        }
+                    },
+                    CacheStrategy::Cpu => {
+                        // For CPU strategy, load the image into bytes
+                        match image::open(img_path) {
+                            Ok(img) => {
+                                // Resize if needed (similar to load_image_resized but for CPU)
+                                let img = img.resize(800, 600, image::imageops::FilterType::Triangle);
+                                let mut bytes: Vec<u8> = Vec::new();
+                                if let Err(err) = img.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageOutputFormat::Png) {
+                                    debug!("Failed to encode image {}: {}", img_path.display(), err);
+                                    return Err(pos);
+                                }
+                                Ok((pos, CachedData::Cpu(bytes)))
+                            },
+                            Err(err) => {
+                                debug!("Failed to open image {}: {}", img_path.display(), err);
+                                Err(pos)
+                            }
+                        }
+                    },
+                    _ => {
+                        debug!("Atlas strategy not supported for slider");
+                        Err(pos)
+                    }
+                }
+            }
+            None => Err(pos),
+        }
+    }
+}
+
+fn load_slider_image_sync(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    panes: &mut Vec<Pane>,
+    pane_index: isize,
+    pos: usize,
+    cache_strategy: CacheStrategy,
+) -> Result<(usize, CachedData), usize> {
+    // Get the pane
+    let pane = if pane_index == -1 {
+        // Global slider affects all panes, use the first one as reference
+        panes.get_mut(0)
+    } else {
+        panes.get_mut(pane_index as usize)
+    };
+
+    let pane = match pane {
+        Some(p) => p,
+        None => return Err(pos),
+    };
+
+    let img_cache = &mut pane.img_cache;
+    let img_path = match img_cache.image_paths.get(pos) {
+        Some(path) => path,
+        None => return Err(pos),
+    };
+
+    // Load the image synchronously based on strategy
+    match cache_strategy {
+        CacheStrategy::Gpu => {
+            // Get or initialize texture
+            let mut texture = match &img_cache.slider_texture {
+                Some(tex) => Arc::clone(tex),
+                None => {
+                    // Create a new texture
+                    let tex = Arc::new(create_gpu_texture(device, 1, 1));
+                    img_cache.slider_texture = Some(Arc::clone(&tex));
+                    tex
+                }
+            };
+
+            // Load image into texture synchronously
+            if let Err(err) = load_image_resized_sync(img_path, true, device, queue, &mut texture) {
+                debug!("Failed to load image synchronously {}: {}", img_path.display(), err);
+                return Err(pos);
+            }
+
+            // Update indices in the cache
+            update_slider_cache_indices(img_cache, pos);
+            
+            // Return the loaded texture
+            Ok((pos, CachedData::Gpu(texture)))
+        },
+        CacheStrategy::Cpu => {
+            // Load image into memory synchronously
+            match image::open(img_path) {
+                Ok(img) => {
+                    // Resize if needed
+                    let img = img.resize(800, 600, image::imageops::FilterType::Triangle);
+                    let mut bytes: Vec<u8> = Vec::new();
+                    
+                    if let Err(err) = img.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageOutputFormat::Png) {
+                        debug!("Failed to encode image {}: {}", img_path.display(), err);
+                        return Err(pos);
+                    }
+                    
+                    // Update indices in the cache
+                    update_slider_cache_indices(img_cache, pos);
+                    
+                    Ok((pos, CachedData::Cpu(bytes)))
+                },
+                Err(err) => {
+                    debug!("Failed to open image {}: {}", img_path.display(), err);
+                    Err(pos)
+                }
+            }
+        },
+        _ => {
+            debug!("Atlas strategy not supported for synchronous slider loading");
+            Err(pos)
+        }
+    }
+}
+
+fn update_slider_cache_indices(img_cache: &mut ImageCache, pos: usize) {
+    let target_index: usize;
+    if pos < img_cache.cache_count {
+        target_index = pos;
+        img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
+    } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
+        target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
+        img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
+    } else {
+        target_index = img_cache.cache_count;
+        img_cache.current_offset = 0;
+    }
+    img_cache.cached_image_indices[target_index] = pos as isize;
+    img_cache.current_index = pos;
+}
+
 pub fn update_pos(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    panes: &mut Vec<Pane>, // Immutable
+    panes: &mut Vec<Pane>,
     pane_index: isize,
     pos: usize,
+    cache_strategy: CacheStrategy,
+    use_sync: bool,  // New parameter to choose between sync and async
 ) -> Task<Message> {
     let is_slider_move = true;
 
@@ -315,42 +472,75 @@ pub fn update_pos(
     }
     panes[0].img_cache.loading_queue_slider.push_back(pos);
 
-    let device_clone = Arc::clone(device);
-    let queue_clone = Arc::clone(queue);
-
-    // Extract only the required data from ImageCache to avoid `Send` errors
-    let img_cache = panes.get(0).map(|pane| {
-        (
-            pane.img_cache.image_paths.clone(), // Clone only image paths
-            pane.img_cache.slider_texture.clone(), // Clone Arc<wgpu::Texture>
-        )
-    });
-
-    debug!("Task::perform started for slider pos {}", pos);
-
-    let images_loading_task = async move {
-        //debug!("update_pos: async block");
-        //debug!("img_cache: {:?}", img_cache);
-        match img_cache {
-            Some((image_paths, texture)) => {
-                //debug!("update_pos: (image_paths, texture) block");
-                if let Some(texture) = texture {
-                    //debug!("update_pos: texture block");
-                    let img_path = image_paths.get(pos).ok_or(pos)?;
-                    let mut texture_clone = texture.clone();
-
-                    if let Err(err) = load_image_resized(img_path, true, &device_clone, &queue_clone, &mut texture_clone).await {
-                        debug!("Failed to load image {}: {}", img_path.display(), err);
-                        return Err(pos);
-                    }
-                    Ok((pos, texture))
+    // If synchronous loading is requested
+    if use_sync {
+        match load_slider_image_sync(device, queue, panes, pane_index, pos, cache_strategy) {
+            Ok(result) => {
+                // Apply the result immediately
+                let (pos, cached_data) = result;
+                let pane = if pane_index == -1 {
+                    &mut panes[0]  // For global slider
                 } else {
-                    Err(pos) // If no texture, return error
+                    &mut panes[pane_index as usize]
+                };
+                
+                // Update the pane with the loaded image
+                match &cached_data {
+                    CachedData::Gpu(texture) => {
+                        if let Some(scene) = pane.scene.as_mut() {
+                            scene.update_texture(Arc::clone(texture));
+                        } else {
+                            pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
+                        }
+                        pane.current_image = CachedData::Gpu(Arc::clone(texture));
+                    },
+                    CachedData::Cpu(bytes) => {
+                        pane.current_image = CachedData::Cpu(bytes.clone());
+                        if let Some(scene) = pane.scene.as_mut() {
+                            //scene.update_cpu_data(bytes);
+                            //scene.
+                            scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                        } else {
+                            pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
+                            pane.scene.as_mut().unwrap().ensure_texture(Arc::clone(device), Arc::clone(queue));
+                        }
+                    },
+                    _ => {}
                 }
+                
+                // Return a "completed" message to keep the UI in sync
+                Task::perform(std::future::ready(Ok((pos, cached_data))), Message::SliderImageLoaded)
+            },
+            Err(pos) => {
+                debug!("Synchronous image loading failed for pos {}", pos);
+                Task::perform(std::future::ready(Err(pos)), Message::SliderImageLoaded)
             }
-            None => Err(pos), // If no pane exists, return error
         }
-    };
+    } else {
+        // Original async implementation
+        let device_clone = Arc::clone(device);
+        let queue_clone = Arc::clone(queue);
+        let strategy = cache_strategy;
 
-    Task::perform(images_loading_task, Message::SliderImageLoaded) // Now fully Send-safe
+        // Extract only the required data from ImageCache to avoid `Send` errors
+        let img_cache = panes.get(0).map(|pane| {
+            (
+                pane.img_cache.image_paths.clone(), // Clone only image paths
+                pane.img_cache.slider_texture.clone(), // Clone Arc<wgpu::Texture>
+            )
+        });
+
+        debug!("Task::perform started for slider pos {} with strategy {:?}", pos, strategy);
+
+        // Create the async task using our extracted function
+        let images_loading_task = create_async_loading_task(
+            &device_clone, 
+            &queue_clone, 
+            img_cache, 
+            pos, 
+            strategy
+        );
+
+        Task::perform(images_loading_task, Message::SliderImageLoaded)
+    }
 }
