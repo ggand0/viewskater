@@ -477,7 +477,7 @@ impl Pane {
             _file_paths,
             CONFIG.cache_size,
             //CacheStrategy::Atlas,
-            CacheStrategy::Cpu,
+            CacheStrategy::Gpu,
             initial_index,
             Some(device_clone),
             Some(queue_clone),

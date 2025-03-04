@@ -171,7 +171,7 @@ impl DataViewer {
             is_slider_moving: false,
             backend: backend,
             //cache_strategy: CacheStrategy::Atlas,
-            cache_strategy: CacheStrategy::Cpu,
+            cache_strategy: CacheStrategy::Gpu,
         }
     }
 
