@@ -62,7 +62,8 @@ use iced_winit::core::Theme as WinitTheme;
 use iced_widget::{slider, text_input};
 
 use crate::cache::img_cache::LoadOperation;
-use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
+use crate::navigation_keyboard::{move_right_all, move_left_all};
+use crate::navigation_slider::{update_pos, load_remaining_images};
 use crate::menu::PaneLayout;
 use crate::pane::Pane;
 use crate::widgets::shader::scene::Scene;

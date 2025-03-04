@@ -19,8 +19,10 @@ use log::{Level, debug, info, warn, error};
 
 mod cache;
 use crate::cache::img_cache::LoadOperation;
-mod navigation;
-use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
+mod navigation_keyboard;
+mod navigation_slider;
+use crate::navigation_keyboard::{move_right_all, move_left_all};
+use crate::navigation_slider::{update_pos, load_remaining_images};
 mod file_io;
 mod menu;
 use menu::PaneLayout;
