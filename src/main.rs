@@ -229,7 +229,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::Moved(_) => {
                                     *moved = true;
-                                    debug!("Window moved");
+                                    //debug!("Window moved");
                                 }
                                 WindowEvent::CloseRequested => {
                                     event_loop.exit();
@@ -238,7 +238,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     *cursor_position = Some(position);
                                 }
                                 WindowEvent::MouseInput { state, .. } => {
-                                    debug!("Mouse input detected: {:?} {:?}", state, *moved);
+                                    //debug!("Mouse input detected: {:?} {:?}", state, *moved);
                                     if state == ElementState::Released {
                                         *moved = false; // Reset flag when mouse is released
                                     }
@@ -290,8 +290,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     debug,
                                 );
 
-                                let update_time = update_start.elapsed();
-                                STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
+                                //let update_time = update_start.elapsed();
+                                //STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
 
                                 let _ = 'runtime_call: {
                                     let Some(t) = task else {
@@ -423,8 +423,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             }
 
                             // Record window event time
-                            let window_event_time = window_event_start.elapsed();
-                            WINDOW_EVENT_STATS.lock().unwrap().add_measurement(window_event_time);
+                            //let window_event_time = window_event_start.elapsed();
+                            //WINDOW_EVENT_STATS.lock().unwrap().add_measurement(window_event_time);
 
                             // Introduce a short sleep to yield control to the OS and improve responsiveness.
                             // This prevents the event loop from monopolizing the CPU, preventing lags.
