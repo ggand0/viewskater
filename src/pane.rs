@@ -69,6 +69,7 @@ pub struct Pane {
     pub is_selected_cache: bool,
     pub scene: Option<Scene>,
     pub slider_scene: Option<Scene>, // Make sure this is Scene, not CpuScene
+    pub slider_image: Option<Handle>,
     pub backend: wgpu::Backend,
     pub device: Option<Arc<wgpu::Device>>,
     pub queue: Option<Arc<wgpu::Queue>>,
@@ -93,6 +94,7 @@ impl Default for Pane {
             backend: wgpu::Backend::Vulkan,
             device: None,
             queue: None,
+            slider_image: None,
         }
     }
 }
@@ -120,6 +122,7 @@ impl Pane {
             backend: backend,
             device: Some(device),
             queue: Some(queue),
+            slider_image: None,
         }
     }
 

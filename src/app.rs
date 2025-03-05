@@ -757,7 +757,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 
                 self.is_slider_moving = true;
                 self.last_slider_update = Instant::now();
-                let use_async = true;
+                let use_async = false;
                 
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;

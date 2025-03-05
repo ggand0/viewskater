@@ -106,6 +106,95 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
 
+    // Choose the appropriate widget based on slider movement state
+    let first_img = if app.panes[0].dir_loaded {
+        if app.is_slider_moving && app.panes[0].slider_image.is_some() {
+            // Use regular Image widget during slider movement (much faster)
+            let image_handle = app.panes[0].slider_image.clone().unwrap();
+            
+            // Make sure to use a compatible image viewer that works with iced_wgpu::Renderer
+            container(
+                center(
+                    iced_widget::image(image_handle)
+                        //.content_fit(iced_winit::core::ContentFit::Contain)
+                )
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+        } else if let Some(scene) = app.panes[0].scene.as_ref() {
+            // Use shader/scene for normal viewing (better quality)
+            let shader_widget = shader(scene)
+                .width(Fill)
+                .height(Fill);
+    
+            container(center(shader_widget))
+                .width(Length::Fill)
+                .height(Length::Fill)
+        } else {
+            container(text("No image loaded"))
+        }
+    } else {
+        container(text("")).height(Length::Fill)
+    };
+    
+    let footer = if app.show_footer {
+        get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0)
+    } else {
+        container(text("")).height(0)
+    };
+
+    let slider = if app.panes[0].dir_loaded && app.panes[0].img_cache.num_files > 1 {
+        container(DualSlider::new(
+            0..=(app.panes[0].img_cache.num_files - 1) as u16,
+            app.slider_value,
+            -1,
+            Message::SliderChanged,
+            Message::SliderReleased,
+        )
+        .width(Length::Fill))
+    } else {
+        container(text("")).height(0)
+    };
+
+    let slider_controls = slider
+        .width(Length::Fill)
+        .height(Length::Shrink)
+        .padding(10)
+        .align_x(Horizontal::Center);
+
+    // Create the elements with explicit types
+    //let top_bar_element: Element<'_, Message, WinitTheme, Renderer> = top_bar.into();
+    let first_img_element: Element<'_, Message, WinitTheme, Renderer> = first_img.into();
+    let slider_controls_element: Element<'_, Message, WinitTheme, Renderer> = slider_controls.into();
+    let footer_element: Element<'_, Message, WinitTheme, Renderer> = footer.into();
+
+    // Create a column with explicit Element types
+    let column = Column::<Message, WinitTheme, Renderer>::with_children(vec![
+        //top_bar_element,
+        first_img_element,
+        slider_controls_element,
+        footer_element
+    ]);
+
+    center(
+        container(column)
+        .width(Length::Fill)
+        .height(Length::Fill)
+    ).align_x(Horizontal::Center)
+    .into()
+}
+
+
+pub fn build_ui_bak(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
+    let mb = app_menu::build_menu(app);
+    
+    let top_bar = container(
+        row!(mb, horizontal_space())
+            .align_y(alignment::Vertical::Center)
+    )
+    .align_y(alignment::Vertical::Center)
+    .width(Length::Fill);
+
     // Choose the appropriate scene based on slider movement state
     let first_img = if app.panes[0].dir_loaded {
         // Select the scene - use slider_scene when moving, otherwise use main scene

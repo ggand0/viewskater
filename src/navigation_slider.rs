@@ -517,11 +517,8 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
         debug!("Throttling slider image load at position {}", pos);
         return Task::none();
     }
-    
-    // Dynamically choose async loading for smoother operation
-    let dynamic_async = true; // Always use async during slider movement
-    
-    if !dynamic_async {
+
+    if !use_async {
         if pane_index == -1 {
             // Perform dynamic loading:
             // Load the image at pos (center) synchronously,
@@ -529,7 +526,8 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
             let mut tasks = Vec::new();
             for (cache_index, pane) in panes.iter_mut().enumerate() {
                 if pane.dir_loaded {
-                    match load_current_slider_image(pane, pos) {
+                    //match load_current_slider_image(pane, pos) {
+                    match load_current_slider_image_widget(pane, pos) {
                         Ok(()) => {
                             debug!("update_pos - Image loaded successfully for pane {}", cache_index);
                         }
@@ -547,7 +545,8 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
             let pane_index = pane_index as usize;
             let pane = &mut panes[pane_index];
             if pane.dir_loaded {
-                match load_current_slider_image(pane, pos) {
+                //match load_current_slider_image(pane, pos) {
+                match load_current_slider_image_widget(pane, pos) {
                     Ok(()) => {
                         debug!("update_pos - Image loaded successfully for pane {}", pane_index);
                     }
@@ -651,6 +650,43 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
         Err(err) => {
             debug!("Failed to open image for slider: {}", err);
             Err(io::Error::new(io::ErrorKind::Other, format!("Failed to open image: {}", err)))
+        }
+    }
+}
+
+
+fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Result<(), io::Error> {
+    // Load the image at pos synchronously into the center position of cache
+    // Assumes that the image at pos is already in the cache
+    let img_cache = &mut pane.img_cache;
+    match img_cache.load_image(pos as usize) {
+        Ok(image) => {
+            let target_index: usize;
+            if pos < img_cache.cache_count {
+                target_index = pos;
+                img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
+            } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
+                //target_index = img_cache.image_paths.len() - pos;
+                target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
+                img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
+            } else {
+                target_index = img_cache.cache_count;
+                img_cache.current_offset = 0;
+            }
+            img_cache.cached_data[target_index] = Some(image);
+            img_cache.cached_image_indices[target_index] = pos as isize;
+
+            img_cache.current_index = pos;
+            let loaded_image = img_cache.get_initial_image().unwrap().as_vec().unwrap();
+            
+            info!("loaded_image: {:?}", loaded_image.len());
+            pane.slider_image = Some(iced::widget::image::Handle::from_bytes(loaded_image));
+
+            Ok(())
+        }
+        Err(err) => {
+            //debug!("update_pos(): Error loading image: {}", err);
+            Err(err)
         }
     }
 }
