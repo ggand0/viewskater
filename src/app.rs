@@ -731,7 +731,8 @@ impl iced_winit::runtime::Program for DataViewer {
                             // Create or update the slider scene
                             pane.current_image = CachedData::Cpu(bytes.clone());
                             //pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
-                            pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(bytes.clone())));
+                            pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(
+                                bytes.clone(), false)));
 
                             // Ensure texture is created for CPU images
                             if let Some(device) = &pane.device {
@@ -756,7 +757,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 
                 self.is_slider_moving = true;
                 self.last_slider_update = Instant::now();
-                let use_async = true;
+                let use_async = false;
                 
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;

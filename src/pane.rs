@@ -101,7 +101,7 @@ impl Pane {
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
         let scene = Scene::new(None);
         // Create a dedicated CPU-based scene for slider
-        let slider_scene = Scene::CpuScene(CpuScene::new(vec![]));
+        let slider_scene = Scene::CpuScene(CpuScene::new(vec![], true));
 
         Self {
             directory_path: None,

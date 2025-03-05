@@ -45,7 +45,7 @@ impl Scene {
                 Scene::TextureScene(TextureScene::new(Some(&CachedData::Gpu(Arc::clone(texture)))))
             }
             Some(CachedData::Cpu(image_bytes)) => {
-                Scene::CpuScene(CpuScene::new(image_bytes.clone()))
+                Scene::CpuScene(CpuScene::new(image_bytes.clone(), true))
             }
             Some(CachedData::Atlas { atlas, entry }) => {
                 if let Ok(atlas_guard) = atlas.read() {
