@@ -83,6 +83,8 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use crate::widgets::shader::cpu_scene::CpuScene;
 use crate::widgets::shader::texture_scene::TextureScene;
+use crate::navigation_slider::LATEST_SLIDER_POS;
+use std::sync::atomic::Ordering;
 
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("App Update"))
@@ -712,79 +714,39 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::SliderImageLoaded(result) => {
                 match result {
                     Ok((pos, cached_data)) => {
+                        /*ilet current_slider_pos = LATEST_SLIDER_POS.load(Ordering::SeqCst);
+                        
+                        // Skip processing outdated positions unless it's close to current position
+                        f pos != current_slider_pos && (pos as isize - current_slider_pos as isize).abs() > 2 {
+                            debug!("SLIDER: Skipping outdated position {}", pos);
+                            return Task::none();
+                        }*/
+                        
                         let pane = &mut self.panes[0]; // For single-pane slider
                         
-                        // If slider is still moving, update the slider_scene
-                        if self.is_slider_moving {
-                            debug!("SLIDER_DEBUG: Updating slider_scene for pos {}", pos);
-                            
-                            if let CachedData::Cpu(bytes) = &cached_data {
-                                // Create slider_scene if it doesn't exist - wrap CpuScene in the Scene enum
-                                if pane.slider_scene.is_none() {
-                                    let cpu_scene = CpuScene::new(bytes.clone());
-                                    pane.slider_scene = Some(Scene::CpuScene(cpu_scene));
-                                } else if let Some(Scene::CpuScene(scene)) = &mut pane.slider_scene {
-                                    // Update existing CPU scene
-                                    scene.update_image(bytes.clone());
-                                } else {
-                                    // Replace with a new CPU scene
-                                    let cpu_scene = CpuScene::new(bytes.clone());
-                                    pane.slider_scene = Some(Scene::CpuScene(cpu_scene));
-                                }
-                                
-                                // Ensure texture is created
-                                if let Some(scene) = &mut pane.slider_scene {
-                                    // For Scene enum, we need to call ensure_texture through the enum's method
-                                    if let Some(device) = &pane.device {
-                                        if let Some(queue) = &pane.queue {
-                                            scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
-                                        }
+                        // Update the scene based on data type
+                        if let CachedData::Cpu(bytes) = &cached_data {
+                            debug!("SliderImageLoaded: loaded data: {:?}", bytes.len());
+
+                            // Create or update the slider scene
+                            pane.current_image = CachedData::Cpu(bytes.clone());
+                            //pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
+                            pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(bytes.clone())));
+
+                            // Ensure texture is created for CPU images
+                            if let Some(device) = &pane.device {
+                                if let Some(queue) = &pane.queue {
+                                    if let Some(scene) = &mut pane.slider_scene {
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
                                     }
                                 }
                             }
-                        } else {
-                            // Slider is released, update the main scene
-                            debug!("SLIDER_DEBUG: Updating main scene for pos {}", pos);
-                            
-                            match cached_data {
-                                CachedData::Cpu(bytes) => {
-                                    pane.current_image = CachedData::Cpu(bytes.clone());
-                                    // Create a new CpuScene wrapped in the Scene enum
-                                    let cpu_scene = CpuScene::new(bytes.clone());
-                                    pane.scene = Some(Scene::CpuScene(cpu_scene));
-                                    
-                                    // Ensure texture is created
-                                    if let Some(scene) = &mut pane.scene {
-                                        if let Some(device) = &pane.device {
-                                            if let Some(queue) = &pane.queue {
-                                                scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
-                                            }
-                                        }
-                                    }
-                                },
-                                CachedData::Gpu(texture) => {
-                                    pane.current_image = CachedData::Gpu(Arc::clone(&texture));
-                                    if let Some(Scene::TextureScene(scene)) = &mut pane.scene {
-                                        scene.update_texture(Arc::clone(&texture));
-                                    } else {
-                                        // Create a new TextureScene wrapped in the Scene enum
-                                        let texture_scene = TextureScene::new(Some(&CachedData::Gpu(Arc::clone(&texture))));
-                                        pane.scene = Some(Scene::TextureScene(texture_scene));
-                                    }
-                                },
-                                _ => {}
-                            }
-                            
-                            // Update cache indices only on slider release
-                            pane.img_cache.current_index = pos;
-                            debug!("SLIDER_DEBUG: Updated current_index for pos {}", pos);
                         }
                     },
                     Err(pos) => {
-                        debug!("SLIDER_DEBUG: Failed to load image for pos {}", pos);
+                        warn!("SLIDER: Failed to load image for position {}", pos);
                     }
                 }
-
             }
             
             
@@ -794,8 +756,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 
                 self.is_slider_moving = true;
                 self.last_slider_update = Instant::now();
-                //let use_sync = true;
-                let use_sync = false;
+                let use_async = true;
                 
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
@@ -803,13 +764,10 @@ impl iced_winit::runtime::Program for DataViewer {
                     debug!("SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
                     
                     return navigation_slider::update_pos(
-                        //&self.device, 
-                        //&self.queue, 
                         &mut self.panes, 
                         pane_index, 
                         value as usize, 
-                        self.cache_strategy,
-                        use_sync
+                        use_async
                     );
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
@@ -821,13 +779,10 @@ impl iced_winit::runtime::Program for DataViewer {
                            pane_index_usize, value);
                     
                     return navigation_slider::update_pos(
-                        //&self.device, 
-                        //&self.queue, 
                         &mut self.panes, 
                         pane_index, 
                         value as usize, 
-                        self.cache_strategy,
-                        use_sync
+                        use_async
                     );
                 }
             }
@@ -966,7 +921,7 @@ impl iced_winit::runtime::Program for DataViewer {
             );
             let update_end = Instant::now();
             let update_duration = update_end.duration_since(update_start);
-            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
+            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else if self.skate_left {
             self.update_counter = 0;
@@ -982,7 +937,7 @@ impl iced_winit::runtime::Program for DataViewer {
             );
             let update_end = Instant::now();
             let update_duration = update_end.duration_since(update_start);
-            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
+            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else {
             // Log that there's no task to perform once
@@ -992,7 +947,7 @@ impl iced_winit::runtime::Program for DataViewer {
             }
             let update_end = Instant::now();
             let update_duration = update_end.duration_since(update_start);
-            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
+            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
 
             iced_winit::runtime::Task::none()
         }
@@ -1184,3 +1139,14 @@ fn main() -> iced::Result {
     Ok(())
 }
 */
+
+// Format duration in a human-readable way (same as in navigation_slider.rs)
+fn format_duration(duration: Duration) -> String {
+    if duration.as_millis() < 10 {
+        format!("{:.2}μs", duration.as_micros() as f64)
+    } else if duration.as_millis() < 1000 {
+        format!("{:.2}ms", duration.as_millis() as f64)
+    } else {
+        format!("{:.2}s", duration.as_secs_f64())
+    }
+}
