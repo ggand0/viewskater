@@ -732,7 +732,7 @@ impl iced_winit::runtime::Program for DataViewer {
                             pane.current_image = CachedData::Cpu(bytes.clone());
                             //pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
                             pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(
-                                bytes.clone(), false)));
+                                bytes.clone(), true)));
 
                             // Ensure texture is created for CPU images
                             if let Some(device) = &pane.device {
@@ -757,7 +757,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 
                 self.is_slider_moving = true;
                 self.last_slider_update = Instant::now();
-                let use_async = false;
+                let use_async = true;
                 
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
@@ -788,51 +788,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
             
-
-            /*Message::SliderChanged(pane_index, value) => {
-                self.is_slider_moving = true;
-                let now = Instant::now();
-
-                // Ignore updates if the last update was too recent (throttle)
-                //if now.duration_since(self.last_slider_update) < Duration::from_millis(50) {
-                if now.duration_since(self.last_slider_update) < Duration::from_millis(100) {
-                //if now.duration_since(self.last_slider_update) < Duration::from_millis(1000) {
-                    return Task::none();
-                }
-
-                self.last_slider_update = now;
-
-
-                debug!("pane_index {} slider value: {}", pane_index, value);
-
-                // -1 means the master slider (broadcast operation to all panes)
-                if pane_index == -1 {
-                    self.prev_slider_value = self.slider_value;
-                    self.slider_value = value;
-                    debug!("slider - update_pos");
-                    update_pos(
-                        &self.device, &self.queue,
-                        &mut self.panes, pane_index as isize, value as usize,
-                        //self.is_slider_moving
-                    );
-                } else {
-                    let pane = &mut self.panes[pane_index as usize];
-                    let _pane_index_org = pane_index.clone();
-                    let pane_index = pane_index as usize;
-
-                    debug!("pane_index {} slider value: {}", pane_index, value);
-                    pane.prev_slider_value = pane.slider_value;
-                    pane.slider_value = value;
-                    debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
-                    debug!("pane_index {} slider value: {}", pane_index, pane.slider_value);
-
-                    update_pos(
-                        &self.device, &self.queue,
-                        &mut self.panes, pane_index as isize, value as usize,
-                        //self.is_slider_moving
-                    );
-                }
-            }*/
             Message::SliderReleased(pane_index, value) => {
                 debug!("SLIDER_DEBUG: SliderReleased event received");
                 let slider_move_duration = self.last_slider_update.elapsed();
@@ -854,7 +809,6 @@ impl iced_winit::runtime::Program for DataViewer {
                         &self.device, &self.queue, self.is_gpu_supported,
                         &mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
                 }
-
             }
 
             Message::Event(event) => match event {
