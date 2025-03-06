@@ -48,6 +48,8 @@ use iced::widget::image::Handle;
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
 static LAST_SLIDER_LOAD: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now()));
 
+const THROTTLE_INTERVAL_MS: u64 = 100; // Default throttle interval 
+
 fn load_full_res_image(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -294,11 +296,19 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
     #[cfg(not(target_os = "linux"))]
     const PLATFORM_THROTTLE_MS: u64 = THROTTLE_INTERVAL_MS;
     
-    // Throttling logic during rapid slider movement
+    // Throttling logic during rapid slider movement - With safety check
     let should_process = {
         let mut last_load = LAST_SLIDER_LOAD.lock().unwrap();
         let now = Instant::now();
-        let elapsed = now.duration_since(*last_load);
+        
+        // Added safety check to protect against time synchronization issues
+        let elapsed = if now > *last_load {
+            now.duration_since(*last_load)
+        } else {
+            // System clock might have changed - don't crash, just process the event
+            debug!("Time inconsistency detected in slider throttling");
+            Duration::from_millis(PLATFORM_THROTTLE_MS)
+        };
         
         if elapsed.as_millis() >= PLATFORM_THROTTLE_MS as u128 {
             *last_load = now;
