@@ -22,6 +22,11 @@ static TEXTURE_CACHE: Lazy<Mutex<TextureCache>> = Lazy::new(|| {
     Mutex::new(TextureCache::new())
 });
 
+#[derive(Debug, Default)]
+pub struct CpuPipelineRegistry {
+    pipelines: std::collections::HashMap<String, TexturePipeline>,
+}
+
 #[derive(Debug)]
 pub struct CpuScene {
     pub image_bytes: Vec<u8>,               // Store CPU image bytes
@@ -178,12 +183,26 @@ impl shader::Primitive for CpuPrimitive {
         debug!("CpuPrimitive prepare - bounds: {:?}, bounds_relative: {:?}", bounds, bounds_relative);
         debug!("CpuPrimitive prepare - viewport_size: {:?}, shader_size: {:?}", viewport_size, shader_size);
 
+        // Create a unique key for this pipeline based on position
+        let pipeline_key = format!("cpu_pipeline_{}_{}_{}_{}", 
+                                  bounds.x, bounds.y, bounds.width, bounds.height);
+
         // Only proceed if we have a valid texture
         if let Some(texture) = &self.texture {
-            if !storage.has::<TexturePipeline>() {
-                debug!("Creating new TexturePipeline for CPU image");
+            // Ensure we have a registry
+            if !storage.has::<CpuPipelineRegistry>() {
+                storage.store(CpuPipelineRegistry::default());
+            }
+            
+            // Get the registry
+            let registry = storage.get_mut::<CpuPipelineRegistry>().unwrap();
+            
+            // Check if we need to create a new pipeline for this position
+            if !registry.pipelines.contains_key(&pipeline_key) {
+                debug!("Creating new TexturePipeline for CPU image with key {}", pipeline_key);
                 let pipeline_start = Instant::now();
-                storage.store(TexturePipeline::new(
+                
+                let pipeline = TexturePipeline::new(
                     device,
                     queue,
                     format,
@@ -191,12 +210,15 @@ impl shader::Primitive for CpuPrimitive {
                     shader_size,
                     self.texture_size,
                     bounds_relative,
-                ));
+                );
+                
+                registry.pipelines.insert(pipeline_key.clone(), pipeline);
+                
                 let pipeline_time = pipeline_start.elapsed();
                 debug!("Created new TexturePipeline in {:?}", pipeline_time);
             } else {
-                debug!("Updating existing TexturePipeline for CPU image");
-                let pipeline = storage.get_mut::<TexturePipeline>().unwrap();
+                debug!("Updating existing TexturePipeline for CPU image with key {}", pipeline_key);
+                let pipeline = registry.pipelines.get_mut(&pipeline_key).unwrap();
                 
                 let vertices_start = Instant::now();
                 pipeline.update_vertices(device, bounds_relative);
@@ -229,14 +251,24 @@ impl shader::Primitive for CpuPrimitive {
         clip_bounds: &Rectangle<u32>,
     ) {
         let render_start = Instant::now();
+        
         if self.texture.is_some() {
-            if let Some(pipeline) = storage.get::<TexturePipeline>() {
-                debug!("Rendering CPU image with TexturePipeline");
-                pipeline.render(target, encoder, clip_bounds);
-                let render_time = render_start.elapsed();
-                debug!("Rendered CPU image in {:?}", render_time);
+            // Get the pipeline key for this position
+            let pipeline_key = format!("cpu_pipeline_{}_{}_{}_{}", 
+                                     self.bounds.x, self.bounds.y, self.bounds.width, self.bounds.height);
+            
+            // Find our pipeline in the registry
+            if let Some(registry) = storage.get::<CpuPipelineRegistry>() {
+                if let Some(pipeline) = registry.pipelines.get(&pipeline_key) {
+                    debug!("Rendering CPU image with TexturePipeline for key {}", pipeline_key);
+                    pipeline.render(target, encoder, clip_bounds);
+                    let render_time = render_start.elapsed();
+                    debug!("Rendered CPU image in {:?}", render_time);
+                } else {
+                    warn!("TexturePipeline not found in registry with key {}", pipeline_key);
+                }
             } else {
-                warn!("TexturePipeline not found in storage");
+                warn!("CpuPipelineRegistry not found in storage");
             }
         } else {
             warn!("Cannot render - no texture available");
