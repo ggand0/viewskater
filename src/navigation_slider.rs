@@ -10,6 +10,7 @@ mod macos {
     pub use iced_custom as iced;
 }
 
+use iced_graphics::image::image_rs::DynamicImage;
 #[cfg(target_os = "linux")]
 use other_os::*;
 
@@ -494,9 +495,105 @@ fn create_async_loading_task(
     }
 }
 
+
+//pub fn resize_and_load_image(image_path: &PathBuf, resize: bool) -> Result<(Vec<u8>), image::ImageError> {
+pub fn resize_and_load_image(image_path: &PathBuf, resize: bool) -> Result<(image::DynamicImage, u32, u32), image::ImageError> {
+    let mut orig_width = 0;
+    let mut orig_height = 0;
+    match image::open(image_path) {
+        Ok(img) => {
+            let img = if resize {
+                // Get original dimensions
+                //let (orig_width, orig_height) = img.dimensions();
+                orig_width = img.width();
+                orig_height = img.height();
+                
+                // Define maximum dimensions
+                let max_width = 1920;
+                let max_height = 1080;
+                
+                // Only resize if larger than our target size
+                if orig_width > max_width || orig_height > max_height {
+                    // Calculate scaling factors
+                    let width_scale = max_width as f32 / orig_width as f32;
+                    let height_scale = max_height as f32 / orig_height as f32;
+                    
+                    // Use the smaller scaling factor to ensure the image fits
+                    let scale = width_scale.min(height_scale);
+                    
+                    // Calculate new dimensions while preserving aspect ratio
+                    let new_width = (orig_width as f32 * scale) as u32;
+                    let new_height = (orig_height as f32 * scale) as u32;
+                    
+                    debug!("Resizing image from {}x{} to {}x{}", 
+                          orig_width, orig_height, new_width, new_height);
+                    
+                    img.resize(new_width, new_height, image::imageops::FilterType::Triangle)
+                } else {
+                    // Already within size limits, use original
+                    debug!("Using original image size: {}x{}", orig_width, orig_height);
+                    img
+                }
+            } else {
+                // No resize requested
+                img
+            };
+            
+            /*let mut bytes: Vec<u8> = Vec::new();
+            
+            if let Err(err) = img.write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageOutputFormat::Png
+            ) {
+                debug!("Failed to encode image {}: {}", image_path.display(), err);
+                return Err(err);
+            }
+            
+            Ok(bytes)*/
+
+            Ok((img, orig_width, orig_height))
+        },
+        Err(err) => {
+            debug!("Failed to open image {}: {}", image_path.display(), err);
+            Err(err)
+        }
+    }
+}
+
+use crate::file_io;
+use iced::widget::image::Handle;
+
+// Async loading task for Image widget
+pub async fn create_async_image_widget_task(
+    img_paths: Vec<PathBuf>, 
+    pos: usize
+) -> Result<(usize, Handle), usize> {
+    // Check if position is valid
+    if pos >= img_paths.len() {
+        return Err(pos);
+    }
+    
+    // Load image bytes directly without resizing
+    match file_io::read_image_bytes(&img_paths[pos]) {
+        Ok(bytes) => {
+            // Convert directly to Handle without resizing
+            let handle = iced::widget::image::Handle::from_bytes(bytes);
+            Ok((pos, handle))
+        },
+        Err(_) => Err(pos),
+    }
+}
+
 pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, use_async: bool) -> Task<Message> {
     // Store the latest position in the atomic variable for reference
     LATEST_SLIDER_POS.store(pos, Ordering::SeqCst);
+    
+    // Platform-specific throttling - use different thresholds for Linux
+    #[cfg(target_os = "linux")]
+    const PLATFORM_THROTTLE_MS: u64 = 10; // Much lower for Linux/X11
+    
+    #[cfg(not(target_os = "linux"))]
+    const PLATFORM_THROTTLE_MS: u64 = THROTTLE_INTERVAL_MS;
     
     // Throttling logic during rapid slider movement
     let should_process = {
@@ -504,7 +601,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
         let now = Instant::now();
         let elapsed = now.duration_since(*last_load);
         
-        if elapsed.as_millis() >= THROTTLE_INTERVAL_MS as u128 {
+        if elapsed.as_millis() >= PLATFORM_THROTTLE_MS as u128 {
             *last_load = now;
             true
         } else {
@@ -518,7 +615,39 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
         return Task::none();
     }
 
-    if !use_async {
+    // Always use async on Linux for better responsiveness
+    #[cfg(target_os = "linux")]
+    let use_async = true;
+
+    if use_async {
+        // Simplified approach: always use pane_index = -1 for both master slider and individual panes
+        // Get the appropriate pane based on pane_index
+        let pane = if pane_index == -1 {
+            // Master slider - use first pane
+            match panes.get(0) {
+                Some(p) => p,
+                None => return Task::none(),
+            }
+        } else {
+            // Individual pane slider
+            match panes.get(pane_index as usize) {
+                Some(p) => p,
+                None => return Task::none(),
+            }
+        };
+        
+        if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
+            let img_paths = pane.img_cache.image_paths.clone();
+            
+            // Use the async image loading task with SliderImageWidgetLoaded for all cases
+            return Task::perform(
+                create_async_image_widget_task(img_paths, pos),
+                |result| Message::SliderImageWidgetLoaded(result)
+            );
+        }
+        
+        Task::none()
+    } else {
         if pane_index == -1 {
             // Perform dynamic loading:
             // Load the image at pos (center) synchronously,
@@ -557,35 +686,12 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
             }
             Task::none()
         }
-    } else {
-        // Modified async loading
-        if pane_index == -1 {
-            // Only load for the first pane during sliding to reduce load
-            let pane = match panes.get(0) {
-                Some(p) => p,
-                None => return Task::none(),
-            };
-            
-            if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
-                let img_cache = pane.img_cache.image_paths.clone();
-                let resize = true;
-                
-                Task::perform(
-                    create_async_loading_task(img_cache, pos, resize),
-                    |result| Message::SliderImageLoaded(result)
-                )
-            } else {
-                Task::none()
-            }
-        } else {
-            // ... existing single pane async loading ...
-            // (keep your current implementation for this branch)
-            Task::none()
-        }
     }
 }
 
-// Result<(usize, Arc<wgpu::Texture>), usize> {
+
+#[allow(dead_code)]
+/// Loads the image at pos synchronously into the cache using CpuScene
 fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io::Error> {
     // Load the image at pos synchronously 
     let img_cache = &mut pane.img_cache;
@@ -655,6 +761,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
 }
 
 
+/// Loads the image at pos synchronously into the cache using Iced's image widget
 fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Result<(), io::Error> {
     // Load the image at pos synchronously into the center position of cache
     // Assumes that the image at pos is already in the cache
@@ -675,12 +782,24 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
             }
             img_cache.cached_data[target_index] = Some(image);
             img_cache.cached_image_indices[target_index] = pos as isize;
-
             img_cache.current_index = pos;
+
             let loaded_image = img_cache.get_initial_image().unwrap().as_vec().unwrap();
-            
-            info!("loaded_image: {:?}", loaded_image.len());
             pane.slider_image = Some(iced::widget::image::Handle::from_bytes(loaded_image));
+            
+            /*let img_path = match img_cache.image_paths.get(pos) {
+                Some(path) => path,
+                None => return Err(io::Error::new(io::ErrorKind::NotFound, "Image path not found")),
+            };
+
+            //let bytes = resize_and_load_image(img_path, true).unwrap();
+            //pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+
+            let (img, orig_width, orig_height) = resize_and_load_image(img_path, true).unwrap();
+            info!("slider image size: {}x{}", orig_width, orig_height);
+            let rgba = img.to_rgba8();
+            let raw_bytes = rgba.into_raw();
+            pane.slider_image = Some(iced::widget::image::Handle::from_rgba(orig_width, orig_height, raw_bytes));*/
 
             Ok(())
         }

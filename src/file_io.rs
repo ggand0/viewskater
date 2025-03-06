@@ -58,6 +58,44 @@ pub fn get_filename(path: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Reads an image file into a byte vector.
+/// 
+/// This function simply reads the raw bytes from a file without any processing
+/// or validation, making it faster than going through the image crate for raw data.
+/// 
+/// # Arguments
+/// * `path` - The path to the image file
+/// 
+/// # Returns
+/// * `Ok(Vec<u8>)` - The raw bytes of the image file
+/// * `Err(io::Error)` - An error if reading fails
+pub fn read_image_bytes(path: &PathBuf) -> Result<Vec<u8>, std::io::Error> {
+    use std::fs;
+    use std::io;
+    
+    // Verify the file exists before attempting to read
+    if !path.exists() {
+        return Err(io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("File not found: {}", path.display())
+        ));
+    }
+    
+    // Try to read the file bytes directly
+    match fs::read(path) {
+        Ok(bytes) => {
+            // Log only the size for performance
+            debug!("Read {} bytes from {}", bytes.len(), path.display());
+            Ok(bytes)
+        },
+        Err(err) => {
+            // Log the error and return it
+            error!("Failed to read file {}: {}", path.display(), err);
+            Err(err)
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
     let file_path = path.as_ref();

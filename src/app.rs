@@ -57,7 +57,7 @@ use crate::widgets::shader::scene::Scene;*/
 use pollster;
 use iced_wgpu::{wgpu, Engine, Renderer};
 use iced_winit::core::Theme as WinitTheme;
-
+use iced::widget::image::Handle;
 //use iced_winit::core::{Color};
 use iced_widget::{slider, text_input};
 
@@ -536,6 +536,7 @@ pub enum Message {
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     SliderImageLoaded(Result<(usize, CachedData), usize>),
+    SliderImageWidgetLoaded(Result<(usize, Handle), usize>),
     Event(Event),
     //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
@@ -710,6 +711,26 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 }
             }
+
+            Message::SliderImageWidgetLoaded(result) => {
+                match result {
+                    Ok((pos, handle)) => {
+                        let pane = &mut self.panes[0]; // We're using pane_index = -1 approach
+                        
+                        // Update the image widget handle directly
+                        pane.slider_image = Some(handle);
+                        
+                        // Also update the cache state to keep everything in sync
+                        pane.img_cache.current_index = pos;
+                        
+                        // No additional processing needed - the UI will use the handle directly
+                        debug!("Slider image loaded for position {}", pos);
+                    },
+                    Err(pos) => {
+                        warn!("SLIDER: Failed to load image widget for position {}", pos);
+                    }
+                }
+            },
 
             Message::SliderImageLoaded(result) => {
                 match result {
