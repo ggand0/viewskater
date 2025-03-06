@@ -293,10 +293,12 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
     #[cfg(target_os = "linux")]
     const PLATFORM_THROTTLE_MS: u64 = 10; // Much lower for Linux/X11
     
-    #[cfg(not(target_os = "linux"))]
-    const PLATFORM_THROTTLE_MS: u64 = THROTTLE_INTERVAL_MS;
+    // TODO: Make this an option
+    //#[cfg(not(target_os = "linux"))]
+    //const PLATFORM_THROTTLE_MS: u64 = THROTTLE_INTERVAL_MS;
     
     // Throttling logic during rapid slider movement - With safety check
+    #[cfg(target_os = "linux")]
     let should_process = {
         let mut last_load = LAST_SLIDER_LOAD.lock().unwrap();
         let now = Instant::now();
@@ -307,6 +309,7 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
         } else {
             // System clock might have changed - don't crash, just process the event
             debug!("Time inconsistency detected in slider throttling");
+            
             Duration::from_millis(PLATFORM_THROTTLE_MS)
         };
         
@@ -317,6 +320,9 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
             false
         }
     };
+
+    #[cfg(not(target_os = "linux"))]
+    let should_process = true;
     
     // Skip processing if we're throttling
     if !should_process {
