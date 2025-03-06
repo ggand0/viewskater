@@ -10,7 +10,6 @@ mod macos {
     pub use iced_custom as iced;
 }
 
-use iced_graphics::image::image_rs::DynamicImage;
 #[cfg(target_os = "linux")]
 use other_os::*;
 
@@ -20,30 +19,27 @@ use macos::*;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use crate::pane;
-use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_operation, load_all_images_in_queue};
-use crate::pane::{Pane, get_master_slider_value};
-use crate::widgets::shader::scene::Scene;
-use crate::menu::PaneLayout;
-use crate::loading_status::LoadingStatus;
-use crate::app::Message;
+use image;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Instant, Duration};
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use iced::widget::image::Handle;
+use iced_wgpu::wgpu;
 use iced::Task;
 use std::io;
 use crate::Arc;
-use iced_wgpu::wgpu;
+
+use crate::pane;
+use crate::pane::Pane;
+use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_operation, load_all_images_in_queue};
+use crate::widgets::shader::scene::Scene;
+use crate::loading_status::LoadingStatus;
+use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy};
-use crate::cache::cache_utils::{load_image_resized, load_image_resized_sync, create_gpu_texture};
-use image;
-use std::path::PathBuf;
-use crate::cache::img_cache::ImageCache;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Instant, Duration};
-use std::collections::HashMap;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
-use image::GenericImageView;
+use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::file_io;
-use iced::widget::image::Handle;
 
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
 static LAST_SLIDER_LOAD: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now()));
@@ -219,7 +215,6 @@ pub fn load_remaining_images(
     // Clear the global loading queue
     loading_status.reset_image_load_queue();
     loading_status.reset_image_being_loaded_queue();
-
 
     let mut tasks = Vec::new();
 

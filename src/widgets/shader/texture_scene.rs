@@ -1,8 +1,7 @@
 use iced_widget::shader::{self, Viewport};
-use iced_winit::core::{Color, Element, Rectangle, Length::*, Theme, mouse};
+use iced_winit::core::{Rectangle, mouse};
 use iced_wgpu::wgpu;
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
-use image::GenericImageView;
 use std::sync::Arc;
 
 use crate::cache::img_cache::CachedData;
@@ -74,9 +73,9 @@ impl shader::Primitive for TexturePrimitive {
         bounds: &Rectangle,
         viewport: &Viewport,
     ) {
+        let debug = false;
         let scale_factor = viewport.scale_factor() as f32;
         let viewport_size = viewport.physical_size();
-
         let shader_size = (
             (bounds.width * scale_factor) as u32,
             (bounds.height * scale_factor) as u32,
@@ -95,7 +94,7 @@ impl shader::Primitive for TexturePrimitive {
                 queue,
                 format,
                 self.texture.clone(), // Use the current texture
-                //elf.atlas_size,
+                //self.atlas_size,
                 shader_size,
                 self.texture_size,
                 bounds_relative,
@@ -109,6 +108,15 @@ impl shader::Primitive for TexturePrimitive {
             pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
             let duration = start.elapsed();
             SHADER_UPDATE_STATS.lock().unwrap().add_measurement(duration);
+        }
+
+        if debug {
+            println!("SHADER_DEBUG: Initial bounds: {:?}", bounds);
+            println!("SHADER_DEBUG: Image size: {:?}", self.texture_size);
+            println!("SHADER_DEBUG: Viewport size: {:?}, scale_factor: {}", viewport_size, scale_factor);
+            println!("SHADER_DEBUG: Shader size (physical): {:?}", shader_size);
+            println!("SHADER_DEBUG: Bounds relative (normalized): {:?}", bounds_relative);
+            println!("SHADER_DEBUG: ==============================================");
         }
     }
 
@@ -134,6 +142,8 @@ impl<Message> shader::Program<Message> for TextureScene {
         _cursor: mouse::Cursor,
         bounds: Rectangle,
     ) -> Self::Primitive {
+        println!("TEXTURE_SCENE_DEBUG: Bounds in TextureScene.draw(): {:?}", bounds);
+        println!("TEXTURE_SCENE_DEBUG: Texture size: {:?}", self.texture_size);
         if let Some(texture) = &self.texture {
             TexturePrimitive::new(
                 Arc::clone(texture),  // Pass the current GPU texture
@@ -145,132 +155,3 @@ impl<Message> shader::Program<Message> for TextureScene {
         }
     }
 }
-
-
-
-/*impl shader::Primitive for Primitive {
-    fn prepare(
-        &self,
-        device: &iced_wgpu::wgpu::Device,
-        queue: &iced_wgpu::wgpu::Queue,
-        format: iced_wgpu::wgpu::TextureFormat,
-        storage: &mut shader::Storage,
-        bounds: &Rectangle,  // Use this to get the actual shader widget size
-        viewport: &Viewport, // No longer used for size calculation
-    ) {
-        let scale_factor = viewport.scale_factor() as f32;
-        let window_size = viewport.physical_size();
-        let viewport_size = viewport.physical_size();
-
-        let shader_size = (
-            (bounds.width * viewport.scale_factor() as f32) as u32,
-            (bounds.height * viewport.scale_factor() as f32) as u32,
-        );
-        
-        let bounds_physical = (
-            (bounds.x * scale_factor) as f32,
-            (bounds.y * scale_factor) as f32,
-            (bounds.width * scale_factor) as f32,
-            (bounds.height * scale_factor) as f32,
-        );
-    
-        let bounds_relative = (
-            bounds_physical.0 / viewport_size.width as f32,
-            bounds_physical.1 / viewport_size.height as f32,
-            bounds_physical.2 / viewport_size.width as f32,
-            bounds_physical.3 / viewport_size.height as f32,
-        );
-
-        if !storage.has::<Pipeline>() {
-            let dim = self.textures[self.current_texture_index].1;
-            let texture = self.textures[self.current_texture_index].0.clone();
-
-            storage.store(Pipeline::new(
-                device,
-                queue,
-                format,
-                texture,
-                self.atlas_size,
-                shader_size,  // Use shader_size instead of full window size
-                dim,
-                bounds_relative,
-            ));
-        } else {
-            /*let dim = self.textures[self.current_texture_index].1;
-            let texture = self.textures[self.current_texture_index].0.clone();
-
-            storage.store(Pipeline::new(
-                device,
-                queue,
-                format,
-                texture,
-                self.atlas_size,
-                shader_size,  // Use shader_size instead of full window size
-                dim,
-                bounds_relative,
-            ));*/
-
-            let pipeline = storage.get_mut::<Pipeline>().unwrap();
-            let texture = self.textures[self.current_texture_index].0.clone();
-            let dim = self.textures[self.current_texture_index].1;
-            //println!("Primitive::prepare: self.current_texture_index: {}", self.current_texture_index);
-
-            pipeline.update_vertices(device, bounds_relative);
-            pipeline.update_texture(device, queue, texture);
-            pipeline.update_screen_uniforms(queue, dim, shader_size, bounds_relative);
-
-            // TODO: Update the pipeline with the new texture
-            // let pipeline = storage.get::<Pipeline>().unwrap();
-
-            // Calculate the scaled dimensions for maintaining aspect ratio
-            // ...
-
-            // Update uniforms for texture sampling
-            /*pipeline.update_uniforms(
-                queue,
-                (0, 0),                   // Offset (no atlas usage here)
-                (img_width, img_height),  // Actual image dimensions
-                shader_size,              // Actual shader widget size instead of full window
-                self.atlas_size,
-            );
-
-            // Update uniforms for screen scaling and centering
-            pipeline.update_screen_uniforms(
-                queue,
-                (img_width, img_height), // Actual image dimensions
-                shader_size,             // Shader widget size
-                (window_size.width, window_size.height), // Full window size
-            );*/
-        }
-    }
-
-    fn render(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        storage: &shader::Storage,
-        target: &wgpu::TextureView,
-        clip_bounds: &Rectangle<u32>,
-    ) {
-        let pipeline = storage.get::<Pipeline>().unwrap();
-        pipeline.render(target, encoder, clip_bounds);
-    }
-}
-
-impl<Message> shader::Program<Message> for Scene {
-    type State = ();
-    type Primitive = Primitive;
-
-    fn draw(
-        &self,
-        _state: &Self::State,
-        _cursor: mouse::Cursor,
-        bounds: Rectangle,
-    ) -> Self::Primitive {
-        Primitive::new(
-            self.current_image_index,
-            self.atlas_size,
-            self.textures.clone(),
-            bounds,
-        )
-    }
-}*/
