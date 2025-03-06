@@ -5,6 +5,7 @@ use image::{GenericImageView, ImageFormat, DynamicImage};
 use std::sync::Arc;
 use std::time::Instant;
 use log::{debug, info, warn, error};
+use std::collections::HashMap;
 
 use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
@@ -17,9 +18,9 @@ static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("CPU Shader Update"))
 });
 
-// Global texture cache
-static TEXTURE_CACHE: Lazy<Mutex<TextureCache>> = Lazy::new(|| {
-    Mutex::new(TextureCache::new())
+// Change from a single global cache to a map of pane-specific caches
+static TEXTURE_CACHES: Lazy<Mutex<HashMap<String, TextureCache>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
 });
 
 #[derive(Debug, Default)]
@@ -74,10 +75,11 @@ impl CpuScene {
     }
     
     // Create GPU texture from CPU bytes - expose as public
-    pub fn ensure_texture(&mut self, device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Option<Arc<wgpu::Texture>> {
+    pub fn ensure_texture(&mut self, device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>, pane_id: &str) -> Option<Arc<wgpu::Texture>> {
         if self.needs_update || self.texture.is_none() {
             let start = Instant::now();
-            debug!("CpuScene::ensure_texture - Using cached or creating texture from {} bytes", self.image_bytes.len());
+            debug!("CpuScene::ensure_texture - Using cached or creating texture from {} bytes for pane {}", 
+                   self.image_bytes.len(), pane_id);
             
             // Validate image data before attempting to create texture
             if self.image_bytes.is_empty() {
@@ -87,9 +89,13 @@ impl CpuScene {
             
             if self.use_cached_texture {
                 let cache_start = Instant::now();
-                if let Ok(mut cache) = TEXTURE_CACHE.lock() {
+                if let Ok(mut caches) = TEXTURE_CACHES.lock() {
                     let cache_lock_time = cache_start.elapsed();
-                    debug!("CpuScene::ensure_texture - Acquired texture cache lock in {:?}", cache_lock_time);
+                    debug!("CpuScene::ensure_texture - Acquired texture caches lock in {:?}", cache_lock_time);
+                    
+                    // Get or create the cache for this specific pane
+                    let cache = caches.entry(pane_id.to_string())
+                                     .or_insert_with(TextureCache::new);
                     
                     let texture_start = Instant::now();
                     if let Some(texture) = cache.get_or_create_texture(
@@ -99,22 +105,87 @@ impl CpuScene {
                         self.texture_size
                     ) {
                         let texture_time = texture_start.elapsed();
-                        debug!("CpuScene::ensure_texture - get_or_create_texture took {:?}", texture_time);
+                        debug!("CpuScene::ensure_texture - get_or_create_texture took {:?} for pane {}", 
+                               texture_time, pane_id);
                         
                         self.texture = Some(Arc::clone(&texture));
                         self.needs_update = false;
                         
-                        // Timing statistics
-                        //let elapsed = start.elapsed();
-                        //if let Ok(mut stats) = SHADER_UPDATE_STATS.lock() {
-                        //    stats.add_measurement(elapsed);
-                        //}
-                        //debug!("CpuScene::ensure_texture - Retrieved texture in {:?}", elapsed);
-                    } else {
-                        error!("CpuScene::ensure_texture - Failed to create or retrieve texture from cache");
+                        let total_time = start.elapsed();
+                        debug!("CpuScene::ensure_texture - Total time: {:?} for pane {}", 
+                               total_time, pane_id);
+                        
+                        return Some(Arc::clone(&texture));
                     }
-                } else {
-                    warn!("CpuScene::ensure_texture - Failed to acquire texture cache lock");
+                }
+                
+                // If we failed to get/create a texture from the cache, fallback to direct creation
+                error!("Failed to get/create texture from cache for pane {}", pane_id);
+            }
+            
+            // Direct texture creation (fallback or when cache is disabled)
+            let texture_start = Instant::now();
+            match image::load_from_memory(&self.image_bytes) {
+                Ok(img) => {
+                    let rgba = img.to_rgba8();
+                    let dimensions = img.dimensions();
+                    
+                    if dimensions.0 == 0 || dimensions.1 == 0 {
+                        error!("CpuScene::ensure_texture - Invalid image dimensions: {}x{}", dimensions.0, dimensions.1);
+                        return None;
+                    }
+                    
+                    debug!("CpuScene::ensure_texture - Creating texture with dimensions {}x{}", dimensions.0, dimensions.1);
+                    
+                    let texture = device.create_texture(
+                        &wgpu::TextureDescriptor {
+                            label: Some("CpuScene Texture"),
+                            size: wgpu::Extent3d {
+                                width: dimensions.0,
+                                height: dimensions.1,
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                            view_formats: &[],
+                        }
+                    );
+                    
+                    queue.write_texture(
+                        wgpu::ImageCopyTexture {
+                            texture: &texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        &rgba,
+                        wgpu::ImageDataLayout {
+                            offset: 0,
+                            bytes_per_row: Some(4 * dimensions.0),
+                            rows_per_image: Some(dimensions.1),
+                        },
+                        wgpu::Extent3d {
+                            width: dimensions.0,
+                            height: dimensions.1,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                    
+                    let texture_arc = Arc::new(texture);
+                    self.texture = Some(Arc::clone(&texture_arc));
+                    self.needs_update = false;
+                    
+                    let creation_time = texture_start.elapsed();
+                    debug!("Created texture directly in {:?}", creation_time);
+                    
+                    return Some(texture_arc);
+                },
+                Err(e) => {
+                    error!("CpuScene::ensure_texture - Failed to load image: {:?}", e);
+                    return None;
                 }
             }
         }

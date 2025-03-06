@@ -17,7 +17,7 @@ use other_os::*;
 use macos::*;
 
 #[allow(unused_imports)]
-use log::{debug, error, warn};
+use log::{debug, error, warn, info};
 use crate::Arc;
 use crate::pane;
 use crate::loading_status::LoadingStatus;
@@ -36,6 +36,7 @@ pub fn handle_load_operation_all(
     op: LoadOperation,
     operation_type: LoadOperationType,
 ) {
+    info!("Handling load operation");
     loading_status.being_loaded_queue.pop_front();
 
     // Early return for Shift operations as they don't involve loading
@@ -55,6 +56,7 @@ pub fn handle_load_operation_all(
         .collect();
 
     for (pane_index, pane) in panes_to_load.iter_mut().enumerate() {
+        info!("Loading pane {}", pane_index);
         let cache = &mut pane.img_cache;
         let target_index = match &target_indices[pane_index] {
             Some(index) => *index,
@@ -106,7 +108,7 @@ pub fn handle_load_operation_all(
                 if let Ok(cached_image) = cache.get_initial_image() {
                     match cached_image {
                         CachedData::Cpu(data) => {
-                            debug!("Setting CPU image as current_image");
+                            info!("Setting CPU image as current_image");
                             pane.current_image = CachedData::Cpu(data.clone());
                             pane.scene = Some(Scene::new(Some(&CachedData::Cpu(data.clone()))));
                             
@@ -115,7 +117,7 @@ pub fn handle_load_operation_all(
                                 if let Some(queue) = &pane.queue {
                                     if let Some(scene) = &mut pane.scene {
                                         debug!("Ensuring texture is created for loaded image");
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
                                     }
                                 }
                             } else {

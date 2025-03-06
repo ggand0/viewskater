@@ -76,6 +76,7 @@ pub struct Pane {
     pub backend: wgpu::Backend,
     pub device: Option<Arc<wgpu::Device>>,
     pub queue: Option<Arc<wgpu::Queue>>,
+    pub pane_id: usize, // New field for pane identification
 }
 
 impl Default for Pane {
@@ -98,12 +99,13 @@ impl Default for Pane {
             device: None,
             queue: None,
             slider_image: None,
+            pane_id: 0, // Default to pane 0
         }
     }
 }
 
 impl Pane {
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend, pane_id: usize) -> Self {
         let scene = Scene::new(None);
         // Create a dedicated CPU-based scene for slider
         let slider_scene = Scene::CpuScene(CpuScene::new(vec![], true));
@@ -122,10 +124,11 @@ impl Pane {
             is_selected_cache: true,
             scene: Some(scene),
             slider_scene: Some(slider_scene),
-            backend: backend,
+            backend,
             device: Some(device),
             queue: Some(queue),
             slider_image: None,
+            pane_id, // Use the provided pane_id
         }
     }
 
@@ -148,9 +151,28 @@ impl Pane {
 
     pub fn resize_panes(panes: &mut Vec<Pane>, new_size: usize) {
         if new_size > panes.len() {
-            // Add new panes
-            for _ in panes.len()..new_size {
-                panes.push(Pane::default());
+            // Add new panes with proper IDs
+            for i in panes.len()..new_size {
+                if let Some(first_pane) = panes.first() {
+                    if let (Some(device), Some(queue)) = (&first_pane.device, &first_pane.queue) {
+                        panes.push(Pane::new(
+                            Arc::clone(device), 
+                            Arc::clone(queue), 
+                            first_pane.backend,
+                            i // Use the index as the pane_id
+                        ));
+                    } else {
+                        // Fallback if no device/queue available
+                        let mut new_pane = Pane::default();
+                        new_pane.pane_id = i;
+                        panes.push(new_pane);
+                    }
+                } else {
+                    // Fallback if no existing panes
+                    let mut new_pane = Pane::default();
+                    new_pane.pane_id = i;
+                    panes.push(new_pane);
+                }
             }
         } else if new_size < panes.len() {
             // Truncate panes, preserving the first `new_size` elements
@@ -207,7 +229,7 @@ impl Pane {
                         if let Some(device) = &self.device {
                             if let Some(queue) = &self.queue {
                                 if let Some(scene) = &mut self.scene {
-                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue), self.pane_id);
                                 }
                             }
                         }
@@ -290,7 +312,7 @@ impl Pane {
                             if let Some(device) = &self.device {
                                 if let Some(queue) = &self.queue {
                                     if let Some(scene) = &mut self.scene {
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), self.pane_id);
                                     }
                                 }
                             }
@@ -455,8 +477,8 @@ impl Pane {
             _file_paths,
             CONFIG.cache_size,
             //CacheStrategy::Atlas,
-            //CacheStrategy::Cpu,
-            CacheStrategy::Gpu,
+            CacheStrategy::Cpu,
+            //CacheStrategy::Gpu,
             initial_index,
             Some(device_clone),
             Some(queue_clone),
@@ -500,7 +522,7 @@ impl Pane {
                     
                     // Ensure texture is created for CPU images
                     if let Some(scene) = &mut self.scene {
-                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue));
+                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue), self.pane_id);
                     }
                 }
                 CachedData::Atlas { atlas, entry } => {
@@ -558,6 +580,7 @@ impl Pane {
     fn build_ui_container(&self) -> Container<'_, Message, WinitTheme, Renderer> {
         if self.dir_loaded {
             if let Some(scene) = &self.scene {
+                //info!("Building pane scene={:?}",  scene);
                 let shader_widget = shader(scene)
                     .width(Fill)
                     .height(Fill);
@@ -615,6 +638,23 @@ pub fn build_ui_dual_pane_slider1(
 ) -> Element<Message, WinitTheme, Renderer> {
     let first_img = panes[0].build_ui_container();
     let second_img = panes[1].build_ui_container();
+    
+    /*debug!("Building pane {}: selected={}, dir_loaded={}, has_scene={}, has_slider_image={}",
+        0, 
+        panes[0].is_selected, 
+        panes[0].dir_loaded,
+        panes[0].scene.is_some(),
+        panes[0].slider_image.is_some(),
+        
+    );
+    debug!("Building pane {}: selected={}, dir_loaded={}, has_scene={}, has_slider_image={}",
+        1, 
+        panes[1].is_selected, 
+        panes[1].dir_loaded,
+        panes[1].scene.is_some(),
+        panes[1].slider_image.is_some(),
+        
+    );*/
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(

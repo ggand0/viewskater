@@ -160,8 +160,7 @@ impl DataViewer {
             show_footer: true,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
-            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend)],
-            //panes: vec![pane::Pane::new()],
+            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0)],
             loading_status: loading_status::LoadingStatus::default(),
             skate_right: false,
             skate_left: false,
@@ -174,7 +173,6 @@ impl DataViewer {
             last_slider_update: Instant::now(),
             is_slider_moving: false,
             backend: backend,
-            //cache_strategy: CacheStrategy::Atlas,
             cache_strategy: CacheStrategy::Cpu,
         }
     }
@@ -201,6 +199,21 @@ impl DataViewer {
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
         debug!("last_opened_pane: {}", self.last_opened_pane);
 
+        // Make sure we have enough panes
+        if pane_index >= self.panes.len() {
+            // Create new panes with proper device and queue initialization
+            while self.panes.len() <= pane_index {
+                let new_pane_id = self.panes.len();
+                debug!("Creating new pane at index {}", new_pane_id);
+                self.panes.push(pane::Pane::new(
+                    Arc::clone(&self.device), 
+                    Arc::clone(&self.queue),
+                    self.backend,
+                    new_pane_id // Pass the pane_id matching its index
+                ));
+            }
+        }
+
         let pane_file_lengths = self.panes.iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
         let pane = &mut self.panes[pane_index];
@@ -210,19 +223,13 @@ impl DataViewer {
             Arc::clone(&self.device),
             Arc::clone(&self.queue),
             self.is_gpu_supported,
-            &self.pane_layout,  // Pass the required &PaneLayout
-            &pane_file_lengths, // Pass &[usize]
+            &self.pane_layout,
+            &pane_file_lengths,
             pane_index,
             path,
             self.is_slider_dual,
             &mut self.slider_value,
         );
-    
-        debug!("pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
-        if pane_index >= self.panes.len() {
-            self.panes.resize_with(pane_index + 1, || pane::Pane::default());
-            debug!("resized pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
-        }
 
         self.last_opened_pane = pane_index as isize;
     }
@@ -759,7 +766,7 @@ impl iced_winit::runtime::Program for DataViewer {
                             if let Some(device) = &pane.device {
                                 if let Some(queue) = &pane.queue {
                                     if let Some(scene) = &mut pane.slider_scene {
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
                                     }
                                 }
                             }
