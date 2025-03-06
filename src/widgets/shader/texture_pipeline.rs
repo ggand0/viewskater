@@ -14,19 +14,20 @@ static SHADER_RENDER_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Shader Render"))
 });
 
+#[derive(Debug)]
 pub struct TexturePipeline {
-    pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-    uniform_buffer: wgpu::Buffer,
+    pub pipeline: wgpu::RenderPipeline,
+    pub vertex_buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+    pub uniform_buffer: wgpu::Buffer,
     //atlas_size: (u32, u32),
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
-    window_size: (u32, u32),
-    screen_rect_buffer: wgpu::Buffer,
-    texture: Arc<wgpu::Texture>, // Store shared ownership of Texture
-    bounds: (f32, f32, f32, f32), // Store shader widget bounds
-    vertices: [f32; 16],
+    pub index_buffer: wgpu::Buffer,
+    pub num_indices: u32,
+    pub window_size: (u32, u32),
+    pub screen_rect_buffer: wgpu::Buffer,
+    pub texture: Arc<wgpu::Texture>, // Store shared ownership of Texture
+    pub bounds: (f32, f32, f32, f32), // Store shader widget bounds
+    pub vertices: [f32; 16],
 }
 
 impl TexturePipeline {
