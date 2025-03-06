@@ -48,6 +48,9 @@ use iced_wgpu::wgpu;
 use iced_core::image::Handle;
 use crate::cache::img_cache::CacheStrategy;
 use crate::widgets::shader::cpu_scene::CpuScene;
+use iced_core::Length::Fill;
+use iced_widget::{center, Container};
+use iced_widget::shader;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -452,7 +455,8 @@ impl Pane {
             _file_paths,
             CONFIG.cache_size,
             //CacheStrategy::Atlas,
-            CacheStrategy::Cpu,
+            //CacheStrategy::Cpu,
+            CacheStrategy::Gpu,
             initial_index,
             Some(device_clone),
             Some(queue_clone),
@@ -551,22 +555,26 @@ impl Pane {
         
     }
 
-    /*pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {
-        let img: iced::widget::Container<Message>  = if self.dir_loaded {
-            container(column![
-                viewer::Viewer::new(self.current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-            ])   
+    fn build_ui_container(&self) -> Container<'_, Message, WinitTheme, Renderer> {
+        if self.dir_loaded {
+            if let Some(scene) = &self.scene {
+                let shader_widget = shader(scene)
+                    .width(Fill)
+                    .height(Fill);
+                container(center(shader_widget))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            } else {
+                container(text("No image loaded"))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            }
         } else {
-            container(column![
-                text(String::from(""))
+            container(text(""))
                 .width(Length::Fill)
                 .height(Length::Fill)
-            ])
-        };
-        img
-    }*/
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -601,12 +609,12 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     pane.img_cache.current_index as usize
 }
 
-/*pub fn build_ui_dual_pane_slider1(
-    panes: &[Pane], ver_divider_position: Option<u16>
-//) -> Element<Message> {
+pub fn build_ui_dual_pane_slider1(
+    panes: &[Pane], 
+    ver_divider_position: Option<u16>
 ) -> Element<Message, WinitTheme, Renderer> {
-    let first_img: iced::widget::Container<Message>  = panes[0].build_ui_dual_pane_slider1();
-    let second_img: iced::widget::Container<Message> = panes[1].build_ui_dual_pane_slider1();
+    let first_img = panes[0].build_ui_container();
+    let second_img = panes[1].build_ui_container();
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(
@@ -625,7 +633,9 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
 }
 
 pub fn build_ui_dual_pane_slider2(
-    panes: &[Pane], ver_divider_position: Option<u16>, show_footer: bool
+    panes: &[Pane],
+    ver_divider_position: Option<u16>,
+    show_footer: bool
 ) -> Element<Message, WinitTheme, Renderer> {
     let footer_texts = vec![
         format!(
@@ -640,36 +650,34 @@ pub fn build_ui_dual_pane_slider2(
         )
     ];
 
-    let first_img: iced::widget::Container<Message> = if panes[0].dir_loaded {
-        //container(
+    let first_img = if panes[0].dir_loaded {
         container(
-            if show_footer { column![
-                // NOTE: Wrapping the image in a container messes up the layout
-                viewer::Viewer::new(panes[0].current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                DualSlider::new(
-                    0..= (panes[0].img_cache.num_files - 1) as u16,
-                    panes[0].slider_value,
-                    0,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill),
-                get_footer(footer_texts[0].clone(), 0)
-            ]} else { column![
-                viewer::Viewer::new(panes[0].current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                DualSlider::new(
-                    0..= (panes[0].img_cache.num_files - 1) as u16,
-                    panes[0].slider_value,
-                    0,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill),
-            ]}
+            if show_footer { 
+                column![
+                    panes[0].build_ui_container(),
+                    DualSlider::new(
+                        0..=(panes[0].img_cache.num_files - 1) as u16,
+                        panes[0].slider_value,
+                        0,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                    get_footer(footer_texts[0].clone(), 0)
+                ]
+            } else { 
+                column![
+                    panes[0].build_ui_container(),
+                    DualSlider::new(
+                        0..=(panes[0].img_cache.num_files - 1) as u16,
+                        panes[0].slider_value,
+                        0,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                ]
+            }
         )
     } else {
         container(column![
@@ -679,36 +687,34 @@ pub fn build_ui_dual_pane_slider2(
         ])
     };
 
-    let second_img: iced::widget::Container<Message> = if panes[1].dir_loaded {
+    let second_img = if panes[1].dir_loaded {
         container(
-            if show_footer { column![
-                // NOTE: Wrapping the image in a container messes up the layout
-                viewer::Viewer::new(panes[1].current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                DualSlider::new(
-                    0..= (panes[1].img_cache.num_files - 1) as u16,
-                    panes[1].slider_value,
-                    1,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill),
-                get_footer(footer_texts[1].clone(), 1)
-            ]} else { column![
-                viewer::Viewer::new(panes[1].current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                DualSlider::new(
-                    0..= (panes[1].img_cache.num_files - 1) as u16,
-                    panes[1].slider_value,
-                    1,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill),
-            ]}
-
+            if show_footer { 
+                column![
+                    panes[1].build_ui_container(),
+                    DualSlider::new(
+                        0..=(panes[1].img_cache.num_files - 1) as u16,
+                        panes[1].slider_value,
+                        1,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                    get_footer(footer_texts[1].clone(), 1)
+                ]
+            } else { 
+                column![
+                    panes[1].build_ui_container(),
+                    DualSlider::new(
+                        0..=(panes[1].img_cache.num_files - 1) as u16,
+                        panes[1].slider_value,
+                        1,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                ]
+            }
         )
     } else {
         container(column![
@@ -732,4 +738,4 @@ pub fn build_ui_dual_pane_slider2(
         Message::PaneSelected
     )
     .into()
-}*/
+}

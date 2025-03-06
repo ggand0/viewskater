@@ -106,22 +106,176 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
 
-    // Choose the appropriate widget based on slider movement state
-    let first_img = if app.panes[0].dir_loaded {
-        if app.is_slider_moving && app.panes[0].slider_image.is_some() {
-            // Use regular Image widget during slider movement (much faster)
-            let image_handle = app.panes[0].slider_image.clone().unwrap();
+    match app.pane_layout {
+        PaneLayout::SinglePane => {
+            // Choose the appropriate widget based on slider movement state
+            let first_img = if app.panes[0].dir_loaded {
+                if app.is_slider_moving && app.panes[0].slider_image.is_some() {
+                    // Use regular Image widget during slider movement (much faster)
+                    let image_handle = app.panes[0].slider_image.clone().unwrap();
+                    
+                    container(
+                        center(
+                            iced_widget::image(image_handle)
+                                .content_fit(iced_winit::core::ContentFit::Contain)
+                        )
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(0)
+                    .into()
+                } else if let Some(scene) = app.panes[0].scene.as_ref() {
+                    // Use shader/scene for normal viewing (better quality)
+                    let shader_widget = shader(scene)
+                        .width(Fill)
+                        .height(Fill);
             
-            // Make sure to use a compatible image viewer that works with iced_wgpu::Renderer
+                    container(center(shader_widget))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .padding(0)
+                        .into()
+                } else {
+                    container(text("No image loaded"))
+                }
+            } else {
+                container(text("")).height(Length::Fill)
+            };
+
+            let footer = if app.show_footer {
+                get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0)
+            } else {
+                container(text("")).height(0)
+            };
+
+            let slider = if app.panes[0].dir_loaded && app.panes[0].img_cache.num_files > 1 {
+                container(DualSlider::new(
+                    0..=(app.panes[0].img_cache.num_files - 1) as u16,
+                    app.slider_value,
+                    -1,
+                    Message::SliderChanged,
+                    Message::SliderReleased,
+                )
+                .width(Length::Fill))
+                .style(|_theme| container::Style {
+                    background: Some(Color::from_rgb(1.0, 0.8, 0.8).into()), // Light red background
+                    ..container::Style::default()
+                })
+            } else {
+                container(text("")).height(0)
+            };
+
+            let slider_controls = slider
+                .width(Length::Fill)
+                .height(Length::Shrink)
+                .padding(10)
+                .align_x(Horizontal::Center);
+
+            // Create the elements with explicit types
+            let first_img_element: Element<'_, Message, WinitTheme, Renderer> = first_img.into();
+            let slider_controls_element: Element<'_, Message, WinitTheme, Renderer> = slider_controls.into();
+            let footer_element: Element<'_, Message, WinitTheme, Renderer> = footer.into();
+
+            // Create a column with explicit Element types
+            let column = Column::<Message, WinitTheme, Renderer>::with_children(vec![
+                first_img_element,
+                slider_controls_element,
+                footer_element
+            ]);
+
+            center(
+                container(column)
+                .width(Length::Fill)
+                .height(Length::Fill)
+            ).align_x(Horizontal::Center)
+            .into()
+        },
+        PaneLayout::DualPane => {
+            // Create pane elements based on whether the slider is moving
+            let first_pane = build_pane_element(&app.panes[0], app.is_slider_moving, 0);
+            let second_pane = build_pane_element(&app.panes[1], app.is_slider_moving, 1);
+            
+            // Build panes using the split component
+            let panes = pane::build_ui_dual_pane_slider1(
+                &app.panes, 
+                app.ver_divider_position
+            );
+
+            let footer_texts = vec![
+                format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files),
+                format!("{}/{}", app.panes[1].img_cache.current_index + 1, app.panes[1].img_cache.num_files),
+            ];
+
+            let footer = if app.show_footer {
+                row![
+                    get_footer(footer_texts[0].clone(), 0),
+                    get_footer(footer_texts[1].clone(), 1)
+                ]
+            } else {
+                row![]
+            };
+
+            let max_num_files = app.panes.iter().map(|p| p.img_cache.num_files).max().unwrap_or(0);
+            
+            let slider = if app.panes.iter().any(|p| p.dir_loaded) && max_num_files > 1 {
+                container(
+                    DualSlider::new(
+                        0..=(max_num_files - 1) as u16,
+                        app.slider_value,
+                        -1,
+                        Message::SliderChanged,
+                        Message::SliderReleased,
+                    ).width(Length::Fill)
+                )
+                .style(|_theme| container::Style {
+                    background: Some(Color::from_rgb(1.0, 0.8, 0.8).into()), // Light red background
+                    ..container::Style::default()
+                })
+                .width(Length::Fill)
+                .height(Length::Shrink)
+                .padding(10)
+                .align_x(Horizontal::Center)
+            } else {
+                container(text("")).height(0)
+            };
+
+            center(
+                container(
+                    column![
+                        panes,
+                        slider,
+                        footer
+                    ])
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            ).align_x(Horizontal::Center)
+            .into()
+        }
+    }
+}
+
+// Helper function to build a pane element with either shader or image
+fn build_pane_element(
+    pane: &crate::pane::Pane, 
+    is_slider_moving: bool, 
+    pane_index: usize
+) -> Element<'_, Message, WinitTheme, Renderer> {
+    if pane.dir_loaded {
+        if is_slider_moving && pane.slider_image.is_some() {
+            // Use regular Image widget during slider movement (much faster)
+            let image_handle = pane.slider_image.clone().unwrap();
+            
             container(
                 center(
                     iced_widget::image(image_handle)
-                        //.content_fit(iced_winit::core::ContentFit::Contain)
+                        .content_fit(iced_winit::core::ContentFit::Contain)
                 )
             )
             .width(Length::Fill)
             .height(Length::Fill)
-        } else if let Some(scene) = app.panes[0].scene.as_ref() {
+            .padding(0)
+            .into()
+        } else if let Some(scene) = pane.scene.as_ref() {
             // Use shader/scene for normal viewing (better quality)
             let shader_widget = shader(scene)
                 .width(Fill)
@@ -130,58 +284,16 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             container(center(shader_widget))
                 .width(Length::Fill)
                 .height(Length::Fill)
+                .padding(0)
+                .into()
         } else {
-            container(text("No image loaded"))
+            container(text("No image loaded")).into()
         }
     } else {
-        container(text("")).height(Length::Fill)
-    };
-    
-    let footer = if app.show_footer {
-        get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0)
-    } else {
-        container(text("")).height(0)
-    };
-
-    let slider = if app.panes[0].dir_loaded && app.panes[0].img_cache.num_files > 1 {
-        container(DualSlider::new(
-            0..=(app.panes[0].img_cache.num_files - 1) as u16,
-            app.slider_value,
-            -1,
-            Message::SliderChanged,
-            Message::SliderReleased,
-        )
-        .width(Length::Fill))
-    } else {
-        container(text("")).height(0)
-    };
-
-    let slider_controls = slider
-        .width(Length::Fill)
-        .height(Length::Shrink)
-        .padding(10)
-        .align_x(Horizontal::Center);
-
-    // Create the elements with explicit types
-    //let top_bar_element: Element<'_, Message, WinitTheme, Renderer> = top_bar.into();
-    let first_img_element: Element<'_, Message, WinitTheme, Renderer> = first_img.into();
-    let slider_controls_element: Element<'_, Message, WinitTheme, Renderer> = slider_controls.into();
-    let footer_element: Element<'_, Message, WinitTheme, Renderer> = footer.into();
-
-    // Create a column with explicit Element types
-    let column = Column::<Message, WinitTheme, Renderer>::with_children(vec![
-        //top_bar_element,
-        first_img_element,
-        slider_controls_element,
-        footer_element
-    ]);
-
-    center(
-        container(column)
-        .width(Length::Fill)
-        .height(Length::Fill)
-    ).align_x(Horizontal::Center)
-    .into()
+        container(text(""))
+            .height(Length::Fill)
+            .into()
+    }
 }
 
 
