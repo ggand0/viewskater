@@ -28,10 +28,11 @@ pub struct CpuScene {
     pub texture: Option<Arc<wgpu::Texture>>, // Lazily created GPU texture
     pub texture_size: (u32, u32),           // Image dimensions
     pub needs_update: bool,                 // Flag to indicate if texture needs updating
+    pub use_cached_texture: bool,           // Flag to indicate if cached texture should be used
 }
 
 impl CpuScene {
-    pub fn new(image_bytes: Vec<u8>) -> Self {
+    pub fn new(image_bytes: Vec<u8>, use_cached_texture: bool) -> Self {
         // Attempt to load dimensions from image bytes
         let dimensions = match image::load_from_memory(&image_bytes) {
             Ok(img) => {
@@ -50,6 +51,7 @@ impl CpuScene {
             texture: None,
             texture_size: dimensions,
             needs_update: true,
+            use_cached_texture: use_cached_texture,
         }
     }
     
@@ -78,36 +80,37 @@ impl CpuScene {
                 return None;
             }
             
-            let cache_start = Instant::now();
-            if let Ok(mut cache) = TEXTURE_CACHE.lock() {
-                let cache_lock_time = cache_start.elapsed();
-                debug!("CpuScene::ensure_texture - Acquired texture cache lock in {:?}", cache_lock_time);
-                
-                let texture_start = Instant::now();
-                if let Some(texture) = cache.get_or_create_texture(
-                    device, 
-                    queue, 
-                    &self.image_bytes, 
-                    self.texture_size
-                ) {
-                    let texture_time = texture_start.elapsed();
-                    debug!("CpuScene::ensure_texture - get_or_create_texture took {:?}", texture_time);
+            if self.use_cached_texture {
+                let cache_start = Instant::now();
+                if let Ok(mut cache) = TEXTURE_CACHE.lock() {
+                    let cache_lock_time = cache_start.elapsed();
+                    debug!("CpuScene::ensure_texture - Acquired texture cache lock in {:?}", cache_lock_time);
                     
-                    self.texture = Some(Arc::clone(&texture));
-                    self.needs_update = false;
-                    
-                    // Timing statistics
-                    let elapsed = start.elapsed();
-                    if let Ok(mut stats) = SHADER_UPDATE_STATS.lock() {
-                        stats.add_measurement(elapsed);
+                    let texture_start = Instant::now();
+                    if let Some(texture) = cache.get_or_create_texture(
+                        device, 
+                        queue, 
+                        &self.image_bytes, 
+                        self.texture_size
+                    ) {
+                        let texture_time = texture_start.elapsed();
+                        debug!("CpuScene::ensure_texture - get_or_create_texture took {:?}", texture_time);
+                        
+                        self.texture = Some(Arc::clone(&texture));
+                        self.needs_update = false;
+                        
+                        // Timing statistics
+                        //let elapsed = start.elapsed();
+                        //if let Ok(mut stats) = SHADER_UPDATE_STATS.lock() {
+                        //    stats.add_measurement(elapsed);
+                        //}
+                        //debug!("CpuScene::ensure_texture - Retrieved texture in {:?}", elapsed);
+                    } else {
+                        error!("CpuScene::ensure_texture - Failed to create or retrieve texture from cache");
                     }
-                    
-                    debug!("CpuScene::ensure_texture - Retrieved texture in {:?}", elapsed);
                 } else {
-                    error!("CpuScene::ensure_texture - Failed to create or retrieve texture from cache");
+                    warn!("CpuScene::ensure_texture - Failed to acquire texture cache lock");
                 }
-            } else {
-                warn!("CpuScene::ensure_texture - Failed to acquire texture cache lock");
             }
         }
         

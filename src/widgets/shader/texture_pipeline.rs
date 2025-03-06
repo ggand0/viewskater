@@ -26,6 +26,7 @@ pub struct TexturePipeline {
     screen_rect_buffer: wgpu::Buffer,
     texture: Arc<wgpu::Texture>, // Store shared ownership of Texture
     bounds: (f32, f32, f32, f32), // Store shader widget bounds
+    vertices: [f32; 16],
 }
 
 impl TexturePipeline {
@@ -64,8 +65,6 @@ impl TexturePipeline {
             contents: bytemuck::cast_slice(indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-
-        
 
         // Uniform buffer for offsets and scaling
         let (width, height) = image_dimensions; // Dimensions of the first image
@@ -176,8 +175,6 @@ impl TexturePipeline {
             0.0,  // Offset X (NDC)
             0.0, // Offset Y (NDC, flipped)
         ];
-        //println!("DEBUG: screen_rect_data: {:?}", screen_rect_data);
-
 
         let screen_rect_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Screen Rect Buffer"),
@@ -280,20 +277,22 @@ impl TexturePipeline {
             screen_rect_buffer,
             texture,
             bounds: bounds_relative,
+            vertices,
         }
     }
 
 
+    #[allow(dead_code)]
     pub fn update_uniforms(
         &self,
         queue: &wgpu::Queue, // Pass the queue as a parameter
-        image_offset: (u32, u32),
+        _image_offset: (u32, u32),
         image_dimensions: (u32, u32),
         window_size: (u32, u32),
-        //atlas_size: (u32, u32),
+        atlas_size: (u32, u32),
     ) {
-        let scale_x = image_dimensions.0 as f32 / window_size.0 as f32;
-        let scale_y = image_dimensions.1 as f32 / window_size.1 as f32;
+        let _scale_x = image_dimensions.0 as f32 / window_size.0 as f32;
+        let _scale_y = image_dimensions.1 as f32 / window_size.1 as f32;
         let image_width = image_dimensions.0;
         let image_height = image_dimensions.1;
 
@@ -312,8 +311,8 @@ impl TexturePipeline {
             let width = height * image_aspect;
             (width, height)
         };
-        let offset_x = (window_size.0 as f32 - scaled_width) / 2.0;
-        let offset_y = (window_size.1 as f32 - scaled_height) / 2.0;
+        let _offset_x = (window_size.0 as f32 - scaled_width) / 2.0;
+        let _offset_y = (window_size.1 as f32 - scaled_height) / 2.0;
         
         /*let uniform_data = [
             image_offset.0 as f32 / atlas_size.0 as f32, // Normalized x offset within atlas
@@ -326,11 +325,10 @@ impl TexturePipeline {
         let uniform_data = [
             0.0, //offset_x as f32 / atlas_size.0 as f32, // Normalized x offset within atlas
             0.0, //offset_y as f32 / atlas_size.1 as f32, // Normalized y offset within atlas
-            1.0, // Scale x (width relative to the atlas)
-            1.0, // Scale y (height relative to the atlas)
+            image_dimensions.0 as f32 / atlas_size.0 as f32, // Scale x (width relative to the atlas)
+            image_dimensions.1 as f32 / atlas_size.1 as f32, // Scale y (height relative to the atlas)
         ];
 
-            
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&uniform_data));
     }
 
@@ -338,50 +336,71 @@ impl TexturePipeline {
     pub fn update_screen_uniforms(
         &self,
         queue: &wgpu::Queue,
-        image_dimensions: (u32, u32),           // Image dimensions
-        shader_size: (u32, u32),                // Shader widget's size
-        bounds_relative: (f32, f32, f32, f32),  // Normalized bounds
+        image_dimensions: (u32, u32),
+        shader_size: (u32, u32),
+        bounds_relative: (f32, f32, f32, f32),
     ) {
+        let debug = false;
         let shader_width = shader_size.0 as f32;
         let shader_height = shader_size.1 as f32;
         let image_width = image_dimensions.0 as f32;
         let image_height = image_dimensions.1 as f32;
-    
+        let vertices = self.vertices;
+        let (_left, bottom, _right, _top) = (vertices[0], vertices[1], vertices[2], vertices[3]);
+
         // Compute aspect ratios
         let image_aspect = image_width / image_height;
         let shader_aspect = shader_width / shader_height;
-    
-        // Determine scaled width and height while preserving aspect ratio
-        let (scaled_width, scaled_height) = if image_aspect > shader_aspect {
-            let width = shader_width;
-            let height = width / image_aspect;
-            (width, height)
+
+        // Calculate scale factors - the key is to use the SMALLER dimension to maintain aspect ratio
+        let (scale_x, scale_y, fit_mode) = if image_aspect > shader_aspect {
+            // Image is wider than container - fit width
+            let scale = shader_width / image_width;
+            (scale, scale, "FIT_WIDTH")
         } else {
-            let height = shader_height;
-            let width = height * image_aspect;
-            (width, height)
+            // Image is taller than container - fit height
+            let scale = shader_height / image_height;
+            (scale, scale, "FIT_HEIGHT")
         };
-    
-        // Compute normalized offset (NDC coordinates)
-        let offset_x = (shader_width - scaled_width) / 2.0;
-        let offset_y = (shader_height - scaled_height) / 2.0;
-    
-        let norm_offset_x = (offset_x / shader_width) * 2.0 - (1.0 - (scaled_width / shader_width));
-        let norm_offset_y = (offset_y / shader_height) * 2.0 - (1.0 - (scaled_height / shader_height));
-    
+
+        // Apply scaling to get final dimensions
+        let scaled_width = image_width * scale_x;
+        let scaled_height = image_height * scale_y;
+        
+        // Calculate the scale factors relative to the container size
+        let final_scale_x = scaled_width / shader_width;
+        let final_scale_y = scaled_height / shader_height;
+        
+        // Calculate the vertical gap that needs to be distributed
+        let gap_y = shader_height - scaled_height;
+        
+        // Calculate offset to center the scaled image vertically
+        // Fine-tune the vertical offset with a correction factor to match Image widget
+        // The bottom + 1.0 term accounts for asymmetric NDC space
+        let offset_correction = 0.001; // Fine-tuning parameter (may need adjustment)
+        let offset_y_ndc = (bottom + 1.0) * (1.0 - final_scale_y) / 2.0 + offset_correction;
+
         let screen_rect_data = [
-            scaled_width / shader_width,  // Scale X (normalized)
-            scaled_height / shader_height, // Scale Y (normalized)
-            norm_offset_x,  // Offset X (NDC)
-            norm_offset_y, // Offset Y (NDC, flipped)
+            final_scale_x,      // Scale X 
+            final_scale_y,      // Scale Y
+            0.0,                // Offset X (centered horizontally)
+            offset_y_ndc,       // Offset Y to center vertically
         ];
 
-        //println!(
-        //    "DEBUG: Updating screen_rect -> Shader Size: {:?}, Bounds: {:?}",
-        //    shader_size, bounds_relative
-        //);
-        //println!("DEBUG: screen_rect_data updated: {:?}", screen_rect_data);
-    
+        if debug {
+            println!("SHADER_DEBUG: ==============================================");
+            println!("SHADER_DEBUG: Container dimensions: {}x{}", shader_width, shader_height);
+            println!("SHADER_DEBUG: Image dimensions: {}x{}", image_width, image_height);
+            println!("SHADER_DEBUG: Bounds relative: {:?}", bounds_relative);
+            println!("SHADER_DEBUG: Image aspect: {}, Container aspect: {}", image_aspect, shader_aspect);
+            println!("SHADER_DEBUG: Fit mode: {}, Scale factors: x={}, y={}", fit_mode, scale_x, scale_y);
+            println!("SHADER_DEBUG: Scaled dimensions: {}x{}", scaled_width, scaled_height);
+            println!("SHADER_DEBUG: Vertical gap: {}", gap_y);
+            println!("SHADER_DEBUG: Final values: scale=[{}, {}], offset=[{}, {}]", 
+                    final_scale_x, final_scale_y, 0.0, offset_y_ndc);
+            println!("SHADER_DEBUG: ==============================================");
+        }
+
         // Update screen rect buffer
         queue.write_buffer(
             &self.screen_rect_buffer,
@@ -409,90 +428,16 @@ impl TexturePipeline {
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
+        self.vertices = vertices;
     
         //println!("Updated vertex buffer with new bounds: {:?}", bounds_relative);
     }
-    
 
-
-    // works for full screen
-    /*pub fn update_screen_uniforms(
-        &self,
-        queue: &wgpu::Queue,
-        image_dimensions: (u32, u32),
-        shader_size: (u32, u32), // Clearly represents the shader widget's size
-        window_size: (u32, u32),
-    ) {
-        println!(
-            "DEBUG: screen_rect update -> Shader Size: {:?}, Image Size: {:?}",
-            shader_size, image_dimensions
-        );
-    
-        let image_width = image_dimensions.0 as f32;
-        let image_height = image_dimensions.1 as f32;
-        let shader_width = shader_size.0 as f32;
-        let shader_height = shader_size.1 as f32;
-        let window_width = window_size.0 as f32;
-        let window_height = window_size.1 as f32;
-
-        // print everything: image,shader,window
-        println!("DEBUG: Image Size: {:?}, Shader Size: {:?}, Window Size: {:?}",
-            image_dimensions, shader_size, window_size);
-    
-        // **Calculate aspect ratios**
-        let image_aspect = image_width / image_height;
-        let shader_aspect = shader_width / shader_height;
-    
-        // **Scale image to fit within shader widget while preserving aspect ratio**
-        let (scaled_width, scaled_height) = if image_aspect > shader_aspect {
-            let width = shader_width;
-            let height = width / image_aspect;
-            (width, height)
-        } else {
-            let height = shader_height;
-            let width = height * image_aspect;
-            (width, height)
-        };
-        
-        println!("DEBUG: image_aspect: {}, shader_aspect: {}", image_aspect, shader_aspect);
-        println!("DEBUG: scaled_width: {}, scaled_height: {}", scaled_width, scaled_height);
-    
-        // **Calculate offsets to center image inside the shader widget**
-        let offset_x = (shader_width - scaled_width) / 2.0;
-        let offset_y = (shader_height - scaled_height) / 2.0;
-    
-        // 🔹 **Fix: Adjust offset normalization for centering**
-        let norm_offset_x = (offset_x / shader_width) * 2.0 - (1.0 - (scaled_width / shader_width));
-        let norm_offset_y = (offset_y / shader_height) * 2.0 - (1.0 - (scaled_height / shader_height));
-    
-        // **Store the final transformation in `screen_rect_data`**
-        let screen_rect_data = [
-            scaled_width / shader_width,  // Normalized scaled width
-            scaled_height / shader_height, // Normalized scaled height
-            norm_offset_x, // Now properly centered X
-            norm_offset_y, // Now properly centered Y
-        ];
-    
-        println!("DEBUG: screen_rect_data: {:?}", screen_rect_data);
-        println!(
-            "Shader Size: {:?}, Image Size: {:?}, Scaled Size: ({}, {})",
-            shader_size, image_dimensions, scaled_width, scaled_height
-        );
-        println!(
-            "Offset X: {}, Offset Y: {} (Ensuring it stays centered)",
-            norm_offset_x, norm_offset_y
-        );
-    
-        queue.write_buffer(
-            &self.screen_rect_buffer,
-            0,
-            bytemuck::cast_slice(&screen_rect_data),
-        );
-    }*/
-
-    pub fn update_texture(&mut self,
+    pub fn update_texture(
+        &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue, new_texture: Arc<wgpu::Texture>) {
+        _queue: &wgpu::Queue,
+        new_texture: Arc<wgpu::Texture>) {
 
         self.texture = new_texture.clone(); // Update stored texture reference
 

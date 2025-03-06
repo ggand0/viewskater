@@ -34,12 +34,6 @@ fn vs_main(
     return out;
 }
 
-/*
-@fragment
-fn fs_main(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32> {
-    // Sample the texture directly using tex_coords
-    return textureSample(my_texture, my_sampler, tex_coords);
-}*/
 @fragment
 fn fs_main(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32> {
     let color = textureSample(my_texture, my_sampler, tex_coords);

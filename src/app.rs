@@ -57,12 +57,13 @@ use crate::widgets::shader::scene::Scene;*/
 use pollster;
 use iced_wgpu::{wgpu, Engine, Renderer};
 use iced_winit::core::Theme as WinitTheme;
-
+use iced::widget::image::Handle;
 //use iced_winit::core::{Color};
 use iced_widget::{slider, text_input};
 
 use crate::cache::img_cache::LoadOperation;
-use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
+use crate::navigation_keyboard::{move_right_all, move_left_all};
+use crate::navigation_slider::{update_pos, load_remaining_images};
 use crate::menu::PaneLayout;
 use crate::pane::Pane;
 use crate::widgets::shader::scene::Scene;
@@ -76,10 +77,14 @@ use crate::loading;
 //use iced_widget::modal as widget_modal;
 
 use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
-
+use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
+use crate::widgets::shader::cpu_scene::CpuScene;
+use crate::widgets::shader::texture_scene::TextureScene;
+use crate::navigation_slider::LATEST_SLIDER_POS;
+use std::sync::atomic::Ordering;
 
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("App Update"))
@@ -530,7 +535,8 @@ pub enum Message {
     FolderOpened(Result<String, file_io::Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
-    SliderImageLoaded(Result<(usize, Arc<wgpu::Texture>), usize>), 
+    SliderImageLoaded(Result<(usize, CachedData), usize>),
+    SliderImageWidgetLoaded(Result<(usize, Handle), usize>),
     Event(Event),
     //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
@@ -706,143 +712,123 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
 
-            Message::SliderImageLoaded(result) => {
-                // if slider is already released, ignore the result
-                if !self.is_slider_moving {
-                    debug!("Slider is not moving, ignoring SliderImageLoaded result");
-                    return Task::none();
-                } else {
-                    debug!("SliderImageLoaded result: {:?}", result);
-                }
-                
+            Message::SliderImageWidgetLoaded(result) => {
                 match result {
-                    Ok((pos, texture)) => {
-                        let pane = &mut self.panes[0]; // Assuming single-pane slider
-                        let img_cache = &mut pane.img_cache;
-
-                        // Update indices in the cache
-                        let target_index: usize;
-                        if pos < img_cache.cache_count {
-                            target_index = pos;
-                            img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
-                        } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
-                            //target_index = img_cache.image_paths.len() - pos;
-                            target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
-                            img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
-                        } else {
-                            target_index = img_cache.cache_count;
-                            img_cache.current_offset = 0;
-                        }
-                        img_cache.cached_image_indices[target_index] = pos as isize;
-                        img_cache.current_index = pos;
-            
-                        // 🔹 Remove processed request from queue
-                        if let Some(scene) = pane.scene.as_mut() {
-                            scene.update_texture(Arc::clone(&texture));
-                        } else {
-                            pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
-                        }
-            
-                        debug!("Slider image fully processed for pos {}", pos);
-                    }
+                    Ok((pos, handle)) => {
+                        let pane = &mut self.panes[0]; // We're using pane_index = -1 approach
+                        
+                        // Update the image widget handle directly
+                        pane.slider_image = Some(handle);
+                        
+                        // Also update the cache state to keep everything in sync
+                        pane.img_cache.current_index = pos;
+                        
+                        // No additional processing needed - the UI will use the handle directly
+                        debug!("Slider image loaded for position {}", pos);
+                    },
                     Err(pos) => {
-                        debug!("Failed to load slider image for pos {}", pos);
+                        warn!("SLIDER: Failed to load image widget for position {}", pos);
                     }
                 }
-            
-                
+            },
+
+            Message::SliderImageLoaded(result) => {
+                match result {
+                    Ok((pos, cached_data)) => {
+                        /*ilet current_slider_pos = LATEST_SLIDER_POS.load(Ordering::SeqCst);
+                        
+                        // Skip processing outdated positions unless it's close to current position
+                        f pos != current_slider_pos && (pos as isize - current_slider_pos as isize).abs() > 2 {
+                            debug!("SLIDER: Skipping outdated position {}", pos);
+                            return Task::none();
+                        }*/
+                        
+                        let pane = &mut self.panes[0]; // For single-pane slider
+                        
+                        // Update the scene based on data type
+                        if let CachedData::Cpu(bytes) = &cached_data {
+                            debug!("SliderImageLoaded: loaded data: {:?}", bytes.len());
+
+                            // Create or update the slider scene
+                            pane.current_image = CachedData::Cpu(bytes.clone());
+                            //pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
+                            pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(
+                                bytes.clone(), true)));
+
+                            // Ensure texture is created for CPU images
+                            if let Some(device) = &pane.device {
+                                if let Some(queue) = &pane.queue {
+                                    if let Some(scene) = &mut pane.slider_scene {
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Err(pos) => {
+                        warn!("SLIDER: Failed to load image for position {}", pos);
+                    }
+                }
             }
             
             
             Message::SliderChanged(pane_index, value) => {
+                debug!("SLIDER_DEBUG: SliderChanged from {} to {} (delta: {})", 
+                       self.slider_value, value, (value as i32 - self.slider_value as i32).abs());
+                
                 self.is_slider_moving = true;
-                let now = Instant::now();
-            
-                // Throttle slider updates (only process one every 100ms)
-                if now.duration_since(self.last_slider_update) < Duration::from_millis(100) {
-                    return Task::none();
-                }
-                self.last_slider_update = now;
-            
-                debug!("pane_index {} slider value: {}", pane_index, value);
-            
-                // Enqueue image loading in a controlled manner
+                self.last_slider_update = Instant::now();
+                let use_async = false;
+                
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    debug!("slider - enqueue update_pos");
-            
-                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index as isize, value as usize);
+                    debug!("SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
+                    
+                    return navigation_slider::update_pos(
+                        &mut self.panes, 
+                        pane_index, 
+                        value as usize, 
+                        use_async
+                    );
                 } else {
                     let pane = &mut self.panes[pane_index as usize];
-                    let pane_index = pane_index as usize;
-            
+                    let pane_index_usize = pane_index as usize;
+                    
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
-                    debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
-            
-                    return update_pos(&self.device, &self.queue, &mut self.panes, pane_index as isize, value as usize);
+                    debug!("SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", 
+                           pane_index_usize, value);
+                    
+                    return navigation_slider::update_pos(
+                        &mut self.panes, 
+                        pane_index, 
+                        value as usize, 
+                        use_async
+                    );
                 }
             }
             
-
-            /*Message::SliderChanged(pane_index, value) => {
-                self.is_slider_moving = true;
-                let now = Instant::now();
-
-                // Ignore updates if the last update was too recent (throttle)
-                //if now.duration_since(self.last_slider_update) < Duration::from_millis(50) {
-                if now.duration_since(self.last_slider_update) < Duration::from_millis(100) {
-                //if now.duration_since(self.last_slider_update) < Duration::from_millis(1000) {
-                    return Task::none();
-                }
-
-                self.last_slider_update = now;
-
-
-                debug!("pane_index {} slider value: {}", pane_index, value);
-
-                // -1 means the master slider (broadcast operation to all panes)
-                if pane_index == -1 {
-                    self.prev_slider_value = self.slider_value;
-                    self.slider_value = value;
-                    debug!("slider - update_pos");
-                    update_pos(
-                        &self.device, &self.queue,
-                        &mut self.panes, pane_index as isize, value as usize,
-                        //self.is_slider_moving
-                    );
-                } else {
-                    let pane = &mut self.panes[pane_index as usize];
-                    let _pane_index_org = pane_index.clone();
-                    let pane_index = pane_index as usize;
-
-                    debug!("pane_index {} slider value: {}", pane_index, value);
-                    pane.prev_slider_value = pane.slider_value;
-                    pane.slider_value = value;
-                    debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
-                    debug!("pane_index {} slider value: {}", pane_index, pane.slider_value);
-
-                    update_pos(
-                        &self.device, &self.queue,
-                        &mut self.panes, pane_index as isize, value as usize,
-                        //self.is_slider_moving
-                    );
-                }
-            }*/
             Message::SliderReleased(pane_index, value) => {
-                let last_valid_pos = self.slider_value as usize;
+                debug!("SLIDER_DEBUG: SliderReleased event received");
+                let slider_move_duration = self.last_slider_update.elapsed();
+                debug!("SLIDER_DEBUG: Slider was moving for {:?}", slider_move_duration);
                 
                 self.is_slider_moving = false;
-                debug!("SLIDER RELEASED: pane_index: {}, value: {}", pane_index, value);
+                
+                // Now we can do the more intensive cache index updates
+                let pos = self.slider_value as usize;
+                debug!("SLIDER_DEBUG: Final slider position: {}", pos);
+                
+                debug!("slider released: pane_index: {}, value: {}", pane_index, value);
                 if pane_index == -1 {
-                    return load_remaining_images(
+                    return navigation_slider::load_remaining_images(
                         &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index, last_valid_pos);
+                        &mut self.panes, &mut self.loading_status, pane_index, value as usize);
                 } else {
-                    return load_remaining_images(
+                    return navigation_slider::load_remaining_images(
                         &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index as isize, last_valid_pos);
+                        &mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
                 }
             }
 
@@ -911,7 +897,7 @@ impl iced_winit::runtime::Program for DataViewer {
             );
             let update_end = Instant::now();
             let update_duration = update_end.duration_since(update_start);
-            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
+            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else if self.skate_left {
             self.update_counter = 0;
@@ -927,7 +913,7 @@ impl iced_winit::runtime::Program for DataViewer {
             );
             let update_end = Instant::now();
             let update_duration = update_end.duration_since(update_start);
-            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
+            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else {
             // Log that there's no task to perform once
@@ -937,7 +923,7 @@ impl iced_winit::runtime::Program for DataViewer {
             }
             let update_end = Instant::now();
             let update_duration = update_end.duration_since(update_start);
-            APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
+            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
 
             iced_winit::runtime::Task::none()
         }
@@ -1129,3 +1115,14 @@ fn main() -> iced::Result {
     Ok(())
 }
 */
+
+// Format duration in a human-readable way (same as in navigation_slider.rs)
+fn format_duration(duration: Duration) -> String {
+    if duration.as_millis() < 10 {
+        format!("{:.2}μs", duration.as_micros() as f64)
+    } else if duration.as_millis() < 1000 {
+        format!("{:.2}ms", duration.as_millis() as f64)
+    } else {
+        format!("{:.2}s", duration.as_secs_f64())
+    }
+}
