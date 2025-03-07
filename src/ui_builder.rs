@@ -198,7 +198,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             // Build panes using the split component
             let panes = pane::build_ui_dual_pane_slider1(
                 &app.panes, 
-                app.ver_divider_position
+                app.ver_divider_position,
+                app.is_slider_moving
             );
 
             let footer_texts = vec![
@@ -287,10 +288,12 @@ fn build_pane_element(
                 .padding(0)
                 .into()
         } else {
-            container(text("No image loaded")).into()
+            // Add debug information to see what's happening
+            container(text(format!("No image loaded in pane {}", pane_index))).into()
         }
     } else {
-        container(text(""))
+        // Add debug information for empty panes
+        container(text(format!("No directory loaded in pane {}", pane_index)))
             .height(Length::Fill)
             .into()
     }

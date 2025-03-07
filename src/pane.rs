@@ -577,13 +577,26 @@ impl Pane {
         
     }
 
-    fn build_ui_container(&self) -> Container<'_, Message, WinitTheme, Renderer> {
+    fn build_ui_container(&self, is_slider_moving: bool) -> Container<'_, Message, WinitTheme, Renderer> {
         if self.dir_loaded {
-            if let Some(scene) = &self.scene {
-                //info!("Building pane scene={:?}",  scene);
+            if is_slider_moving && self.slider_image.is_some() {
+                // Use regular Image widget during slider movement (much faster)
+                let image_handle = self.slider_image.clone().unwrap();
+                
+                container(
+                    center(
+                        iced_widget::image(image_handle)
+                            .content_fit(iced_winit::core::ContentFit::Contain)
+                    )
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+            } else if let Some(scene) = &self.scene {
+                // Use shader/scene for normal viewing (better quality)
                 let shader_widget = shader(scene)
                     .width(Fill)
                     .height(Fill);
+                
                 container(center(shader_widget))
                     .width(Length::Fill)
                     .height(Length::Fill)
@@ -633,29 +646,13 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
 }
 
 pub fn build_ui_dual_pane_slider1(
-    panes: &[Pane], 
-    ver_divider_position: Option<u16>
+    panes: &[Pane],
+    ver_divider_position: Option<u16>,
+    is_slider_moving: bool
 ) -> Element<Message, WinitTheme, Renderer> {
-    let first_img = panes[0].build_ui_container();
-    let second_img = panes[1].build_ui_container();
+    let first_img = panes[0].build_ui_container(is_slider_moving);
+    let second_img = panes[1].build_ui_container(is_slider_moving);
     
-    /*debug!("Building pane {}: selected={}, dir_loaded={}, has_scene={}, has_slider_image={}",
-        0, 
-        panes[0].is_selected, 
-        panes[0].dir_loaded,
-        panes[0].scene.is_some(),
-        panes[0].slider_image.is_some(),
-        
-    );
-    debug!("Building pane {}: selected={}, dir_loaded={}, has_scene={}, has_slider_image={}",
-        1, 
-        panes[1].is_selected, 
-        panes[1].dir_loaded,
-        panes[1].scene.is_some(),
-        panes[1].slider_image.is_some(),
-        
-    );*/
-
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(
         false,
@@ -694,7 +691,7 @@ pub fn build_ui_dual_pane_slider2(
         container(
             if show_footer { 
                 column![
-                    panes[0].build_ui_container(),
+                    panes[0].build_ui_container(false),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -707,7 +704,7 @@ pub fn build_ui_dual_pane_slider2(
                 ]
             } else { 
                 column![
-                    panes[0].build_ui_container(),
+                    panes[0].build_ui_container(false),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -731,7 +728,7 @@ pub fn build_ui_dual_pane_slider2(
         container(
             if show_footer { 
                 column![
-                    panes[1].build_ui_container(),
+                    panes[1].build_ui_container(false),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -744,7 +741,7 @@ pub fn build_ui_dual_pane_slider2(
                 ]
             } else { 
                 column![
-                    panes[1].build_ui_container(),
+                    panes[1].build_ui_container(false),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
