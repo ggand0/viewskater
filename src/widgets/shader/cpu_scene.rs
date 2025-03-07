@@ -235,6 +235,7 @@ impl shader::Primitive for CpuPrimitive {
         bounds: &Rectangle,
         viewport: &Viewport,
     ) {
+        let debug = false;
         let prepare_start = Instant::now();
         let scale_factor = viewport.scale_factor() as f32;
         let viewport_size = viewport.physical_size();
@@ -250,10 +251,7 @@ impl shader::Primitive for CpuPrimitive {
             (bounds.width * scale_factor) / viewport_size.width as f32,
             (bounds.height * scale_factor) / viewport_size.height as f32,
         );
-
-        debug!("CpuPrimitive prepare - bounds: {:?}, bounds_relative: {:?}", bounds, bounds_relative);
-        debug!("CpuPrimitive prepare - viewport_size: {:?}, shader_size: {:?}", viewport_size, shader_size);
-
+        
         // Create a unique key for this pipeline based on position
         let pipeline_key = format!("cpu_pipeline_{}_{}_{}_{}", 
                                   bounds.x, bounds.y, bounds.width, bounds.height);
@@ -270,7 +268,7 @@ impl shader::Primitive for CpuPrimitive {
             
             // Check if we need to create a new pipeline for this position
             if !registry.pipelines.contains_key(&pipeline_key) {
-                debug!("Creating new TexturePipeline for CPU image with key {}", pipeline_key);
+                //debug!("Creating new TexturePipeline for CPU image with key {}", pipeline_key);
                 let pipeline_start = Instant::now();
                 
                 let pipeline = TexturePipeline::new(
@@ -286,32 +284,38 @@ impl shader::Primitive for CpuPrimitive {
                 registry.pipelines.insert(pipeline_key.clone(), pipeline);
                 
                 let pipeline_time = pipeline_start.elapsed();
-                debug!("Created new TexturePipeline in {:?}", pipeline_time);
+                //debug!("Created new TexturePipeline in {:?}", pipeline_time);
             } else {
-                debug!("Updating existing TexturePipeline for CPU image with key {}", pipeline_key);
+                //debug!("Updating existing TexturePipeline for CPU image with key {}", pipeline_key);
                 let pipeline = registry.pipelines.get_mut(&pipeline_key).unwrap();
                 
                 let vertices_start = Instant::now();
                 pipeline.update_vertices(device, bounds_relative);
                 let vertices_time = vertices_start.elapsed();
-                debug!("Updated vertices in {:?}", vertices_time);
+                //debug!("Updated vertices in {:?}", vertices_time);
                 
                 let texture_update_start = Instant::now();
                 pipeline.update_texture(device, queue, texture.clone());
                 let texture_update_time = texture_update_start.elapsed();
-                debug!("Updated texture in {:?}", texture_update_time);
+                //debug!("Updated texture in {:?}", texture_update_time);
                 
                 let uniforms_start = Instant::now();
                 pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
                 let uniforms_time = uniforms_start.elapsed();
-                debug!("Updated uniforms in {:?}", uniforms_time);
+                //debug!("Updated uniforms in {:?}", uniforms_time);
             }
         } else {
             warn!("No texture available for rendering");
         }
         
         let prepare_time = prepare_start.elapsed();
-        debug!("CpuPrimitive prepare completed in {:?}", prepare_time);
+        if debug {
+            debug!("CpuPrimitive prepare - bounds: {:?}, bounds_relative: {:?}", bounds, bounds_relative);
+            debug!("CpuPrimitive prepare - viewport_size: {:?}, shader_size: {:?}", viewport_size, shader_size);
+
+
+            debug!("CpuPrimitive prepare completed in {:?}", prepare_time);
+        }
     }
 
     fn render(

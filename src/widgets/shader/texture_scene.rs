@@ -80,7 +80,7 @@ impl shader::Primitive for TexturePrimitive {
         bounds: &Rectangle,
         viewport: &Viewport,
     ) {
-        let debug = true;
+        let debug = false;
         let scale_factor = viewport.scale_factor() as f32;
         let viewport_size = viewport.physical_size();
         let shader_size = (
