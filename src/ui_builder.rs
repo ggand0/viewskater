@@ -123,7 +123,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .padding(0)
-                    .into()
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Use shader/scene for normal viewing (better quality)
                     let shader_widget = shader(scene)
@@ -134,7 +133,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .padding(0)
-                        .into()
                 } else {
                     container(text("No image loaded"))
                 }
@@ -171,20 +169,16 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 .padding(10)
                 .align_x(Horizontal::Center);
 
-            // Create the elements with explicit types
-            let first_img_element: Element<'_, Message, WinitTheme, Renderer> = first_img.into();
-            let slider_controls_element: Element<'_, Message, WinitTheme, Renderer> = slider_controls.into();
-            let footer_element: Element<'_, Message, WinitTheme, Renderer> = footer.into();
-
-            // Create a column with explicit Element types
-            let column = Column::<Message, WinitTheme, Renderer>::with_children(vec![
-                first_img_element,
-                slider_controls_element,
-                footer_element
-            ]);
-
+            // Create the column WITHOUT converting to Element first
             center(
-                container(column)
+                container(
+                    column![
+                        top_bar,
+                        first_img,
+                        slider_controls,
+                        footer
+                    ]
+                )
                 .width(Length::Fill)
                 .height(Length::Fill)
             ).align_x(Horizontal::Center)
@@ -192,8 +186,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         },
         PaneLayout::DualPane => {
             // Create pane elements based on whether the slider is moving
-            let first_pane = build_pane_element(&app.panes[0], app.is_slider_moving, 0);
-            let second_pane = build_pane_element(&app.panes[1], app.is_slider_moving, 1);
+            //let first_pane = build_pane_element(&app.panes[0], app.is_slider_moving, 0);
+            //let second_pane = build_pane_element(&app.panes[1], app.is_slider_moving, 1);
             
             // Build panes using the split component
             let panes = pane::build_ui_dual_pane_slider1(
@@ -243,6 +237,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             center(
                 container(
                     column![
+                        top_bar,
                         panes,
                         slider,
                         footer
@@ -256,7 +251,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 }
 
 // Helper function to build a pane element with either shader or image
-fn build_pane_element(
+/*fn build_pane_element(
     pane: &crate::pane::Pane, 
     is_slider_moving: bool, 
     pane_index: usize
@@ -275,7 +270,6 @@ fn build_pane_element(
             .width(Length::Fill)
             .height(Length::Fill)
             .padding(0)
-            .into()
         } else if let Some(scene) = pane.scene.as_ref() {
             // Use shader/scene for normal viewing (better quality)
             let shader_widget = shader(scene)
@@ -286,7 +280,6 @@ fn build_pane_element(
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .padding(0)
-                .into()
         } else {
             // Add debug information to see what's happening
             container(text(format!("No image loaded in pane {}", pane_index))).into()
@@ -408,7 +401,7 @@ pub fn build_ui_bak(app: &DataViewer) -> Container<'_, Message, WinitTheme, Rend
     ).align_x(Horizontal::Center)
     .into()
 }
-
+*/
 
 /*
 /// Build the main UI layout

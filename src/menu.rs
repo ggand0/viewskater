@@ -17,13 +17,14 @@ use other_os::*;
 use macos::*;
 
 
-use iced::widget::{container, row, button, text};
-use iced::alignment;
-use iced::{Padding, Element, Length, Border};
-use iced::border::Radius;
-use iced::widget::button::{Style};
-use iced::Theme;
-use iced::Font;
+use iced_widget::{container, row, button, text};
+use iced_winit::core::alignment;
+use iced_winit::core::{Padding, Element, Length, Border};
+use iced_winit::core::border::Radius;
+use iced_widget::button::{Style};
+use iced_winit::core::Theme as WinitTheme;
+use iced_winit::core::font::Font;
+use iced_wgpu::Renderer;
 
 use iced_aw::menu::{self, Item, Menu};
 use iced_aw::{menu_bar, menu_items};
@@ -50,9 +51,9 @@ pub enum ButtonClass {
     Nothing,
 }
 
-impl<'a> From<ButtonClass> for Box<dyn Fn(&Theme, button::Status) -> Style + 'a> {
+impl<'a> From<ButtonClass> for Box<dyn Fn(&WinitTheme, button::Status) -> Style + 'a> {
     fn from(class: ButtonClass) -> Self {
-        Box::new(move |theme: &Theme, status: button::Status| match class {
+        Box::new(move |theme: &WinitTheme, status: button::Status| match class {
             ButtonClass::Transparent => Style {
                 text_color: theme.extended_palette().background.base.text,
                 background: Some(iced::Color::TRANSPARENT.into()),
@@ -103,9 +104,9 @@ impl<'a> From<ButtonClass> for Box<dyn Fn(&Theme, button::Status) -> Style + 'a>
 
 
 fn base_button<'a>(
-    content: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message, WinitTheme, Renderer>>,
     msg: Message,
-) -> button::Button<'a, Message> {
+) -> button::Button<'a, Message, WinitTheme, Renderer> {
     button(content)
         .class(ButtonClass::Labeled)
         .on_press(msg)
@@ -115,7 +116,7 @@ fn labeled_button<'a>(
     label: &'a str,
     text_size: u16,
     msg: Message,
-) -> button::Button<'a, Message> {
+) -> button::Button<'a, Message, WinitTheme, Renderer> {
     button(
         text(label)
             .size(text_size)
@@ -138,7 +139,7 @@ fn nothing_button<'a>(label: &'a str, text_size: u16) -> button::Button<'a, Mess
     //.width(Length::Shrink)
 }
 
-fn submenu_button(label: &str, text_size: u16) -> button::Button<Message, iced::Theme, iced::Renderer> {
+fn submenu_button(label: &str, text_size: u16) -> button::Button<Message, WinitTheme, Renderer> {
     base_button(
         row![
             text(label)
@@ -159,7 +160,7 @@ fn submenu_button(label: &str, text_size: u16) -> button::Button<Message, iced::
     .width(Length::Fill)
 }
 
-pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Renderer> {
+pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     let pane_layout_submenu = Menu::new(menu_items!(
         (labeled_button(
             "Single Pane (Ctrl+1)",
@@ -204,7 +205,7 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Rend
     .offset(5.0)
 }
 
-pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Renderer> {
+pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
     menu_tpl_2(
         menu_items!(
@@ -224,7 +225,7 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Ren
     )
 }
 
-pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::Renderer> {
+pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
     menu_tpl_2(
         menu_items!(
@@ -235,7 +236,7 @@ pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, iced::Theme, iced::
 }
 
 
-pub fn build_menu(app: &DataViewer) -> MenuBar<Message, iced::Theme, iced::Renderer> {
+pub fn build_menu(app: &DataViewer) -> MenuBar<Message, WinitTheme, Renderer> {
     menu_bar!(
         (
             container(
@@ -261,7 +262,7 @@ pub fn build_menu(app: &DataViewer) -> MenuBar<Message, iced::Theme, iced::Rende
     //.spacing(10)
     // ref: https://github.com/iced-rs/iced_aw/blob/main/src/style/menu_bar.rs
     .draw_path(menu::DrawPath::Backdrop)
-    .style(|theme: &iced::Theme, status: Status | menu::Style{
+    .style(|theme: &WinitTheme, status: Status | menu::Style{
         //menu_background: theme.extended_palette().background.weak.color.into(),
         menu_border: Border{
             color: theme.extended_palette().background.weak.color,
