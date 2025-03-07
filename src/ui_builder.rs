@@ -190,7 +190,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 let panes = pane::build_ui_dual_pane_slider2(
                     &app.panes, 
                     app.ver_divider_position,
-                    app.show_footer
+                    app.show_footer,
+                    app.is_slider_moving
                 );
                 
                 container(

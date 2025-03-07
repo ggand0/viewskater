@@ -672,7 +672,8 @@ pub fn build_ui_dual_pane_slider1(
 pub fn build_ui_dual_pane_slider2(
     panes: &[Pane],
     ver_divider_position: Option<u16>,
-    show_footer: bool
+    show_footer: bool,
+    is_slider_moving: bool
 ) -> Element<Message, WinitTheme, Renderer> {
     let footer_texts = vec![
         format!(
@@ -691,7 +692,7 @@ pub fn build_ui_dual_pane_slider2(
         container(
             if show_footer { 
                 column![
-                    panes[0].build_ui_container(false),
+                    panes[0].build_ui_container(is_slider_moving),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -704,7 +705,7 @@ pub fn build_ui_dual_pane_slider2(
                 ]
             } else { 
                 column![
-                    panes[0].build_ui_container(false),
+                    panes[0].build_ui_container(is_slider_moving),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -728,7 +729,7 @@ pub fn build_ui_dual_pane_slider2(
         container(
             if show_footer { 
                 column![
-                    panes[1].build_ui_container(false),
+                    panes[1].build_ui_container(is_slider_moving),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -741,7 +742,7 @@ pub fn build_ui_dual_pane_slider2(
                 ]
             } else { 
                 column![
-                    panes[1].build_ui_container(false),
+                    panes[1].build_ui_container(is_slider_moving),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
