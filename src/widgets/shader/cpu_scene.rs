@@ -28,7 +28,7 @@ pub struct CpuPipelineRegistry {
     pipelines: std::collections::HashMap<String, TexturePipeline>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CpuScene {
     pub image_bytes: Vec<u8>,               // Store CPU image bytes
     pub texture: Option<Arc<wgpu::Texture>>, // Lazily created GPU texture
@@ -198,7 +198,7 @@ impl CpuScene {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CpuPrimitive {
     image_bytes: Vec<u8>,
     texture: Option<Arc<wgpu::Texture>>,

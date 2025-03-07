@@ -21,21 +21,16 @@ fn vs_main(
     @location(1) tex_coords: vec2<f32>,
 ) -> VertexOutput {
     var out: VertexOutput;
-
-    // v0: fit the window w/o aspect ratio
-    //out.position = vec4<f32>(position, 0.0, 1.0);
-
-    // v1: Scale the vertex positions and apply offsets
-    let scaled_position = position * screen_rect.xy + screen_rect.zw;
-    out.position = vec4<f32>(scaled_position, 0.0, 1.0);
-
+    
+    // Simple pass-through of the position
+    out.position = vec4<f32>(position, 0.0, 1.0);
     out.tex_coords = tex_coords;
-
+    
     return out;
 }
 
 @fragment
 fn fs_main(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32> {
     let color = textureSample(my_texture, my_sampler, tex_coords);
-    return vec4(color.rgb, color.a); // Preserve transparency for blending
+    return color;
 }

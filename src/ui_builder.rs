@@ -33,6 +33,7 @@ use crate::widgets::{dualslider::DualSlider, viewer};
 use crate::pane;
 use crate::menu as app_menu;
 use crate::{app::Message, PaneLayout, DataViewer};
+use crate::widgets::shader::image_shader::ImageShader;
 use crate::Scene;
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
@@ -124,12 +125,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     .height(Length::Fill)
                     .padding(0)
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
-                    // Use shader/scene for normal viewing (better quality)
-                    let shader_widget = shader(scene)
-                        .width(Fill)
-                        .height(Fill);
+                    // Fixed: Pass Arc<Scene> reference correctly
+                    let shader = ImageShader::new(Some(scene))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .content_fit(iced_winit::core::ContentFit::Contain);
             
-                    container(center(shader_widget))
+                    container(center(shader))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .padding(0)

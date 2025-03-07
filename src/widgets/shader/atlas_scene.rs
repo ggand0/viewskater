@@ -9,7 +9,7 @@ use crate::atlas::entry::Entry;
 use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::atlas_pipeline::AtlasPipeline;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AtlasScene {
     atlas: Arc<RwLock<Atlas>>,
     entry: Option<Entry>,        // Current image's location in atlas
@@ -31,7 +31,7 @@ impl AtlasScene {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AtlasPrimitive {
     atlas: Arc<RwLock<Atlas>>,
     entry: Entry,
