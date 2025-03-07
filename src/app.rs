@@ -543,7 +543,7 @@ pub enum Message {
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     SliderImageLoaded(Result<(usize, CachedData), usize>),
-    SliderImageWidgetLoaded(Result<(usize, Handle), usize>),
+    SliderImageWidgetLoaded(Result<(usize, usize, Handle), (usize, usize)>),
     Event(Event),
     //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
@@ -721,20 +721,22 @@ impl iced_winit::runtime::Program for DataViewer {
 
             Message::SliderImageWidgetLoaded(result) => {
                 match result {
-                    Ok((pos, handle)) => {
-                        let pane = &mut self.panes[0]; // We're using pane_index = -1 approach
-                        
-                        // Update the image widget handle directly
-                        pane.slider_image = Some(handle);
-                        
-                        // Also update the cache state to keep everything in sync
-                        pane.img_cache.current_index = pos;
-                        
-                        // No additional processing needed - the UI will use the handle directly
-                        debug!("Slider image loaded for position {}", pos);
+                    Ok((pane_idx, pos, handle)) => {
+                        // Use the specified pane index instead of hardcoded 0
+                        if let Some(pane) = self.panes.get_mut(pane_idx) {
+                            // Update the image widget handle directly
+                            pane.slider_image = Some(handle);
+                            
+                            // Also update the cache state to keep everything in sync
+                            pane.img_cache.current_index = pos;
+                            
+                            debug!("Slider image loaded for pane {} at position {}", pane_idx, pos);
+                        } else {
+                            warn!("SliderImageWidgetLoaded: Invalid pane index {}", pane_idx);
+                        }
                     },
-                    Err(pos) => {
-                        warn!("SLIDER: Failed to load image widget for position {}", pos);
+                    Err((pane_idx, pos)) => {
+                        warn!("SLIDER: Failed to load image widget for pane {} at position {}", pane_idx, pos);
                     }
                 }
             },
@@ -780,7 +782,7 @@ impl iced_winit::runtime::Program for DataViewer {
             
             
             Message::SliderChanged(pane_index, value) => {
-                debug!("SLIDER_DEBUG: SliderChanged from {} to {} (delta: {})", 
+                info!("###########################SLIDER_DEBUG: SliderChanged from {} to {} (delta: {})", 
                        self.slider_value, value, (value as i32 - self.slider_value as i32).abs());
                 
                 self.is_slider_moving = true;
@@ -790,7 +792,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    debug!("SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
+                    debug!("###########################SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
                     
                     return navigation_slider::update_pos(
                         &mut self.panes, 
@@ -804,7 +806,7 @@ impl iced_winit::runtime::Program for DataViewer {
                     
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
-                    debug!("SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", 
+                    debug!("###########################SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", 
                            pane_index_usize, value);
                     
                     return navigation_slider::update_pos(
@@ -903,7 +905,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.last_opened_pane as usize
             );
             let update_end = Instant::now();
-            let update_duration = update_end.duration_since(update_start);
+            //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else if self.skate_left {
@@ -919,7 +921,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.last_opened_pane as usize
             );
             let update_end = Instant::now();
-            let update_duration = update_end.duration_since(update_start);
+            //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else {
@@ -929,7 +931,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.update_counter += 1;
             }
             let update_end = Instant::now();
-            let update_duration = update_end.duration_since(update_start);
+            //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
 
             iced_winit::runtime::Task::none()

@@ -306,14 +306,15 @@ pub fn load_remaining_images(
 }
 
 
-// Async loading task for Image widget
+// Async loading task for Image widget - updated to include pane_idx
 pub async fn create_async_image_widget_task(
     img_paths: Vec<PathBuf>, 
-    pos: usize
-) -> Result<(usize, Handle), usize> {
+    pos: usize,
+    pane_idx: usize
+) -> Result<(usize, usize, Handle), (usize, usize)> {
     // Check if position is valid
     if pos >= img_paths.len() {
-        return Err(pos);
+        return Err((pane_idx, pos));
     }
     
     // Load image bytes directly without resizing
@@ -321,9 +322,9 @@ pub async fn create_async_image_widget_task(
         Ok(bytes) => {
             // Convert directly to Handle without resizing
             let handle = iced::widget::image::Handle::from_bytes(bytes);
-            Ok((pos, handle))
+            Ok((pane_idx, pos, handle))
         },
-        Err(_) => Err(pos),
+        Err(_) => Err((pane_idx, pos)),
     }
 }
 
@@ -383,30 +384,41 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
     let use_async = true;
 
     if use_async {
-        // Simplified approach: always use pane_index = -1 for both master slider and individual panes
-        // Get the appropriate pane based on pane_index
-        let pane = if pane_index == -1 {
-            // Master slider - use first pane
-            match panes.get(0) {
-                Some(p) => p,
-                None => return Task::none(),
-            }
+        // Collect tasks for all applicable panes
+        let mut tasks = Vec::new();
+        
+        // Determine which panes to update
+        let pane_indices: Vec<usize> = if pane_index == -1 {
+            // Master slider - update all panes with loaded directories
+            panes.iter().enumerate()
+                .filter_map(|(idx, pane)| if pane.dir_loaded { Some(idx) } else { None })
+                .collect()
         } else {
-            // Individual pane slider
-            match panes.get(pane_index as usize) {
-                Some(p) => p,
-                None => return Task::none(),
-            }
+            // Individual pane slider - update only that pane
+            vec![pane_index as usize]
         };
         
-        if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
-            let img_paths = pane.img_cache.image_paths.clone();
-            
-            // Use the async image loading task with SliderImageWidgetLoaded for all cases
-            return Task::perform(
-                create_async_image_widget_task(img_paths, pos),
-                |result| Message::SliderImageWidgetLoaded(result)
-            );
+        // Create async image loading task for each pane
+        for idx in pane_indices {
+            if let Some(pane) = panes.get(idx) {
+                if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
+                    debug!("#####################update_pos - Creating async image loading task for pane {}", idx);
+                    let img_paths = pane.img_cache.image_paths.clone();
+                    
+                    // Create task for this pane
+                    let pane_task = Task::perform(
+                        create_async_image_widget_task(img_paths.clone(), pos, idx),
+                        move |result| Message::SliderImageWidgetLoaded(result)
+                    );
+                    
+                    tasks.push(pane_task);
+                }
+            }
+        }
+        
+        // Return all tasks batched together
+        if !tasks.is_empty() {
+            return Task::batch(tasks);
         }
         
         Task::none()
