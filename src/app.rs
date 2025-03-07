@@ -940,118 +940,72 @@ impl iced_winit::runtime::Program for DataViewer {
 
     fn view(&self) -> Element<Message, WinitTheme, Renderer> {
         let content = ui_builder::build_ui(&self);
-        content.into()
-        /*let content = ui_builder::build_ui(&self);
 
-        let background_color = self.background_color;
-
-        let sliders = row![
-            slider(0.0..=1.0, background_color.r, move |r| {
-                Message::BackgroundColorChanged(Color {
-                    r,
-                    ..background_color
-                })
-            })
-            .step(0.01),
-        ].width(500)
-        .spacing(20);
-
-        column![
-            content,     // Your existing UI
-            sliders // Single slider control
-        ]
-        .spacing(20)
-        .into()*/
-
-
-        /*let container_all = ui_builder::build_ui(&self);
-        let content = container_all
-            .height(Length::Fill)
-            .width(Length::Fill);
-
-        //Element::<Message, WinitTheme, Renderer>::from(content)
-        content.into()*/
-
-        /*if self.show_about {
+        if self.show_about {
             let about_content = container(
                 column![
                     text("ViewSkater").size(25)
                     .font(Font {
-                        family: iced::font::Family::Name("Roboto"),
-                        weight: iced::font::Weight::Bold,
-                        stretch: iced::font::Stretch::Normal,
-                        style: iced::font::Style::Normal,
+                        family: iced_winit::core::font::Family::Name("Roboto"),
+                        weight: iced_winit::core::font::Weight::Bold,
+                        stretch: iced_winit::core::font::Stretch::Normal,
+                        style: iced_winit::core::font::Style::Normal,
                     }),
                     column![
                         text("Version 0.1.2").size(15),
                         row![
                             text("Author:  ").size(15),
                             text("Gota Gando").size(15)
-                            .style(|theme: &Theme| {
-                                text::Style {
+                            .style(|theme: &WinitTheme| {
+                                iced_widget::text::Style {
                                     color: Some(theme.extended_palette().primary.strong.color),
+                                    ..Default::default()
                                 }
                             })
                         ],
                         text("Learn more at:").size(15),
-                            button(
-                                text("https://github.com/ggand0/viewskater")
-                                    .size(18)
-                            )
-                            .style(|theme: &Theme, _status| {
-                                button::Style {
-                                    background: Some(iced::Color::TRANSPARENT.into()),
-                                    text_color: theme.extended_palette().primary.strong.color,
-                                    border: iced::Border {
-                                        color: iced::Color::TRANSPARENT,
-                                        width: 1.0,
-                                        radius: iced::border::Radius::new(0.0),
-                                    },
-                                    ..Default::default()
-                                }
-                            })
-                            .on_press(Message::OpenWebLink(
-                                "https://github.com/ggand0/viewskater".to_string(),
-                            )),
+                        button(
+                            text("https://github.com/ggand0/viewskater")
+                                .size(18)
+                        )
+                        .style(|theme: &WinitTheme, _status| {
+                            iced_widget::button::Style {
+                                background: Some(iced_winit::core::Color::TRANSPARENT.into()),
+                                text_color: theme.extended_palette().primary.strong.color,
+                                border: iced_winit::core::Border {
+                                    color: iced_winit::core::Color::TRANSPARENT,
+                                    width: 1.0,
+                                    radius: iced_winit::core::border::Radius::new(0.0),
+                                },
+                                ..Default::default()
+                            }
+                        })
+                        .on_press(Message::OpenWebLink(
+                            "https://github.com/ggand0/viewskater".to_string(),
+                        )),
                     ].spacing(4)
                 ]
                 .spacing(15)
-                .align_x(iced::Alignment::Center),
+                .align_x(iced_winit::core::alignment::Horizontal::Center),
                 
             )
             .padding(20)
-            .style(container::rounded_box);
+            .style(|theme: &WinitTheme| {
+                iced_widget::container::Style {
+                    background: Some(theme.extended_palette().background.base.color.into()),
+                    border: iced_winit::core::Border {
+                        color: theme.extended_palette().background.strong.color,
+                        width: 1.0,
+                        radius: iced_winit::core::border::Radius::from(8.0),
+                    },
+                    ..Default::default()
+                }
+            });
 
             widgets::modal::modal(content, about_content, Message::HideAbout)
-            //widget_modal::modal(content, about_content, Message::HideAbout)
         } else {
-            //content.into()
-            Element::<Message, WinitTheme, Renderer>::from(content)
-        }*/
-        
-
-        // ref: working debug code
-        /*let shader_widget = shader(&self.panes[0].scene)
-            .width(Fill).height(Fill);
-        
-        let other_ui = column![
-            text("Custom Shader Example").color(Color::WHITE),
-            text("Use 'A' and 'D' to navigate images").size(32).color(Color::WHITE),
-        ]
-        .width(Length::Fill)
-        .height(100)
-        .spacing(10)
-        .padding(20)
-        .align_x(Horizontal::Center);
-
-        center(
-        //container(
-            column![
-                shader_widget,
-                other_ui
-            ]
-            //.align_x(Horizontal::Center)
-        ).into()*/
+            content.into()
+        }
     }
 
     
