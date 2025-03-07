@@ -297,15 +297,21 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
     let should_process = {
         let mut last_load = LAST_SLIDER_LOAD.lock().unwrap();
         let now = Instant::now();
+        debug!("##################################TIMESTAMP DEBUG - now: {:?}, last_load: {:?}", now, *last_load);
         
-        // Added safety check to protect against time synchronization issues
-        let elapsed = if now > *last_load {
-            now.duration_since(*last_load)
-        } else {
-            // System clock might have changed - don't crash, just process the event
-            debug!("Time inconsistency detected in slider throttling");
-            
-            Duration::from_millis(PLATFORM_THROTTLE_MS)
+        // Enhanced safety check for time inconsistencies
+        let elapsed = match now.checked_duration_since(*last_load) {
+            Some(duration) => duration,
+            None => {
+                // System clock jumped backward or other timing inconsistency
+                debug!("Time inconsistency detected in slider throttling - using default interval");
+                
+                // Update last_load to current time to avoid repeated issues
+                *last_load = now;
+                
+                // Return a zero duration to ensure we process this event
+                Duration::from_millis(PLATFORM_THROTTLE_MS)
+            }
         };
         
         if elapsed.as_millis() >= PLATFORM_THROTTLE_MS as u128 {
@@ -326,8 +332,8 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
     }
 
     // Always use async on Linux for better responsiveness
-    #[cfg(target_os = "linux")]
-    let use_async = true;
+    ////#[cfg(target_os = "linux")]
+    ////let use_async = true;
 
     if use_async {
         // Simplified approach: always use pane_index = -1 for both master slider and individual panes
