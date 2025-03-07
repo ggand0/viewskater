@@ -44,6 +44,7 @@ use crate::widgets::shader::scene::Scene;
 use crate::atlas::entry::{self, Entry};
 use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::config::CONFIG;
+use crate::widgets::shader::image_shader::ImageShader;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
 use crate::cache::img_cache::CacheStrategy;
@@ -593,9 +594,13 @@ impl Pane {
                 .height(Length::Fill)
             } else if let Some(scene) = &self.scene {
                 // Use shader/scene for normal viewing (better quality)
-                let shader_widget = shader(scene)
-                    .width(Fill)
-                    .height(Fill);
+                //let shader_widget = shader(scene)
+                //    .width(Fill)
+                //    .height(Fill);
+                let shader_widget = ImageShader::new(Some(scene))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .content_fit(iced_winit::core::ContentFit::Contain);
                 
                 container(center(shader_widget))
                     .width(Length::Fill)
