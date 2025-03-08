@@ -561,6 +561,7 @@ pub enum Message {
     //KeyReleased(keyboard::Key, keyboard::Modifiers),
     BackgroundColorChanged(Color),
     TimerTick,
+    SetCacheStrategy(CacheStrategy),
 }
 
 //impl DataViewer {
@@ -890,6 +891,37 @@ impl iced_winit::runtime::Program for DataViewer {
                 // Implementation of TimerTick message
                 // This is a placeholder and should be replaced with the actual implementation
                 debug!("TimerTick received");
+            }
+            Message::SetCacheStrategy(strategy) => {
+                debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
+                self.cache_strategy = strategy;
+                
+                // Get current pane file lengths
+                let pane_file_lengths: Vec<usize> = self.panes.iter()
+                    .map(|p| p.img_cache.num_files)
+                    .collect();
+                
+                // Reinitialize all loaded panes with the new cache strategy
+                for (i, pane) in self.panes.iter_mut().enumerate() {
+                    if let Some(dir_path) = &pane.directory_path.clone() {
+                        if pane.dir_loaded {
+                            let path = PathBuf::from(dir_path);
+                            
+                            // Reinitialize the pane with the current directory
+                            pane.initialize_dir_path(
+                                Arc::clone(&self.device),
+                                Arc::clone(&self.queue),
+                                self.is_gpu_supported,
+                                &self.pane_layout,
+                                &pane_file_lengths,
+                                i,
+                                path,
+                                self.is_slider_dual,
+                                &mut self.slider_value,
+                            );
+                        }
+                    }
+                }
             }
         }
 

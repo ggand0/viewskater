@@ -33,6 +33,7 @@ use iced_aw::style::{menu_bar::primary, Status};
 
 use crate::{app::Message, DataViewer};
 use crate::widgets::toggler;
+use crate::cache::img_cache::CacheStrategy;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaneLayout {
@@ -195,10 +196,25 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     .max_width(200.0)
     .spacing(0.0);
 
+    let cache_type_submenu = Menu::new(menu_items!(
+        (labeled_button(
+            "CPU cache",
+            MENU_ITEM_FONT_SIZE,
+            Message::SetCacheStrategy(CacheStrategy::Cpu)
+        ))
+        (labeled_button(
+            "GPU cache",
+            MENU_ITEM_FONT_SIZE,
+            Message::SetCacheStrategy(CacheStrategy::Gpu)
+        ))
+    ))
+    .max_width(180.0)
+    .spacing(0.0);
 
     Menu::new(menu_items!(
         (submenu_button("Pane Layout", MENU_ITEM_FONT_SIZE), pane_layout_submenu)
         (submenu_button("Controls", MENU_ITEM_FONT_SIZE), controls_menu)
+        (submenu_button("Cache Type", MENU_ITEM_FONT_SIZE), cache_type_submenu)
     ))
     .max_width(120.0)
     .spacing(0.0)
