@@ -1,4 +1,4 @@
-use crate::image_cache::{LoadOperation, LoadOperationType};
+use crate::cache::img_cache::{LoadOperation, LoadOperationType};
 use std::collections::VecDeque;
 use crate::pane::Pane;
 #[allow(unused_imports)]

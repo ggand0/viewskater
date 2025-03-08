@@ -1,822 +1,730 @@
-
-#![windows_subsystem = "windows"]
-
-#[warn(unused_imports)]
-#[cfg(target_os = "linux")]
-mod other_os {
-    pub use iced;
-}
-
-#[cfg(not(target_os = "linux"))]
-mod macos {
-    pub use iced_custom as iced;
-}
-
-#[cfg(target_os = "linux")]
-use other_os::*;
-
-#[cfg(not(target_os = "linux"))]
-use macos::*;
-
-use std::path::PathBuf;
-use std::borrow::Cow;
+use iced_wgpu::graphics::Viewport;
+use iced_wgpu::{wgpu, Engine, Renderer};
+use iced_winit::{conversion, Proxy};
+use iced_winit::core::mouse;
+use iced_winit::core::renderer;
+use iced_winit::core::{Color, Font, Pixels, Size, Theme};
+use iced_winit::futures;
+use iced_winit::runtime::program;
+use iced_winit::runtime::Debug;
+use iced_winit::winit;
+use iced_wgpu::wgpu::util::DeviceExt;
+use iced_winit::winit::event::{ElementState};
+use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
+use std::task::Wake;
+use std::task::Waker;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use iced::{
-    clipboard, Element, Length, Pixels, Settings, Subscription, Task, Theme,
-    event::Event, keyboard::{self, Key, key::Named},
-    widget::{self, text, button, container, column, row},
-    font::{self, Font},
-    window::{self, events},
-};
-
-mod image_cache;
-use crate::image_cache::LoadOperation;
-mod navigation;
-use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
+mod cache;
+use crate::cache::img_cache::LoadOperation;
+mod navigation_keyboard;
+mod navigation_slider;
+use crate::navigation_keyboard::{move_right_all, move_left_all};
+use crate::navigation_slider::{update_pos, load_remaining_images};
 mod file_io;
 mod menu;
 use menu::PaneLayout;
 mod widgets;
 mod pane;
+use crate::pane::Pane;
 mod ui_builder;
 mod loading_status;
 mod loading;
 mod config;
+use crate::widgets::shader::scene::Scene;
+mod app;
+use crate::app::{Message, DataViewer};
+mod utils;
+mod atlas;
 
+use iced_winit::Clipboard;
+use iced_runtime::{Action, Task};
+use iced_runtime::task::into_stream;
+use iced_winit::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 
-#[derive(Debug, Clone, Copy)]
-pub enum MenuItem {
-    Open,
-    Close,
-    Help
-}
-
-pub struct DataViewer {
-    title: String,
-    directory_path: Option<String>,
-    current_image_index: usize,
-    slider_value: u16,                              // for master slider
-    prev_slider_value: u16,                         // for master slider
-    ver_divider_position: Option<u16>,
-    hor_divider_position: Option<u16>,
-    is_slider_dual: bool,
-    show_footer: bool,
-    pane_layout: PaneLayout,
-    last_opened_pane: isize,
-    panes: Vec<pane::Pane>,                         // Each pane has its own image cache
-    loading_status: loading_status::LoadingStatus,  // global loading status for all panes
-    skate_right: bool,
-    skate_left: bool,
-    update_counter: u32,
-    show_about: bool,
-}
-
-impl Default for DataViewer {
-    fn default() -> Self {
-        Self {
-            title: String::from("ViewSkater"),
-            directory_path: None,
-            current_image_index: 0,
-            slider_value: 0,
-            prev_slider_value: 0,
-            ver_divider_position: None,
-            hor_divider_position: None,
-            is_slider_dual: false,
-            show_footer: true,
-            pane_layout: PaneLayout::SinglePane,
-            last_opened_pane: -1,
-            panes: vec![pane::Pane::default()],
-            loading_status: loading_status::LoadingStatus::default(),
-            skate_right: false,
-            skate_left: false,
-            update_counter: 0,
-            show_about: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Message {
-    Debug(String),
-    Nothing,
-    ShowAbout,
-    HideAbout,
-    ShowLogs,
-    OpenWebLink(String),
-    FontLoaded(Result<(), font::Error>),
-    OpenFolder(usize),
-    OpenFile(usize),
-    FileDropped(isize, String),
-    Close,
-    Quit,
-    FolderOpened(Result<String, file_io::Error>, usize),
-    SliderChanged(isize, u16),
-    SliderReleased(isize, u16),
-    Event(Event),
-    ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
-    OnVerResize(u16),
-    OnHorResize(u16),
-    ResetSplit(u16),
-    ToggleSliderType(bool),
-    TogglePaneLayout(PaneLayout),
-    ToggleFooter(bool),
-    PaneSelected(usize, bool),
-    CopyFilename(usize),
-    CopyFilePath(usize),
-    KeyPressed(keyboard::Key, keyboard::Modifiers),
-    KeyReleased(keyboard::Key, keyboard::Modifiers),
-}
-
-impl DataViewer {
-    fn reset_state(&mut self) {
-        self.title = String::from("ViewSkater");
-        self.directory_path = None;
-        self.current_image_index = 0;
-        self.slider_value = 0;
-        self.prev_slider_value = 0;
-        self.last_opened_pane = 0;
-        for pane in self.panes.iter_mut() {
-            pane.reset_state();
-        }
-        self.loading_status = loading_status::LoadingStatus::default();
-        self.skate_right = false;
-        self.update_counter = 0;
-        self.show_about = false;
-    }
-
-    fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
-        debug!("last_opened_pane: {}", self.last_opened_pane);
-
-        let pane_file_lengths = self.panes.iter().map(|pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
-        let pane = &mut self.panes[pane_index];
-        debug!("pane_file_lengths: {:?}", pane_file_lengths);
-        pane.initialize_dir_path(
-            &self.pane_layout, &pane_file_lengths, pane_index, path, self.is_slider_dual, &mut self.slider_value);
-
-        debug!("pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
-        if pane_index >= self.panes.len() {
-            self.panes.resize_with(pane_index + 1, || pane::Pane::default());
-            debug!("resized pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
-        }
-
-        self.last_opened_pane = pane_index as isize;
-    }
-
-    fn handle_key_pressed_event(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
-        let mut tasks = Vec::new();
-        match key.as_ref() {
-            Key::Named(Named::Tab) => {
-                debug!("Tab pressed");
-                self.toggle_footer();
-            }
-
-            Key::Named(Named::Space) | Key::Character("b") => {
-                debug!("Space pressed");
-                self.toggle_slider_type();
-            }
-
-            Key::Character("1") => {
-                debug!("Key1 pressed");
-                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
-                    self.panes[0].is_selected = !self.panes[0].is_selected;
-                }
-
-                // If alt+ctrl is pressed, load a file into pane0
-                if modifiers.alt() && modifiers.control() {
-                    debug!("Key1 Shift pressed");
-                    tasks.push(Task::perform(file_io::pick_file(), move |result| {
-                        Message::FolderOpened(result, 0)
-                    }));
-                }
-
-                // If alt is pressed, load a folder into pane0
-                if modifiers.alt() {
-                    debug!("Key1 Alt pressed");
-                    tasks.push(Task::perform(file_io::pick_folder(), move |result| {
-                        Message::FolderOpened(result, 0)
-                    }));
-                }
-
-                // If ctrl is pressed, switch to single pane layout
-                if modifiers.control() {
-                    self.toggle_pane_layout(PaneLayout::SinglePane);
-                }
-            }
-            Key::Character("2") => {
-                debug!("Key2 pressed");
-                if self.pane_layout == PaneLayout::DualPane {
-                    if self.is_slider_dual {
-                        self.panes[1].is_selected = !self.panes[1].is_selected;
-                    }
-                
-                    // If alt+ctrl is pressed, load a file into pane1
-                    if modifiers.alt() && modifiers.control() {
-                        debug!("Key2 Shift pressed");
-                        tasks.push(Task::perform(file_io::pick_file(), move |result| {
-                            Message::FolderOpened(result, 1)
-                        }));
-                    }
-
-                    // If alt is pressed, load a folder into pane1
-                    if modifiers.alt() {
-                        debug!("Key2 Alt pressed");
-                        tasks.push(Task::perform(file_io::pick_folder(), move |result| {
-                            Message::FolderOpened(result, 1)
-                        }));
-                    }
-                }
-
-                // If ctrl is pressed, switch to dual pane layout
-                if modifiers.control() {
-                    debug!("Key2 Ctrl pressed");
-                    self.toggle_pane_layout(PaneLayout::DualPane);
-                }
-            }
-
-            Key::Character("c") |
-            Key::Character("w") => {
-                // Close the selected panes
-                if modifiers.control() {
-                    for pane in self.panes.iter_mut() {
-                        if pane.is_selected {
-                            pane.reset_state();
-                        }
-                    }
-                }
-            }
-
-            Key::Character("q") => {
-                // Terminate the app
-                std::process::exit(0);
-            }
-
-            Key::Named(Named::ArrowLeft) | Key::Character("a") => {
-                if self.skate_right {
-                    self.skate_right = false;
-
-                    // Discard all queue items that are LoadNext or ShiftNext
-                    self.loading_status.reset_load_next_queue_items();
-                }
-
-                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
-                    debug!("No panes selected");
-                }
-
-                if modifiers.shift() {
-                    self.skate_left = true;
-                } else {
-                    self.skate_left = false;
-
-                    let task = move_left_all(
-                        &mut self.panes, &mut self.loading_status, &mut self.slider_value,
-                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    tasks.push(task);
-                }
-                
-            }
-            Key::Named(Named::ArrowRight) | Key::Character("d") => {
-                if self.skate_left {
-                    self.skate_left = false;
-
-                    // Discard all queue items that are LoadPrevious or ShiftPrevious
-                    self.loading_status.reset_load_previous_queue_items();
-                }
-
-                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual && !self.panes.iter().any(|pane| pane.is_selected) {
-                    debug!("No panes selected");
-                }
-
-                if modifiers.shift() {
-                    self.skate_right = true;
-                } else {
-                    self.skate_right = false;
-
-                    let task = move_right_all(
-                        &mut self.panes, &mut self.loading_status, &mut self.slider_value,
-                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
-                    tasks.push(task);
-                }
-            }
-
-            _ => {}
-        }
-
-        tasks
-    }
-
-    fn handle_key_released_event(&mut self, key_code: keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
-        #[allow(unused_mut)]
-        let mut tasks = Vec::new();
-
-        match key_code.as_ref() {
-            Key::Named(Named::Tab) => {
-                debug!("Tab released");
-            }
-            Key::Named(Named::Enter) | Key::Character("NumpadEnter")  => {
-                debug!("Enter key released!");
-                
-            }
-            Key::Named(Named::Escape) => {
-                debug!("Escape key released!");
-                
-            }
-            Key::Named(Named::ArrowLeft) | Key::Character("a") => {
-                debug!("Left key or 'A' key released!");
-                self.skate_left = false;
-            }
-            Key::Named(Named::ArrowRight) | Key::Character("d") => {
-                debug!("Right key or 'D' key released!");
-                self.skate_right = false;
-            }
-            _ => {},
-        }
-
-        tasks
-    }
-
-    fn toggle_slider_type(&mut self) {
-        // When toggling from dual to single, reset pane.is_selected to true
-        if self.is_slider_dual {
-            for pane in self.panes.iter_mut() {
-                pane.is_selected_cache = pane.is_selected;
-                pane.is_selected = true;
-                pane.is_next_image_loaded = false;
-                pane.is_prev_image_loaded = false;
-            }
-
-            let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
-            self.slider_value = pane::get_master_slider_value(&mut panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
-        } else {
-            // Single to dual slider: give slider.value to each slider
-            for pane in self.panes.iter_mut() {
-                pane.slider_value = pane.img_cache.current_index as u16;
-                pane.is_selected = pane.is_selected_cache;
-            }
-        }
-        self.is_slider_dual = !self.is_slider_dual;
-    }
-
-    fn toggle_pane_layout(&mut self, pane_layout: PaneLayout) {
-        match pane_layout {
-            PaneLayout::SinglePane => {
-                self.panes.resize(1, Default::default());
-                debug!("self.panes.len(): {}", self.panes.len());
-
-                if self.pane_layout == PaneLayout::DualPane {
-                    // Reset the slider value to the first pane's current index
-                    let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
-                    self.slider_value = pane::get_master_slider_value(&mut panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
-                    self.panes[0].is_selected = true;
-                }
-            }
-            PaneLayout::DualPane => {
-                self.panes.resize(2, Default::default()); // Resize to hold 2 image caches
-                debug!("self.panes.len(): {}", self.panes.len());
-            }
-        }
-        self.pane_layout = pane_layout;
-    }
-
-    fn toggle_footer(&mut self) {
-        self.show_footer = !self.show_footer;
-    }
-
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    fn title(&self) -> String {
-        match self.pane_layout  {
-            PaneLayout::SinglePane => {
-                if self.panes[0].dir_loaded {
-                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| String::from("Unknown"))
-                } else {
-                    self.title.clone()
-                }
-            }
-            PaneLayout::DualPane => {
-                let left_pane_filename = if self.panes[0].dir_loaded {
-                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index]
-                        .file_name()
-                        .map(|name| name.to_string_lossy().to_string())
-                        .unwrap_or_else(|| String::from("Unknown"))
-                } else {
-                    String::from("No File")
-                };
-    
-                let right_pane_filename = if self.panes[1].dir_loaded {
-                    self.panes[1].img_cache.image_paths[self.panes[1].img_cache.current_index]
-                        .file_name()
-                        .map(|name| name.to_string_lossy().to_string())
-                        .unwrap_or_else(|| String::from("Unknown"))
-                } else {
-                    String::from("No File")
-                };
-    
-                format!("Left: {} | Right: {}", left_pane_filename, right_pane_filename)
-            }
-        }
-    }
-
-    fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::Nothing => {}
-            Message::Debug(s) => {
-                self.title = s;
-            }
-            Message::ShowLogs => {
-                let app_name = "viewskater";
-                let log_dir_path = file_io::get_log_directory(app_name);
-                let _ = std::fs::create_dir_all(log_dir_path.clone());
-                file_io::open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
-            }
-            Message::ShowAbout => {
-                self.show_about = true;
-                return widget::focus_next()
-            }
-            Message::HideAbout => {
-                self.show_about = false;
-            }
-            Message::OpenWebLink(url) => {
-                if let Err(e) = webbrowser::open(&url) {
-                    warn!("Failed to open link: {}, error: {:?}", url, e);
-                }
-            }
-            Message::FontLoaded(_) => {}
-            Message::OpenFolder(pane_index) => {
-                return Task::perform(file_io::pick_folder(), move |result| {
-                    Message::FolderOpened(result, pane_index)
-                });
-            }
-            Message::OpenFile(pane_index) => {
-                return Task::perform(file_io::pick_file(), move |result| {
-                    Message::FolderOpened(result, pane_index)
-                });
-            }
-            Message::FileDropped(pane_index, dropped_path) => {
-                debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
-                debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}", self.panes[pane_index as usize].dir_loaded, pane_index, self.last_opened_pane);
-                self.initialize_dir_path( PathBuf::from(dropped_path), pane_index as usize);
-            }
-            Message::Close => {
-                self.reset_state();
-                debug!("directory_path: {:?}", self.directory_path);
-                debug!("self.current_image_index: {}", self.current_image_index);
-                for (_cache_index, pane) in self.panes.iter_mut().enumerate() {
-                    let img_cache = &mut pane.img_cache;
-                    debug!("img_cache.current_index: {}", img_cache.current_index);
-                    debug!("img_cache.image_paths.len(): {}", img_cache.image_paths.len());
-                }
-            }
-            Message::Quit => {
-                std::process::exit(0);
-            }
-            Message::FolderOpened(result, pane_index) => {
-                match result {
-                    Ok(dir) => {
-                        debug!("Folder opened: {}", dir);
-                        self.initialize_dir_path(PathBuf::from(dir), pane_index);
-                    }
-                    Err(err) => {
-                        debug!("Folder open failed: {:?}", err);
-                    }
-                }
-            },
-            Message::CopyFilename(pane_index) => {
-                // Get the image path of the specified pane
-                let img_path = self.panes[pane_index].img_cache
-                    .image_paths[self.panes[pane_index].img_cache.current_index]
-                    .file_name().map(|name| name.to_string_lossy().to_string());
-                if let Some(img_path) = img_path {
-                    if let Some(filename) = file_io::get_filename(&img_path) {
-                        debug!("Filename: {}", filename);
-                        return clipboard::write::<Message>(filename.to_string());
-                    }
-                }
-            }
-            Message::CopyFilePath(pane_index) => {
-                // Get the image path of the specified pane
-                let img_path = self.panes[pane_index].img_cache
-                    .image_paths[self.panes[pane_index].img_cache.current_index]
-                    .file_name().map(|name| name.to_string_lossy().to_string());
-                if let Some(img_path) = img_path {
-                    if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
-                        let full_path = format!("{}/{}", dir_path, img_path);
-                        debug!("Full Path: {}", full_path);
-                        return clipboard::write::<Message>(full_path);
-                    }
-                }
-            }
-            Message::OnVerResize(position) => { self.ver_divider_position = Some(position); },
-            Message::OnHorResize(position) => { self.hor_divider_position = Some(position); },
-            Message::ResetSplit(_position) => { self.ver_divider_position = None; },
-            Message::ToggleSliderType(_bool) => { self.toggle_slider_type(); },
-            Message::TogglePaneLayout(pane_layout) => { self.toggle_pane_layout(pane_layout); },
-            Message::ToggleFooter(_bool) => { self.toggle_footer(); },
-            Message::PaneSelected(pane_index, is_selected) => {
-                self.panes[pane_index].is_selected = is_selected;
-                for (index, pane) in self.panes.iter_mut().enumerate() {
-                    debug!("pane_index: {}, is_selected: {}", index, pane.is_selected);
-                }
-            }
-            
-            Message::ImagesLoaded(result) => {
-                match result {
-                    Ok((image_data, operation)) => {
-                        if let Some(op) = operation {
-                            let cloned_op = op.clone();
-                            match op {
-                                LoadOperation::LoadNext((ref pane_indices, ref target_indices))
-                                | LoadOperation::LoadPrevious((ref pane_indices, ref target_indices))
-                                | LoadOperation::ShiftNext((ref pane_indices, ref target_indices))
-                                | LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
-                                    let operation_type = cloned_op.operation_type();
-            
-                                    loading::handle_load_operation_all(
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        pane_indices,
-                                        target_indices.clone(),
-                                        image_data,
-                                        cloned_op,
-                                        operation_type,
-                                    );
-                                }
-                                LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
-                                    loading::handle_load_pos_operation(
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        pane_index,
-                                        target_indices_and_cache.clone(),
-                                        image_data,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        debug!("Image load failed: {:?}", err);
-                    }
-                }
-            }
-
-            Message::SliderChanged(pane_index, value) => {
-                debug!("pane_index {} slider value: {}", pane_index, value);
-                // -1 means the master slider (broadcast operation to all panes)
-                if pane_index == -1 {
-                    self.prev_slider_value = self.slider_value;
-                    self.slider_value = value;
-                    debug!("slider - update_pos");
-                    return update_pos(&mut self.panes, pane_index as isize, value as usize);
-                } else {
-                    let pane = &mut self.panes[pane_index as usize];
-                    let _pane_index_org = pane_index.clone();
-                    let pane_index = pane_index as usize;
-
-                    debug!("pane_index {} slider value: {}", pane_index, value);
-                    pane.prev_slider_value = pane.slider_value;
-                    pane.slider_value = value;
-                    debug!("pane_index {} prev slider value: {}", pane_index, pane.prev_slider_value);
-                    debug!("pane_index {} slider value: {}", pane_index, pane.slider_value);
-
-                    return update_pos(&mut self.panes, pane_index as isize, value as usize);
-                }
-            }
-            Message::SliderReleased(pane_index, value) => {
-                debug!("slider released: pane_index: {}, value: {}", pane_index, value);
-                if pane_index == -1 {
-                    return load_remaining_images(
-                        &mut self.panes, &mut self.loading_status, pane_index, value as usize);
-                } else {
-                    return load_remaining_images(&mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
-                }
-            }
-
-            Message::KeyPressed(key, modifiers) => {
-                let tasks = self.handle_key_pressed_event(key, modifiers);
-                if tasks.is_empty() {
-                } else {
-                    return Task::batch(tasks);
-                }
-            }
-            Message::KeyReleased(key, modifiers) => {
-                let tasks = self.handle_key_released_event(key, modifiers);
-                if tasks.is_empty() {
-                } else {
-                    return Task::batch(tasks);
-                }
-            }
-
-            Message::Event(event) => match event {
-                // Only using for single pane layout
-                #[cfg(any(target_os = "macos", target_os = "windows"))]
-                Event::Window(iced::window::Event::FileDropped(dropped_paths, _position)) => {
-                    match self.pane_layout {
-                        PaneLayout::SinglePane => {
-                            debug!("File dropped: {:?}", dropped_paths.clone());
-                            self.initialize_dir_path(dropped_paths[0].clone(), 0);
-                        },
-                        PaneLayout::DualPane => {
-                        }
-                    }
-                }
-                #[cfg(target_os = "linux")]
-                Event::Window(iced::window::Event::FileDropped(dropped_path)) => {
-                    match self.pane_layout {
-                        PaneLayout::SinglePane => {
-                            debug!("File dropped: {:?}", dropped_path);
-                            self.initialize_dir_path(dropped_path, 0);
-                        },
-                        PaneLayout::DualPane => {}
-                    }
-                }
-
-                _ => return Task::none(),
-            },
-        }
-
-        if self.skate_right {
-            self.update_counter = 0;
-            let task = move_right_all(
-                &mut self.panes,
-                &mut self.loading_status,
-                &mut self.slider_value,
-                &self.pane_layout,
-                self.is_slider_dual,
-                self.last_opened_pane as usize
-            );
-            task
-        } else if self.skate_left {
-            self.update_counter = 0;
-            let task = move_left_all(
-                &mut self.panes,
-                &mut self.loading_status,
-                &mut self.slider_value,
-                &self.pane_layout,
-                self.is_slider_dual,
-                self.last_opened_pane as usize
-            );
-            task
-        } else {
-            debug!("no skate mode detected");
-            let task = Task::none();
-            task
-        }
-    }
-
-    fn view(&self) -> Element<Message> {
-        let container_all = ui_builder::build_ui(&self);
-        let content = container_all
-            .height(Length::Fill)
-            .width(Length::Fill);
-
-        if self.show_about {
-            let about_content = container(
-                column![
-                    text("ViewSkater").size(25)
-                    .font(Font {
-                        family: iced::font::Family::Name("Roboto"),
-                        weight: iced::font::Weight::Bold,
-                        stretch: iced::font::Stretch::Normal,
-                        style: iced::font::Style::Normal,
-                    }),
-                    column![
-                        text("Version 0.1.2").size(15),
-                        row![
-                            text("Author:  ").size(15),
-                            text("Gota Gando").size(15)
-                            .style(|theme: &Theme| {
-                                text::Style {
-                                    color: Some(theme.extended_palette().primary.strong.color),
-                                }
-                            })
-                        ],
-                        text("Learn more at:").size(15),
-                            button(
-                                text("https://github.com/ggand0/viewskater")
-                                    .size(18)
-                            )
-                            .style(|theme: &Theme, _status| {
-                                button::Style {
-                                    background: Some(iced::Color::TRANSPARENT.into()),
-                                    text_color: theme.extended_palette().primary.strong.color,
-                                    border: iced::Border {
-                                        color: iced::Color::TRANSPARENT,
-                                        width: 1.0,
-                                        radius: iced::border::Radius::new(0.0),
-                                    },
-                                    ..Default::default()
-                                }
-                            })
-                            .on_press(Message::OpenWebLink(
-                                "https://github.com/ggand0/viewskater".to_string(),
-                            )),
-                    ].spacing(4)
-                ]
-                .spacing(15)
-                .align_x(iced::Alignment::Center),
-                
-            )
-            .padding(20)
-            .style(container::rounded_box);
-
-            widgets::modal::modal(content, about_content, Message::HideAbout)
-        } else {
-            content.into()
-        }
-    }
-
-    fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch(vec![
-            events().map(|(_id, event)| Message::Event(iced::Event::Window(event))),
-            keyboard::on_key_press(|key, modifiers| {
-                Some(Message::KeyPressed(key, modifiers))
-            }),
-            keyboard::on_key_release(|key, modifiers| {
-                Some(Message::KeyReleased(key, modifiers))
-            }),
-
-        ])
-    }
-
-    fn theme(&self) -> Theme {
-        iced::Theme::custom(
-            "Custom Theme".to_string(),
-            iced::theme::Palette {
-                primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
-                ..iced::Theme::Dark.palette()
-            },
-        )
-    }
-}
-
-
-// Include the icon image data at compile time
-static ICON: &[u8] = if cfg!(target_os = "windows") {
-    include_bytes!("../assets/icon.ico")
-} else if cfg!(target_os = "macos") {
-    include_bytes!("../assets/icon_512.png")
-} else {
-    include_bytes!("../assets/icon_48.png")
+use winit::{
+    event::WindowEvent,
+    event_loop::{ControlFlow, EventLoop},
+    keyboard::ModifiersState,
 };
 
-pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
-    vec![
-        include_bytes!("../assets/fonts/viewskater-fonts.ttf")          // icon font
-            .as_slice()
-            .into(),
-        include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf")     // footer digit font
-            .as_slice()
-            .into(),
-        include_bytes!("../assets/fonts/Roboto-Regular.ttf")            // UI font
-            .as_slice()
-            .into(),
-    ]
+use std::sync::Arc;
+use std::borrow::Cow;
+use iced_wgpu::graphics::text::font_system;
+use std::time::Instant;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use std::time::Duration;
+use crate::utils::timing::TimingStats;
+use iced_winit::futures::futures::task;
+use iced_winit::core::window;
+use iced_futures::futures::channel::oneshot;
+
+// Import the correct channel types
+use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
+
+static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
+    Mutex::new(Vec::with_capacity(120))
+});
+static STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("State Update"))
+});
+static WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+    Mutex::new(TimingStats::new("Window Event"))
+});
+
+fn register_font_manually(font_data: &'static [u8]) {
+    use std::sync::RwLockWriteGuard;
+
+    // Get a mutable reference to the font system
+    let font_system = font_system();
+    let mut font_system_guard: RwLockWriteGuard<_> = font_system
+        .write()
+        .expect("Failed to acquire font system lock");
+
+    // Load the font into the global font system
+    font_system_guard.load_font(Cow::Borrowed(font_data));
 }
 
+// Add these new types for control flow
+enum Control {
+    ChangeFlow(winit::event_loop::ControlFlow),
+    CreateWindow {
+        id: window::Id,
+        settings: window::Settings,
+        title: String,
+        monitor: Option<winit::monitor::MonitorHandle>,
+        on_open: oneshot::Sender<()>,
+    },
+    Exit,
+}
 
-fn main() -> iced::Result {
-    // Set up panic hook to log to a file
-    let app_name = "viewskater";
-    let shared_log_buffer = file_io::setup_logger(app_name);
-    file_io::setup_panic_hook(app_name, shared_log_buffer);
+enum Event<T: 'static> {
+    EventLoopAwakened(winit::event::Event<T>),
+    WindowCreated {
+        id: window::Id,
+        window: winit::window::Window,
+        exit_on_close_request: bool,
+        make_visible: bool,
+        on_open: oneshot::Sender<()>,
+    },
+}
 
-    let settings = Settings {
-        id: None,
-        fonts: load_fonts(),
-        default_font: Font::with_name("Roboto"),
-        default_text_size: Pixels(20.0),
-        antialiasing: true,
-        ..Settings::default()
+pub fn main() -> Result<(), winit::error::EventLoopError> {
+    // Initialize tracing for debugging
+    tracing_subscriber::fmt::init();
+
+    // Initialize winit
+    let event_loop = EventLoop::<Action<Message>>::with_user_event()
+        .build()
+        .unwrap();
+    let proxy: EventLoopProxy<Action<Message>> = event_loop.create_proxy();
+
+    // Create channels for event and control communication
+    // Use std::sync::mpsc explicitly
+    let (event_sender, event_receiver): (StdSender<Event<Action<Message>>>, StdReceiver<Event<Action<Message>>>) = 
+        std_mpsc::channel();
+    let (control_sender, control_receiver): (StdSender<Control>, StdReceiver<Control>) = 
+        std_mpsc::channel();
+
+    #[allow(clippy::large_enum_variant)]
+    enum Runner {
+        Loading {
+            proxy: EventLoopProxy<Action<Message>>,
+            event_sender: StdSender<Event<Action<Message>>>,
+            control_receiver: StdReceiver<Control>,
+        },
+        Ready {
+            window: Arc<winit::window::Window>,
+            device: Arc<wgpu::Device>,
+            queue: Arc<wgpu::Queue>,
+            surface: wgpu::Surface<'static>,
+            format: wgpu::TextureFormat,
+            engine: Engine,
+            renderer: Renderer,
+            state: program::State<DataViewer>,
+            cursor_position: Option<winit::dpi::PhysicalPosition<f64>>,
+            clipboard: Clipboard,
+            runtime: iced_futures::Runtime<
+                iced_futures::backend::native::tokio::Executor,
+                Proxy<Message>,
+                Action<Message>,
+            >,
+            viewport: Viewport,
+            modifiers: ModifiersState,
+            resized: bool,
+            moved: bool,                // Flag to track window movement
+            redraw: bool,
+            debug: Debug,
+            event_sender: StdSender<Event<Action<Message>>>,
+            control_receiver: StdReceiver<Control>,
+            context: task::Context<'static>,
+        },
+    }
+
+    impl Runner {
+        fn process_event(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+            event: Event<Action<Message>>,
+        ) {
+            if event_loop.exiting() {
+                return;
+            }
+
+            match self {
+                Runner::Loading { .. } => {
+                    // Handle events while loading
+                    match event {
+                        Event::EventLoopAwakened(winit::event::Event::NewEvents(_)) => {
+                            // Continue loading
+                        }
+                        Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
+                            // Continue loading
+                        }
+                        _ => {}
+                    }
+                }
+                Runner::Ready {
+                    window,
+                    device,
+                    queue,
+                    surface,
+                    format,
+                    engine,
+                    renderer,
+                    state,
+                    viewport,
+                    cursor_position,
+                    modifiers,
+                    clipboard,
+                    runtime,
+                    resized,
+                    moved,
+                    redraw,
+                    debug,
+                    control_receiver,
+                    ..
+                } => {
+                    // Handle events in ready state
+                    match event {
+                        Event::EventLoopAwakened(winit::event::Event::WindowEvent {
+                            window_id,
+                            event: window_event,
+                        }) => {
+                            let window_event_start = Instant::now();
+                            
+                            match window_event {
+                                WindowEvent::Focused(true) => {
+                                    event_loop.set_control_flow(ControlFlow::Poll);
+                                    *moved = false;
+                                }
+                                WindowEvent::Focused(false) => {
+                                    event_loop.set_control_flow(ControlFlow::Wait);
+                                }
+                                WindowEvent::Resized(size) => {
+                                    *resized = true;
+                                }
+                                WindowEvent::Moved(_) => {
+                                    *moved = true;
+                                    //debug!("Window moved");
+                                }
+                                WindowEvent::CloseRequested => {
+                                    event_loop.exit();
+                                }
+                                WindowEvent::CursorMoved { position, .. } => {
+                                    *cursor_position = Some(position);
+                                }
+                                WindowEvent::MouseInput { state, .. } => {
+                                    //debug!("Mouse input detected: {:?} {:?}", state, *moved);
+                                    if state == ElementState::Released {
+                                        *moved = false; // Reset flag when mouse is released
+                                    }
+                                }
+                                WindowEvent::ModifiersChanged(new_modifiers) => {
+                                    *modifiers = new_modifiers.state();
+                                }
+                                _ => {}
+                            }
+
+                            *redraw = true;
+
+                            // Map window event to iced event
+                            if let Some(event) = iced_winit::conversion::window_event(
+                                window_event,
+                                window.scale_factor(),
+                                *modifiers,
+                            ) {
+                                match &event {
+                                    _ => {
+                                        state.queue_message(Message::Event(event.clone()));
+                                    }
+                                }
+                                state.queue_event(event);
+                                *redraw = true;
+                            }
+
+                            // If there are events pending
+                            if !state.is_queue_empty() {
+                                // We update iced
+                                let update_start = Instant::now();
+                                let (_, task) = state.update(
+                                    viewport.logical_size(),
+                                    cursor_position
+                                        .map(|p| {
+                                            conversion::cursor_position(
+                                                p,
+                                                viewport.scale_factor(),
+                                            )
+                                        })
+                                        .map(mouse::Cursor::Available)
+                                        .unwrap_or(mouse::Cursor::Unavailable),
+                                    renderer,
+                                    &Theme::Dark,
+                                    &renderer::Style {
+                                        text_color: Color::WHITE,
+                                    },
+                                    clipboard,
+                                    debug,
+                                );
+
+                                //let update_time = update_start.elapsed();
+                                //STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
+
+                                let _ = 'runtime_call: {
+                                    let Some(t) = task else {
+                                        break 'runtime_call 1;
+                                    };
+                                    let Some(stream) = into_stream(t) else {
+                                        break 'runtime_call 1;
+                                    };
+
+                                    runtime.run(stream);
+                                    0
+                                };
+                            }
+
+                            // Handle resizing
+                            if *resized {
+                                let size = window.inner_size();
+
+                                *viewport = Viewport::with_physical_size(
+                                    Size::new(size.width, size.height),
+                                    window.scale_factor(),
+                                );
+
+                                surface.configure(
+                                    device,
+                                    &wgpu::SurfaceConfiguration {
+                                        format: *format,
+                                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                                        width: size.width,
+                                        height: size.height,
+                                        present_mode: wgpu::PresentMode::AutoVsync,
+                                        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                                        view_formats: vec![],
+                                        desired_maximum_frame_latency: 2,
+                                    },
+                                );
+
+                                *resized = false;
+                            }
+
+                            // Render if needed
+                            if *redraw {
+                                *redraw = false;
+                                
+                                let frame_start = Instant::now();
+
+                                // Update window title dynamically based on the current image
+                                //debug!("moved: {}", *moved);
+                                if !*moved {
+                                    //debug!("Updating window title");
+                                    let new_title = state.program().title();
+                                    window.set_title(&new_title);
+                                }
+
+                                match surface.get_current_texture() {
+                                    Ok(frame) => {
+                                        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                            label: Some("Render Encoder"),
+                                        });
+
+                                        let present_start = Instant::now();
+                                        renderer.present(
+                                            engine,
+                                            device,
+                                            queue,
+                                            &mut encoder,
+                                            Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }),
+                                            frame.texture.format(),
+                                            &view,
+                                            viewport,
+                                            &debug.overlay(),
+                                        );
+                                        let present_time = present_start.elapsed();
+                                        debug!("Renderer present took {:?}", present_time);
+
+                                        // Submit the commands to the queue
+                                        let submit_start = Instant::now();
+                                        engine.submit(queue, encoder);
+                                        let submit_time = submit_start.elapsed();
+                                        debug!("Command submission took {:?}", submit_time);
+                                        
+                                        let present_frame_start = Instant::now();
+                                        frame.present();
+                                        let present_frame_time = present_frame_start.elapsed();
+                                        debug!("Frame presentation took {:?}", present_frame_time);
+
+                                        // Update the mouse cursor
+                                        window.set_cursor(
+                                            iced_winit::conversion::mouse_interaction(
+                                                state.mouse_interaction(),
+                                            ),
+                                        );
+                                        
+                                        let total_frame_time = frame_start.elapsed();
+                                        debug!("Total frame time: {:?}", total_frame_time);
+                                    }
+                                    Err(error) => match error {
+                                        wgpu::SurfaceError::OutOfMemory => {
+                                            panic!("Swapchain error: {error}. Rendering cannot continue.");
+                                        }
+                                        _ => {
+                                            // Retry rendering on the next frame
+                                            window.request_redraw();
+                                        }
+                                    },
+                                }
+
+                                // Record frame time
+                                if let Ok(mut frame_times) = FRAME_TIMES.lock() {
+                                    let now = Instant::now();
+                                    frame_times.push(now);
+                                    
+                                    // Calculate FPS every second
+                                    if frame_times.len() > 1 {
+                                        let oldest = frame_times[0];
+                                        let elapsed = now.duration_since(oldest);
+                                        
+                                        if elapsed.as_secs() >= 1 {
+                                            let fps = frame_times.len() as f32 / elapsed.as_secs_f32();
+                                            info!("Current FPS: {:.1}", fps);
+                                            
+                                            // Keep only recent frames
+                                            let cutoff = now - Duration::from_secs(1);
+                                            frame_times.retain(|&t| t > cutoff);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Record window event time
+                            //let window_event_time = window_event_start.elapsed();
+                            //WINDOW_EVENT_STATS.lock().unwrap().add_measurement(window_event_time);
+
+                            // Introduce a short sleep to yield control to the OS and improve responsiveness.
+                            // This prevents the event loop from monopolizing the CPU, preventing lags.
+                            // A small delay (300µs) seems to be enough to avoid lag while maintaining high performance.
+                            std::thread::sleep(std::time::Duration::from_micros(300));
+                        }
+                        Event::EventLoopAwakened(winit::event::Event::UserEvent(action)) => {
+                            match action {
+                                Action::Widget(w) => {
+                                    state.operate(
+                                        renderer,
+                                        std::iter::once(w),
+                                        Size::new(viewport.physical_size().width as f32, viewport.physical_size().height as f32),
+                                        debug,
+                                    );
+                                }
+                                Action::Output(message) => {
+                                    //debug!("Output message: {:?}", message);
+                                    state.queue_message(message);
+                                }
+                                _ => {}
+                            }
+                            *redraw = true;
+                        }
+                        Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
+                            // Process any pending control messages
+                            loop {
+                                match control_receiver.try_recv() {
+                                    Ok(control) => match control {
+                                        Control::ChangeFlow(flow) => {
+                                            use winit::event_loop::ControlFlow;
+
+                                            match (event_loop.control_flow(), flow) {
+                                                (
+                                                    ControlFlow::WaitUntil(current),
+                                                    ControlFlow::WaitUntil(new),
+                                                ) if new < current => {}
+                                                (
+                                                    ControlFlow::WaitUntil(target),
+                                                    ControlFlow::Wait,
+                                                ) if target > Instant::now() => {}
+                                                _ => {
+                                                    event_loop.set_control_flow(flow);
+                                                }
+                                            }
+                                        }
+                                        Control::Exit => {
+                                            event_loop.exit();
+                                        }
+                                        _ => {}
+                                    },
+                                    Err(_) => break,
+                                }
+                            }
+
+                            // Request a redraw if needed
+                            if *redraw {
+                                window.request_redraw();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    impl winit::application::ApplicationHandler<Action<Message>> for Runner {
+        fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+            match self {
+                Self::Loading { proxy, event_sender, control_receiver } => {
+                    println!("resumed()...");
+                    let window = Arc::new(
+                        event_loop
+                            .create_window(
+                                winit::window::WindowAttributes::default(),
+                            )
+                            .expect("Create window"),
+                    );
+
+                    let physical_size = window.inner_size();
+                    let viewport = Viewport::with_physical_size(
+                        Size::new(physical_size.width, physical_size.height),
+                        window.scale_factor(),
+                    );
+                    let clipboard = Clipboard::connect(window.clone());
+                    let backend = wgpu::util::backend_bits_from_env().unwrap_or_default();
+
+                    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                        backends: backend,
+                        ..Default::default()
+                    });
+                    let surface = instance
+                        .create_surface(window.clone())
+                        .expect("Create window surface");
+
+                    let (format, adapter, device, queue) =
+                        futures::futures::executor::block_on(async {
+                            let adapter =
+                                wgpu::util::initialize_adapter_from_env_or_default(
+                                    &instance,
+                                    Some(&surface),
+                                )
+                                .await
+                                .expect("Create adapter");
+
+                                let adapter_features = adapter.features();
+
+                                let capabilities = surface.get_capabilities(&adapter);
+                                
+                                let (device, queue) = adapter
+                                    .request_device(
+                                        &wgpu::DeviceDescriptor {
+                                            label: None,
+                                            required_features: adapter_features & wgpu::Features::default(),
+                                            required_limits: wgpu::Limits::default(),
+                                        },
+                                        None,
+                                    )
+                                    .await
+                                    .expect("Request device");
+                                
+                                (
+                                    capabilities
+                                        .formats
+                                        .iter()
+                                        .copied()
+                                        .find(wgpu::TextureFormat::is_srgb)
+                                        .or_else(|| {
+                                            capabilities.formats.first().copied()
+                                        })
+                                        .expect("Get preferred format"),
+                                    adapter,
+                                    device,
+                                    queue,
+                                )
+                        });
+
+                    surface.configure(
+                        &device,
+                        &wgpu::SurfaceConfiguration {
+                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                            format,
+                            width: physical_size.width,
+                            height: physical_size.height,
+                            present_mode: wgpu::PresentMode::AutoVsync,
+                            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                            view_formats: vec![],
+                            desired_maximum_frame_latency: 2,
+                        },
+                    );
+
+                    // Create shared Arc instances of device and queue
+                    let device = Arc::new(device);
+                    let queue = Arc::new(queue);
+                    let backend = adapter.get_info().backend;
+
+                    // Pass a cloned Arc reference to DataViewer
+                    let shader_widget = DataViewer::new(
+                        Arc::clone(&device), Arc::clone(&queue), backend);
+
+                    // Initialize iced
+                    let mut debug = Debug::new();
+                    let engine = Engine::new(
+                        &adapter, &device, &queue, format, None);
+                    engine.create_image_cache(&device); // Manually create image cache
+
+                    // Manually register fonts
+                    register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
+                    register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
+                    register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
+                    
+                    let mut renderer = Renderer::new(
+                        &device, &engine, Font::default(), Pixels::from(16));
+
+                    let state = program::State::new(
+                        shader_widget,
+                        viewport.logical_size(),
+                        &mut renderer,
+                        &mut debug,
+                    );
+
+                    // Set control flow
+                    event_loop.set_control_flow(ControlFlow::Poll);
+
+                    let (p, worker) = iced_winit::Proxy::new(proxy.clone());
+                    let Ok(executor) = iced_futures::backend::native::tokio::Executor::new() else {
+                        panic!("could not create runtime")
+                    };
+                    executor.spawn(worker);
+                    let runtime = iced_futures::Runtime::new(executor, p);
+
+                    // Create a proper static waker
+                    let waker = {
+                        // Create a waker that does nothing
+                        struct NoopWaker;
+                        
+                        impl Wake for NoopWaker {
+                            fn wake(self: Arc<Self>) {}
+                            fn wake_by_ref(self: &Arc<Self>) {}
+                        }
+                        
+                        // Create a waker and leak it to make it 'static
+                        let waker_arc = Arc::new(NoopWaker);
+                        let waker = Waker::from(waker_arc);
+                        Box::leak(Box::new(waker))
+                    };
+
+                    let context = task::Context::from_waker(waker);
+
+                    // Create a new Ready state with the event_sender and control_receiver
+                    // Note: We don't clone the receiver as it's not clonable
+                    let event_sender = event_sender.clone();
+                    
+                    // Move the control_receiver into the Ready state
+                    // We need to take ownership of it from the Loading state
+                    let control_receiver = std::mem::replace(control_receiver, std_mpsc::channel().1);
+
+                    *self = Self::Ready {
+                        window,
+                        device,
+                        queue,
+                        surface,
+                        format,
+                        engine,
+                        renderer,
+                        state,
+                        cursor_position: None,
+                        modifiers: ModifiersState::default(),
+                        clipboard,
+                        runtime,
+                        viewport,
+                        resized: false,
+                        moved: false,
+                        redraw: true,
+                        debug,
+                        event_sender,
+                        control_receiver,
+                        context,
+                    };
+                }
+                Self::Ready { .. } => {
+                    // Already initialized
+                }
+            }
+        }
+
+        fn window_event(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+            window_id: winit::window::WindowId,
+            event: WindowEvent,
+        ) {
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::WindowEvent {
+                    window_id,
+                    event,
+                }),
+            );
+        }
+
+        fn user_event(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+            action: Action<Message>,
+        ) {
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::UserEvent(action)),
+            );
+        }
+
+        fn about_to_wait(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+        ) {
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::AboutToWait),
+            );
+        }
+
+        fn new_events(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+            cause: winit::event::StartCause,
+        ) {
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::NewEvents(cause)),
+            );
+        }
+    }
+
+    let mut runner = Runner::Loading {
+        proxy,
+        event_sender,
+        control_receiver,
     };
-
-    // Run the application with custom settings
-    iced::application(
-        DataViewer::title,
-        DataViewer::update,
-        DataViewer::view,
-    )
-    .window(window::Settings {
-        icon: Some(
-            window::icon::from_file_data(
-                ICON,
-                None,
-            )
-            .expect("Icon load failed")
-        ),
-        ..Default::default()
-    })
-    .theme(DataViewer::theme)
-    .subscription(DataViewer::subscription)
-    .settings(settings)
-    .run_with(|| (DataViewer::new(), Task::none()))
-    .inspect_err(|err| error!("Runtime error: {}", err))?;
-
-    info!("Application exited");
-
-    Ok(())
+    
+    event_loop.run_app(&mut runner)
 }
