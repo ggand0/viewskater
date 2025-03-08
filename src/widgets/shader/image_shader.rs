@@ -76,37 +76,60 @@ impl<Message> ImageShader<Message> {
     
     /// Calculate the layout bounds that preserve aspect ratio
     fn calculate_layout(&self, bounds: Rectangle) -> Rectangle {
-        if let Some(scene) = &self.scene {
+        if let Some(ref scene) = self.scene {
             if let Some(texture) = scene.get_texture() {
                 debug!("ImageShader::calculate_layout - Got texture {}x{}", texture.width(), texture.height());
                 
-                let width = texture.width();
-                let height = texture.height();
+                let texture_size = Size::new(texture.width() as f32, texture.height() as f32);
+                let bounds_size = bounds.size();
                 
-                if width == 0 || height == 0 {
-                    debug!("ImageShader::calculate_layout - Zero texture size, using full bounds");
-                    return bounds;
-                }
+                // Calculate image size based on content fit
+                let (width, height) = match self.content_fit {
+                    ContentFit::Fill => (bounds_size.width, bounds_size.height),
+                    ContentFit::Contain => {
+                        let width_ratio = bounds_size.width / texture_size.width;
+                        let height_ratio = bounds_size.height / texture_size.height;
+                        let ratio = width_ratio.min(height_ratio);
+                        
+                        (texture_size.width * ratio, texture_size.height * ratio)
+                    },
+                    ContentFit::Cover => {
+                        let width_ratio = bounds_size.width / texture_size.width;
+                        let height_ratio = bounds_size.height / texture_size.height;
+                        let ratio = width_ratio.max(height_ratio);
+                        
+                        (texture_size.width * ratio, texture_size.height * ratio)
+                    },
+                    ContentFit::ScaleDown => {
+                        let width_ratio = bounds_size.width / texture_size.width;
+                        let height_ratio = bounds_size.height / texture_size.height;
+                        let ratio = width_ratio.min(height_ratio).min(1.0);
+                        
+                        (texture_size.width * ratio, texture_size.height * ratio)
+                    },
+                    ContentFit::None => (texture_size.width, texture_size.height),
+                };
                 
-                // Calculate the image size based on the content_fit
-                let image_size = Size::new(width as f32, height as f32);
-                let container_size = bounds.size();
+                // Calculate image position to center it
+                let diff_w = bounds_size.width - width;
+                let diff_h = bounds_size.height - height;
                 
-                // Apply content_fit to maintain aspect ratio
-                let fitted_size = self.content_fit.fit(image_size, container_size);
+                let x = bounds.x + diff_w / 2.0;
+                let y = bounds.y + diff_h / 2.0;
                 
-                // Calculate position (centered in the bounds)
-                let x = bounds.x + (bounds.width - fitted_size.width) / 2.0;
-                let y = bounds.y + (bounds.height - fitted_size.height) / 2.0;
+                // NEW: Apply 1px padding on all sides to avoid border overlap
+                let padding = 1.0;
+                let padded_rect = Rectangle {
+                    x: x + padding,
+                    y: y + padding,
+                    width: width - 2.0 * padding,
+                    height: height - 2.0 * padding,
+                };
                 
-                debug!("ImageShader::calculate_layout - Calculated content bounds: ({}, {}, {}, {})",
-                      x, y, fitted_size.width, fitted_size.height);
+                debug!("ImageShader::calculate_layout - Calculated content bounds: ({}, {}, {}, {})", 
+                       padded_rect.x, padded_rect.y, padded_rect.width, padded_rect.height);
                 
-                // Create content bounds that maintain aspect ratio
-                return Rectangle::new(
-                    core::Point::new(x, y),
-                    fitted_size
-                );
+                return padded_rect;
             } else {
                 debug!("ImageShader::calculate_layout - Scene has NO texture!");
             }
@@ -114,8 +137,7 @@ impl<Message> ImageShader<Message> {
             debug!("ImageShader::calculate_layout - No scene available");
         }
         
-        // Fallback to full bounds
-        debug!("ImageShader::calculate_layout - Using full bounds: {:?}", bounds);
+        // Fallback to original bounds if no texture
         bounds
     }
 }
