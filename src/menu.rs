@@ -162,14 +162,17 @@ fn submenu_button(label: &str, text_size: u16) -> button::Button<Message, WinitT
 }
 
 pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
+    let single_pane_text = if app.pane_layout == PaneLayout::SinglePane { "[x] Single Pane (Ctrl+1)" } else { "[  ] Single Pane (Ctrl+1)" };
+    let dual_pane_text = if app.pane_layout == PaneLayout::DualPane { "[x] Dual Pane (Ctrl+2)" } else { "[  ] Dual Pane (Ctrl+2)" };
+
     let pane_layout_submenu = Menu::new(menu_items!(
         (labeled_button(
-            "Single Pane (Ctrl+1)",
+            single_pane_text,
             MENU_ITEM_FONT_SIZE,
             Message::TogglePaneLayout(PaneLayout::SinglePane)
         ))
         (labeled_button(
-            "Dual Pane (Ctrl+2)",
+            dual_pane_text,
             MENU_ITEM_FONT_SIZE,
             Message::TogglePaneLayout(PaneLayout::DualPane)
         ))
@@ -196,14 +199,24 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     .max_width(200.0)
     .spacing(0.0);
 
+    // Create the formatted strings first as owned values
+    //let cpu_cache_text = if app.cache_strategy == CacheStrategy::Cpu { "✓ CPU cache" } else { "  CPU cache" };
+    //let gpu_cache_text = if app.cache_strategy == CacheStrategy::Gpu { "✓ GPU cache" } else { "  GPU cache" };
+    //let cpu_cache_text = if app.cache_strategy == CacheStrategy::Cpu { "-> CPU cache" } else { "   CPU cache" };
+    //let gpu_cache_text = if app.cache_strategy == CacheStrategy::Gpu { "-> GPU cache" } else { "   GPU cache" };
+    let cpu_cache_text = if app.cache_strategy == CacheStrategy::Cpu { "[x] CPU cache" } else { "[  ] CPU cache" };
+    let gpu_cache_text = if app.cache_strategy == CacheStrategy::Gpu { "[x] GPU cache" } else { "[  ] GPU cache" };
+
+
+
     let cache_type_submenu = Menu::new(menu_items!(
         (labeled_button(
-            "CPU cache",
+            cpu_cache_text,
             MENU_ITEM_FONT_SIZE,
             Message::SetCacheStrategy(CacheStrategy::Cpu)
         ))
         (labeled_button(
-            "GPU cache",
+            gpu_cache_text,
             MENU_ITEM_FONT_SIZE,
             Message::SetCacheStrategy(CacheStrategy::Gpu)
         ))
