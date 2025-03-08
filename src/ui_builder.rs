@@ -157,10 +157,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     Message::SliderReleased,
                 )
                 .width(Length::Fill))
-                .style(|_theme| container::Style {
-                    background: Some(Color::from_rgb(1.0, 0.8, 0.8).into()), // Light red background
-                    ..container::Style::default()
-                })
             } else {
                 container(text("")).height(0)
             };
@@ -240,10 +236,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                             Message::SliderReleased,
                         ).width(Length::Fill)
                     )
-                    .style(|_theme| container::Style {
-                        background: Some(Color::from_rgb(1.0, 0.8, 0.8).into()), // Light red background
-                        ..container::Style::default()
-                    })
                     .width(Length::Fill)
                     .height(Length::Shrink)
                     .padding(10)
