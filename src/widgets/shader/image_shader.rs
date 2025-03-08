@@ -4,6 +4,12 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use iced_widget::shader::{self, Viewport, Storage};
 use iced_core::ContentFit;
+use iced_core::{Vector, Point};
+use iced_core::layout::Layout;
+use iced_core::{self, event::Event};
+use iced_core::clipboard::Clipboard;
+use iced_core::event;
+
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -18,6 +24,9 @@ pub struct ImageShader<Message> {
     height: Length,
     scene: Option<Scene>,
     content_fit: ContentFit,
+    min_scale: f32,
+    max_scale: f32,
+    scale_step: f32,
     _phantom: PhantomData<Message>,
 }
 
@@ -46,6 +55,9 @@ impl<Message> ImageShader<Message> {
             height: Length::Fill,
             scene: scene_clone,
             content_fit: ContentFit::Contain,
+            min_scale: 0.25,
+            max_scale: 10.0,
+            scale_step: 0.10,
             _phantom: PhantomData,
         }
     }
@@ -72,6 +84,30 @@ impl<Message> ImageShader<Message> {
     pub fn update_scene(&mut self, new_scene: Scene) {
         debug!("ImageShader::update_scene - Updating scene");
         self.scene = Some(new_scene);
+    }
+    
+    /// Sets the max scale applied to the image.
+    ///
+    /// Default is `10.0`
+    pub fn max_scale(mut self, max_scale: f32) -> Self {
+        self.max_scale = max_scale;
+        self
+    }
+
+    /// Sets the min scale applied to the image.
+    ///
+    /// Default is `0.25`
+    pub fn min_scale(mut self, min_scale: f32) -> Self {
+        self.min_scale = min_scale;
+        self
+    }
+
+    /// Sets the percentage the image will be scaled by when zoomed in / out.
+    ///
+    /// Default is `0.10`
+    pub fn scale_step(mut self, scale_step: f32) -> Self {
+        self.scale_step = scale_step;
+        self
     }
     
     /// Calculate the layout bounds that preserve aspect ratio
@@ -142,12 +178,50 @@ impl<Message> ImageShader<Message> {
     }
 }
 
+// Expanded ImageShaderState to track zoom and pan
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ImageShaderState {
+    scale: f32,
+    starting_offset: Vector,
+    current_offset: Vector,
+    cursor_grabbed_at: Option<Point>,
+}
+
+impl ImageShaderState {
+    pub fn new() -> Self {
+        Self {
+            scale: 1.0,
+            starting_offset: Vector::default(),
+            current_offset: Vector::default(),
+            cursor_grabbed_at: None,
+        }
+    }
+    
+    /// Returns if the cursor is currently grabbed
+    pub fn is_cursor_grabbed(&self) -> bool {
+        self.cursor_grabbed_at.is_some()
+    }
+    
+    /// Returns the current offset, clamped to prevent image from going too far off-screen
+    fn offset(&self, bounds: Rectangle, image_size: Size) -> Vector {
+        let hidden_width = (image_size.width - bounds.width / 2.0).max(0.0).round();
+        let hidden_height = (image_size.height - bounds.height / 2.0).max(0.0).round();
+
+        Vector::new(
+            self.current_offset.x.clamp(-hidden_width, hidden_width),
+            self.current_offset.y.clamp(-hidden_height, hidden_height),
+        )
+    }
+}
+
 // This is our specialized primitive for image rendering
 #[derive(Debug)]
 pub struct ImagePrimitive {
     scene: Scene,
     bounds: Rectangle,
     content_bounds: Rectangle,
+    scale: f32,
+    offset: Vector,
 }
 
 impl shader::Primitive for ImagePrimitive {
@@ -309,12 +383,11 @@ where
     Renderer: primitive::Renderer,
 {
     fn tag(&self) -> tree::Tag {
-        struct Tag;
-        tree::Tag::of::<Tag>()
+        tree::Tag::of::<ImageShaderState>()
     }
     
     fn state(&self) -> tree::State {
-        tree::State::new(())
+        tree::State::new(ImageShaderState::new())
     }
     
     fn size(&self) -> Size<Length> {
@@ -333,9 +406,165 @@ where
         layout::atomic(limits, self.width, self.height)
     }
     
+    fn on_event(
+        &mut self,
+        tree: &mut Tree,
+        event: core::Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        _renderer: &Renderer,
+        _clipboard: &mut dyn Clipboard,
+        _shell: &mut Shell<'_, Message>,
+        _viewport: &Rectangle,
+    ) -> event::Status {
+        let bounds = layout.bounds();
+        
+        match event {
+            core::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
+                let Some(cursor_position) = cursor.position_over(bounds) else {
+                    return event::Status::Ignored;
+                };
+                
+                match delta {
+                    mouse::ScrollDelta::Lines { y, .. }
+                    | mouse::ScrollDelta::Pixels { y, .. } => {
+                        let state = tree.state.downcast_mut::<ImageShaderState>();
+                        let previous_scale = state.scale;
+                        
+                        if y < 0.0 && previous_scale > self.min_scale
+                            || y > 0.0 && previous_scale < self.max_scale
+                        {
+                            state.scale = (if y > 0.0 {
+                                state.scale * (1.0 + self.scale_step)
+                            } else {
+                                state.scale / (1.0 + self.scale_step)
+                            })
+                            .clamp(self.min_scale, self.max_scale);
+                            
+                            debug!("ImageShader::on_event - New scale: {}", state.scale);
+                            
+                            // Calculate the scaled size
+                            let scaled_size = self.calculate_scaled_size(bounds.size(), state.scale);
+                            
+                            let factor = state.scale / previous_scale - 1.0;
+                            
+                            let cursor_to_center = cursor_position - bounds.center();
+                            
+                            let adjustment = cursor_to_center * factor
+                                + state.current_offset * factor;
+                            
+                            state.current_offset = Vector::new(
+                                if scaled_size.width > bounds.width {
+                                    state.current_offset.x + adjustment.x
+                                } else {
+                                    0.0
+                                },
+                                if scaled_size.height > bounds.height {
+                                    state.current_offset.y + adjustment.y
+                                } else {
+                                    0.0
+                                },
+                            );
+                            
+                            debug!("ImageShader::on_event - New offset: {:?}", state.current_offset);
+                        }
+                    }
+                }
+                
+                event::Status::Captured
+            }
+            core::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                let Some(cursor_position) = cursor.position_over(bounds) else {
+                    return event::Status::Ignored;
+                };
+                
+                let state = tree.state.downcast_mut::<ImageShaderState>();
+                
+                state.cursor_grabbed_at = Some(cursor_position);
+                state.starting_offset = state.current_offset;
+                
+                debug!("ImageShader::on_event - Mouse grabbed at: {:?}", cursor_position);
+                
+                event::Status::Captured
+            }
+            core::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                let state = tree.state.downcast_mut::<ImageShaderState>();
+                
+                if state.cursor_grabbed_at.is_some() {
+                    state.cursor_grabbed_at = None;
+                    debug!("ImageShader::on_event - Mouse released");
+                    
+                    event::Status::Captured
+                } else {
+                    event::Status::Ignored
+                }
+            }
+            core::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                let state = tree.state.downcast_mut::<ImageShaderState>();
+                
+                if let Some(origin) = state.cursor_grabbed_at {
+                    let scaled_size = self.calculate_scaled_size(bounds.size(), state.scale);
+                    
+                    let hidden_width = (scaled_size.width - bounds.width / 2.0)
+                        .max(0.0)
+                        .round();
+                    
+                    let hidden_height = (scaled_size.height - bounds.height / 2.0)
+                        .max(0.0)
+                        .round();
+                    
+                    let delta = position - origin;
+                    
+                    let x = if bounds.width < scaled_size.width {
+                        (state.starting_offset.x - delta.x)
+                            .clamp(-hidden_width, hidden_width)
+                    } else {
+                        0.0
+                    };
+                    
+                    let y = if bounds.height < scaled_size.height {
+                        (state.starting_offset.y - delta.y)
+                            .clamp(-hidden_height, hidden_height)
+                    } else {
+                        0.0
+                    };
+                    
+                    state.current_offset = Vector::new(x, y);
+                    debug!("ImageShader::on_event - Panning, new offset: {:?}", state.current_offset);
+                    
+                    event::Status::Captured
+                } else {
+                    event::Status::Ignored
+                }
+            }
+            _ => event::Status::Ignored,
+        }
+    }
+    
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        _viewport: &Rectangle,
+        _renderer: &Renderer,
+    ) -> mouse::Interaction {
+        let state = tree.state.downcast_ref::<ImageShaderState>();
+        let bounds = layout.bounds();
+        let is_mouse_over = cursor.is_over(bounds);
+        
+        if state.is_cursor_grabbed() {
+            mouse::Interaction::Grabbing
+        } else if is_mouse_over {
+            mouse::Interaction::Grab
+        } else {
+            mouse::Interaction::None
+        }
+    }
+    
     fn draw(
         &self,
-        _tree: &widget::Tree,
+        tree: &widget::Tree,
         renderer: &mut Renderer,
         _theme: &Theme,
         _style: &renderer::Style,
@@ -351,8 +580,17 @@ where
             let bounds = layout.bounds();
             debug!("ImageShader::draw - Layout bounds: {:?}", bounds);
             
-            // Calculate content bounds with proper aspect ratio
-            let content_bounds = self.calculate_layout(bounds);
+            let state = tree.state.downcast_ref::<ImageShaderState>();
+            
+            // Calculate scaled content bounds with proper aspect ratio
+            let scaled_size = self.calculate_scaled_size(bounds.size(), state.scale);
+            
+            // Apply offset
+            let offset = state.offset(bounds, scaled_size);
+            
+            // Apply content fit with scaling
+            let content_bounds = self.calculate_content_bounds(bounds, scaled_size, offset);
+            
             debug!("ImageShader::draw - Content bounds: {:?}", content_bounds);
             
             if scene.get_texture().is_some() {
@@ -362,6 +600,8 @@ where
                     scene: scene.clone(),
                     bounds,
                     content_bounds,
+                    scale: state.scale,
+                    offset,
                 };
                 
                 debug!("ImageShader::draw - Calling renderer.draw_primitive");
@@ -383,5 +623,68 @@ where
 {
     fn from(shader: ImageShader<Message>) -> Self {
         Element::new(shader)
+    }
+}
+
+impl<Message> ImageShader<Message> {
+    // Helper method to calculate scaled size based on content fit
+    fn calculate_scaled_size(&self, bounds_size: Size, scale: f32) -> Size {
+        if let Some(ref scene) = self.scene {
+            if let Some(texture) = scene.get_texture() {
+                let texture_size = Size::new(texture.width() as f32, texture.height() as f32);
+                
+                // Calculate base size according to content fit
+                let base_size = match self.content_fit {
+                    ContentFit::Fill => bounds_size,
+                    ContentFit::Contain => {
+                        let width_ratio = bounds_size.width / texture_size.width;
+                        let height_ratio = bounds_size.height / texture_size.height;
+                        let ratio = width_ratio.min(height_ratio);
+                        
+                        Size::new(texture_size.width * ratio, texture_size.height * ratio)
+                    },
+                    ContentFit::Cover => {
+                        let width_ratio = bounds_size.width / texture_size.width;
+                        let height_ratio = bounds_size.height / texture_size.height;
+                        let ratio = width_ratio.max(height_ratio);
+                        
+                        Size::new(texture_size.width * ratio, texture_size.height * ratio)
+                    },
+                    ContentFit::ScaleDown => {
+                        let width_ratio = bounds_size.width / texture_size.width;
+                        let height_ratio = bounds_size.height / texture_size.height;
+                        let ratio = width_ratio.min(height_ratio).min(1.0);
+                        
+                        Size::new(texture_size.width * ratio, texture_size.height * ratio)
+                    },
+                    ContentFit::None => texture_size,
+                };
+                
+                // Apply zoom scale
+                return Size::new(base_size.width * scale, base_size.height * scale);
+            }
+        }
+        
+        // Fallback to original bounds if no texture
+        bounds_size
+    }
+    
+    // Helper method to calculate content bounds considering zoom and pan
+    fn calculate_content_bounds(&self, bounds: Rectangle, scaled_size: Size, offset: Vector) -> Rectangle {
+        // Calculate image position to center it
+        let diff_w = bounds.width - scaled_size.width;
+        let diff_h = bounds.height - scaled_size.height;
+        
+        let x = bounds.x + diff_w / 2.0 - offset.x;
+        let y = bounds.y + diff_h / 2.0 - offset.y;
+        
+        // Apply 1px padding on all sides to avoid border overlap
+        let padding = 1.0;
+        Rectangle {
+            x: x + padding,
+            y: y + padding,
+            width: scaled_size.width - 2.0 * padding,
+            height: scaled_size.height - 2.0 * padding,
+        }
     }
 }
