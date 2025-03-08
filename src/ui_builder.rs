@@ -142,7 +142,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 container(text("")).height(Length::Fill)
             };
 
-            let footer = if app.show_footer {
+            let footer = if app.show_footer && app.panes[0].dir_loaded {
                 get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0)
             } else {
                 container(text("")).height(0)
@@ -215,7 +215,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     format!("{}/{}", app.panes[1].img_cache.current_index + 1, app.panes[1].img_cache.num_files),
                 ];
 
-                let footer = if app.show_footer {
+                let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
                     row![
                         get_footer(footer_texts[0].clone(), 0),
                         get_footer(footer_texts[1].clone(), 1)
