@@ -75,6 +75,14 @@ static WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Window Event"))
 });
 
+static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
+
+fn load_icon() -> Option<winit::window::Icon> {
+    let image = image::load_from_memory(ICON).ok()?.into_rgba8();
+    let (width, height) = image.dimensions();
+    winit::window::Icon::from_rgba(image.into_raw(), width, height).ok()
+}
+
 fn register_font_manually(font_data: &'static [u8]) {
     use std::sync::RwLockWriteGuard;
 
@@ -515,6 +523,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             )
                             .expect("Create window"),
                     );
+
+                    if let Some(icon) = load_icon() {
+                        window.set_window_icon(Some(icon));
+                    }
 
                     let physical_size = window.inner_size();
                     let viewport = Viewport::with_physical_size(
