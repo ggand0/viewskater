@@ -44,10 +44,14 @@ use crate::widgets::shader::scene::Scene;
 use crate::atlas::entry::{self, Entry};
 use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::config::CONFIG;
+use crate::widgets::shader::image_shader::ImageShader;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
 use crate::cache::img_cache::CacheStrategy;
 use crate::widgets::shader::cpu_scene::CpuScene;
+use iced_core::Length::Fill;
+use iced_widget::{center, Container};
+use iced_widget::shader;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -73,6 +77,7 @@ pub struct Pane {
     pub backend: wgpu::Backend,
     pub device: Option<Arc<wgpu::Device>>,
     pub queue: Option<Arc<wgpu::Queue>>,
+    pub pane_id: usize, // New field for pane identification
 }
 
 impl Default for Pane {
@@ -95,12 +100,13 @@ impl Default for Pane {
             device: None,
             queue: None,
             slider_image: None,
+            pane_id: 0, // Default to pane 0
         }
     }
 }
 
 impl Pane {
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend, pane_id: usize) -> Self {
         let scene = Scene::new(None);
         // Create a dedicated CPU-based scene for slider
         let slider_scene = Scene::CpuScene(CpuScene::new(vec![], true));
@@ -119,10 +125,11 @@ impl Pane {
             is_selected_cache: true,
             scene: Some(scene),
             slider_scene: Some(slider_scene),
-            backend: backend,
+            backend,
             device: Some(device),
             queue: Some(queue),
             slider_image: None,
+            pane_id, // Use the provided pane_id
         }
     }
 
@@ -145,9 +152,28 @@ impl Pane {
 
     pub fn resize_panes(panes: &mut Vec<Pane>, new_size: usize) {
         if new_size > panes.len() {
-            // Add new panes
-            for _ in panes.len()..new_size {
-                panes.push(Pane::default());
+            // Add new panes with proper IDs
+            for i in panes.len()..new_size {
+                if let Some(first_pane) = panes.first() {
+                    if let (Some(device), Some(queue)) = (&first_pane.device, &first_pane.queue) {
+                        panes.push(Pane::new(
+                            Arc::clone(device), 
+                            Arc::clone(queue), 
+                            first_pane.backend,
+                            i // Use the index as the pane_id
+                        ));
+                    } else {
+                        // Fallback if no device/queue available
+                        let mut new_pane = Pane::default();
+                        new_pane.pane_id = i;
+                        panes.push(new_pane);
+                    }
+                } else {
+                    // Fallback if no existing panes
+                    let mut new_pane = Pane::default();
+                    new_pane.pane_id = i;
+                    panes.push(new_pane);
+                }
             }
         } else if new_size < panes.len() {
             // Truncate panes, preserving the first `new_size` elements
@@ -204,7 +230,7 @@ impl Pane {
                         if let Some(device) = &self.device {
                             if let Some(queue) = &self.queue {
                                 if let Some(scene) = &mut self.scene {
-                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue), self.pane_id);
                                 }
                             }
                         }
@@ -287,7 +313,7 @@ impl Pane {
                             if let Some(device) = &self.device {
                                 if let Some(queue) = &self.queue {
                                     if let Some(scene) = &mut self.scene {
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), self.pane_id);
                                     }
                                 }
                             }
@@ -453,6 +479,7 @@ impl Pane {
             CONFIG.cache_size,
             //CacheStrategy::Atlas,
             CacheStrategy::Cpu,
+            //CacheStrategy::Gpu,
             initial_index,
             Some(device_clone),
             Some(queue_clone),
@@ -496,7 +523,7 @@ impl Pane {
                     
                     // Ensure texture is created for CPU images
                     if let Some(scene) = &mut self.scene {
-                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue));
+                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue), self.pane_id);
                     }
                 }
                 CachedData::Atlas { atlas, entry } => {
@@ -551,22 +578,44 @@ impl Pane {
         
     }
 
-    /*pub fn build_ui_dual_pane_slider1(&self) -> iced::widget::Container<Message> {
-        let img: iced::widget::Container<Message>  = if self.dir_loaded {
-            container(column![
-                viewer::Viewer::new(self.current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-            ])   
-        } else {
-            container(column![
-                text(String::from(""))
+    fn build_ui_container(&self, is_slider_moving: bool) -> Container<'_, Message, WinitTheme, Renderer> {
+        if self.dir_loaded {
+            if is_slider_moving && self.slider_image.is_some() {
+                // Use regular Image widget during slider movement (much faster)
+                let image_handle = self.slider_image.clone().unwrap();
+                
+                container(
+                    center(
+                        iced_widget::image(image_handle)
+                            .content_fit(iced_winit::core::ContentFit::Contain)
+                    )
+                )
                 .width(Length::Fill)
                 .height(Length::Fill)
-            ])
-        };
-        img
-    }*/
+            } else if let Some(scene) = &self.scene {
+                // Use shader/scene for normal viewing (better quality)
+                //let shader_widget = shader(scene)
+                //    .width(Fill)
+                //    .height(Fill);
+                let shader_widget = ImageShader::new(Some(scene))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .content_fit(iced_winit::core::ContentFit::Contain);
+                
+                container(center(shader_widget))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            } else {
+                container(text("No image loaded"))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            }
+        } else {
+            container(text(""))
+                .width(Length::Fill)
+                .height(Length::Fill)
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -601,13 +650,14 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     pane.img_cache.current_index as usize
 }
 
-/*pub fn build_ui_dual_pane_slider1(
-    panes: &[Pane], ver_divider_position: Option<u16>
-//) -> Element<Message> {
+pub fn build_ui_dual_pane_slider1(
+    panes: &[Pane],
+    ver_divider_position: Option<u16>,
+    is_slider_moving: bool
 ) -> Element<Message, WinitTheme, Renderer> {
-    let first_img: iced::widget::Container<Message>  = panes[0].build_ui_dual_pane_slider1();
-    let second_img: iced::widget::Container<Message> = panes[1].build_ui_dual_pane_slider1();
-
+    let first_img = panes[0].build_ui_container(is_slider_moving);
+    let second_img = panes[1].build_ui_container(is_slider_moving);
+    
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
     Split::new(
         false,
@@ -625,7 +675,10 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
 }
 
 pub fn build_ui_dual_pane_slider2(
-    panes: &[Pane], ver_divider_position: Option<u16>, show_footer: bool
+    panes: &[Pane],
+    ver_divider_position: Option<u16>,
+    show_footer: bool,
+    is_slider_moving: bool
 ) -> Element<Message, WinitTheme, Renderer> {
     let footer_texts = vec![
         format!(
@@ -640,36 +693,34 @@ pub fn build_ui_dual_pane_slider2(
         )
     ];
 
-    let first_img: iced::widget::Container<Message> = if panes[0].dir_loaded {
-        //container(
+    let first_img = if panes[0].dir_loaded {
         container(
-            if show_footer { column![
-                // NOTE: Wrapping the image in a container messes up the layout
-                viewer::Viewer::new(panes[0].current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                DualSlider::new(
-                    0..= (panes[0].img_cache.num_files - 1) as u16,
-                    panes[0].slider_value,
-                    0,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill),
-                get_footer(footer_texts[0].clone(), 0)
-            ]} else { column![
-                viewer::Viewer::new(panes[0].current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                DualSlider::new(
-                    0..= (panes[0].img_cache.num_files - 1) as u16,
-                    panes[0].slider_value,
-                    0,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill),
-            ]}
+            if show_footer { 
+                column![
+                    panes[0].build_ui_container(is_slider_moving),
+                    DualSlider::new(
+                        0..=(panes[0].img_cache.num_files - 1) as u16,
+                        panes[0].slider_value,
+                        0,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                    get_footer(footer_texts[0].clone(), 0)
+                ]
+            } else { 
+                column![
+                    panes[0].build_ui_container(is_slider_moving),
+                    DualSlider::new(
+                        0..=(panes[0].img_cache.num_files - 1) as u16,
+                        panes[0].slider_value,
+                        0,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                ]
+            }
         )
     } else {
         container(column![
@@ -679,36 +730,34 @@ pub fn build_ui_dual_pane_slider2(
         ])
     };
 
-    let second_img: iced::widget::Container<Message> = if panes[1].dir_loaded {
+    let second_img = if panes[1].dir_loaded {
         container(
-            if show_footer { column![
-                // NOTE: Wrapping the image in a container messes up the layout
-                viewer::Viewer::new(panes[1].current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                DualSlider::new(
-                    0..= (panes[1].img_cache.num_files - 1) as u16,
-                    panes[1].slider_value,
-                    1,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill),
-                get_footer(footer_texts[1].clone(), 1)
-            ]} else { column![
-                viewer::Viewer::new(panes[1].current_image.clone())
-                .width(Length::Fill)
-                .height(Length::Fill),
-                DualSlider::new(
-                    0..= (panes[1].img_cache.num_files - 1) as u16,
-                    panes[1].slider_value,
-                    1,
-                    Message::SliderChanged,
-                    Message::SliderReleased
-                )
-                .width(Length::Fill),
-            ]}
-
+            if show_footer { 
+                column![
+                    panes[1].build_ui_container(is_slider_moving),
+                    DualSlider::new(
+                        0..=(panes[1].img_cache.num_files - 1) as u16,
+                        panes[1].slider_value,
+                        1,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                    get_footer(footer_texts[1].clone(), 1)
+                ]
+            } else { 
+                column![
+                    panes[1].build_ui_container(is_slider_moving),
+                    DualSlider::new(
+                        0..=(panes[1].img_cache.num_files - 1) as u16,
+                        panes[1].slider_value,
+                        1,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                ]
+            }
         )
     } else {
         container(column![
@@ -732,4 +781,4 @@ pub fn build_ui_dual_pane_slider2(
         Message::PaneSelected
     )
     .into()
-}*/
+}

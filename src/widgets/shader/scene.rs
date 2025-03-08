@@ -24,7 +24,7 @@ static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Shader Update"))
 });
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Scene {
     TextureScene(TextureScene),
     AtlasScene(AtlasScene),
@@ -68,6 +68,17 @@ impl Scene {
         }
     }
 
+    pub fn get_texture(&self) -> Option<&Arc<wgpu::Texture>> {
+        match self {
+            Scene::TextureScene(scene) => scene.texture.as_ref(),
+            Scene::AtlasScene(scene) => {
+                // TODO: Implement this
+                None
+            }
+            Scene::CpuScene(scene) => scene.texture.as_ref(),
+        }
+    }
+
     pub fn update_texture(&mut self, texture: Arc<wgpu::Texture>) {
         match self {
             Scene::TextureScene(scene) => scene.update_texture(texture),
@@ -100,10 +111,10 @@ impl Scene {
         }
     }
 
-    pub fn ensure_texture(&mut self, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) {
+    pub fn ensure_texture(&mut self, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, pane_id: usize) {
         match self {
             Scene::CpuScene(cpu_scene) => {
-                cpu_scene.ensure_texture(&device, &queue);
+                cpu_scene.ensure_texture(&device, &queue, &format!("pane_{}", pane_id));
             }
             _ => {
                 // Other scene types already have textures managed
@@ -241,13 +252,7 @@ impl shader::Primitive for Primitive {
             ));
         } else {
             let pipeline = storage.get_mut::<TexturePipeline>().unwrap();
-
-            let start = Instant::now();
-            pipeline.update_vertices(device, bounds_relative);
             pipeline.update_texture(device, queue, self.texture.clone());
-            pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
-            let duration = start.elapsed();
-            SHADER_UPDATE_STATS.lock().unwrap().add_measurement(duration);
         }
     }
 

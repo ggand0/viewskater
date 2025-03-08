@@ -85,7 +85,7 @@ impl LoadOperation {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CacheStrategy {
     Cpu,         // Use CPU memory for image caching
     Gpu,         // Use individual GPU textures

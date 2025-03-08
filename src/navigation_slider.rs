@@ -56,64 +56,111 @@ fn load_full_res_image(
 ) -> Task<Message> {
     debug!("load_full_res_image: Reloading full-resolution image at pos {}", pos);
 
-    let pane = if pane_index == -1 {
-        panes.get_mut(0) // Apply to all panes if global slider
+    // Create a list of pane indices to process
+    let pane_indices: Vec<usize> = if pane_index == -1 {
+        // Process all panes with loaded directories
+        panes.iter().enumerate()
+            .filter_map(|(idx, pane)| if pane.dir_loaded { Some(idx) } else { None })
+            .collect()
     } else {
-        panes.get_mut(pane_index as usize)
+        // Process only the specified pane
+        vec![pane_index as usize]
     };
 
-    if let Some(pane) = pane {
-        let img_cache = &mut pane.img_cache;
-        let img_path = match img_cache.image_paths.get(pos) {
-            Some(path) => path.clone(),
-            None => {
-                debug!("Image path missing for pos {}", pos);
-                return Task::none();
+    let mut tasks: Vec<Task<Message>> = Vec::new();
+
+    // Process each pane in the list
+    for idx in pane_indices {
+        if let Some(pane) = panes.get_mut(idx) {
+            let img_cache = &mut pane.img_cache;
+            let img_path = match img_cache.image_paths.get(pos) {
+                Some(path) => path.clone(),
+                None => {
+                    debug!("Image path missing for pos {} in pane {}", pos, idx);
+                    continue;
+                }
+            };
+
+            // Determine the target index inside cache array
+            let target_index: usize;
+            if pos < img_cache.cache_count {
+                target_index = pos;
+                img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
+            } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
+                target_index = img_cache.cache_count + (img_cache.cache_count as isize - 
+                              ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
+                img_cache.current_offset = img_cache.cache_count as isize - 
+                                         ((img_cache.image_paths.len()-1) as isize - pos as isize);
+            } else {
+                target_index = img_cache.cache_count;
+                img_cache.current_offset = 0;
             }
-        };
 
-        // Get or create a texture
-        let mut texture = img_cache.cached_data.get(pos)
-            .and_then(|opt| opt.as_ref())
-            .and_then(|cached| match cached {
-                CachedData::Gpu(tex) => Some(tex.clone()),
-                _ => None,
-            })
-            .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1))); // Placeholder
+            // Check if this pane has GPU support by checking if device and queue are available
+            let has_gpu_support = is_gpu_supported && pane.device.is_some() && pane.queue.is_some();
+            
+            if has_gpu_support {
+                // GPU-based loading
+                // Get or create a texture
+                let mut texture = img_cache.cached_data.get(pos)
+                    .and_then(|opt| opt.as_ref())
+                    .and_then(|cached| match cached {
+                        CachedData::Gpu(tex) => Some(tex.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1))); // Placeholder
 
-        // Load the full-resolution image synchronously
-        if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture) {
-            debug!("Failed to load full-res image {}: {}", img_path.display(), err);
-            return Task::none();
+                // Load the full-resolution image synchronously
+                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture) {
+                    debug!("Failed to load full-res image {} for pane {}: {}", img_path.display(), idx, err);
+                    continue;
+                }
+
+                // Store the full-resolution texture in the cache
+                let loaded_image = CachedData::Gpu(texture.clone().into());
+                img_cache.cached_data[target_index] = Some(loaded_image.clone());
+                img_cache.cached_image_indices[target_index] = pos as isize;
+                img_cache.current_index = pos;
+
+                // Update the currently displayed image
+                pane.current_image = loaded_image;
+                pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture))))); 
+                pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
+            } else {
+                // CPU-based loading
+                // Load the full-resolution image using CPU
+                match img_cache.load_image(pos) {
+                    Ok(cached_data) => {
+                        // Store in cache and update current image
+                        img_cache.cached_data[target_index] = Some(cached_data.clone());
+                        img_cache.cached_image_indices[target_index] = pos as isize;
+                        img_cache.current_index = pos;
+                        
+                        // Update the currently displayed image
+                        pane.current_image = cached_data.clone();
+                        
+                        // Update scene if using CPU-based cached data
+                        if let CachedData::Cpu(img) = &cached_data {
+                            // Create a new scene with the CPU image
+                            pane.scene = Some(Scene::new(Some(&cached_data)));
+                            
+                            // Ensure texture is created for the new scene if device/queue available
+                            if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
+                                if let Some(scene) = &mut pane.scene {
+                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                }
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        debug!("Failed to load CPU image for pane {}: {}", idx, err);
+                        continue;
+                    }
+                }
+            }
+
+            debug!("Full-res image loaded successfully at pos {} for pane {}", pos, idx);
         }
-
-        // Get the index inside cache array
-        let target_index: usize;
-        if pos < img_cache.cache_count {
-            target_index = pos;
-            img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
-        } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
-            //target_index = img_cache.image_paths.len() - pos;
-            target_index = img_cache.cache_count + (img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
-            img_cache.current_offset = img_cache.cache_count as isize - ((img_cache.image_paths.len()-1) as isize - pos as isize);
-        } else {
-            target_index = img_cache.cache_count;
-            img_cache.current_offset = 0;
-        }
-
-        // Store the full-resolution texture in the cache
-        let loaded_image = CachedData::Gpu(texture.clone().into());
-        img_cache.cached_data[target_index] = Some(loaded_image.clone());
-        img_cache.cached_image_indices[target_index] = pos as isize;
-        img_cache.current_index = pos;
-
-        // Update the currently displayed image
-        pane.current_image = loaded_image;
-        pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture))))); 
-        pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
-
-        debug!("Full-res image loaded successfully at pos {}", pos);
-        return Task::none();
     }
 
     Task::none()
@@ -259,14 +306,15 @@ pub fn load_remaining_images(
 }
 
 
-// Async loading task for Image widget
+// Async loading task for Image widget - updated to include pane_idx
 pub async fn create_async_image_widget_task(
     img_paths: Vec<PathBuf>, 
-    pos: usize
-) -> Result<(usize, Handle), usize> {
+    pos: usize,
+    pane_idx: usize
+) -> Result<(usize, usize, Handle), (usize, usize)> {
     // Check if position is valid
     if pos >= img_paths.len() {
-        return Err(pos);
+        return Err((pane_idx, pos));
     }
     
     // Load image bytes directly without resizing
@@ -274,9 +322,9 @@ pub async fn create_async_image_widget_task(
         Ok(bytes) => {
             // Convert directly to Handle without resizing
             let handle = iced::widget::image::Handle::from_bytes(bytes);
-            Ok((pos, handle))
+            Ok((pane_idx, pos, handle))
         },
-        Err(_) => Err(pos),
+        Err(_) => Err((pane_idx, pos)),
     }
 }
 
@@ -297,15 +345,21 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
     let should_process = {
         let mut last_load = LAST_SLIDER_LOAD.lock().unwrap();
         let now = Instant::now();
+        debug!("##################################TIMESTAMP DEBUG - now: {:?}, last_load: {:?}", now, *last_load);
         
-        // Added safety check to protect against time synchronization issues
-        let elapsed = if now > *last_load {
-            now.duration_since(*last_load)
-        } else {
-            // System clock might have changed - don't crash, just process the event
-            debug!("Time inconsistency detected in slider throttling");
-            
-            Duration::from_millis(PLATFORM_THROTTLE_MS)
+        // Enhanced safety check for time inconsistencies
+        let elapsed = match now.checked_duration_since(*last_load) {
+            Some(duration) => duration,
+            None => {
+                // System clock jumped backward or other timing inconsistency
+                debug!("Time inconsistency detected in slider throttling - using default interval");
+                
+                // Update last_load to current time to avoid repeated issues
+                *last_load = now;
+                
+                // Return a zero duration to ensure we process this event
+                Duration::from_millis(PLATFORM_THROTTLE_MS)
+            }
         };
         
         if elapsed.as_millis() >= PLATFORM_THROTTLE_MS as u128 {
@@ -330,30 +384,41 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
     let use_async = true;
 
     if use_async {
-        // Simplified approach: always use pane_index = -1 for both master slider and individual panes
-        // Get the appropriate pane based on pane_index
-        let pane = if pane_index == -1 {
-            // Master slider - use first pane
-            match panes.get(0) {
-                Some(p) => p,
-                None => return Task::none(),
-            }
+        // Collect tasks for all applicable panes
+        let mut tasks = Vec::new();
+        
+        // Determine which panes to update
+        let pane_indices: Vec<usize> = if pane_index == -1 {
+            // Master slider - update all panes with loaded directories
+            panes.iter().enumerate()
+                .filter_map(|(idx, pane)| if pane.dir_loaded { Some(idx) } else { None })
+                .collect()
         } else {
-            // Individual pane slider
-            match panes.get(pane_index as usize) {
-                Some(p) => p,
-                None => return Task::none(),
-            }
+            // Individual pane slider - update only that pane
+            vec![pane_index as usize]
         };
         
-        if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
-            let img_paths = pane.img_cache.image_paths.clone();
-            
-            // Use the async image loading task with SliderImageWidgetLoaded for all cases
-            return Task::perform(
-                create_async_image_widget_task(img_paths, pos),
-                |result| Message::SliderImageWidgetLoaded(result)
-            );
+        // Create async image loading task for each pane
+        for idx in pane_indices {
+            if let Some(pane) = panes.get(idx) {
+                if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
+                    debug!("#####################update_pos - Creating async image loading task for pane {}", idx);
+                    let img_paths = pane.img_cache.image_paths.clone();
+                    
+                    // Create task for this pane
+                    let pane_task = Task::perform(
+                        create_async_image_widget_task(img_paths.clone(), pos, idx),
+                        move |result| Message::SliderImageWidgetLoaded(result)
+                    );
+                    
+                    tasks.push(pane_task);
+                }
+            }
+        }
+        
+        // Return all tasks batched together
+        if !tasks.is_empty() {
+            return Task::batch(tasks);
         }
         
         Task::none()
@@ -456,7 +521,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
             if let Some(device) = &pane.device {
                 if let Some(queue) = &pane.queue {
                     if let Some(scene) = &mut pane.slider_scene {
-                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
                     }
                 }
             }

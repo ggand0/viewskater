@@ -160,8 +160,7 @@ impl DataViewer {
             show_footer: true,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
-            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend)],
-            //panes: vec![pane::Pane::new()],
+            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0)],
             loading_status: loading_status::LoadingStatus::default(),
             skate_right: false,
             skate_left: false,
@@ -174,7 +173,6 @@ impl DataViewer {
             last_slider_update: Instant::now(),
             is_slider_moving: false,
             backend: backend,
-            //cache_strategy: CacheStrategy::Atlas,
             cache_strategy: CacheStrategy::Cpu,
         }
     }
@@ -201,6 +199,21 @@ impl DataViewer {
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
         debug!("last_opened_pane: {}", self.last_opened_pane);
 
+        // Make sure we have enough panes
+        if pane_index >= self.panes.len() {
+            // Create new panes with proper device and queue initialization
+            while self.panes.len() <= pane_index {
+                let new_pane_id = self.panes.len();
+                debug!("Creating new pane at index {}", new_pane_id);
+                self.panes.push(pane::Pane::new(
+                    Arc::clone(&self.device), 
+                    Arc::clone(&self.queue),
+                    self.backend,
+                    new_pane_id // Pass the pane_id matching its index
+                ));
+            }
+        }
+
         let pane_file_lengths = self.panes.iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
         let pane = &mut self.panes[pane_index];
@@ -210,19 +223,13 @@ impl DataViewer {
             Arc::clone(&self.device),
             Arc::clone(&self.queue),
             self.is_gpu_supported,
-            &self.pane_layout,  // Pass the required &PaneLayout
-            &pane_file_lengths, // Pass &[usize]
+            &self.pane_layout,
+            &pane_file_lengths,
             pane_index,
             path,
             self.is_slider_dual,
             &mut self.slider_value,
         );
-    
-        debug!("pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
-        if pane_index >= self.panes.len() {
-            self.panes.resize_with(pane_index + 1, || pane::Pane::default());
-            debug!("resized pane_index: {}, self.panes.len(): {}", pane_index, self.panes.len());
-        }
 
         self.last_opened_pane = pane_index as isize;
     }
@@ -536,7 +543,7 @@ pub enum Message {
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     SliderImageLoaded(Result<(usize, CachedData), usize>),
-    SliderImageWidgetLoaded(Result<(usize, Handle), usize>),
+    SliderImageWidgetLoaded(Result<(usize, usize, Handle), (usize, usize)>),
     Event(Event),
     //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
@@ -554,6 +561,7 @@ pub enum Message {
     //KeyReleased(keyboard::Key, keyboard::Modifiers),
     BackgroundColorChanged(Color),
     TimerTick,
+    SetCacheStrategy(CacheStrategy),
 }
 
 //impl DataViewer {
@@ -714,20 +722,22 @@ impl iced_winit::runtime::Program for DataViewer {
 
             Message::SliderImageWidgetLoaded(result) => {
                 match result {
-                    Ok((pos, handle)) => {
-                        let pane = &mut self.panes[0]; // We're using pane_index = -1 approach
-                        
-                        // Update the image widget handle directly
-                        pane.slider_image = Some(handle);
-                        
-                        // Also update the cache state to keep everything in sync
-                        pane.img_cache.current_index = pos;
-                        
-                        // No additional processing needed - the UI will use the handle directly
-                        debug!("Slider image loaded for position {}", pos);
+                    Ok((pane_idx, pos, handle)) => {
+                        // Use the specified pane index instead of hardcoded 0
+                        if let Some(pane) = self.panes.get_mut(pane_idx) {
+                            // Update the image widget handle directly
+                            pane.slider_image = Some(handle);
+                            
+                            // Also update the cache state to keep everything in sync
+                            pane.img_cache.current_index = pos;
+                            
+                            debug!("Slider image loaded for pane {} at position {}", pane_idx, pos);
+                        } else {
+                            warn!("SliderImageWidgetLoaded: Invalid pane index {}", pane_idx);
+                        }
                     },
-                    Err(pos) => {
-                        warn!("SLIDER: Failed to load image widget for position {}", pos);
+                    Err((pane_idx, pos)) => {
+                        warn!("SLIDER: Failed to load image widget for pane {} at position {}", pane_idx, pos);
                     }
                 }
             },
@@ -759,7 +769,7 @@ impl iced_winit::runtime::Program for DataViewer {
                             if let Some(device) = &pane.device {
                                 if let Some(queue) = &pane.queue {
                                     if let Some(scene) = &mut pane.slider_scene {
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue));
+                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
                                     }
                                 }
                             }
@@ -773,7 +783,7 @@ impl iced_winit::runtime::Program for DataViewer {
             
             
             Message::SliderChanged(pane_index, value) => {
-                debug!("SLIDER_DEBUG: SliderChanged from {} to {} (delta: {})", 
+                info!("###########################SLIDER_DEBUG: SliderChanged from {} to {} (delta: {})", 
                        self.slider_value, value, (value as i32 - self.slider_value as i32).abs());
                 
                 self.is_slider_moving = true;
@@ -783,7 +793,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 if pane_index == -1 {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    debug!("SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
+                    debug!("###########################SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
                     
                     return navigation_slider::update_pos(
                         &mut self.panes, 
@@ -797,7 +807,7 @@ impl iced_winit::runtime::Program for DataViewer {
                     
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
-                    debug!("SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", 
+                    debug!("###########################SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", 
                            pane_index_usize, value);
                     
                     return navigation_slider::update_pos(
@@ -882,6 +892,37 @@ impl iced_winit::runtime::Program for DataViewer {
                 // This is a placeholder and should be replaced with the actual implementation
                 debug!("TimerTick received");
             }
+            Message::SetCacheStrategy(strategy) => {
+                debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
+                self.cache_strategy = strategy;
+                
+                // Get current pane file lengths
+                let pane_file_lengths: Vec<usize> = self.panes.iter()
+                    .map(|p| p.img_cache.num_files)
+                    .collect();
+                
+                // Reinitialize all loaded panes with the new cache strategy
+                for (i, pane) in self.panes.iter_mut().enumerate() {
+                    if let Some(dir_path) = &pane.directory_path.clone() {
+                        if pane.dir_loaded {
+                            let path = PathBuf::from(dir_path);
+                            
+                            // Reinitialize the pane with the current directory
+                            pane.initialize_dir_path(
+                                Arc::clone(&self.device),
+                                Arc::clone(&self.queue),
+                                self.is_gpu_supported,
+                                &self.pane_layout,
+                                &pane_file_lengths,
+                                i,
+                                path,
+                                self.is_slider_dual,
+                                &mut self.slider_value,
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         if self.skate_right {
@@ -896,7 +937,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.last_opened_pane as usize
             );
             let update_end = Instant::now();
-            let update_duration = update_end.duration_since(update_start);
+            //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else if self.skate_left {
@@ -912,7 +953,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.last_opened_pane as usize
             );
             let update_end = Instant::now();
-            let update_duration = update_end.duration_since(update_start);
+            //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else {
@@ -922,7 +963,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.update_counter += 1;
             }
             let update_end = Instant::now();
-            let update_duration = update_end.duration_since(update_start);
+            //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
 
             iced_winit::runtime::Task::none()
@@ -931,118 +972,72 @@ impl iced_winit::runtime::Program for DataViewer {
 
     fn view(&self) -> Element<Message, WinitTheme, Renderer> {
         let content = ui_builder::build_ui(&self);
-        content.into()
-        /*let content = ui_builder::build_ui(&self);
 
-        let background_color = self.background_color;
-
-        let sliders = row![
-            slider(0.0..=1.0, background_color.r, move |r| {
-                Message::BackgroundColorChanged(Color {
-                    r,
-                    ..background_color
-                })
-            })
-            .step(0.01),
-        ].width(500)
-        .spacing(20);
-
-        column![
-            content,     // Your existing UI
-            sliders // Single slider control
-        ]
-        .spacing(20)
-        .into()*/
-
-
-        /*let container_all = ui_builder::build_ui(&self);
-        let content = container_all
-            .height(Length::Fill)
-            .width(Length::Fill);
-
-        //Element::<Message, WinitTheme, Renderer>::from(content)
-        content.into()*/
-
-        /*if self.show_about {
+        if self.show_about {
             let about_content = container(
                 column![
                     text("ViewSkater").size(25)
                     .font(Font {
-                        family: iced::font::Family::Name("Roboto"),
-                        weight: iced::font::Weight::Bold,
-                        stretch: iced::font::Stretch::Normal,
-                        style: iced::font::Style::Normal,
+                        family: iced_winit::core::font::Family::Name("Roboto"),
+                        weight: iced_winit::core::font::Weight::Bold,
+                        stretch: iced_winit::core::font::Stretch::Normal,
+                        style: iced_winit::core::font::Style::Normal,
                     }),
                     column![
                         text("Version 0.1.2").size(15),
                         row![
                             text("Author:  ").size(15),
                             text("Gota Gando").size(15)
-                            .style(|theme: &Theme| {
-                                text::Style {
+                            .style(|theme: &WinitTheme| {
+                                iced_widget::text::Style {
                                     color: Some(theme.extended_palette().primary.strong.color),
+                                    ..Default::default()
                                 }
                             })
                         ],
                         text("Learn more at:").size(15),
-                            button(
-                                text("https://github.com/ggand0/viewskater")
-                                    .size(18)
-                            )
-                            .style(|theme: &Theme, _status| {
-                                button::Style {
-                                    background: Some(iced::Color::TRANSPARENT.into()),
-                                    text_color: theme.extended_palette().primary.strong.color,
-                                    border: iced::Border {
-                                        color: iced::Color::TRANSPARENT,
-                                        width: 1.0,
-                                        radius: iced::border::Radius::new(0.0),
-                                    },
-                                    ..Default::default()
-                                }
-                            })
-                            .on_press(Message::OpenWebLink(
-                                "https://github.com/ggand0/viewskater".to_string(),
-                            )),
+                        button(
+                            text("https://github.com/ggand0/viewskater")
+                                .size(18)
+                        )
+                        .style(|theme: &WinitTheme, _status| {
+                            iced_widget::button::Style {
+                                background: Some(iced_winit::core::Color::TRANSPARENT.into()),
+                                text_color: theme.extended_palette().primary.strong.color,
+                                border: iced_winit::core::Border {
+                                    color: iced_winit::core::Color::TRANSPARENT,
+                                    width: 1.0,
+                                    radius: iced_winit::core::border::Radius::new(0.0),
+                                },
+                                ..Default::default()
+                            }
+                        })
+                        .on_press(Message::OpenWebLink(
+                            "https://github.com/ggand0/viewskater".to_string(),
+                        )),
                     ].spacing(4)
                 ]
                 .spacing(15)
-                .align_x(iced::Alignment::Center),
+                .align_x(iced_winit::core::alignment::Horizontal::Center),
                 
             )
             .padding(20)
-            .style(container::rounded_box);
+            .style(|theme: &WinitTheme| {
+                iced_widget::container::Style {
+                    background: Some(theme.extended_palette().background.base.color.into()),
+                    border: iced_winit::core::Border {
+                        color: theme.extended_palette().background.strong.color,
+                        width: 1.0,
+                        radius: iced_winit::core::border::Radius::from(8.0),
+                    },
+                    ..Default::default()
+                }
+            });
 
             widgets::modal::modal(content, about_content, Message::HideAbout)
-            //widget_modal::modal(content, about_content, Message::HideAbout)
         } else {
-            //content.into()
-            Element::<Message, WinitTheme, Renderer>::from(content)
-        }*/
-        
-
-        // ref: working debug code
-        /*let shader_widget = shader(&self.panes[0].scene)
-            .width(Fill).height(Fill);
-        
-        let other_ui = column![
-            text("Custom Shader Example").color(Color::WHITE),
-            text("Use 'A' and 'D' to navigate images").size(32).color(Color::WHITE),
-        ]
-        .width(Length::Fill)
-        .height(100)
-        .spacing(10)
-        .padding(20)
-        .align_x(Horizontal::Center);
-
-        center(
-        //container(
-            column![
-                shader_widget,
-                other_ui
-            ]
-            //.align_x(Horizontal::Center)
-        ).into()*/
+            content.into()
+        }
     }
 
     
