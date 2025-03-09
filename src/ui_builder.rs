@@ -177,6 +177,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         footer
                     ]
                 )
+                .style(|theme| container::Style {
+                    //background: Some(Color::from_rgb(0.1, 0.1, 0.1).into()), // Dark gray background
+                    //background: Some(iced_core::Background::Color(Color::from([0.3, 0.3, 0.3]))), // Dark gray background   
+                    background: Some(theme.extended_palette().background.base.color.into()),
+                    //text_color: Some(Color::WHITE),
+                    ..container::Style::default()
+                })
                 .width(Length::Fill)
                 .height(Length::Fill)
             ).align_x(Horizontal::Center)
@@ -198,6 +205,10 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         panes
                     ]
                 )
+                .style(|theme| container::Style {
+                    background: Some(theme.extended_palette().background.base.color.into()),
+                    ..container::Style::default()
+                })
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into()
@@ -250,7 +261,10 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         slider,
                         footer
                     ]
-                )
+                ).style(|theme| container::Style {
+                    background: Some(theme.extended_palette().background.base.color.into()),
+                    ..container::Style::default()
+                })
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into()
