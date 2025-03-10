@@ -984,7 +984,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         style: iced_winit::core::font::Style::Normal,
                     }),
                     column![
-                        text("Version 0.1.2").size(15),
+                        text("Version 0.2.0-beta.1").size(15),
                         row![
                             text("Author:  ").size(15),
                             text("Gota Gando").size(15)
