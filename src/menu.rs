@@ -187,27 +187,27 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
                 app.is_slider_dual,
                 Message::ToggleSliderType,
             ).width(Length::Fill)
-        ))
+        ).style(|_theme: &WinitTheme| container::Style {
+            text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+            ..container::Style::default()
+        }))
         (container(
             toggler::Toggler::new(
                 Some("  Toggle Footer (Tab)".into()),
                 app.show_footer,
                 Message::ToggleFooter,
             ).width(Length::Fill)
-        ))
+        ).style(|_theme: &WinitTheme| container::Style {
+            text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+            ..container::Style::default()
+        }))
     ))
     .max_width(200.0)
     .spacing(0.0);
 
     // Create the formatted strings first as owned values
-    //let cpu_cache_text = if app.cache_strategy == CacheStrategy::Cpu { "✓ CPU cache" } else { "  CPU cache" };
-    //let gpu_cache_text = if app.cache_strategy == CacheStrategy::Gpu { "✓ GPU cache" } else { "  GPU cache" };
-    //let cpu_cache_text = if app.cache_strategy == CacheStrategy::Cpu { "-> CPU cache" } else { "   CPU cache" };
-    //let gpu_cache_text = if app.cache_strategy == CacheStrategy::Gpu { "-> GPU cache" } else { "   GPU cache" };
     let cpu_cache_text = if app.cache_strategy == CacheStrategy::Cpu { "[x] CPU cache" } else { "[  ] CPU cache" };
     let gpu_cache_text = if app.cache_strategy == CacheStrategy::Gpu { "[x] GPU cache" } else { "[  ] GPU cache" };
-
-
 
     let cache_type_submenu = Menu::new(menu_items!(
         (labeled_button(
