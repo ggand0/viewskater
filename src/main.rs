@@ -75,6 +75,14 @@ static WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Window Event"))
 });
 
+static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
+
+fn load_icon() -> Option<winit::window::Icon> {
+    let image = image::load_from_memory(ICON).ok()?.into_rgba8();
+    let (width, height) = image.dimensions();
+    winit::window::Icon::from_rgba(image.into_raw(), width, height).ok()
+}
+
 fn register_font_manually(font_data: &'static [u8]) {
     use std::sync::RwLockWriteGuard;
 
@@ -161,6 +169,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             event_sender: StdSender<Event<Action<Message>>>,
             control_receiver: StdReceiver<Control>,
             context: task::Context<'static>,
+            custom_theme: Theme,
         },
     }
 
@@ -206,6 +215,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     redraw,
                     debug,
                     control_receiver,
+                    custom_theme,
                     ..
                 } => {
                     // Handle events in ready state
@@ -282,7 +292,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         .map(mouse::Cursor::Available)
                                         .unwrap_or(mouse::Cursor::Unavailable),
                                     renderer,
-                                    &Theme::Dark,
+                                    //&Theme::Dark,
+                                    &custom_theme,
                                     &renderer::Style {
                                         text_color: Color::WHITE,
                                     },
@@ -359,7 +370,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             device,
                                             queue,
                                             &mut encoder,
-                                            Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }),
+                                            None,
                                             frame.texture.format(),
                                             &view,
                                             viewport,
@@ -497,6 +508,34 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             match self {
                 Self::Loading { proxy, event_sender, control_receiver } => {
                     println!("resumed()...");
+                    /*let custom_theme = Theme::custom(
+                        "Custom Theme".to_string(),
+                        iced_winit::core::theme::Palette {
+                            primary: iced_winit::core::Color::from_rgba8(20, 148, 163, 1.0),
+                            text: iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0),
+                            ..Theme::Dark.palette()
+                        },
+                    );*/
+                    let custom_theme = Theme::custom_with_fn(
+                        "Custom Theme".to_string(),
+                        iced_winit::core::theme::Palette {
+                            primary: iced_winit::core::Color::from_rgba8(20, 148, 163, 1.0),
+                            text: iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0),
+                            ..Theme::Dark.palette()
+                        },
+                        |palette| {
+                            // Generate the extended palette from the base palette
+                            //let mut extended = palette::Extended::generate(palette);
+                            let mut extended: iced_core::theme::palette::Extended = iced_core::theme::palette::Extended::generate(palette);
+                            
+                            // Customize specific parts of the extended palette
+                            extended.primary.weak.text = iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0);
+                            
+                            // Return the modified extended palette
+                            extended
+                        }
+                    );
+                    
                     let window = Arc::new(
                         event_loop
                             .create_window(
@@ -504,6 +543,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             )
                             .expect("Create window"),
                     );
+
+                    if let Some(icon) = load_icon() {
+                        window.set_window_icon(Some(icon));
+                    }
 
                     let physical_size = window.inner_size();
                     let viewport = Viewport::with_physical_size(
@@ -598,7 +641,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
                     
                     let mut renderer = Renderer::new(
-                        &device, &engine, Font::default(), Pixels::from(16));
+                        &device,
+                        &engine,
+                        //Font::default(),
+                        Font::with_name("Roboto"),
+                        Pixels::from(16),
+                    );
 
                     let state = program::State::new(
                         shader_widget,
@@ -664,6 +712,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         event_sender,
                         control_receiver,
                         context,
+                        custom_theme
                     };
                 }
                 Self::Ready { .. } => {

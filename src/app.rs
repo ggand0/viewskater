@@ -1025,6 +1025,7 @@ impl iced_winit::runtime::Program for DataViewer {
             .style(|theme: &WinitTheme| {
                 iced_widget::container::Style {
                     background: Some(theme.extended_palette().background.base.color.into()),
+                    text_color: Some(theme.extended_palette().primary.weak.text),
                     border: iced_winit::core::Border {
                         color: theme.extended_palette().background.strong.color,
                         width: 1.0,
