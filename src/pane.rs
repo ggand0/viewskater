@@ -433,21 +433,6 @@ impl Pane {
         debug!("File paths: {}", _file_paths.len());
         self.dir_loaded = true;
 
-        // Instantiate a new image cache and load the initial images
-        /*let mut img_cache =  ImageCache::new(
-            _file_paths,
-            CONFIG.cache_size,
-            initial_index,
-            is_gpu_supported,
-            device.unwrap(),
-        ).unwrap();
-        img_cache.load_initial_images().unwrap();
-        img_cache.print_cache();
-
-        let loaded_image = img_cache.get_initial_image().unwrap().to_vec();
-        let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-        self.current_image = handle;*/
-
         // Clone device and queue before passing to ImageCache to avoid the move
         let device_clone = Arc::clone(&device);
         let queue_clone = Arc::clone(&queue);
@@ -456,9 +441,7 @@ impl Pane {
         let mut img_cache = ImageCache::new(
             _file_paths,
             CONFIG.cache_size,
-            //CacheStrategy::Atlas,
-            CacheStrategy::Cpu,
-            //CacheStrategy::Gpu,
+            CacheStrategy::Gpu,
             initial_index,
             Some(device_clone),
             Some(queue_clone),
