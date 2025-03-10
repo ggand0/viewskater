@@ -370,7 +370,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             device,
                                             queue,
                                             &mut encoder,
-                                            Some(iced_core::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }),
+                                            None,
                                             frame.texture.format(),
                                             &view,
                                             viewport,
