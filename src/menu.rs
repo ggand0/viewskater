@@ -270,21 +270,36 @@ pub fn build_menu(app: &DataViewer) -> MenuBar<Message, WinitTheme, Renderer> {
         (
             container(
                 text("File").size(16).font(Font::with_name("Roboto"))
-            ).padding([4, 8]),
+            )
+            .style(|_theme: &WinitTheme| container::Style {
+                text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                ..container::Style::default()
+            })
+            .padding([4, 8]),
             menu_1(app)
         )
 
         (
             container(
                 text("Controls").size(16).font(Font::with_name("Roboto")),//.align_y(alignment::Vertical::Center)
-            ).padding([4, 8]),
+            )
+            .style(|_theme: &WinitTheme| container::Style {
+                text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                ..container::Style::default()
+            })
+            .padding([4, 8]),
             menu_3(app)
         )
 
         (
             container(
                 text("Help").size(16).font(Font::with_name("Roboto"))
-            ).padding([4, 8]),
+            )
+            .style(|_theme: &WinitTheme| container::Style {
+                text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                ..container::Style::default()
+            })
+            .padding([4, 8]),
             menu_help(app)
         )
     )

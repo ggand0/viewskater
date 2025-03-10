@@ -508,12 +508,32 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             match self {
                 Self::Loading { proxy, event_sender, control_receiver } => {
                     println!("resumed()...");
-                    let custom_theme = Theme::custom(
+                    /*let custom_theme = Theme::custom(
                         "Custom Theme".to_string(),
                         iced_winit::core::theme::Palette {
                             primary: iced_winit::core::Color::from_rgba8(20, 148, 163, 1.0),
+                            text: iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0),
                             ..Theme::Dark.palette()
                         },
+                    );*/
+                    let custom_theme = Theme::custom_with_fn(
+                        "Custom Theme".to_string(),
+                        iced_winit::core::theme::Palette {
+                            primary: iced_winit::core::Color::from_rgba8(20, 148, 163, 1.0),
+                            text: iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0),
+                            ..Theme::Dark.palette()
+                        },
+                        |palette| {
+                            // Generate the extended palette from the base palette
+                            //let mut extended = palette::Extended::generate(palette);
+                            let mut extended: iced_core::theme::palette::Extended = iced_core::theme::palette::Extended::generate(palette);
+                            
+                            // Customize specific parts of the extended palette
+                            extended.primary.weak.text = iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0);
+                            
+                            // Return the modified extended palette
+                            extended
+                        }
                     );
                     
                     let window = Arc::new(
