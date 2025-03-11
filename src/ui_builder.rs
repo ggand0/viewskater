@@ -155,7 +155,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             let slider_controls = slider
                 .width(Length::Fill)
                 .height(Length::Shrink)
-                .padding(10)
                 .align_x(Horizontal::Center);
 
             // Create the column WITHOUT converting to Element first
@@ -237,7 +236,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     )
                     .width(Length::Fill)
                     .height(Length::Shrink)
-                    .padding(10)
                 } else {
                     container(text("")).height(0)
                 };
