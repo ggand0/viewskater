@@ -30,19 +30,6 @@
 //!     }
 //! }
 //! ```
-/*use crate::core::alignment;
-use crate::core::event;
-use crate::core::layout;
-use crate::core::mouse;
-use crate::core::renderer;
-use crate::core::text;
-use crate::core::touch;
-use crate::core::widget;
-use crate::core::widget::tree::{self, Tree};
-use crate::core::{
-    Border, Clipboard, Color, Element, Event, Layout, Length, Pixels,
-    Rectangle, Shell, Size, Theme, Widget,
-};*/
 #[cfg(target_os = "linux")]
 mod other_os {
     //pub use iced;

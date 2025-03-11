@@ -21,7 +21,7 @@ use iced_widget::{container, row, button, text};
 use iced_winit::core::alignment;
 use iced_winit::core::{Padding, Element, Length, Border};
 use iced_winit::core::border::Radius;
-use iced_widget::button::{Style};
+use iced_widget::button::Style;
 use iced_winit::core::Theme as WinitTheme;
 use iced_winit::core::font::Font;
 use iced_wgpu::Renderer;
@@ -45,71 +45,73 @@ const _MENU_FONT_SIZE : u16 = 16;
 const MENU_ITEM_FONT_SIZE : u16 = 14;
 const _CARET_PATH : &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/svg/caret-right-fill.svg");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ButtonClass {
-    Transparent,
-    Labeled,
-    Nothing,
-}
-
-impl<'a> From<ButtonClass> for Box<dyn Fn(&WinitTheme, button::Status) -> Style + 'a> {
-    fn from(class: ButtonClass) -> Self {
-        Box::new(move |theme: &WinitTheme, status: button::Status| match class {
-            ButtonClass::Transparent => Style {
-                text_color: theme.extended_palette().background.base.text,
-                background: Some(iced::Color::TRANSPARENT.into()),
+pub fn button_style(theme: &WinitTheme, status: button::Status, style_type: &str) -> Style {
+    match style_type {
+        "transparent" => Style {
+            text_color: theme.extended_palette().background.base.text,
+            background: Some(iced::Color::TRANSPARENT.into()),
+            border: iced::Border {
+                color: iced::Color::TRANSPARENT,
+                width: 0.0,
+                radius: Radius::new(0.0),
+            },
+            ..Default::default()
+        },
+        "labeled" => match status {
+            button::Status::Active => Style {
+                background: Some(theme.extended_palette().background.base.color.into()),
+                text_color: theme.extended_palette().primary.weak.text,
                 border: iced::Border {
                     color: iced::Color::TRANSPARENT,
-                    width: 0.0,
+                    width: 1.0,
                     radius: Radius::new(0.0),
                 },
                 ..Default::default()
             },
-            ButtonClass::Labeled => match status {
-                button::Status::Active => Style {
-                    background: Some(theme.extended_palette().background.base.color.into()),
-                    text_color: theme.extended_palette().primary.weak.text,
-                    border: iced::Border {
-                        color: iced::Color::TRANSPARENT,
-                        width: 1.0,
-                        radius: Radius::new(0.0),
-                    },
-                    ..Default::default()
+            button::Status::Hovered => Style {
+                background: Some(theme.extended_palette().background.weak.color.into()),
+                text_color: theme.extended_palette().primary.weak.text,
+                border: iced::Border {
+                    color: iced::Color::TRANSPARENT,
+                    width: 1.0,
+                    radius: Radius::new(0.0),
                 },
-                button::Status::Hovered => Style {
-                    background: Some(theme.extended_palette().background.weak.color.into()),
-                    text_color: theme.extended_palette().primary.weak.text,
-                    border: iced::Border {
-                        color: iced::Color::TRANSPARENT,
-                        width: 1.0,
-                        radius: Radius::new(0.0),
-                    },
-                    ..Default::default()
-                },
-                button::Status::Pressed => Style {
-                    background: Some(theme.extended_palette().primary.weak.color.into()),
-                    text_color: theme.extended_palette().primary.weak.text,
-                    border: iced::Border {
-                        color: iced::Color::TRANSPARENT,
-                        width: 1.0,
-                        radius: Radius::new(0.0),
-                    },
-                    ..Default::default()
-                },
-                _ => Style::default(),
+                ..Default::default()
             },
-            ButtonClass::Nothing => Style::default(),
-        })
+            button::Status::Pressed => Style {
+                background: Some(theme.extended_palette().background.weak.color.into()),
+                text_color: theme.extended_palette().primary.weak.text,
+                border: iced::Border {
+                    color: iced::Color::TRANSPARENT,
+                    width: 1.0,
+                    radius: Radius::new(0.0),
+                },
+                ..Default::default()
+            },
+            _ => Style::default(),
+        },
+        _ => Style::default(),
     }
 }
 
+fn transparent_style(theme: &WinitTheme, status: button::Status) -> Style {
+    button_style(theme, status, "transparent")
+}
+
+fn labeled_style(theme: &WinitTheme, status: button::Status) -> Style {
+    button_style(theme, status, "labeled")
+}
+
+fn default_style(_theme: &WinitTheme, _status: button::Status) -> Style {
+    Style::default()
+}
 
 fn base_button<'a>(
     content: impl Into<Element<'a, Message, WinitTheme, Renderer>>,
     msg: Message,
 ) -> button::Button<'a, Message, WinitTheme, Renderer> {
     button(content)
-        .class(ButtonClass::Labeled)
+        .style(labeled_style)
         .on_press(msg)
 }
 
@@ -123,21 +125,19 @@ fn labeled_button<'a>(
             .size(text_size)
             .font(Font::with_name("Roboto"))
     )
-    .class(ButtonClass::Labeled)
+    .style(labeled_style)
     .on_press(msg)
     .width(Length::Fill)
 }
 
 #[allow(dead_code)]
-fn nothing_button<'a>(label: &'a str, text_size: u16) -> button::Button<'a, Message> {
+fn nothing_button<'a>(label: &'a str, text_size: u16) -> button::Button<'a, Message, WinitTheme, Renderer> {
     button(
         text(label)
             .size(text_size)
             .font(Font::with_name("Roboto"))
     )
-    //.padding([4, 8])
-    .class(ButtonClass::Labeled)
-    //.width(Length::Shrink)
+    .style(default_style)
 }
 
 fn submenu_button(label: &str, text_size: u16) -> button::Button<Message, WinitTheme, Renderer> {
@@ -148,8 +148,6 @@ fn submenu_button(label: &str, text_size: u16) -> button::Button<Message, WinitT
                 .font(Font::with_name("Roboto"))
                 .width(Length::Fill)
                 .align_y(alignment::Vertical::Center),
-            //text(icon_to_string(RequiredIcons::CaretRightFill))
-            //.font(REQUIRED_FONT)
             text(">")
                 .size(text_size)
                 .width(Length::Shrink)

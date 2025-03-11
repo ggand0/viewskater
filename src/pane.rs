@@ -547,7 +547,7 @@ impl Pane {
                 
                 container(
                     center(
-                        iced_widget::image(image_handle)
+                        viewer::Viewer::new(image_handle)
                             .content_fit(iced_winit::core::ContentFit::Contain)
                     )
                 )

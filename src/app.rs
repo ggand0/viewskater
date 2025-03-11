@@ -19,51 +19,25 @@ use other_os::*;
 use macos::*;
 
 use std::path::PathBuf;
-use std::borrow::Cow;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+#[allow(unused_imports)]
+use std::time::Instant;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
-/*
-use iced::{
-    clipboard, Element, Length, Pixels, Settings, Subscription, Task, Theme,
-    event::Event, keyboard::{self, Key, key::Named},
-    widget::{self, text, button, container, column, row},
-    font::{self, Font},
-    window::{self, events},
-};
 
-use wgpu;
-use pollster;
-
-mod cache;
-use crate::cache::img_cache::LoadOperation;
-mod navigation;
-use crate::navigation::{move_right_all, move_left_all, update_pos, load_remaining_images};
-mod file_io;
-mod menu;
-use menu::PaneLayout;
-mod widgets;
-mod pane;
-use crate::pane::Pane;
-mod ui_builder;
-mod loading_status;
-mod loading;
-mod config;
-use crate::widgets::shader::scene::Scene;*/
-
-//use wgpu;
-use pollster;
-use iced_wgpu::{wgpu, Engine, Renderer};
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use iced_wgpu::{wgpu, Renderer};
 use iced_winit::core::Theme as WinitTheme;
 use iced::widget::image::Handle;
-//use iced_winit::core::{Color};
-use iced_widget::{slider, text_input};
+use iced_winit::runtime::Task;
+use iced_widget::{row, column, container, text};
+use iced_winit::core::{Color, Element};
+use iced_core::keyboard::{self, Key, key::Named};
 
 use crate::cache::img_cache::LoadOperation;
 use crate::navigation_keyboard::{move_right_all, move_left_all};
-use crate::navigation_slider::{update_pos, load_remaining_images};
 use crate::menu::PaneLayout;
 use crate::pane::Pane;
 use crate::widgets::shader::scene::Scene;
@@ -73,47 +47,58 @@ use crate::file_io;
 use crate::widgets;
 use crate::ui_builder;
 use crate::loading;
-//use crate::widgets::modal;
-//use iced_widget::modal as widget_modal;
-
-use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
 use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
 use crate::widgets::shader::cpu_scene::CpuScene;
-use crate::widgets::shader::texture_scene::TextureScene;
-use crate::navigation_slider::LATEST_SLIDER_POS;
-use std::sync::atomic::Ordering;
+use crate::cache::img_cache::CachedData;
+use crate::cache::img_cache::CacheStrategy;
+use iced::{
+    clipboard, event::Event,
+    widget::{self, button},
+    font::{self, Font},
+};
 
+#[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("App Update"))
 });
 
 
-use iced::{
-    clipboard, Pixels, Settings, Subscription,
-    event::Event,// keyboard::{self, Key, key::Named},
-    widget::{self, button},
-    font::{self, Font},
-    window::{self, events},
-};
-use iced_winit::runtime::{Program, Task};
-
-use iced_widget::{center, shader, row, column, container, text};
-use iced_winit::core::{Color, Element, Length, Length::*, Theme};
-use iced_core::alignment::Horizontal;
-use iced_core::keyboard::{self, Key, key::Named};
-use crate::cache::img_cache::CachedData;
-
-#[derive(Debug, Clone, Copy)]
-pub enum MenuItem {
-    Open,
+#[derive(Debug, Clone)]
+pub enum Message {
+    Debug(String),
+    Nothing,
+    ShowAbout,
+    HideAbout,
+    ShowLogs,
+    OpenWebLink(String),
+    FontLoaded(Result<(), font::Error>),
+    OpenFolder(usize),
+    OpenFile(usize),
+    FileDropped(isize, String),
     Close,
-    Help
+    Quit,
+    FolderOpened(Result<String, file_io::Error>, usize),
+    SliderChanged(isize, u16),
+    SliderReleased(isize, u16),
+    SliderImageLoaded(Result<(usize, CachedData), usize>),
+    SliderImageWidgetLoaded(Result<(usize, usize, Handle), (usize, usize)>),
+    Event(Event),
+    //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
+    ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
+    OnVerResize(u16),
+    OnHorResize(u16),
+    ResetSplit(u16),
+    ToggleSliderType(bool),
+    TogglePaneLayout(PaneLayout),
+    ToggleFooter(bool),
+    PaneSelected(usize, bool),
+    CopyFilename(usize),
+    CopyFilePath(usize),
+    BackgroundColorChanged(Color),
+    TimerTick,
+    SetCacheStrategy(CacheStrategy),
 }
-
-use crate::cache::img_cache::CacheStrategy;
 
 pub struct DataViewer {
     pub background_color: Color,//debug
@@ -136,15 +121,12 @@ pub struct DataViewer {
     pub show_about: bool,
     pub device: Arc<wgpu::Device>,                     // Shared ownership using Arc
     pub queue: Arc<wgpu::Queue>,                       // Shared ownership using Arc
-    //pub device: Option<Arc<wgpu::Device>>,  // Now it's an Option
-    //pub queue: Option<Arc<wgpu::Queue>>,    // Now it's an Option
     pub is_gpu_supported: bool,
     pub cache_strategy: CacheStrategy,
     pub last_slider_update: Instant,
     pub is_slider_moving: bool,
     pub backend: wgpu::Backend,
 }
-
 
 impl DataViewer {
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
@@ -177,7 +159,6 @@ impl DataViewer {
         }
     }
 
-    // moved here
     fn reset_state(&mut self) {
         self.title = String::from("ViewSkater");
         self.directory_path = None;
@@ -467,29 +448,6 @@ impl DataViewer {
         self.show_footer = !self.show_footer;
     }
 
-    /*fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch(vec![
-            events().map(|(_id, event)| Message::Event(iced::Event::Window(event))),
-            keyboard::on_key_press(|key, modifiers| {
-                Some(Message::KeyPressed(key, modifiers))
-            }),
-            keyboard::on_key_release(|key, modifiers| {
-                Some(Message::KeyReleased(key, modifiers))
-            }),
-
-        ])
-    }*/
-
-    fn theme(&self) -> Theme {
-        iced::Theme::custom(
-            "Custom Theme".to_string(),
-            iced::theme::Palette {
-                primary: iced::Color::from_rgba8(20, 148, 163, 1.0),
-                ..iced::Theme::Dark.palette()
-            },
-        )
-    }
-
     pub fn title(&self) -> String {
         match self.pane_layout  {
             PaneLayout::SinglePane => {
@@ -525,52 +483,12 @@ impl DataViewer {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Message {
-    Debug(String),
-    Nothing,
-    ShowAbout,
-    HideAbout,
-    ShowLogs,
-    OpenWebLink(String),
-    FontLoaded(Result<(), font::Error>),
-    OpenFolder(usize),
-    OpenFile(usize),
-    FileDropped(isize, String),
-    Close,
-    Quit,
-    FolderOpened(Result<String, file_io::Error>, usize),
-    SliderChanged(isize, u16),
-    SliderReleased(isize, u16),
-    SliderImageLoaded(Result<(usize, CachedData), usize>),
-    SliderImageWidgetLoaded(Result<(usize, usize, Handle), (usize, usize)>),
-    Event(Event),
-    //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
-    ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
 
-    OnVerResize(u16),
-    OnHorResize(u16),
-    ResetSplit(u16),
-    ToggleSliderType(bool),
-    TogglePaneLayout(PaneLayout),
-    ToggleFooter(bool),
-    PaneSelected(usize, bool),
-    CopyFilename(usize),
-    CopyFilePath(usize),
-    //KeyPressed(keyboard::Key, keyboard::Modifiers),
-    //KeyReleased(keyboard::Key, keyboard::Modifiers),
-    BackgroundColorChanged(Color),
-    TimerTick,
-    SetCacheStrategy(CacheStrategy),
-}
-
-//impl DataViewer {
 impl iced_winit::runtime::Program for DataViewer {
     type Theme = WinitTheme;
     type Message = Message;
     type Renderer = Renderer;
 
-    //fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
     fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
         //debug!("Received message: {:?}", message);
         let update_start = Instant::now();
@@ -791,6 +709,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 let use_async = false;
                 
                 if pane_index == -1 {
+                    // Master slider - only relevant when is_slider_dual is false
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
                     debug!("###########################SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
@@ -802,11 +721,24 @@ impl iced_winit::runtime::Program for DataViewer {
                         use_async
                     );
                 } else {
-                    let pane = &mut self.panes[pane_index as usize];
                     let pane_index_usize = pane_index as usize;
                     
+                    // In dual slider mode, clear the slider image for the other pane
+                    // to ensure it keeps showing its normal scene
+                    if self.is_slider_dual && self.pane_layout == PaneLayout::DualPane {
+                        // Clear slider images for all panes except the active one
+                        for idx in 0..self.panes.len() {
+                            if idx != pane_index_usize {
+                                self.panes[idx].slider_image = None;
+                            }
+                        }
+                    }
+                    
+                    // Now update the slider value for the active pane
+                    let pane = &mut self.panes[pane_index_usize];
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
+                    
                     debug!("###########################SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", 
                            pane_index_usize, value);
                     
@@ -1039,86 +971,5 @@ impl iced_winit::runtime::Program for DataViewer {
         } else {
             content.into()
         }
-    }
-
-    
-}
-
-
-// Include the icon image data at compile time
-static ICON: &[u8] = if cfg!(target_os = "windows") {
-    include_bytes!("../assets/icon.ico")
-} else if cfg!(target_os = "macos") {
-    include_bytes!("../assets/icon_512.png")
-} else {
-    include_bytes!("../assets/icon_48.png")
-};
-
-pub fn load_fonts() -> Vec<Cow<'static, [u8]>> {
-    vec![
-        include_bytes!("../assets/fonts/viewskater-fonts.ttf")          // icon font
-            .as_slice()
-            .into(),
-        include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf")     // footer digit font
-            .as_slice()
-            .into(),
-        include_bytes!("../assets/fonts/Roboto-Regular.ttf")            // UI font
-            .as_slice()
-            .into(),
-    ]
-}
-
-/*
-fn main() -> iced::Result {
-    // Set up panic hook to log to a file
-    let app_name = "viewskater";
-    let shared_log_buffer = file_io::setup_logger(app_name);
-    file_io::setup_panic_hook(app_name, shared_log_buffer);
-
-    let settings = Settings {
-        id: None,
-        fonts: load_fonts(),
-        default_font: Font::with_name("Roboto"),
-        default_text_size: Pixels(20.0),
-        antialiasing: true,
-        ..Settings::default()
-    };
-
-    // Run the application with custom settings
-    iced::application(
-        DataViewer::title,
-        DataViewer::update,
-        DataViewer::view,
-    )
-    .window(window::Settings {
-        icon: Some(
-            window::icon::from_file_data(
-                ICON,
-                None,
-            )
-            .expect("Icon load failed")
-        ),
-        ..Default::default()
-    })
-    .theme(DataViewer::theme)
-    .subscription(DataViewer::subscription)
-    .settings(settings)
-    .run_with(|| (DataViewer::new(), Task::none()))
-    .inspect_err(|err| error!("Runtime error: {}", err))?;
-
-    info!("Application exited");
-
-    Ok(())
-}
-*/
-
-// Format duration in a human-readable way (same as in navigation_slider.rs)
-fn format_duration(duration: Duration) -> String {
-    if duration.as_millis() < 10 {
-        format!("{:.2}μs", duration.as_micros() as f64)
-    } else if duration.as_millis() < 1000 {
-        format!("{:.2}ms", duration.as_millis() as f64)
-    } else {
-        format!("{:.2}s", duration.as_secs_f64())
     }
 }

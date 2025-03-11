@@ -15,16 +15,15 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-//use iced::widget::{container, row, column, horizontal_space, text, button, shader, center};
-use iced_widget::{slider, container, row, column, Row, Column, horizontal_space, text, button, shader, center};
-//use iced::{Length, Color, alignment, Element, Alignment, Fill};
-//use iced::alignment::Horizontal;
-//use iced::font::Font;
-use iced_winit::core::{Color, Element, Length, Length::*, Alignment};
+
+use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
+use iced_widget::button::Style;
+use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
 use iced_winit::core::alignment::Horizontal;
 use iced_winit::core::font::Font;
-
+use iced_winit::core::Theme as WinitTheme;
+use iced_wgpu::Renderer;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -32,15 +31,11 @@ use log::{Level, debug, info, warn, error};
 use crate::widgets::{dualslider::DualSlider, viewer};
 use crate::pane;
 use crate::menu as app_menu;
+use app_menu::button_style;
 use crate::{app::Message, PaneLayout, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
-use crate::Scene;
-use iced_wgpu::Renderer;
-use iced_winit::core::Theme as WinitTheme;
-use iced_widget::Container;
 
 
-//fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
     const ICON_FONT: Font = Font::with_name("viewskater-fonts");
 
@@ -50,31 +45,27 @@ fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Render
         .into()
 }
 
-//fn file_copy_icon<'a, Message>() -> Element<'a, Message> {
 fn file_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer> {
     icon('\u{E804}')
 }
 
-//fn folder_copy_icon<'a, Message>() -> Element<'a, Message> {
 fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer> {
     icon('\u{E805}')
 }
 
-//pub fn get_footer(footer_text: String, pane_index: usize) -> container::Container<'static, Message> {
 pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message, WinitTheme, Renderer> {
     let copy_filename_button = button(file_copy_icon())
         .padding( iced::padding::all(2) )
-        .class(crate::menu::ButtonClass::Labeled)
+        .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
         .on_press(Message::CopyFilename(pane_index));
 
     let copy_filepath_button = button(folder_copy_icon())
         .padding( iced::padding::all(2) )
-        .class(crate::menu::ButtonClass::Labeled)
+        .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
         .on_press(Message::CopyFilePath(pane_index));
 
     container::<Message, WinitTheme, Renderer>(
         row![
-        //Row::<Message, WinitTheme, Renderer>::new([
             copy_filepath_button,
             copy_filename_button,
             Element::<'_, Message, WinitTheme, Renderer>::from(
@@ -117,7 +108,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     
                     container(
                         center(
-                            iced_widget::image(image_handle)
+                            viewer::Viewer::new(image_handle)
                                 .content_fit(iced_winit::core::ContentFit::Contain)
                         )
                     )
@@ -178,10 +169,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     ]
                 )
                 .style(|theme| container::Style {
-                    //background: Some(Color::from_rgb(0.1, 0.1, 0.1).into()), // Dark gray background
-                    //background: Some(iced_core::Background::Color(Color::from([0.3, 0.3, 0.3]))), // Dark gray background   
                     background: Some(theme.extended_palette().background.base.color.into()),
-                    //text_color: Some(Color::WHITE),
                     ..container::Style::default()
                 })
                 .width(Length::Fill)
