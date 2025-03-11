@@ -107,15 +107,19 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         }
     };
 
-    let fps_display = container(
-        text(format!("UI: {:.1} FPS | Image: {:.1} FPS", ui_fps, image_fps))
-            .size(14)
-            .style(|_theme| iced::widget::text::Style {
-                color: Some(Color::from([1.0, 1.0, 1.0])),
-                ..Default::default()
-            })
-    )
-    .padding(5);
+    let fps_display = if app.show_fps {
+        container(
+            text(format!("UI: {:.1} FPS | Image: {:.1} FPS", ui_fps, image_fps))
+                .size(14)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([1.0, 1.0, 1.0])),
+                    ..Default::default()
+                })
+        )
+        .padding(5)
+    } else {
+        container(text("")).width(0).height(0)
+    };
 
     let mb = app_menu::build_menu(app);
     
