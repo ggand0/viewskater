@@ -45,7 +45,7 @@ const _MENU_FONT_SIZE : u16 = 16;
 const MENU_ITEM_FONT_SIZE : u16 = 14;
 const _CARET_PATH : &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/svg/caret-right-fill.svg");
 
-fn button_style(theme: &WinitTheme, status: button::Status, style_type: &str) -> Style {
+pub fn button_style(theme: &WinitTheme, status: button::Status, style_type: &str) -> Style {
     match style_type {
         "transparent" => Style {
             text_color: theme.extended_palette().background.base.text,

@@ -31,6 +31,7 @@ use log::{Level, debug, info, warn, error};
 use crate::widgets::{dualslider::DualSlider, viewer};
 use crate::pane;
 use crate::menu as app_menu;
+use app_menu::button_style;
 use crate::{app::Message, PaneLayout, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
 
@@ -55,17 +56,16 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
 pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message, WinitTheme, Renderer> {
     let copy_filename_button = button(file_copy_icon())
         .padding( iced::padding::all(2) )
-        .style(|_theme: &WinitTheme, _status: button::Status| Style::default())
+        .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
         .on_press(Message::CopyFilename(pane_index));
 
     let copy_filepath_button = button(folder_copy_icon())
         .padding( iced::padding::all(2) )
-        .style(|_theme: &WinitTheme, _status: button::Status| Style::default())
+        .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
         .on_press(Message::CopyFilePath(pane_index));
 
     container::<Message, WinitTheme, Renderer>(
         row![
-        //Row::<Message, WinitTheme, Renderer>::new([
             copy_filepath_button,
             copy_filename_button,
             Element::<'_, Message, WinitTheme, Renderer>::from(
