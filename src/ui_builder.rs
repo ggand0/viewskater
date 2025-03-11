@@ -15,16 +15,15 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-//use iced::widget::{container, row, column, horizontal_space, text, button, shader, center};
-use iced_widget::{slider, container, row, column, Row, Column, horizontal_space, text, button, shader, center};
-//use iced::{Length, Color, alignment, Element, Alignment, Fill};
-//use iced::alignment::Horizontal;
-//use iced::font::Font;
-use iced_winit::core::{Color, Element, Length, Length::*, Alignment};
+
+use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
+use iced_widget::button::Style;
+use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
 use iced_winit::core::alignment::Horizontal;
 use iced_winit::core::font::Font;
-
+use iced_winit::core::Theme as WinitTheme;
+use iced_wgpu::Renderer;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -34,10 +33,7 @@ use crate::pane;
 use crate::menu as app_menu;
 use crate::{app::Message, PaneLayout, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
-use crate::Scene;
-use iced_wgpu::Renderer;
-use iced_winit::core::Theme as WinitTheme;
-use iced_widget::Container;
+
 
 
 //fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
@@ -64,12 +60,12 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
 pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message, WinitTheme, Renderer> {
     let copy_filename_button = button(file_copy_icon())
         .padding( iced::padding::all(2) )
-        .class(crate::menu::ButtonClass::Labeled)
+        .style(|_theme: &WinitTheme, _status: button::Status| Style::default())
         .on_press(Message::CopyFilename(pane_index));
 
     let copy_filepath_button = button(folder_copy_icon())
         .padding( iced::padding::all(2) )
-        .class(crate::menu::ButtonClass::Labeled)
+        .style(|_theme: &WinitTheme, _status: button::Status| Style::default())
         .on_press(Message::CopyFilePath(pane_index));
 
     container::<Message, WinitTheme, Renderer>(
