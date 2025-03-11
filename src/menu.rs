@@ -79,7 +79,7 @@ fn button_style(theme: &WinitTheme, status: button::Status, style_type: &str) ->
                 ..Default::default()
             },
             button::Status::Pressed => Style {
-                background: Some(theme.extended_palette().primary.weak.color.into()),
+                background: Some(theme.extended_palette().background.weak.color.into()),
                 text_color: theme.extended_palette().primary.weak.text,
                 border: iced::Border {
                     color: iced::Color::TRANSPARENT,
