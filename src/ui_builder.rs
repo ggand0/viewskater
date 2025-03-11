@@ -89,10 +89,33 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
 
 
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
+    // Get the current FPS value
+    let fps = {
+        if let Ok(fps) = crate::CURRENT_FPS.lock() {
+            *fps
+        } else {
+            0.0
+        }
+    };
+
+    let fps_display = container(
+        text(format!("FPS: {:.1}", fps))
+            .size(14)
+            .style(|_theme| iced::widget::text::Style {
+                color: Some(Color::from([1.0, 1.0, 1.0])),
+                ..Default::default()
+            })
+    )
+    .padding(5);
+
     let mb = app_menu::build_menu(app);
     
     let top_bar = container(
-        row!(mb, horizontal_space())
+        row![
+            fps_display,
+            mb, 
+            horizontal_space()
+        ]
             .align_y(alignment::Vertical::Center)
     )
     .align_y(alignment::Vertical::Center)
