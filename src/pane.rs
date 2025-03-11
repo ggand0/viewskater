@@ -56,6 +56,16 @@ use crate::file_io::ImageError;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
+use std::time::Instant;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
+pub static IMAGE_RENDER_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
+    Mutex::new(Vec::with_capacity(120))
+});
+pub static IMAGE_RENDER_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
+    Mutex::new(0.0)
+});
 
 //#[derive(Clone)]
 pub struct Pane {
@@ -204,8 +214,7 @@ impl Pane {
 
         img_cache.print_cache();
 
-        if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
-        ) {
+        if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1) {
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1; 
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
@@ -275,6 +284,31 @@ impl Pane {
                 self.slider_value = img_cache.current_index as u16;
             }
             debug!("END RENDERING NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
+
+            // Record image rendering time
+            if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+                let now = Instant::now();
+                render_times.push(now);
+                
+                // Calculate image rendering FPS
+                if render_times.len() > 1 {
+                    let oldest = render_times[0];
+                    let elapsed = now.duration_since(oldest);
+                    
+                    if elapsed.as_secs_f32() > 0.0 {
+                        let fps = render_times.len() as f32 / elapsed.as_secs_f32();
+                        
+                        // Store the current image rendering FPS
+                        if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
+                            *image_fps = fps;
+                        }
+                        
+                        // Keep only recent frames (last 3 seconds)
+                        let cutoff = now - std::time::Duration::from_secs(3);
+                        render_times.retain(|&t| t > cutoff);
+                    }
+                }
+            }
         }
 
         did_render_happen
@@ -357,6 +391,32 @@ impl Pane {
 
                 did_render_happen = true;
             }
+
+            // Record image rendering time
+            if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+                let now = Instant::now();
+                render_times.push(now);
+                
+                // Calculate image rendering FPS
+                if render_times.len() > 1 {
+                    let oldest = render_times[0];
+                    let elapsed = now.duration_since(oldest);
+                    
+                    if elapsed.as_secs_f32() > 0.0 {
+                        let fps = render_times.len() as f32 / elapsed.as_secs_f32();
+                        
+                        // Store the current image rendering FPS
+                        if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
+                            *image_fps = fps;
+                        }
+                        
+                        // Keep only recent frames (last 3 seconds)
+                        let cutoff = now - std::time::Duration::from_secs(3);
+                        render_times.retain(|&t| t > cutoff);
+                    }
+                }
+            }
+        
         }
 
         did_render_happen
