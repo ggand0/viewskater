@@ -709,6 +709,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 let use_async = false;
                 
                 if pane_index == -1 {
+                    // Master slider - only relevant when is_slider_dual is false
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
                     debug!("###########################SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
@@ -720,11 +721,24 @@ impl iced_winit::runtime::Program for DataViewer {
                         use_async
                     );
                 } else {
-                    let pane = &mut self.panes[pane_index as usize];
                     let pane_index_usize = pane_index as usize;
                     
+                    // In dual slider mode, clear the slider image for the other pane
+                    // to ensure it keeps showing its normal scene
+                    if self.is_slider_dual && self.pane_layout == PaneLayout::DualPane {
+                        // Clear slider images for all panes except the active one
+                        for idx in 0..self.panes.len() {
+                            if idx != pane_index_usize {
+                                self.panes[idx].slider_image = None;
+                            }
+                        }
+                    }
+                    
+                    // Now update the slider value for the active pane
+                    let pane = &mut self.panes[pane_index_usize];
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
+                    
                     debug!("###########################SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", 
                            pane_index_usize, value);
                     
