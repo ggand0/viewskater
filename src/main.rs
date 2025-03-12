@@ -8,7 +8,7 @@ mod file_io;
 mod menu;
 mod widgets;
 mod pane;
-mod ui_builder;
+mod ui;
 mod loading_status;
 mod loading;
 mod config;

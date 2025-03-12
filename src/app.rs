@@ -44,7 +44,7 @@ use crate::pane;
 use crate::loading_status;
 use crate::file_io;
 use crate::widgets;
-use crate::ui_builder;
+use crate::ui;
 use crate::loading;
 use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
@@ -879,7 +879,7 @@ impl iced_winit::runtime::Program for DataViewer {
     }
 
     fn view(&self) -> Element<Message, WinitTheme, Renderer> {
-        let content = ui_builder::build_ui(&self);
+        let content = ui::build_ui(&self);
 
         if self.show_about {
             let about_content = container(

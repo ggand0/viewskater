@@ -1,4 +1,4 @@
-use crate::ui_builder::get_footer;
+use crate::ui::get_footer;
 use crate::app::Message;
 use std::path::Path;
 use std::path::PathBuf;
