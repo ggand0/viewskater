@@ -31,8 +31,9 @@ use log::{Level, debug, info, warn, error};
 use crate::widgets::{dualslider::DualSlider, viewer};
 use crate::pane;
 use crate::menu as app_menu;
+use crate::menu::PaneLayout;
 use app_menu::button_style;
-use crate::{app::Message, PaneLayout, DataViewer};
+use crate::{app::Message, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
 use crate::{CURRENT_FPS, pane::IMAGE_RENDER_FPS};
 

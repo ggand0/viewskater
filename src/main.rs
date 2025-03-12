@@ -1,3 +1,36 @@
+mod cache;
+mod navigation_keyboard;
+mod navigation_slider;
+mod file_io;
+mod menu;
+mod widgets;
+mod pane;
+mod ui_builder;
+mod loading_status;
+mod loading;
+mod config;
+mod app;
+mod utils;
+mod atlas;
+
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
+
+use std::task::Wake;
+use std::task::Waker;
+use std::sync::Arc;
+use std::borrow::Cow;
+use std::time::Instant;
+use std::sync::Mutex;
+use std::time::Duration;
+use once_cell::sync::Lazy;
+
+use winit::{
+    event::WindowEvent,
+    event_loop::{ControlFlow, EventLoop},
+    keyboard::ModifiersState,
+};
+
 use iced_wgpu::graphics::Viewport;
 use iced_wgpu::{wgpu, Engine, Renderer};
 use iced_winit::{conversion, Proxy};
@@ -8,59 +41,19 @@ use iced_winit::futures;
 use iced_winit::runtime::program;
 use iced_winit::runtime::Debug;
 use iced_winit::winit;
-use iced_wgpu::wgpu::util::DeviceExt;
-use iced_winit::winit::event::{ElementState};
-use iced_winit::winit::keyboard::{KeyCode, PhysicalKey};
-use std::task::Wake;
-use std::task::Waker;
-
-#[allow(unused_imports)]
-use log::{Level, debug, info, warn, error};
-
-mod cache;
-use crate::cache::img_cache::LoadOperation;
-mod navigation_keyboard;
-mod navigation_slider;
-use crate::navigation_keyboard::{move_right_all, move_left_all};
-use crate::navigation_slider::{update_pos, load_remaining_images};
-mod file_io;
-mod menu;
-use menu::PaneLayout;
-mod widgets;
-mod pane;
-use crate::pane::Pane;
-mod ui_builder;
-mod loading_status;
-mod loading;
-mod config;
-use crate::widgets::shader::scene::Scene;
-mod app;
-use crate::app::{Message, DataViewer};
-mod utils;
-mod atlas;
-
+use iced_winit::winit::event::ElementState;
 use iced_winit::Clipboard;
-use iced_runtime::{Action, Task};
+use iced_runtime::Action;
 use iced_runtime::task::into_stream;
-use iced_winit::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
-
-use winit::{
-    event::WindowEvent,
-    event_loop::{ControlFlow, EventLoop},
-    keyboard::ModifiersState,
-};
-
-use std::sync::Arc;
-use std::borrow::Cow;
+use iced_winit::winit::event_loop::EventLoopProxy;
 use iced_wgpu::graphics::text::font_system;
-use std::time::Instant;
-use std::sync::Mutex;
-use once_cell::sync::Lazy;
-use std::time::Duration;
-use crate::utils::timing::TimingStats;
 use iced_winit::futures::futures::task;
 use iced_winit::core::window;
 use iced_futures::futures::channel::oneshot;
+
+use crate::utils::timing::TimingStats;
+use crate::app::{Message, DataViewer};
+use crate::widgets::shader::scene::Scene;
 
 // Import the correct channel types
 use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
@@ -71,10 +64,10 @@ static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
 static CURRENT_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
     Mutex::new(0.0)
 });
-static STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static _STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("State Update"))
 });
-static WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static _WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Window Event"))
 });
 
@@ -99,7 +92,7 @@ fn register_font_manually(font_data: &'static [u8]) {
     font_system_guard.load_font(Cow::Borrowed(font_data));
 }
 
-// Add these new types for control flow
+#[allow(dead_code)]
 enum Control {
     ChangeFlow(winit::event_loop::ControlFlow),
     CreateWindow {
@@ -112,6 +105,7 @@ enum Control {
     Exit,
 }
 
+#[allow(dead_code)]
 enum Event<T: 'static> {
     EventLoopAwakened(winit::event::Event<T>),
     WindowCreated {
@@ -135,9 +129,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
     // Create channels for event and control communication
     // Use std::sync::mpsc explicitly
-    let (event_sender, event_receiver): (StdSender<Event<Action<Message>>>, StdReceiver<Event<Action<Message>>>) = 
+    let (event_sender, _event_receiver): (StdSender<Event<Action<Message>>>, StdReceiver<Event<Action<Message>>>) = 
         std_mpsc::channel();
-    let (control_sender, control_receiver): (StdSender<Control>, StdReceiver<Control>) = 
+    let (_control_sender, control_receiver): (StdSender<Control>, StdReceiver<Control>) = 
         std_mpsc::channel();
 
     #[allow(clippy::large_enum_variant)]
@@ -169,9 +163,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             moved: bool,                // Flag to track window movement
             redraw: bool,
             debug: Debug,
-            event_sender: StdSender<Event<Action<Message>>>,
+            _event_sender: StdSender<Event<Action<Message>>>,
             control_receiver: StdReceiver<Control>,
-            context: task::Context<'static>,
+            _context: task::Context<'static>,
             custom_theme: Theme,
         },
     }
@@ -224,10 +218,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     // Handle events in ready state
                     match event {
                         Event::EventLoopAwakened(winit::event::Event::WindowEvent {
-                            window_id,
+                            window_id: _window_id,
                             event: window_event,
                         }) => {
-                            let window_event_start = Instant::now();
+                            let _window_event_start = Instant::now();
                             
                             match window_event {
                                 WindowEvent::Focused(true) => {
@@ -237,12 +231,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 WindowEvent::Focused(false) => {
                                     event_loop.set_control_flow(ControlFlow::Wait);
                                 }
-                                WindowEvent::Resized(size) => {
+                                WindowEvent::Resized(_size) => {
                                     *resized = true;
                                 }
                                 WindowEvent::Moved(_) => {
                                     *moved = true;
-                                    //debug!("Window moved");
                                 }
                                 WindowEvent::CloseRequested => {
                                     event_loop.exit();
@@ -251,7 +244,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     *cursor_position = Some(position);
                                 }
                                 WindowEvent::MouseInput { state, .. } => {
-                                    //debug!("Mouse input detected: {:?} {:?}", state, *moved);
                                     if state == ElementState::Released {
                                         *moved = false; // Reset flag when mouse is released
                                     }
@@ -282,7 +274,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             // If there are events pending
                             if !state.is_queue_empty() {
                                 // We update iced
-                                let update_start = Instant::now();
+                                let _update_start = Instant::now();
                                 let (_, task) = state.update(
                                     viewport.logical_size(),
                                     cursor_position
@@ -295,7 +287,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         .map(mouse::Cursor::Available)
                                         .unwrap_or(mouse::Cursor::Unavailable),
                                     renderer,
-                                    //&Theme::Dark,
                                     &custom_theme,
                                     &renderer::Style {
                                         text_color: Color::WHITE,
@@ -303,7 +294,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     clipboard,
                                     debug,
                                 );
-
                                 //let update_time = update_start.elapsed();
                                 //STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
 
@@ -353,9 +343,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 let frame_start = Instant::now();
 
                                 // Update window title dynamically based on the current image
-                                //debug!("moved: {}", *moved);
                                 if !*moved {
-                                    //debug!("Updating window title");
                                     let new_title = state.program().title();
                                     window.set_title(&new_title);
                                 }
@@ -461,7 +449,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     );
                                 }
                                 Action::Output(message) => {
-                                    //debug!("Output message: {:?}", message);
                                     state.queue_message(message);
                                 }
                                 _ => {}
@@ -515,15 +502,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
             match self {
                 Self::Loading { proxy, event_sender, control_receiver } => {
-                    println!("resumed()...");
-                    /*let custom_theme = Theme::custom(
-                        "Custom Theme".to_string(),
-                        iced_winit::core::theme::Palette {
-                            primary: iced_winit::core::Color::from_rgba8(20, 148, 163, 1.0),
-                            text: iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0),
-                            ..Theme::Dark.palette()
-                        },
-                    );*/
+                    info!("resumed()...");
                     let custom_theme = Theme::custom_with_fn(
                         "Custom Theme".to_string(),
                         iced_winit::core::theme::Palette {
@@ -533,7 +512,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         },
                         |palette| {
                             // Generate the extended palette from the base palette
-                            //let mut extended = palette::Extended::generate(palette);
                             let mut extended: iced_core::theme::palette::Extended = iced_core::theme::palette::Extended::generate(palette);
                             
                             // Customize specific parts of the extended palette
@@ -651,7 +629,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     let mut renderer = Renderer::new(
                         &device,
                         &engine,
-                        //Font::default(),
                         Font::with_name("Roboto"),
                         Pixels::from(16),
                     );
@@ -717,9 +694,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         moved: false,
                         redraw: true,
                         debug,
-                        event_sender,
+                        _event_sender: event_sender,
                         control_receiver,
-                        context,
+                        _context: context,
                         custom_theme
                     };
                 }
