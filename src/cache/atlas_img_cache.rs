@@ -2,8 +2,7 @@ use std::path::PathBuf;
 use std::io;
 use std::sync::{Arc, RwLock};
 use iced_wgpu::wgpu;
-use crate::cache::img_cache::{ImageCache, CachedData, ImageCacheBackend};
-use crate::cache::cache_utils::{shift_cache_left, shift_cache_right, load_pos};
+use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 use crate::atlas::atlas::Atlas;
 use crate::atlas::entry;
 use image::GenericImageView;
@@ -11,9 +10,7 @@ use image::GenericImageView;
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use crate::loading_status::LoadingStatus;
-use crate::cache::img_cache::{LoadOperation, LoadOperationType};
-
+#[allow(dead_code)]
 pub struct AtlasImageCache {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,

@@ -1,4 +1,3 @@
-#![windows_subsystem = "windows"]
 
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
@@ -64,6 +63,7 @@ static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
 });
 
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Message {
     Debug(String),
@@ -84,7 +84,6 @@ pub enum Message {
     SliderImageLoaded(Result<(usize, CachedData), usize>),
     SliderImageWidgetLoaded(Result<(usize, usize, Handle), (usize, usize)>),
     Event(Event),
-    //ImagesLoaded(Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind>),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
     OnVerResize(u16),
     OnHorResize(u16),
@@ -426,7 +425,6 @@ impl DataViewer {
     fn toggle_pane_layout(&mut self, pane_layout: PaneLayout) {
         match pane_layout {
             PaneLayout::SinglePane => {
-                //self.panes.resize(1, Default::default());
                 Pane::resize_panes(&mut self.panes, 1);
 
                 debug!("self.panes.len(): {}", self.panes.len());
@@ -439,7 +437,6 @@ impl DataViewer {
                 }
             }
             PaneLayout::DualPane => {
-                //self.panes.resize(2, Default::default()); // Resize to hold 2 image caches
                 Pane::resize_panes(&mut self.panes, 2);
                 debug!("self.panes.len(): {}", self.panes.len());
             }
@@ -493,8 +490,7 @@ impl iced_winit::runtime::Program for DataViewer {
     type Renderer = Renderer;
 
     fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
-        //debug!("Received message: {:?}", message);
-        let update_start = Instant::now();
+        let _update_start = Instant::now();
         match message {
             Message::BackgroundColorChanged(color) => {
                 self.background_color = color;
@@ -600,7 +596,6 @@ impl iced_winit::runtime::Program for DataViewer {
             }
 
             Message::ImagesLoaded(result) => {
-                //debug!("ImagesLoaded result: {:?}", result);
                 debug!("ImagesLoaded");
                 match result {
                     Ok((image_data, operation)) => {
@@ -665,15 +660,7 @@ impl iced_winit::runtime::Program for DataViewer {
 
             Message::SliderImageLoaded(result) => {
                 match result {
-                    Ok((pos, cached_data)) => {
-                        /*ilet current_slider_pos = LATEST_SLIDER_POS.load(Ordering::SeqCst);
-                        
-                        // Skip processing outdated positions unless it's close to current position
-                        f pos != current_slider_pos && (pos as isize - current_slider_pos as isize).abs() > 2 {
-                            debug!("SLIDER: Skipping outdated position {}", pos);
-                            return Task::none();
-                        }*/
-                        
+                    Ok((_pos, cached_data)) => {
                         let pane = &mut self.panes[0]; // For single-pane slider
                         
                         // Update the scene based on data type
@@ -682,7 +669,6 @@ impl iced_winit::runtime::Program for DataViewer {
 
                             // Create or update the slider scene
                             pane.current_image = CachedData::Cpu(bytes.clone());
-                            //pane.scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
                             pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(
                                 bytes.clone(), true)));
 
@@ -704,9 +690,6 @@ impl iced_winit::runtime::Program for DataViewer {
             
             
             Message::SliderChanged(pane_index, value) => {
-                info!("###########################SLIDER_DEBUG: SliderChanged from {} to {} (delta: {})", 
-                       self.slider_value, value, (value as i32 - self.slider_value as i32).abs());
-                
                 self.is_slider_moving = true;
                 self.last_slider_update = Instant::now();
                 let use_async = false;
@@ -715,7 +698,6 @@ impl iced_winit::runtime::Program for DataViewer {
                     // Master slider - only relevant when is_slider_dual is false
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    debug!("###########################SLIDER_DEBUG: Calling update_pos for master slider value {}", value);
                     
                     return navigation_slider::update_pos(
                         &mut self.panes, 
@@ -742,9 +724,6 @@ impl iced_winit::runtime::Program for DataViewer {
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
                     
-                    debug!("###########################SLIDER_DEBUG: Calling update_pos for pane {} slider value {}", 
-                           pane_index_usize, value);
-                    
                     return navigation_slider::update_pos(
                         &mut self.panes, 
                         pane_index, 
@@ -756,16 +735,8 @@ impl iced_winit::runtime::Program for DataViewer {
             
             Message::SliderReleased(pane_index, value) => {
                 debug!("SLIDER_DEBUG: SliderReleased event received");
-                let slider_move_duration = self.last_slider_update.elapsed();
-                debug!("SLIDER_DEBUG: Slider was moving for {:?}", slider_move_duration);
-                
                 self.is_slider_moving = false;
-                
-                // Now we can do the more intensive cache index updates
-                let pos = self.slider_value as usize;
-                debug!("SLIDER_DEBUG: Final slider position: {}", pos);
-                
-                debug!("slider released: pane_index: {}, value: {}", pane_index, value);
+
                 if pane_index == -1 {
                     return navigation_slider::load_remaining_images(
                         &self.device, &self.queue, self.is_gpu_supported,
@@ -819,7 +790,6 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 }
 
-                //_ => return iced_winit::runtime::Task::none()
                 _ => {}
             },
             Message::TimerTick => {
@@ -874,7 +844,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            let update_end = Instant::now();
+            //let update_end = Instant::now();
             //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
@@ -890,7 +860,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            let update_end = Instant::now();
+            //let update_end = Instant::now();
             //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
@@ -900,7 +870,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 debug!("No skate mode detected, update_counter: {}", self.update_counter);
                 self.update_counter += 1;
             }
-            let update_end = Instant::now();
+            //let update_end = Instant::now();
             //let update_duration = update_end.duration_since(update_start);
             //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
 

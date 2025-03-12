@@ -1,28 +1,10 @@
-#[warn(unused_imports)]
-#[cfg(target_os = "linux")]
-mod other_os {
-    //pub use iced;
-    pub use iced_custom as iced;
-}
-
-#[cfg(not(target_os = "linux"))]
-mod macos {
-    pub use iced_custom as iced;
-}
-
-#[cfg(target_os = "linux")]
-use other_os::*;
-
-#[cfg(not(target_os = "linux"))]
-use macos::*;
-
 #[allow(unused_imports)]
 use log::{debug, error, warn, info};
 use crate::Arc;
 use crate::pane;
 use crate::loading_status::LoadingStatus;
 use crate::cache::img_cache::{LoadOperation, LoadOperationType};
-use crate::cache::img_cache::{CachedData};
+use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::scene::Scene;
 use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::atlas::entry;

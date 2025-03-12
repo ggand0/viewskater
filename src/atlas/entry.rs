@@ -1,7 +1,5 @@
-//use crate::core::Size;
-//use crate::image::atlas;
 use iced_core::Size;
-use crate::atlas::{atlas, allocation};
+use crate::atlas::atlas;
 
 #[derive(Debug, Clone)]
 pub enum Entry {
@@ -13,7 +11,6 @@ pub enum Entry {
 }
 
 impl Entry {
-    #[cfg(feature = "image")]
     pub fn size(&self) -> Size<u32> {
         match self {
             Entry::Contiguous(allocation) => allocation.size(),

@@ -1,12 +1,11 @@
 use iced_widget::shader::{self, Viewport};
-use iced_winit::core::{Color, Element, Rectangle, Length::*, Theme, mouse};
+use iced_winit::core::{Rectangle, mouse};
 use iced_wgpu::wgpu;
 use std::sync::Arc;
 use std::sync::RwLock;
 
 use crate::atlas::atlas::Atlas;
 use crate::atlas::entry::Entry;
-use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::atlas_pipeline::AtlasPipeline;
 
 #[derive(Debug, Clone)]
@@ -31,6 +30,7 @@ impl AtlasScene {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct AtlasPrimitive {
     atlas: Arc<RwLock<Atlas>>,

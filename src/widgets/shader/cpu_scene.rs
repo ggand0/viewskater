@@ -1,20 +1,21 @@
 use iced_widget::shader::{self, Viewport};
 use iced_winit::core::{Rectangle, mouse};
 use iced_wgpu::wgpu;
-use image::{GenericImageView, ImageFormat, DynamicImage};
+use image::GenericImageView;
 use std::sync::Arc;
 use std::time::Instant;
+
+#[allow(unused_imports)]
 use log::{debug, info, warn, error};
 use std::collections::HashMap;
 
-use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use crate::cache::texture_cache::TextureCache;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
-static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static _SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("CPU Shader Update"))
 });
 
@@ -198,6 +199,7 @@ impl CpuScene {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct CpuPrimitive {
     image_bytes: Vec<u8>,
@@ -267,10 +269,7 @@ impl shader::Primitive for CpuPrimitive {
             let registry = storage.get_mut::<CpuPipelineRegistry>().unwrap();
             
             // Check if we need to create a new pipeline for this position
-            if !registry.pipelines.contains_key(&pipeline_key) {
-                //debug!("Creating new TexturePipeline for CPU image with key {}", pipeline_key);
-                let pipeline_start = Instant::now();
-                
+            if !registry.pipelines.contains_key(&pipeline_key) {                
                 let pipeline = TexturePipeline::new(
                     device,
                     queue,
@@ -282,27 +281,21 @@ impl shader::Primitive for CpuPrimitive {
                 );
                 
                 registry.pipelines.insert(pipeline_key.clone(), pipeline);
-                
-                let pipeline_time = pipeline_start.elapsed();
-                //debug!("Created new TexturePipeline in {:?}", pipeline_time);
             } else {
-                //debug!("Updating existing TexturePipeline for CPU image with key {}", pipeline_key);
                 let pipeline = registry.pipelines.get_mut(&pipeline_key).unwrap();
                 
                 let vertices_start = Instant::now();
                 pipeline.update_vertices(device, bounds_relative);
-                let vertices_time = vertices_start.elapsed();
-                //debug!("Updated vertices in {:?}", vertices_time);
+                let _vertices_time = vertices_start.elapsed();
                 
                 let texture_update_start = Instant::now();
                 pipeline.update_texture(device, queue, texture.clone());
-                let texture_update_time = texture_update_start.elapsed();
-                //debug!("Updated texture in {:?}", texture_update_time);
+                let _texture_update_time = texture_update_start.elapsed();
+                
                 
                 let uniforms_start = Instant::now();
                 pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
-                let uniforms_time = uniforms_start.elapsed();
-                //debug!("Updated uniforms in {:?}", uniforms_time);
+                let _uniforms_time = uniforms_start.elapsed();
             }
         } else {
             warn!("No texture available for rendering");
@@ -312,8 +305,6 @@ impl shader::Primitive for CpuPrimitive {
         if debug {
             debug!("CpuPrimitive prepare - bounds: {:?}, bounds_relative: {:?}", bounds, bounds_relative);
             debug!("CpuPrimitive prepare - viewport_size: {:?}, shader_size: {:?}", viewport_size, shader_size);
-
-
             debug!("CpuPrimitive prepare completed in {:?}", prepare_time);
         }
     }

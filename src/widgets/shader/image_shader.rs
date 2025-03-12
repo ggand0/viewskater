@@ -6,7 +6,6 @@ use iced_widget::shader::{self, Viewport, Storage};
 use iced_core::ContentFit;
 use iced_core::{Vector, Point};
 use iced_core::layout::Layout;
-use iced_core::{self, event::Event};
 use iced_core::clipboard::Clipboard;
 use iced_core::event;
 
@@ -14,9 +13,8 @@ use iced_core::event;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
-use crate::Scene;  // Import the Scene type
+use crate::Scene;
 
 /// A specialized shader widget for displaying images with proper aspect ratio.
 pub struct ImageShader<Message> {
@@ -111,7 +109,7 @@ impl<Message> ImageShader<Message> {
     }
     
     /// Calculate the layout bounds that preserve aspect ratio
-    fn calculate_layout(&self, bounds: Rectangle) -> Rectangle {
+    fn _calculate_layout(&self, bounds: Rectangle) -> Rectangle {
         if let Some(ref scene) = self.scene {
             if let Some(texture) = scene.get_texture() {
                 debug!("ImageShader::calculate_layout - Got texture {}x{}", texture.width(), texture.height());
@@ -215,6 +213,7 @@ impl ImageShaderState {
 }
 
 // This is our specialized primitive for image rendering
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ImagePrimitive {
     scene: Scene,
@@ -231,7 +230,7 @@ impl shader::Primitive for ImagePrimitive {
         queue: &wgpu::Queue, 
         format: wgpu::TextureFormat,
         storage: &mut Storage,
-        bounds: &Rectangle,
+        _bounds: &Rectangle,
         viewport: &Viewport,
     ) {
         // Make sure the viewport is stored in storage for later use in render

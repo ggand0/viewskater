@@ -5,15 +5,12 @@ use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use std::sync::Arc;
 
 use crate::cache::img_cache::CachedData;
-use std::time::Instant;
 use crate::utils::timing::TimingStats;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
-use std::collections::HashMap;
 use iced_core::{Length, Size, Point, ContentFit};
-use iced_core::Renderer;
 
-static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static _SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Shader Update"))
 });
 
@@ -96,7 +93,7 @@ impl TexturePrimitive {
         }
     }
     
-    pub fn placeholder(bounds: Rectangle) -> Self {
+    pub fn placeholder(_bounds: Rectangle) -> Self {
         // Create a 1x1 white texture as placeholder
         // Simplified implementation - you'd create a real placeholder texture
         unimplemented!("Need to create a placeholder texture")
@@ -116,7 +113,7 @@ impl shader::Primitive for TexturePrimitive {
         queue: &wgpu::Queue,
         format: wgpu::TextureFormat,
         storage: &mut shader::Storage,
-        bounds: &Rectangle,
+        _bounds: &Rectangle,
         viewport: &Viewport,
     ) {
         let debug = true; // CRITICAL: Enable debugging

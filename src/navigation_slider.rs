@@ -32,8 +32,7 @@ use std::io;
 use crate::Arc;
 
 use crate::pane;
-use crate::pane::Pane;
-use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_operation, load_all_images_in_queue};
+use crate::cache::img_cache::{LoadOperation, load_all_images_in_queue};
 use crate::widgets::shader::scene::Scene;
 use crate::loading_status::LoadingStatus;
 use crate::app::Message;
@@ -44,7 +43,7 @@ use crate::file_io;
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
 static LAST_SLIDER_LOAD: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now()));
 
-const THROTTLE_INTERVAL_MS: u64 = 100; // Default throttle interval 
+const _THROTTLE_INTERVAL_MS: u64 = 100; // Default throttle interval 
 
 fn load_full_res_image(
     device: &Arc<wgpu::Device>,
@@ -66,8 +65,6 @@ fn load_full_res_image(
         // Process only the specified pane
         vec![pane_index as usize]
     };
-
-    let mut tasks: Vec<Task<Message>> = Vec::new();
 
     // Process each pane in the list
     for idx in pane_indices {
@@ -140,7 +137,7 @@ fn load_full_res_image(
                         pane.current_image = cached_data.clone();
                         
                         // Update scene if using CPU-based cached data
-                        if let CachedData::Cpu(img) = &cached_data {
+                        if let CachedData::Cpu(_img) = &cached_data {
                             // Create a new scene with the CPU image
                             pane.scene = Some(Scene::new(Some(&cached_data)));
                             
@@ -169,7 +166,7 @@ fn load_full_res_image(
 fn get_loading_tasks_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    _is_gpu_supported: bool,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: usize,
@@ -225,20 +222,7 @@ fn get_loading_tasks_slider(
         loading_status.print_queue();
 
         // Generate loading tasks
-        //let local_tasks = load_all_images_in_queue(panes, loading_status);
         let local_tasks = load_all_images_in_queue(device, queue, CacheStrategy::Gpu, panes, loading_status);
-
-        // Convert `panes` into a vector of mutable references
-        let mut pane_refs: Vec<&mut Pane> = panes.iter_mut().collect();
-
-        // NOTE: temporary workaround to make it compile
-        // Call the function with `pane_refs`
-        /*let local_tasks = load_images_by_operation(
-            device, queue, is_gpu_supported,
-            &mut pane_refs, loading_status);*/
-        //debug!("get_loading_tasks_slider - local_tasks.len(): {}", local_tasks.len());
-
-
         tasks.push(local_tasks);
     }
 
@@ -328,7 +312,7 @@ pub async fn create_async_image_widget_task(
     }
 }
 
-pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, use_async: bool) -> Task<Message> {
+pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, _use_async: bool) -> Task<Message> {
     // Store the latest position in the atomic variable for reference
     LATEST_SLIDER_POS.store(pos, Ordering::SeqCst);
     

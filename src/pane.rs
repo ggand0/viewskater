@@ -1,22 +1,3 @@
-#[cfg(target_os = "linux")]
-mod other_os {
-    //pub use iced;
-    pub use iced_custom as iced;
-}
-
-#[cfg(not(target_os = "linux"))]
-mod macos {
-    pub use iced_custom as iced;
-}
-
-#[cfg(target_os = "linux")]
-use other_os::*;
-
-#[cfg(not(target_os = "linux"))]
-use macos::*;
-
-
-//use crate::image_cache;
 use crate::ui_builder::get_footer;
 use crate::app::Message;
 use std::path::Path;
@@ -26,21 +7,17 @@ use std::sync::Arc;
 use crate::file_io;
 use crate::file_io::{is_file, is_directory, get_file_index};
 
-//use iced::widget::{container, column, text};
-//use iced::{Element, Length};
-use iced_widget::{container, row, column, text};
+use iced_widget::{container, column, text};
 use iced_winit::core::{Element, Length};
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
-use image::GenericImageView;
-
 
 use crate::menu::PaneLayout;
 use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
 use crate::cache::img_cache::ImageCache;
 use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::scene::Scene;
-use crate::atlas::entry::{self, Entry};
+use crate::atlas::entry;
 use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::config::CONFIG;
 use crate::widgets::shader::image_shader::ImageShader;
@@ -48,9 +25,7 @@ use iced_wgpu::wgpu;
 use iced_core::image::Handle;
 use crate::cache::img_cache::CacheStrategy;
 use crate::widgets::shader::cpu_scene::CpuScene;
-use iced_core::Length::Fill;
 use iced_widget::{center, Container};
-use iced_widget::shader;
 use crate::file_io::ImageError;
 
 #[allow(unused_imports)]
@@ -73,8 +48,6 @@ pub struct Pane {
     pub dir_loaded: bool,
     pub img_cache: ImageCache,
     pub current_image: CachedData, // <-- Now stores either CPU or GPU image
-    //pub cpu_preview_image: Option<CachedData>, // for CPU previews
-    pub cpu_preview_image: Option<Handle>,
     pub is_next_image_loaded: bool, // whether the next image in cache is loaded
     pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
     pub slider_value: u16,
@@ -105,7 +78,6 @@ impl Default for Pane {
             is_selected_cache: true,
             scene: None,
             slider_scene: None, // Default to None
-            cpu_preview_image: None,
             backend: wgpu::Backend::Vulkan,
             device: None,
             queue: None,
@@ -126,7 +98,6 @@ impl Pane {
             dir_loaded: false,
             img_cache: ImageCache::default(),
             current_image: CachedData::Cpu(vec![]),
-            cpu_preview_image: None,
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -219,14 +190,6 @@ impl Pane {
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
-            /*let loaded_image = img_cache
-                .get_image_by_index(next_image_index_to_render as usize)
-                .unwrap()
-                .as_vec()
-                .expect("Failed to convert CachedData to Vec<u8>");
-            let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-            self.current_image = handle;*/
-
             // Retrieve the cached image (GPU or CPU)
             if let Ok(cached_image) = img_cache.get_image_by_index(next_image_index_to_render as usize) {
                 match cached_image {
@@ -259,9 +222,6 @@ impl Pane {
                             entry: entry.clone(),
                         };
                         
-                        // If you need to update scene with the atlas, add that here
-                        // For example:
-                        // self.scene = Some(Scene::new_with_atlas(...));
                     }
                 }
             } else {
@@ -369,10 +329,10 @@ impl Pane {
         &mut self,
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
-        is_gpu_supported: bool,
-        pane_layout: &PaneLayout,
+        _is_gpu_supported: bool,
+        _pane_layout: &PaneLayout,
         pane_file_lengths: &[usize],
-        pane_index: usize,
+        _pane_index: usize,
         path: PathBuf,
         is_slider_dual: bool,
         slider_value: &mut u16,
@@ -411,7 +371,7 @@ impl Pane {
         };
 
         self.directory_path = Some(dir_path);
-        let mut is_dir_size_bigger = false;
+        let is_dir_size_bigger = false;
 
         // Determine initial index and update slider
         if is_file(&path) {
@@ -474,10 +434,6 @@ impl Pane {
                     self.current_image = CachedData::Gpu(Arc::clone(texture));
                     self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                     self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-
-                    /*if let Some(scene) = &mut self.scene {
-                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue));
-                    }*/
                 }
                 CachedData::Cpu(image_bytes) => {
                     debug!("Using CPU image for initial image");
@@ -555,10 +511,6 @@ impl Pane {
                 .width(Length::Fill)
                 .height(Length::Fill)
             } else if let Some(scene) = &self.scene {
-                // Use shader/scene for normal viewing (better quality)
-                //let shader_widget = shader(scene)
-                //    .width(Fill)
-                //    .height(Fill);
                 let shader_widget = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)

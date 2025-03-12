@@ -1,8 +1,3 @@
-/*pub mod entry;
-mod allocation;
-mod allocator;
-mod layer;*/
-
 pub use crate::atlas::allocation::Allocation;
 pub use crate::atlas::entry::{self, Entry};
 pub use crate::atlas::layer::Layer;
@@ -11,8 +6,6 @@ use crate::atlas::allocator::Allocator;
 
 pub const SIZE: u32 = 2048;
 
-//use crate::core::Size;
-//use crate::graphics::color;
 use iced_core::Size;
 use iced_graphics::color;
 
@@ -253,7 +246,7 @@ impl Atlas {
         width: u32,
         height: u32,
     ) -> Option<Entry> {
-        let start = Instant::now();
+        let _start = Instant::now();
         debug!("iced_wgpu: Attempting atlas allocation for size {:?}", Size::new(width, height));
         
         // Allocate one layer if texture fits perfectly

@@ -1,8 +1,7 @@
 use crate::atlas::atlas::{Atlas, SIZE};
 use crate::atlas::entry::Entry;
-use iced_winit::core::{Rectangle, Rectangle as IcedRectangle};
+use iced_winit::core::Rectangle;
 use iced_widget::shader::Viewport;
-use std::sync::Arc;
 use iced_wgpu::wgpu;
 use bytemuck::{Pod, Zeroable};
 use iced_wgpu::wgpu::util::DeviceExt;
@@ -60,7 +59,7 @@ impl AtlasPipeline {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         atlas: &Atlas,
-        image_size: (u32, u32),
+        _image_size: (u32, u32),
         bounds: &Rectangle,
         viewport: &Viewport,
     ) -> Self {
@@ -221,8 +220,7 @@ impl AtlasPipeline {
     }
 
     // Helper function to create quad vertices
-    fn create_vertices(bounds: &Rectangle, viewport: &Viewport) -> Vec<Vertex> {
-        // ... existing code ...
+    fn create_vertices(_bounds: &Rectangle, _viewport: &Viewport) -> Vec<Vertex> {
         // Return a vector of vertices
         vec![
             // Top-left
@@ -279,7 +277,7 @@ impl AtlasPipeline {
         queue: &wgpu::Queue,
         entry: &Entry,
         image_size: (u32, u32),
-        atlas: &Atlas,
+        _atlas: &Atlas,
     ) {
         // Get the atlas size from the constant SIZE
         let atlas_size = SIZE as f32;

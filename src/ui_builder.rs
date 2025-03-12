@@ -17,7 +17,6 @@ use macos::*;
 
 
 use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
-use iced_widget::button::Style;
 use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
 use iced_winit::core::alignment::Horizontal;

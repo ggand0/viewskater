@@ -12,11 +12,13 @@ use tokio::time::Instant;
 use log::{Level, debug, info, warn, error};
 
 use std::panic;
-use std::fs::{OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use env_logger::{fmt::Color};
+use std::error::Error as StdError;
+use std::io;
+use env_logger::fmt::Color;
 use log::{LevelFilter, Metadata, Record};
 use backtrace::Backtrace;
 use std::process::Command;
@@ -24,15 +26,11 @@ use std::process::Command;
 use iced_wgpu::wgpu;
 use image::GenericImageView;
 use crate::cache::img_cache::CachedData;
-use std::fs::File;
-
 use crate::utils::timing::TimingStats;
 use once_cell::sync::Lazy;
 
-//use crate::cache::cache_strategy::CacheStrategy;
 use crate::cache::img_cache::CacheStrategy;
 use crate::atlas::atlas::Atlas;
-use crate::atlas::entry;
 
 use std::sync::RwLock;
 
@@ -43,6 +41,7 @@ static GPU_UPLOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("GPU Upload"))
 });
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Error {
     DialogClosed,
@@ -372,13 +371,6 @@ pub async fn pick_file() -> Result<String, Error> {
 }
 
 
-/*pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
-    Ok((None, Some(operation)))
-}
-
-pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
-    Ok((vec![None; count], Some(operation)))
-}*/
 #[allow(dead_code)]
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<CachedData>, Option<LoadOperation>), std::io::ErrorKind> {
     Ok((None, Some(operation)))
@@ -388,7 +380,7 @@ pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Re
     Ok((vec![None; count], Some(operation)))
 }
 
-pub async fn literal_empty_async_block() -> Result<(), std::io::ErrorKind> {
+pub async fn _literal_empty_async_block() -> Result<(), std::io::ErrorKind> {
     Ok(())
 }
 
@@ -406,8 +398,7 @@ pub fn get_file_index(files: &[PathBuf], file: &PathBuf) -> Option<usize> {
     files.iter().position(|f| f.file_name() == Some(file_name))
 }
 
-use std::error::Error as StdError;
-use std::io;
+
 
 #[derive(Debug)]
 pub enum ImageError {
@@ -434,22 +425,6 @@ pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageErro
     let dir_entries = fs::read_dir(directory_path)
         .map_err(|e| ImageError::DirectoryError(e))?;
 
-    /*if let Ok(paths) = fs::read_dir(directory_path) {
-        for entry in paths.flatten() {
-            if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
-                // Check if the extension is among allowed extensions
-                if allowed_extensions.contains(&extension.to_lowercase().as_str()) {
-                    image_paths.push(entry.path());
-                }
-            }
-        }
-    }
-
-    // Sort paths like Nautilus file viewer. (`image_paths.sort()` won't achieve this)
-    alphanumeric_sort::sort_path_slice(&mut image_paths);
-    image_paths
-        
-    */
     for entry in dir_entries.flatten() {
         if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
             if allowed_extensions.contains(&extension.to_lowercase().as_str()) {
@@ -475,6 +450,7 @@ struct BufferLogger {
 }
 
 impl BufferLogger {
+    #[allow(dead_code)]
     fn new() -> Self {
         Self {
             log_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(MAX_LOG_LINES))),
@@ -497,6 +473,7 @@ impl BufferLogger {
         buffer.iter().cloned().collect()
     }
 
+    #[allow(dead_code)]
     fn get_shared_buffer(&self) -> Arc<Mutex<VecDeque<String>>> {
         Arc::clone(&self.log_buffer)
     }
@@ -517,6 +494,7 @@ impl log::Log for BufferLogger {
     fn flush(&self) {}
 }
 
+#[allow(dead_code)]
 struct CompositeLogger {
     console_logger: env_logger::Logger,
     buffer_logger: BufferLogger,
@@ -542,6 +520,7 @@ impl log::Log for CompositeLogger {
     }
 }
 
+#[allow(dead_code)]
 pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     let buffer_logger = BufferLogger::new();
     let shared_buffer = buffer_logger.get_shared_buffer();
@@ -586,6 +565,7 @@ pub fn get_log_directory(app_name: &str) -> PathBuf {
     dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
 }
 
+#[allow(dead_code)]
 pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) {
     let log_file_path = get_log_directory(app_name).join("panic.log");
     std::fs::create_dir_all(log_file_path.parent().unwrap()).expect("Failed to create log directory");

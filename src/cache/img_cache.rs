@@ -1,22 +1,21 @@
-#[warn(unused_imports)]
-#[cfg(target_os = "linux")]
-mod other_os {
-    //pub use iced;
-    pub use iced_custom as iced;
-}
+//#[warn(unused_imports)]
+//#[cfg(target_os = "linux")]
+//mod other_os {
+//    //pub use iced;
+//    pub use iced_custom as iced;
+//}
+//
+//#[cfg(not(target_os = "linux"))]
+//mod macos {
+//    pub use iced_custom as iced;
+//}
+//
+//#[cfg(target_os = "linux")]
+//use other_os::*;
+//
+//#[cfg(not(target_os = "linux"))]
+//use macos::*;
 
-#[cfg(not(target_os = "linux"))]
-mod macos {
-    pub use iced_custom as iced;
-}
-
-#[cfg(target_os = "linux")]
-use other_os::*;
-
-#[cfg(not(target_os = "linux"))]
-use macos::*;
-
-use std::fs;
 use std::path::PathBuf;
 use std::io;
 use std::collections::VecDeque;
@@ -30,11 +29,9 @@ use std::time::Instant;
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-//use wgpu;
-use iced_wgpu::{wgpu, Renderer};
+use iced_wgpu::wgpu;
 
 use crate::app::Message;
-//use iced::Task;
 use iced_winit::runtime::Task;
 
 use crate::file_io::{load_images_async, empty_async_block_vec};
@@ -46,10 +43,6 @@ use crate::pane;
 use crate::cache::cpu_img_cache::CpuImageCache;
 use crate::cache::gpu_img_cache::GpuImageCache;
 use crate::cache::atlas_img_cache::AtlasImageCache;
-use crate::cache::cache_utils::{shift_cache_left, shift_cache_right, load_pos};
-use std::path::Path;
-
-//use crate::cache::cache_strategy::CacheStrategy;
 use crate::atlas::atlas::Atlas;
 use crate::atlas::entry;
 
@@ -85,6 +78,7 @@ impl LoadOperation {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CacheStrategy {
     Cpu,         // Use CPU memory for image caching
@@ -180,7 +174,7 @@ impl CachedData {
                 };
                 
                 // Now use the size to create the vector
-                let mut data = vec![0; size.width as usize * size.height as usize * 4];
+                let mut _data = vec![0; size.width as usize * size.height as usize * 4];
                 /*let mut offset = 0;
 
                 for y in 0..size.height {
@@ -188,7 +182,7 @@ impl CachedData {
             
                     }
                 }*/
-                Ok(data)
+                Ok(_data)
             }
         }
     }
@@ -205,7 +199,8 @@ pub trait ImageCacheBackend {
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
     ) -> Result<(), io::Error>;
-    //fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error>;
+    
+    #[allow(dead_code)]
     fn load_pos(
         &mut self,
         new_image: Option<CachedData>,
@@ -227,8 +222,7 @@ pub struct ImageCache {
     pub cached_image_indices: Vec<isize>,    // Indices of cached images
     pub cache_states: Vec<bool>,            // States of cache validity
     pub loading_queue: VecDeque<LoadOperation>,
-    pub being_loaded_queue: VecDeque<LoadOperation>,    // Queue of image indices being loaded
-    pub loading_queue_slider: VecDeque<usize>,
+    pub being_loaded_queue: VecDeque<LoadOperation>,    // Queue of image indices being loaded  
 
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
@@ -249,7 +243,6 @@ impl Default for ImageCache {
             cache_states: Vec::new(),
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
-            loading_queue_slider: VecDeque::new(),
             cached_data: Vec::new(),
             backend: Box::new(CpuImageCache {}),
             slider_texture: None,
@@ -287,7 +280,6 @@ impl ImageCache {
             cache_states: vec![false; cache_count * 2 + 1],
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
-            loading_queue_slider: VecDeque::new(),
             wgpu_backend,
             slider_texture: None,
             atlas: None,
@@ -332,7 +324,7 @@ impl ImageCache {
         Ok(image_cache)
     }
 
-    pub fn get_cached_data(&self, index: usize) -> Option<&CachedData> {
+    pub fn _get_cached_data(&self, index: usize) -> Option<&CachedData> {
         self.cached_data.get(index).and_then(|opt| opt.as_ref())
     }
 
@@ -346,7 +338,7 @@ impl ImageCache {
         self.backend.load_image(index, &self.image_paths)
     }
 
-    pub fn load_pos(
+    pub fn _load_pos(
         &mut self,
         new_data: Option<CachedData>,
         pos: usize,
@@ -423,9 +415,9 @@ impl ImageCache {
     
     pub fn shift_cache_left(&mut self, new_item: Option<CachedData>) {
         // Before removing the first item, deallocate any atlas entry it might have
-        if let Some(Some(CachedData::Atlas { entry, atlas })) = self.cached_data.first() {
+        if let Some(Some(CachedData::Atlas { entry: _entry, atlas })) = self.cached_data.first() {
             // Get a write lock to the atlas for deallocation
-            if let Ok(mut atlas_guard) = atlas.write() {
+            if let Ok(mut _atlas_guard) = atlas.write() {
                 // Deallocate the atlas entry
                 // Implementation will depend on your atlas design
             }
@@ -623,13 +615,9 @@ impl ImageCache {
     }
 
     pub fn get_initial_image(&self) -> Result<&CachedData, io::Error> {
-        //debug!("get_initial_image - current_index: {}", self.current_index);
         let cache_index = (self.cache_count as isize + self.current_offset) as usize;
-        //debug!("get_initial_image - cache_index: {}", cache_index);
-        //debug!("get_initial_image - cached_data.len(): {}", self.cached_data.len());
         
         if let Some(image_data_option) = self.cached_data.get(cache_index) {
-            //debug!("get_initial_image2");
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
@@ -798,7 +786,7 @@ impl ImageCache {
         index >= self.image_paths.len() as isize && index < self.image_paths.len() as isize + self.cache_count as isize
     }
 
-    pub fn is_operation_in_queues(&self, operation: LoadOperationType) -> bool {
+    pub fn _is_operation_in_queues(&self, operation: LoadOperationType) -> bool {
         debug!("img_cache.loading_queue: {:?}", self.loading_queue);
         debug!("img_cache.being_loaded_queue: {:?}", self.being_loaded_queue);
         self.loading_queue.iter().any(|op| op.operation_type() == operation) ||
@@ -882,7 +870,6 @@ pub fn load_images_by_operation_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
-    //is_gpu_supported: bool,
     panes: &mut Vec<pane::Pane>,
     pane_index: usize,
     target_indices_and_cache: Vec<Option<(isize, usize)>>,

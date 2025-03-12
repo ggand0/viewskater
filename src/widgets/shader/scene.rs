@@ -1,12 +1,9 @@
 use iced_widget::shader::{self, Viewport};
-use iced_winit::core::{Color, Element, Rectangle, Length::*, Theme, mouse};
+use iced_winit::core::{Rectangle, mouse};
 use iced_wgpu::wgpu;
-use image::GenericImageView;
 use std::sync::Arc;
-use std::sync::RwLock;
 
 use crate::cache::img_cache::CachedData;
-use std::time::Instant;
 use crate::utils::timing::TimingStats;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -16,11 +13,9 @@ use crate::atlas::entry;
 use crate::widgets::shader::atlas_scene::AtlasPrimitive;
 use crate::widgets::shader::texture_scene::TexturePrimitive;
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
-use crate::app::Message;
-use crate::atlas::atlas::Atlas;
 use crate::widgets::shader::cpu_scene::{CpuScene, CpuPrimitive};
 
-static SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static _SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Shader Update"))
 });
 
@@ -48,7 +43,7 @@ impl Scene {
                 Scene::CpuScene(CpuScene::new(image_bytes.clone(), true))
             }
             Some(CachedData::Atlas { atlas, entry }) => {
-                if let Ok(atlas_guard) = atlas.read() {
+                if let Ok(_atlas_guard) = atlas.read() {
                     let mut atlas_scene = AtlasScene::new(Arc::clone(atlas));
                     
                     let size = match entry {
@@ -71,7 +66,7 @@ impl Scene {
     pub fn get_texture(&self) -> Option<&Arc<wgpu::Texture>> {
         match self {
             Scene::TextureScene(scene) => scene.texture.as_ref(),
-            Scene::AtlasScene(scene) => {
+            Scene::AtlasScene(_scene) => {
                 // TODO: Implement this
                 None
             }
@@ -194,6 +189,7 @@ impl shader::Primitive for ScenePrimitive {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Primitive {
     texture: Arc<wgpu::Texture>,
@@ -202,6 +198,7 @@ pub struct Primitive {
 }
 
 impl Primitive {
+    #[allow(dead_code)]
     pub fn new(
         texture: Arc<wgpu::Texture>,
         texture_size: (u32, u32),
