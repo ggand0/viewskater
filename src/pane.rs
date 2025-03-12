@@ -1,4 +1,3 @@
-use crate::ui::get_footer;
 use crate::app::Message;
 use std::path::Path;
 use std::path::PathBuf;
@@ -7,13 +6,13 @@ use std::sync::Arc;
 use crate::file_io;
 use crate::file_io::{is_file, is_directory, get_file_index};
 
-use iced_widget::{container, column, text};
-use iced_winit::core::{Element, Length};
+use iced_widget::{container, text};
+use iced_winit::core::Length;
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 
 use crate::menu::PaneLayout;
-use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
+use crate::widgets::viewer;
 use crate::cache::img_cache::ImageCache;
 use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::scene::Scene;
@@ -42,7 +41,6 @@ pub static IMAGE_RENDER_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
     Mutex::new(0.0)
 });
 
-//#[derive(Clone)]
 pub struct Pane {
     pub directory_path: Option<String>,
     pub dir_loaded: bool,
@@ -495,7 +493,7 @@ impl Pane {
         
     }
 
-    fn build_ui_container(&self, is_slider_moving: bool) -> Container<'_, Message, WinitTheme, Renderer> {
+    pub fn build_ui_container(&self, is_slider_moving: bool) -> Container<'_, Message, WinitTheme, Renderer> {
         if self.dir_loaded {
             if is_slider_moving && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
@@ -561,137 +559,4 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
 
     let pane = &panes[max_dir_size_index];
     pane.img_cache.current_index as usize
-}
-
-pub fn build_ui_dual_pane_slider1(
-    panes: &[Pane],
-    ver_divider_position: Option<u16>,
-    is_slider_moving: bool
-) -> Element<Message, WinitTheme, Renderer> {
-    let first_img = panes[0].build_ui_container(is_slider_moving);
-    let second_img = panes[1].build_ui_container(is_slider_moving);
-    
-    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    Split::new(
-        false,
-        first_img,
-        second_img,
-        is_selected,
-        ver_divider_position,
-        Axis::Vertical,
-        Message::OnVerResize,
-        Message::ResetSplit,
-        Message::FileDropped,
-        Message::PaneSelected
-    )
-    .into()
-}
-
-pub fn build_ui_dual_pane_slider2(
-    panes: &[Pane],
-    ver_divider_position: Option<u16>,
-    show_footer: bool,
-    is_slider_moving: bool
-) -> Element<Message, WinitTheme, Renderer> {
-    let footer_texts = vec![
-        format!(
-            "{}/{}",
-            panes[0].img_cache.current_index + 1,
-            panes[0].img_cache.num_files
-        ),
-        format!(
-            "{}/{}",
-            panes[1].img_cache.current_index + 1,
-            panes[1].img_cache.num_files
-        )
-    ];
-
-    let first_img = if panes[0].dir_loaded {
-        container(
-            if show_footer { 
-                column![
-                    panes[0].build_ui_container(is_slider_moving),
-                    DualSlider::new(
-                        0..=(panes[0].img_cache.num_files - 1) as u16,
-                        panes[0].slider_value,
-                        0,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), 0)
-                ]
-            } else { 
-                column![
-                    panes[0].build_ui_container(is_slider_moving),
-                    DualSlider::new(
-                        0..=(panes[0].img_cache.num_files - 1) as u16,
-                        panes[0].slider_value,
-                        0,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                ]
-            }
-        )
-    } else {
-        container(column![
-            text(String::from(""))
-                .width(Length::Fill)
-                .height(Length::Fill),
-        ])
-    };
-
-    let second_img = if panes[1].dir_loaded {
-        container(
-            if show_footer { 
-                column![
-                    panes[1].build_ui_container(is_slider_moving),
-                    DualSlider::new(
-                        0..=(panes[1].img_cache.num_files - 1) as u16,
-                        panes[1].slider_value,
-                        1,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), 1)
-                ]
-            } else { 
-                column![
-                    panes[1].build_ui_container(is_slider_moving),
-                    DualSlider::new(
-                        0..=(panes[1].img_cache.num_files - 1) as u16,
-                        panes[1].slider_value,
-                        1,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                ]
-            }
-        )
-    } else {
-        container(column![
-            text(String::from(""))
-                .width(Length::Fill)
-                .height(Length::Fill),
-        ])
-    };
-
-    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    Split::new(
-        true,
-        first_img,
-        second_img,
-        is_selected,
-        ver_divider_position,
-        Axis::Vertical,
-        Message::OnVerResize,
-        Message::ResetSplit,
-        Message::FileDropped,
-        Message::PaneSelected
-    )
-    .into()
 }

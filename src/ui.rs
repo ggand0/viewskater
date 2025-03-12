@@ -15,7 +15,7 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-
+use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
 use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
 use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
@@ -27,8 +27,7 @@ use iced_wgpu::Renderer;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use crate::widgets::{dualslider::DualSlider, viewer};
-use crate::pane;
+use crate::pane::Pane;
 use crate::menu as app_menu;
 use crate::menu::PaneLayout;
 use app_menu::button_style;
@@ -215,7 +214,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         PaneLayout::DualPane => {
             if app.is_slider_dual {
                 // Use individual sliders for each pane (build_ui_dual_pane_slider2)
-                let panes = pane::build_ui_dual_pane_slider2(
+                let panes = build_ui_dual_pane_slider2(
                     &app.panes, 
                     app.ver_divider_position,
                     app.show_footer,
@@ -238,7 +237,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             } else {
                 // Use master slider for both panes (build_ui_dual_pane_slider1)
                 // Build panes using the split component
-                let panes = pane::build_ui_dual_pane_slider1(
+                let panes = build_ui_dual_pane_slider1(
                     &app.panes, 
                     app.ver_divider_position,
                     app.is_slider_moving
@@ -293,4 +292,140 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             }
         }
     }
+}
+
+
+
+pub fn build_ui_dual_pane_slider1(
+    panes: &[Pane],
+    ver_divider_position: Option<u16>,
+    is_slider_moving: bool
+) -> Element<Message, WinitTheme, Renderer> {
+    let first_img = panes[0].build_ui_container(is_slider_moving);
+    let second_img = panes[1].build_ui_container(is_slider_moving);
+    
+    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
+    Split::new(
+        false,
+        first_img,
+        second_img,
+        is_selected,
+        ver_divider_position,
+        Axis::Vertical,
+        Message::OnVerResize,
+        Message::ResetSplit,
+        Message::FileDropped,
+        Message::PaneSelected
+    )
+    .into()
+}
+
+
+pub fn build_ui_dual_pane_slider2(
+    panes: &[Pane],
+    ver_divider_position: Option<u16>,
+    show_footer: bool,
+    is_slider_moving: bool
+) -> Element<Message, WinitTheme, Renderer> {
+    let footer_texts = vec![
+        format!(
+            "{}/{}",
+            panes[0].img_cache.current_index + 1,
+            panes[0].img_cache.num_files
+        ),
+        format!(
+            "{}/{}",
+            panes[1].img_cache.current_index + 1,
+            panes[1].img_cache.num_files
+        )
+    ];
+
+    let first_img = if panes[0].dir_loaded {
+        container(
+            if show_footer { 
+                column![
+                    panes[0].build_ui_container(is_slider_moving),
+                    DualSlider::new(
+                        0..=(panes[0].img_cache.num_files - 1) as u16,
+                        panes[0].slider_value,
+                        0,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                    get_footer(footer_texts[0].clone(), 0)
+                ]
+            } else { 
+                column![
+                    panes[0].build_ui_container(is_slider_moving),
+                    DualSlider::new(
+                        0..=(panes[0].img_cache.num_files - 1) as u16,
+                        panes[0].slider_value,
+                        0,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                ]
+            }
+        )
+    } else {
+        container(column![
+            text(String::from(""))
+                .width(Length::Fill)
+                .height(Length::Fill),
+        ])
+    };
+
+    let second_img = if panes[1].dir_loaded {
+        container(
+            if show_footer { 
+                column![
+                    panes[1].build_ui_container(is_slider_moving),
+                    DualSlider::new(
+                        0..=(panes[1].img_cache.num_files - 1) as u16,
+                        panes[1].slider_value,
+                        1,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                    get_footer(footer_texts[1].clone(), 1)
+                ]
+            } else { 
+                column![
+                    panes[1].build_ui_container(is_slider_moving),
+                    DualSlider::new(
+                        0..=(panes[1].img_cache.num_files - 1) as u16,
+                        panes[1].slider_value,
+                        1,
+                        Message::SliderChanged,
+                        Message::SliderReleased
+                    )
+                    .width(Length::Fill),
+                ]
+            }
+        )
+    } else {
+        container(column![
+            text(String::from(""))
+                .width(Length::Fill)
+                .height(Length::Fill),
+        ])
+    };
+
+    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
+    Split::new(
+        true,
+        first_img,
+        second_img,
+        is_selected,
+        ver_divider_position,
+        Axis::Vertical,
+        Message::OnVerResize,
+        Message::ResetSplit,
+        Message::FileDropped,
+        Message::PaneSelected
+    )
+    .into()
 }
