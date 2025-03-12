@@ -284,31 +284,6 @@ impl Pane {
                 self.slider_value = img_cache.current_index as u16;
             }
             debug!("END RENDERING NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
-
-            // Record image rendering time
-            if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
-                let now = Instant::now();
-                render_times.push(now);
-                
-                // Calculate image rendering FPS
-                if render_times.len() > 1 {
-                    let oldest = render_times[0];
-                    let elapsed = now.duration_since(oldest);
-                    
-                    if elapsed.as_secs_f32() > 0.0 {
-                        let fps = render_times.len() as f32 / elapsed.as_secs_f32();
-                        
-                        // Store the current image rendering FPS
-                        if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
-                            *image_fps = fps;
-                        }
-                        
-                        // Keep only recent frames (last 3 seconds)
-                        let cutoff = now - std::time::Duration::from_secs(3);
-                        render_times.retain(|&t| t > cutoff);
-                    }
-                }
-            }
         }
 
         did_render_happen
@@ -328,14 +303,6 @@ impl Pane {
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_render) {
-
-                /*let loaded_image = img_cache
-                    .get_image_by_index(next_image_index_to_render as usize)
-                    .unwrap()
-                    .as_vec()
-                    .expect("Failed to convert CachedData to Vec<u8>");
-                let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-                self.current_image = handle;*/
                 // Retrieve the cached image (GPU or CPU)
                 if let Ok(cached_image) = img_cache.get_image_by_index(next_image_index_to_render as usize) {
                     match cached_image {
@@ -391,32 +358,6 @@ impl Pane {
 
                 did_render_happen = true;
             }
-
-            // Record image rendering time
-            if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
-                let now = Instant::now();
-                render_times.push(now);
-                
-                // Calculate image rendering FPS
-                if render_times.len() > 1 {
-                    let oldest = render_times[0];
-                    let elapsed = now.duration_since(oldest);
-                    
-                    if elapsed.as_secs_f32() > 0.0 {
-                        let fps = render_times.len() as f32 / elapsed.as_secs_f32();
-                        
-                        // Store the current image rendering FPS
-                        if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
-                            *image_fps = fps;
-                        }
-                        
-                        // Keep only recent frames (last 3 seconds)
-                        let cutoff = now - std::time::Duration::from_secs(3);
-                        render_times.retain(|&t| t > cutoff);
-                    }
-                }
-            }
-        
         }
 
         did_render_happen
