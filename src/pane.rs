@@ -179,7 +179,7 @@ impl Pane {
             self.img_cache.loading_queue.len() < CONFIG.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < CONFIG.max_being_loaded_queue_size
     }
 
-    pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
+    pub fn render_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
 
@@ -249,7 +249,7 @@ impl Pane {
         did_render_happen
     }
 
-    pub fn set_prev_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
+    pub fn render_prev_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
 
@@ -322,7 +322,6 @@ impl Pane {
 
         did_render_happen
     }
-
 
     #[allow(unused_assignments)]
     pub fn initialize_dir_path(
