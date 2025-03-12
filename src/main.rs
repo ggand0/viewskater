@@ -10,7 +10,7 @@ mod widgets;
 mod pane;
 mod ui;
 mod loading_status;
-mod loading;
+mod loading_handler;
 mod config;
 mod app;
 mod utils;

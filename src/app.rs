@@ -45,7 +45,7 @@ use crate::loading_status;
 use crate::file_io;
 use crate::widgets;
 use crate::ui;
-use crate::loading;
+use crate::loading_handler;
 use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
 use crate::widgets::shader::cpu_scene::CpuScene;
@@ -608,7 +608,7 @@ impl iced_winit::runtime::Program for DataViewer {
                                 | LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
                                     let operation_type = cloned_op.operation_type();
                                     
-                                    loading::handle_load_operation_all(
+                                    loading_handler::handle_load_operation_all(
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_indices,
@@ -619,7 +619,7 @@ impl iced_winit::runtime::Program for DataViewer {
                                     );
                                 }
                                 LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
-                                    loading::handle_load_pos_operation(
+                                    loading_handler::handle_load_pos_operation(
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_index,
