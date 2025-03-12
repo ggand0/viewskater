@@ -34,6 +34,7 @@ use crate::menu as app_menu;
 use app_menu::button_style;
 use crate::{app::Message, PaneLayout, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
+use crate::{CURRENT_FPS, pane::IMAGE_RENDER_FPS};
 
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -89,10 +90,45 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
 
 
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
+    // Get both FPS values
+    let ui_fps = {
+        if let Ok(fps) = CURRENT_FPS.lock() {
+            *fps
+        } else {
+            0.0
+        }
+    };
+    
+    let image_fps = {
+        if let Ok(fps) = IMAGE_RENDER_FPS.lock() {
+            *fps
+        } else {
+            0.0
+        }
+    };
+
+    let fps_display = if app.show_fps {
+        container(
+            text(format!("UI: {:.1} FPS | Image: {:.1} FPS", ui_fps, image_fps))
+                .size(14)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([1.0, 1.0, 1.0])),
+                    ..Default::default()
+                })
+        )
+        .padding(5)
+    } else {
+        container(text("")).width(0).height(0)
+    };
+
     let mb = app_menu::build_menu(app);
     
     let top_bar = container(
-        row!(mb, horizontal_space())
+        row![
+            mb,
+            horizontal_space(),
+            fps_display
+        ]
             .align_y(alignment::Vertical::Center)
     )
     .align_y(alignment::Vertical::Center)

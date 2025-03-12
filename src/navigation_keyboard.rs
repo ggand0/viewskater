@@ -28,6 +28,9 @@ use std::io;
 use crate::Arc;
 use iced_wgpu::wgpu;
 use crate::cache::img_cache::{CachedData, CacheStrategy};
+use std::time::Instant;
+use crate::pane::IMAGE_RENDER_TIMES;
+use crate::pane::IMAGE_RENDER_FPS;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -97,10 +100,38 @@ pub fn set_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
         }
     }
 
+    // Only record rendering time if any pane actually rendered something
+    if did_render_happen {
+        // Record image rendering time
+        if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+            let now = Instant::now();
+            render_times.push(now);
+            
+            // Calculate image rendering FPS
+            if render_times.len() > 1 {
+                let oldest = render_times[0];
+                let elapsed = now.duration_since(oldest);
+                
+                if elapsed.as_secs_f32() > 0.0 {
+                    let fps = render_times.len() as f32 / elapsed.as_secs_f32();
+                    
+                    // Store the current image rendering FPS
+                    if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
+                        *image_fps = fps;
+                    }
+                    
+                    // Keep only recent frames (last 3 seconds)
+                    let cutoff = now - std::time::Duration::from_secs(3);
+                    render_times.retain(|&t| t > cutoff);
+                }
+            }
+        }
+    }
+
     did_render_happen
 }
 
-pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {//, loaindg_status: &mut LoadingStatus
+pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
     let mut did_render_happen = false;
     debug!("set_prev_image_all0");
 
@@ -122,6 +153,34 @@ pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
         if render_happened {
             did_render_happen = true;
             debug!("set_prev_image_all2");
+        }
+    }
+
+    // Only record rendering time if any pane actually rendered something
+    if did_render_happen {
+        // Record image rendering time
+        if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+            let now = Instant::now();
+            render_times.push(now);
+            
+            // Calculate image rendering FPS
+            if render_times.len() > 1 {
+                let oldest = render_times[0];
+                let elapsed = now.duration_since(oldest);
+                
+                if elapsed.as_secs_f32() > 0.0 {
+                    let fps = render_times.len() as f32 / elapsed.as_secs_f32();
+                    
+                    // Store the current image rendering FPS
+                    if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
+                        *image_fps = fps;
+                    }
+                    
+                    // Keep only recent frames (last 3 seconds)
+                    let cutoff = now - std::time::Duration::from_secs(3);
+                    render_times.retain(|&t| t > cutoff);
+                }
+            }
         }
     }
 

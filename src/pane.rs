@@ -56,6 +56,16 @@ use crate::file_io::ImageError;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
+use std::time::Instant;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
+pub static IMAGE_RENDER_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
+    Mutex::new(Vec::with_capacity(120))
+});
+pub static IMAGE_RENDER_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
+    Mutex::new(0.0)
+});
 
 //#[derive(Clone)]
 pub struct Pane {
@@ -204,8 +214,7 @@ impl Pane {
 
         img_cache.print_cache();
 
-        if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1
-        ) {
+        if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1) {
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1; 
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
@@ -294,14 +303,6 @@ impl Pane {
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
             if img_cache.is_image_index_within_bounds(next_image_index_to_render) {
-
-                /*let loaded_image = img_cache
-                    .get_image_by_index(next_image_index_to_render as usize)
-                    .unwrap()
-                    .as_vec()
-                    .expect("Failed to convert CachedData to Vec<u8>");
-                let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-                self.current_image = handle;*/
                 // Retrieve the cached image (GPU or CPU)
                 if let Ok(cached_image) = img_cache.get_image_by_index(next_image_index_to_render as usize) {
                     match cached_image {

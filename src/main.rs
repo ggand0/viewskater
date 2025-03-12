@@ -68,6 +68,9 @@ use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSe
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
 });
+static CURRENT_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
+    Mutex::new(0.0)
+});
 static STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("State Update"))
 });
@@ -424,6 +427,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         if elapsed.as_secs() >= 1 {
                                             let fps = frame_times.len() as f32 / elapsed.as_secs_f32();
                                             info!("Current FPS: {:.1}", fps);
+                                            
+                                            // Store the current FPS value
+                                            if let Ok(mut current_fps) = CURRENT_FPS.lock() {
+                                                *current_fps = fps;
+                                            }
                                             
                                             // Keep only recent frames
                                             let cutoff = now - Duration::from_secs(1);

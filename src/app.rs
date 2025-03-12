@@ -98,6 +98,7 @@ pub enum Message {
     BackgroundColorChanged(Color),
     TimerTick,
     SetCacheStrategy(CacheStrategy),
+    ToggleFpsDisplay(bool),
 }
 
 pub struct DataViewer {
@@ -126,6 +127,7 @@ pub struct DataViewer {
     pub last_slider_update: Instant,
     pub is_slider_moving: bool,
     pub backend: wgpu::Backend,
+    pub show_fps: bool,
 }
 
 impl DataViewer {
@@ -156,6 +158,7 @@ impl DataViewer {
             is_slider_moving: false,
             backend: backend,
             cache_strategy: CacheStrategy::Gpu,
+            show_fps: false,
         }
     }
 
@@ -854,6 +857,9 @@ impl iced_winit::runtime::Program for DataViewer {
                         }
                     }
                 }
+            }
+            Message::ToggleFpsDisplay(value) => {
+                self.show_fps = value;
             }
         }
 
