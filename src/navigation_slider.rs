@@ -559,27 +559,38 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
             img_cache.cached_image_indices[target_index] = pos as isize;
             img_cache.current_index = pos;
 
-            let loaded_image = img_cache.get_initial_image().unwrap().as_vec().unwrap();
-            pane.slider_image = Some(iced::widget::image::Handle::from_bytes(loaded_image));
-            
-            /*let img_path = match img_cache.image_paths.get(pos) {
-                Some(path) => path,
-                None => return Err(io::Error::new(io::ErrorKind::NotFound, "Image path not found")),
-            };
-
-            //let bytes = resize_and_load_image(img_path, true).unwrap();
-            //pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
-
-            let (img, orig_width, orig_height) = resize_and_load_image(img_path, true).unwrap();
-            info!("slider image size: {}x{}", orig_width, orig_height);
-            let rgba = img.to_rgba8();
-            let raw_bytes = rgba.into_raw();
-            pane.slider_image = Some(iced::widget::image::Handle::from_rgba(orig_width, orig_height, raw_bytes));*/
-
-            Ok(())
+            // Use the new method that ensures we get CPU data
+            match img_cache.get_initial_image_as_cpu() {
+                Ok(bytes) => {
+                    pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                    Ok(())
+                },
+                Err(err) => {
+                    debug!("Failed to get CPU image data for slider: {}", err);
+                    
+                    // Fallback: load directly from file
+                    if let Some(img_path) = img_cache.image_paths.get(pos) {
+                        match std::fs::read(img_path) {
+                            Ok(bytes) => {
+                                pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                                Ok(())
+                            },
+                            Err(err) => Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("Failed to read image file for slider: {}", err),
+                            ))
+                        }
+                    } else {
+                        Err(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            "Image path not found for slider",
+                        ))
+                    }
+                }
+            }
         }
         Err(err) => {
-            //debug!("update_pos(): Error loading image: {}", err);
+            debug!("update_pos(): Error loading image: {}", err);
             Err(err)
         }
     }

@@ -645,6 +645,43 @@ impl ImageCache {
             ))
         }
     }
+
+    /// Gets the initial image as CPU data, loading from file if necessary
+    /// This is useful for slider images which need Vec<u8> data
+    pub fn get_initial_image_as_cpu(&self) -> Result<Vec<u8>, io::Error> {
+        // First try to get from cache
+        match self.get_initial_image() {
+            Ok(cached_data) => {
+                // If it's already CPU data, return it
+                match cached_data.as_vec() {
+                    Ok(bytes) => return Ok(bytes),
+                    Err(_) => {
+                        // If it's GPU data, we need to load from file instead
+                        let cache_index = (self.cache_count as isize + self.current_offset) as usize;
+                        let image_index = self.cached_image_indices[cache_index];
+                        
+                        if image_index >= 0 && (image_index as usize) < self.image_paths.len() {
+                            // Load directly from file
+                            let img_path = &self.image_paths[image_index as usize];
+                            match std::fs::read(img_path) {
+                                Ok(bytes) => Ok(bytes),
+                                Err(err) => Err(io::Error::new(
+                                    io::ErrorKind::Other,
+                                    format!("Failed to read image file: {}", err),
+                                ))
+                            }
+                        } else {
+                            Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                "Invalid image index",
+                            ))
+                        }
+                    }
+                }
+            },
+            Err(err) => Err(err)
+        }
+    }
     
 
     #[allow(dead_code)]
