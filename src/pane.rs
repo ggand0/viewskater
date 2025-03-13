@@ -319,7 +319,7 @@ impl Pane {
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
         _is_gpu_supported: bool,
-        _pane_layout: &PaneLayout,
+        pane_layout: &PaneLayout,
         pane_file_lengths: &[usize],
         _pane_index: usize,
         path: PathBuf,
@@ -360,7 +360,17 @@ impl Pane {
         };
 
         self.directory_path = Some(dir_path);
-        let is_dir_size_bigger = false;
+        
+        // Calculate if directory size is bigger than other panes
+        let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+        let is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
+            true
+        } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+            true
+        } else {
+            _file_paths.len() >= *longest_file_length
+        };
+        debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
 
         // Determine initial index and update slider
         if is_file(&path) {
@@ -460,18 +470,13 @@ impl Pane {
             debug!("Failed to retrieve initial image");
         }
 
-
-        // Calculate if directory size is bigger than other panes
-        let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-        debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
-
         // Update slider value
         let current_slider_value = initial_index as u16;
         debug!("current_slider_value: {:?}", current_slider_value);
         if is_slider_dual {
             *slider_value = current_slider_value;
             self.slider_value = current_slider_value;
-        } else if is_dir_size_bigger {
+        } else if *pane_layout == PaneLayout::SinglePane || *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
             *slider_value = current_slider_value;
         }
         debug!("slider_value: {:?}", *slider_value);
@@ -481,8 +486,6 @@ impl Pane {
         
         self.img_cache = img_cache;
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
-
-        
     }
 
     pub fn build_ui_container(&self, is_slider_moving: bool) -> Container<'_, Message, WinitTheme, Renderer> {
