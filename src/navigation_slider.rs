@@ -311,7 +311,7 @@ pub async fn create_async_image_widget_task(
     }
 }
 
-pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, _use_async: bool) -> Task<Message> {
+pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, use_async: bool) -> Task<Message> {
     // Store the latest position in the atomic variable for reference
     LATEST_SLIDER_POS.store(pos, Ordering::SeqCst);
     
@@ -361,10 +361,6 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, _u
         debug!("Throttling slider image load at position {}", pos);
         return Task::none();
     }
-
-    // Always use async on Linux for better responsiveness
-    #[cfg(target_os = "linux")]
-    let use_async = true;
 
     if use_async {
         // Collect tasks for all applicable panes

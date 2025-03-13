@@ -689,6 +689,11 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::SliderChanged(pane_index, value) => {
                 self.is_slider_moving = true;
                 self.last_slider_update = Instant::now();
+
+                // Always use async on Linux for better responsiveness
+                #[cfg(target_os = "linux")]
+                let use_async = true;
+                #[cfg(not(target_os = "linux"))]
                 let use_async = false;
                 
                 if pane_index == -1 {
