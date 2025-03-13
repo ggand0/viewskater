@@ -16,10 +16,8 @@ use iced_widget::{center, Container};
 use crate::config::CONFIG;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
-use crate::atlas::entry;
 use crate::menu::PaneLayout;
 use crate::widgets::viewer;
-use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
 use crate::file_io::{self, is_file, is_directory, get_file_index, ImageError};
 
@@ -205,14 +203,6 @@ impl Pane {
                         self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }
-                    CachedData::Atlas { atlas, entry } => {  // Use struct pattern with named fields
-                        debug!("Setting Atlas as current_image");
-                        self.current_image = CachedData::Atlas {  // Create with named fields
-                            atlas: Arc::clone(atlas),
-                            entry: entry.clone(),
-                        };
-                        
-                    }
                 }
             } else {
                 debug!("Failed to retrieve next cached image.");
@@ -274,13 +264,6 @@ impl Pane {
                             self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
                             self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-                        }
-                        CachedData::Atlas { atlas, entry } => {  // Use struct pattern with named fields
-                            debug!("Setting Atlas as current_image");
-                            self.current_image = CachedData::Atlas {  // Create with named fields
-                                atlas: Arc::clone(atlas),
-                                entry: entry.clone(),
-                            };
                         }
                     }
                 } else {
@@ -405,7 +388,6 @@ impl Pane {
             initial_index,
             Some(device_clone),
             Some(queue_clone),
-            self.backend,
         )
         .unwrap();
 
@@ -443,27 +425,6 @@ impl Pane {
                     if let Some(scene) = &mut self.scene {
                         scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue), self.pane_id);
                     }
-                }
-                CachedData::Atlas { atlas, entry } => {
-                    debug!("Using Atlas entry for initial image");
-                    self.current_image = CachedData::Atlas {
-                        atlas: Arc::clone(atlas),
-                        entry: entry.clone(),
-                    };
-                    
-                    // Get size information from the entry
-                    let size = match &entry {
-                        entry::Entry::Contiguous(allocation) => allocation.size(),
-                        entry::Entry::Fragmented { size, .. } => *size,
-                    };
-                    
-                    // Create the atlas scene with the Arc<RwLock<Atlas>>
-                    // No need to access the atlas guard here as AtlasScene now works with RwLock
-                    let mut atlas_scene = AtlasScene::new(Arc::clone(atlas));
-                    
-                    // Update the atlas scene with the entry
-                    atlas_scene.update_image(entry.clone(), size.width, size.height);
-                    self.scene = Some(Scene::AtlasScene(atlas_scene));
                 }
             }
         } else {

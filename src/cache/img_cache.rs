@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use std::io;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::sync::RwLock;
 use image::GenericImageView;
 use iced_winit::runtime::Task;
 use iced_wgpu::wgpu;
@@ -20,9 +19,6 @@ use crate::pane::Pane;
 use crate::pane;
 use crate::cache::cpu_img_cache::CpuImageCache;
 use crate::cache::gpu_img_cache::GpuImageCache;
-use crate::cache::atlas_img_cache::AtlasImageCache;
-use crate::atlas::atlas::Atlas;
-use crate::atlas::entry;
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,14 +56,13 @@ impl LoadOperation {
 pub enum CacheStrategy {
     Cpu,         // Use CPU memory for image caching
     Gpu,         // Use individual GPU textures
-    Atlas,       // Use texture atlas for GPU caching
 }
 
 impl CacheStrategy {
     pub fn is_gpu_based(&self) -> bool {
         match self {
             CacheStrategy::Cpu => false,
-            CacheStrategy::Gpu | CacheStrategy::Atlas => true,
+            CacheStrategy::Gpu => true,
         }
     }
 }
@@ -76,10 +71,6 @@ impl CacheStrategy {
 pub enum CachedData {
     Cpu(Vec<u8>),                // CPU: Raw image bytes
     Gpu(Arc<wgpu::Texture>),     // GPU: Use Arc to allow cloning
-    Atlas {
-        atlas: Arc<RwLock<Atlas>>,  // Changed to RwLock
-        entry: entry::Entry,
-    }
 }
 
 impl CachedData {
@@ -98,13 +89,6 @@ impl CachedData {
                 }
             },
             CachedData::Gpu(texture) => texture.width(),
-            CachedData::Atlas { entry, .. } => {
-                if let entry::Entry::Contiguous(allocation) = entry {
-                    allocation.size().width
-                } else {
-                    0
-                }
-            }
         }
     }
     
@@ -121,18 +105,6 @@ impl CachedData {
                 let height = texture.height();
                 4 * (width as usize) * (height as usize) // 4 bytes per pixel (RGBA8)
             }
-            CachedData::Atlas { entry, .. } => {
-                // The Entry already has size info, so no need to access Atlas
-                match entry {
-                    entry::Entry::Contiguous(allocation) => {
-                        let size = allocation.size();
-                        (size.width as usize) * (size.height as usize) * 4
-                    },
-                    entry::Entry::Fragmented { size, .. } => {
-                        (size.width as usize) * (size.height as usize) * 4
-                    }
-                }
-            }
         }
     }
 
@@ -142,25 +114,7 @@ impl CachedData {
             CachedData::Gpu(_) => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "GPU data cannot be converted to a Vec<u8>",
-            )),
-            CachedData::Atlas { entry, .. } => {
-                // Get size directly by pattern matching on entry
-                let size = match entry {
-                    entry::Entry::Contiguous(allocation) => allocation.size(),
-                    entry::Entry::Fragmented { size, .. } => *size,
-                };
-                
-                // Now use the size to create the vector
-                let mut _data = vec![0; size.width as usize * size.height as usize * 4];
-                /*let mut offset = 0;
-
-                for y in 0..size.height {
-                    for x in 0..size.width {
-            
-                    }
-                }*/
-                Ok(_data)
-            }
+            ))
         }
     }
 }
@@ -204,8 +158,6 @@ pub struct ImageCache {
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
     pub slider_texture: Option<Arc<wgpu::Texture>>,
-    pub atlas: Option<Arc<RwLock<Atlas>>>,
-    pub wgpu_backend: wgpu::Backend,
 }
 
 impl Default for ImageCache {
@@ -223,8 +175,6 @@ impl Default for ImageCache {
             cached_data: Vec::new(),
             backend: Box::new(CpuImageCache {}),
             slider_texture: None,
-            atlas: None,
-            wgpu_backend: wgpu::Backend::Vulkan,
         }
     }
 }
@@ -238,7 +188,6 @@ impl ImageCache {
         initial_index: usize,
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
-        wgpu_backend: wgpu::Backend,
     ) -> Result<Self, io::Error> {
         let mut cached_data = Vec::new();
         for _ in 0..(cache_count * 2 + 1) {
@@ -257,9 +206,7 @@ impl ImageCache {
             cache_states: vec![false; cache_count * 2 + 1],
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
-            wgpu_backend,
             slider_texture: None,
-            atlas: None,
             backend: Box::new(CpuImageCache {}), // Temporary CPU backend, will be replaced
         };
 
@@ -280,18 +227,6 @@ impl ImageCache {
                     usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
                 })));
-            }
-        }
-
-        // Initialize the atlas if using Atlas strategy
-        if let CacheStrategy::Atlas = cache_strategy {
-            if let Some(device_ref) = device.clone() {
-                image_cache.initialize_atlas(&device_ref)?;
-            } else {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Atlas strategy selected but device not provided",
-                ));
             }
         }
 
@@ -344,62 +279,7 @@ impl ImageCache {
         )
     }
 
-    pub fn get_atlas(&self) -> Option<&Arc<RwLock<Atlas>>> {
-        self.atlas.as_ref()
-    }
-    
-    pub fn initialize_atlas(&mut self, device: &wgpu::Device) -> Result<(), io::Error> {
-        // Create texture bind group layout for the atlas
-        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Atlas Texture Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                // Add the uniform buffer binding
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-        
-        // Create the atlas with initial layers and wrap in RwLock
-        let atlas = Atlas::new(device, self.wgpu_backend, texture_layout.into());
-        self.atlas = Some(Arc::new(RwLock::new(atlas)));
-        
-        Ok(())
-    }
-    
     pub fn shift_cache_left(&mut self, new_item: Option<CachedData>) {
-        // Before removing the first item, deallocate any atlas entry it might have
-        if let Some(Some(CachedData::Atlas { entry: _entry, atlas })) = self.cached_data.first() {
-            // Get a write lock to the atlas for deallocation
-            if let Ok(mut _atlas_guard) = atlas.write() {
-                // Deallocate the atlas entry
-                // Implementation will depend on your atlas design
-            }
-        }
-        
         self.cached_data.remove(0);
         self.cached_data.push(new_item);
 
@@ -436,62 +316,6 @@ impl ImageCache {
                     ));
                 }
             },
-            CacheStrategy::Atlas => {
-                if let (Some(device), Some(queue)) = (device.clone(), queue.clone()) {
-                    // If we don't have an atlas yet, create one
-                    if self.atlas.is_none() {
-                        // Create texture bind group layout for the atlas
-                        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                            label: Some("Atlas Texture Layout"),
-                            entries: &[
-                                wgpu::BindGroupLayoutEntry {
-                                    binding: 0,
-                                    visibility: wgpu::ShaderStages::FRAGMENT,
-                                    ty: wgpu::BindingType::Texture {
-                                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                                        view_dimension: wgpu::TextureViewDimension::D2Array,
-                                        multisampled: false,
-                                    },
-                                    count: None,
-                                },
-                                wgpu::BindGroupLayoutEntry {
-                                    binding: 1,
-                                    visibility: wgpu::ShaderStages::FRAGMENT,
-                                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                                    count: None,
-                                },
-                                // Add the uniform buffer binding
-                                wgpu::BindGroupLayoutEntry {
-                                    binding: 2,
-                                    visibility: wgpu::ShaderStages::FRAGMENT,
-                                    ty: wgpu::BindingType::Buffer {
-                                        ty: wgpu::BufferBindingType::Uniform,
-                                        has_dynamic_offset: false,
-                                        min_binding_size: None,
-                                    },
-                                    count: None,
-                                },
-                            ],
-                        });
-                        
-                        let atlas = Atlas::new(device.as_ref(), self.wgpu_backend, texture_layout.into()); // 4 initial layers
-                        self.atlas = Some(Arc::new(RwLock::new(atlas)));
-                    }
-                    
-                    // Create the Atlas backend
-                    Box::new(AtlasImageCache::new(
-                        device, 
-                        queue,
-                        self.wgpu_backend,
-                        Arc::clone(self.atlas.as_ref().unwrap())
-                    ))
-                } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Atlas strategy selected but device/queue not provided",
-                    ));
-                }
-            }
         };
 
         //self.backend = Some(backend);
@@ -887,7 +711,7 @@ pub fn load_images_by_operation_slider(
 
             let images_loading_task = async move {
                 load_images_async(
-                    paths, cache_strategy, &device_clone, &queue_clone, None, operation).await
+                    paths, cache_strategy, &device_clone, &queue_clone, operation).await
             };
 
             Task::perform(images_loading_task, Message::ImagesLoaded)
@@ -932,17 +756,6 @@ pub fn load_images_by_indices(
     if !paths.is_empty() {
         let device_clone = Arc::clone(device);
         let queue_clone = Arc::clone(queue);
-        
-        // Get a reference to the atlas if using Atlas strategy
-        let atlas = if matches!(cache_strategy, CacheStrategy::Atlas) {
-            // We should have an atlas in at least one pane if using Atlas strategy
-            // In practice, we'd have a shared atlas for all panes
-            panes.iter_mut()
-                .find_map(|pane| pane.img_cache.get_atlas())
-                .map(Arc::clone)
-        } else {
-            None
-        };
 
         debug!("Task::perform started for {:?}", operation.clone());
         Task::perform(
@@ -952,7 +765,6 @@ pub fn load_images_by_indices(
                     cache_strategy, 
                     &device_clone, 
                     &queue_clone, 
-                    atlas,
                     operation
                 ).await;
                 result

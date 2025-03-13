@@ -13,7 +13,6 @@ mod loading_handler;
 mod config;
 mod app;
 mod utils;
-mod atlas;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
