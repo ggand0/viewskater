@@ -21,6 +21,7 @@ use log::{Level, debug, info, warn, error};
 use image;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+#[allow(unused_imports)]
 use std::time::{Instant, Duration};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -40,6 +41,8 @@ use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::file_io;
 
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
+
+#[allow(dead_code)]
 static LAST_SLIDER_LOAD: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now()));
 
 const _THROTTLE_INTERVAL_MS: u64 = 100; // Default throttle interval 
