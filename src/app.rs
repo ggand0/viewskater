@@ -2,7 +2,6 @@
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
-    //pub use iced;
     pub use iced_custom as iced;
 }
 
@@ -19,43 +18,41 @@ use macos::*;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+
 #[allow(unused_imports)]
 use std::time::Instant;
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
-use iced_wgpu::{wgpu, Renderer};
-use iced_winit::core::Theme as WinitTheme;
-use iced::widget::image::Handle;
-use iced_winit::runtime::Task;
-use iced_widget::{row, column, container, text};
-use iced_winit::core::{Color, Element};
-use iced_core::keyboard::{self, Key, key::Named};
-
-use crate::cache::img_cache::LoadOperation;
-use crate::navigation_keyboard::{move_right_all, move_left_all};
-use crate::menu::PaneLayout;
-use crate::pane::Pane;
-use crate::widgets::shader::scene::Scene;
-use crate::pane;
-use crate::loading_status;
-use crate::file_io;
-use crate::widgets;
-use crate::ui;
-use crate::loading_handler;
-use crate::navigation_slider;
-use crate::utils::timing::TimingStats;
-use crate::widgets::shader::cpu_scene::CpuScene;
-use crate::cache::img_cache::CachedData;
-use crate::cache::img_cache::CacheStrategy;
 use iced::{
     clipboard, event::Event,
     widget::{self, button},
     font::{self, Font},
 };
+use iced_core::keyboard::{self, Key, key::Named};
+use iced::widget::image::Handle;
+use iced_widget::{row, column, container, text};
+use iced_wgpu::{wgpu, Renderer};
+use iced_winit::core::Theme as WinitTheme;
+use iced_winit::core::{Color, Element};
+use iced_winit::runtime::Task;
+
+use crate::navigation_keyboard::{move_right_all, move_left_all};
+use crate::cache::img_cache::{CachedData, CacheStrategy, LoadOperation};
+use crate::menu::PaneLayout;
+use crate::pane::{self, Pane};
+use crate::widgets::shader::{scene::Scene, cpu_scene::CpuScene};
+use crate::ui;
+use crate::widgets;
+use crate::file_io;
+use crate::loading_status;
+use crate::loading_handler;
+use crate::navigation_slider;
+use crate::utils::timing::TimingStats;
+
 
 #[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {

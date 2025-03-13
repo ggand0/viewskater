@@ -15,19 +15,17 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-use crate::pane;
-use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_operation};
-use crate::pane::{Pane, get_master_slider_value};
-use crate::menu::PaneLayout;
-use crate::loading_status::LoadingStatus;
-use crate::app::Message;
-use iced::Task;
-use crate::Arc;
-use iced_wgpu::wgpu;
-use crate::cache::img_cache::CacheStrategy;
+use std::sync::Arc;
 use std::time::Instant;
-use crate::pane::IMAGE_RENDER_TIMES;
-use crate::pane::IMAGE_RENDER_FPS;
+use iced::Task;
+use iced_wgpu::wgpu;
+use crate::app::Message;
+use crate::pane::{self, Pane, get_master_slider_value};
+use crate::menu::PaneLayout;
+use crate::cache::img_cache::{CacheStrategy, LoadOperation, LoadOperationType, load_images_by_operation};
+use crate::loading_status::LoadingStatus;
+use crate::pane::{IMAGE_RENDER_TIMES, IMAGE_RENDER_FPS};
+
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};

@@ -1,38 +1,30 @@
-use crate::app::Message;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-use crate::file_io;
-use crate::file_io::{is_file, is_directory, get_file_index};
+use std::time::Instant;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
 
 use iced_widget::{container, text};
 use iced_winit::core::Length;
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
-
-use crate::menu::PaneLayout;
-use crate::widgets::viewer;
-use crate::cache::img_cache::ImageCache;
-use crate::cache::img_cache::CachedData;
-use crate::widgets::shader::scene::Scene;
-use crate::atlas::entry;
-use crate::widgets::shader::atlas_scene::AtlasScene;
-use crate::config::CONFIG;
-use crate::widgets::shader::image_shader::ImageShader;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
-use crate::cache::img_cache::CacheStrategy;
-use crate::widgets::shader::cpu_scene::CpuScene;
 use iced_widget::{center, Container};
-use crate::file_io::ImageError;
+
+use crate::config::CONFIG;
+use crate::app::Message;
+use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
+use crate::atlas::entry;
+use crate::menu::PaneLayout;
+use crate::widgets::viewer;
+use crate::widgets::shader::atlas_scene::AtlasScene;
+use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
+use crate::file_io::{self, is_file, is_directory, get_file_index, ImageError};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
-
-use std::time::Instant;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
 
 pub static IMAGE_RENDER_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))

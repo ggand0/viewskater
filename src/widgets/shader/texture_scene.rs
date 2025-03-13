@@ -1,20 +1,17 @@
+use std::sync::Arc;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use iced_core::{Length, Size, Point, ContentFit};
 use iced_widget::shader::{self, Viewport};
 use iced_winit::core::{Rectangle, mouse};
 use iced_wgpu::wgpu;
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
-use std::sync::Arc;
-
 use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
-use iced_core::{Length, Size, Point, ContentFit};
 
 static _SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Shader Update"))
 });
-
-//#[derive(Clone)]
 
 #[derive(Debug, Clone)]
 pub struct TextureScene {

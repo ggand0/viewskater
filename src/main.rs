@@ -1,6 +1,5 @@
 #![windows_subsystem = "windows"]
 
-
 mod cache;
 mod navigation_keyboard;
 mod navigation_slider;

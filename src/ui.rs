@@ -15,7 +15,9 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
+
 use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
 use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
@@ -24,15 +26,13 @@ use iced_winit::core::font::Font;
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::Renderer;
 
-#[allow(unused_imports)]
-use log::{Level, debug, info, warn, error};
-
 use crate::pane::Pane;
 use crate::menu as app_menu;
-use crate::menu::PaneLayout;
 use app_menu::button_style;
+use crate::menu::PaneLayout;
 use crate::{app::Message, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
+use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
 use crate::{CURRENT_FPS, pane::IMAGE_RENDER_FPS};
 
 

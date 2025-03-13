@@ -1,11 +1,9 @@
-use iced_wgpu::wgpu;
-use iced_wgpu::wgpu::util::DeviceExt;
 use std::sync::Arc;
-use iced_core::Rectangle;
-
-use crate::utils::timing::TimingStats;
-use once_cell::sync::Lazy;
 use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use iced_core::Rectangle;
+use iced_wgpu::wgpu::{self, util::DeviceExt};
+use crate::utils::timing::TimingStats;
 
 static _TEXTURE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Texture Update"))

@@ -1,11 +1,11 @@
+#[allow(unused_imports)]
+use log::{debug, info, warn, error};
 
 use std::io;
 use std::fs;
 use std::path::PathBuf;
 use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 
-#[allow(unused_imports)]
-use log::{debug, info, warn, error};
 
 pub struct CpuImageCache;
 

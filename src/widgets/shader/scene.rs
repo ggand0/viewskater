@@ -1,12 +1,12 @@
+use std::sync::Arc;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
 use iced_widget::shader::{self, Viewport};
 use iced_winit::core::{Rectangle, mouse};
 use iced_wgpu::wgpu;
-use std::sync::Arc;
 
 use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
 use crate::widgets::shader::atlas_scene::AtlasScene;
 use crate::widgets::shader::texture_scene::TextureScene;
 use crate::atlas::entry;

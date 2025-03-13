@@ -1,20 +1,19 @@
-use iced_winit::core::{self, layout, mouse, renderer, widget::{self, tree::{self, Tree}}, Element, Length, Rectangle, Shell, Size};
-use iced_wgpu::{wgpu, primitive};
+#[allow(unused_imports)]
+use log::{Level, debug, info, warn, error};
+
 use std::marker::PhantomData;
 use std::sync::Arc;
-use iced_widget::shader::{self, Viewport, Storage};
 use iced_core::ContentFit;
 use iced_core::{Vector, Point};
 use iced_core::layout::Layout;
 use iced_core::clipboard::Clipboard;
 use iced_core::event;
-
-
-#[allow(unused_imports)]
-use log::{Level, debug, info, warn, error};
-
+use iced_winit::core::{self, layout, mouse, renderer, widget::{self, tree::{self, Tree}}, Element, Length, Rectangle, Shell, Size};
+use iced_widget::shader::{self, Viewport, Storage};
+use iced_wgpu::{wgpu, primitive};
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use crate::Scene;
+
 
 /// A specialized shader widget for displaying images with proper aspect ratio.
 pub struct ImageShader<Message> {

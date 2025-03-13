@@ -1,52 +1,29 @@
-//#[warn(unused_imports)]
-//#[cfg(target_os = "linux")]
-//mod other_os {
-//    //pub use iced;
-//    pub use iced_custom as iced;
-//}
-//
-//#[cfg(not(target_os = "linux"))]
-//mod macos {
-//    pub use iced_custom as iced;
-//}
-//
-//#[cfg(target_os = "linux")]
-//use other_os::*;
-//
-//#[cfg(not(target_os = "linux"))]
-//use macos::*;
-
-use std::path::PathBuf;
-use std::io;
-use std::collections::VecDeque;
-use std::sync::Arc;
-use image::GenericImageView;
-
-
 #[allow(unused_imports)]
 use std::time::Instant;
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use iced_wgpu::wgpu;
-
-use crate::app::Message;
+use std::path::PathBuf;
+use std::io;
+use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::RwLock;
+use image::GenericImageView;
 use iced_winit::runtime::Task;
+use iced_wgpu::wgpu;
 
 use crate::file_io::{load_images_async, empty_async_block_vec};
 use crate::loading_status::LoadingStatus;
+use crate::app::Message;
 use crate::pane::Pane;   
 use crate::pane;
-
-
 use crate::cache::cpu_img_cache::CpuImageCache;
 use crate::cache::gpu_img_cache::GpuImageCache;
 use crate::cache::atlas_img_cache::AtlasImageCache;
 use crate::atlas::atlas::Atlas;
 use crate::atlas::entry;
 
-use std::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LoadOperation {

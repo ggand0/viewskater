@@ -1,19 +1,19 @@
+#[allow(unused_imports)]
+use log::{debug, info, warn, error};
+
+use std::sync::Arc;
+use std::time::Instant;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use image::GenericImageView;
 use iced_widget::shader::{self, Viewport};
 use iced_winit::core::{Rectangle, mouse};
 use iced_wgpu::wgpu;
-use image::GenericImageView;
-use std::sync::Arc;
-use std::time::Instant;
-
-#[allow(unused_imports)]
-use log::{debug, info, warn, error};
-use std::collections::HashMap;
-
 use crate::utils::timing::TimingStats;
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use crate::cache::texture_cache::TextureCache;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
+
 
 static _SHADER_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("CPU Shader Update"))

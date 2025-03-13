@@ -29,23 +29,6 @@
 //! }
 //! ```
 
-//#[cfg(target_os = "linux")]
-//mod other_os {
-//    //pub use iced;
-//    pub use iced_custom as iced;
-//}
-//
-//#[cfg(not(target_os = "linux"))]
-//mod macos {
-//    pub use iced_custom as iced;
-//}
-//
-//#[cfg(target_os = "linux")]
-//use other_os::*;
-//
-//#[cfg(not(target_os = "linux"))]
-//use macos::*;
-
 use iced_core::border::{self, Border};
 use iced_core::keyboard;
 use iced_core::event;

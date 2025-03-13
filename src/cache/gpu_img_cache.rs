@@ -1,15 +1,12 @@
-use std::path::PathBuf;
-use std::io;
-//use wgpu;
-use iced_wgpu::wgpu;
-use crate::cache::img_cache::{CachedData, ImageCacheBackend};
-use std::sync::Arc;
-
-
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
+use std::path::PathBuf;
+use std::io;
+use std::sync::Arc;
 use image::GenericImageView;
+use iced_wgpu::wgpu;
+use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 
 
 pub struct GpuImageCache {
@@ -22,7 +19,6 @@ impl GpuImageCache {
         Self { device, queue }
     }
 }
-
 
 impl ImageCacheBackend for GpuImageCache {
     fn load_image(&self, index: usize, image_paths: &[PathBuf]) -> Result<CachedData, io::Error> {
