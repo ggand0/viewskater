@@ -119,8 +119,13 @@ enum Event<T: 'static> {
 }
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
+    // Set up panic hook to log to a file
+    let app_name = "viewskater";
+    let shared_log_buffer = file_io::setup_logger(app_name);
+    file_io::setup_panic_hook(app_name, shared_log_buffer);
+
     // Initialize tracing for debugging
-    tracing_subscriber::fmt::init();
+    //tracing_subscriber::fmt::init();
 
     // Initialize winit
     let event_loop = EventLoop::<Action<Message>>::with_user_event()

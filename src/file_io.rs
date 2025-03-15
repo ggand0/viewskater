@@ -20,7 +20,6 @@ use std::error::Error as StdError;
 use std::io;
 use std::process::Command;
 use once_cell::sync::Lazy;
-use backtrace::Backtrace;
 use env_logger::fmt::Color;
 use log::{LevelFilter, Metadata, Record};
 use image::GenericImageView;
@@ -379,13 +378,22 @@ impl BufferLogger {
         }
     }
 
-    fn log_to_buffer(&self, message: &str, target: &str) {
+    fn log_to_buffer(&self, message: &str, target: &str, line: Option<u32>, _module_path: Option<&str>) {
         if target.starts_with("view_skater") {
             let mut buffer = self.log_buffer.lock().unwrap();
             if buffer.len() == MAX_LOG_LINES {
                 buffer.pop_front();
             }
-            buffer.push_back(message.to_string());
+            
+            // Format the log message to include only line number to avoid duplication
+            // The module is already in the target in most cases
+            let formatted_message = if let Some(line_num) = line {
+                format!("{}:{} {}", target, line_num, message)
+            } else {
+                format!("{} {}", target, message)
+            };
+            
+            buffer.push_back(formatted_message);
         }
     }
 
@@ -409,7 +417,12 @@ impl log::Log for BufferLogger {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             let message = format!("{:<5} {}", record.level(), record.args());
-            self.log_to_buffer(&message, record.target());
+            self.log_to_buffer(
+                &message, 
+                record.target(), 
+                record.line(), 
+                record.module_path()
+            );
         }
     }
 
@@ -442,34 +455,71 @@ impl log::Log for CompositeLogger {
     }
 }
 
+use env_logger::fmt::Formatter; // Correct import
+use chrono::Utc;
+
 #[allow(dead_code)]
 pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     let buffer_logger = BufferLogger::new();
     let shared_buffer = buffer_logger.get_shared_buffer();
 
     let mut builder = env_logger::Builder::new();
+    
+    // First check if RUST_LOG is set - if so, use that configuration
     if std::env::var("RUST_LOG").is_ok() {
         builder.parse_env("RUST_LOG");
-    } else if cfg!(debug_assertions) {
-        builder.filter(Some("view_skater"), LevelFilter::Debug);
     } else {
-        builder.filter(Some("view_skater"), LevelFilter::Info);
+        // If RUST_LOG is not set, use different defaults for debug/release builds
+        if cfg!(debug_assertions) {
+            // In debug mode, show debug logs and above
+            builder.filter(Some("view_skater"), LevelFilter::Debug);
+        } else {
+            // In release mode, only show errors by default
+            builder.filter(Some("view_skater"), LevelFilter::Error);
+        }
     }
 
+    // Filter out all other crates' logs
     builder.filter(None, LevelFilter::Off);
 
-    builder.format(|buf, record| {
-        let mut style = buf.style();
+    builder.format(|buf: &mut Formatter, record: &Record| {
+        let mut level_style = buf.style();
+        let mut meta_style = buf.style(); // For timestamp & filename/line number
+    
+        // Set colors
         match record.level() {
-            Level::Error => style.set_color(Color::Red),
-            Level::Warn => style.set_color(Color::Yellow),
-            Level::Info => style.set_color(Color::Green),
-            Level::Debug => style.set_color(Color::Blue),
-            Level::Trace => style.set_color(Color::White),
+            Level::Error => level_style.set_color(Color::Red).set_bold(true),
+            Level::Warn => level_style.set_color(Color::Yellow).set_bold(true),
+            Level::Info => level_style.set_color(Color::Green).set_bold(true),
+            Level::Debug => level_style.set_color(Color::Blue).set_bold(true),
+            Level::Trace => level_style.set_color(Color::White),
         };
-        writeln!(buf, "{:<5} {}", style.value(record.level()), record.args())
+    
+        meta_style.set_color(Color::Rgb(120, 120, 120)); // Dark grey for timestamps & filename/line numbers
+    
+        let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ"); // ISO 8601 UTC format
+        
+        // Include module path and line number in formatted output
+        let module_info = if let (Some(module), Some(line)) = (record.module_path(), record.line()) {
+            format!("{}:{}", module, line)
+        } else if let Some(module) = record.module_path() {
+            module.to_string()
+        } else if let Some(line) = record.line() {
+            format!("line:{}", line)
+        } else {
+            "unknown".to_string()
+        };
+    
+        writeln!(
+            buf,
+            "{} {} {} {}",
+            meta_style.value(timestamp),                      // Dark grey timestamp
+            level_style.value(record.level()),               // Colorized log level
+            meta_style.value(module_info),                   // Module:line
+            record.args()                                    // Log message
+        )
     });
-
+    
     let console_logger = builder.build();
 
     let composite_logger = CompositeLogger {
@@ -478,6 +528,8 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     };
 
     log::set_boxed_logger(Box::new(composite_logger)).expect("Failed to set logger");
+    
+    // Always set the maximum level to Trace so that filtering works correctly
     log::set_max_level(LevelFilter::Trace);
 
     shared_buffer
@@ -487,13 +539,12 @@ pub fn get_log_directory(app_name: &str) -> PathBuf {
     dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
 }
 
-#[allow(dead_code)]
 pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) {
     let log_file_path = get_log_directory(app_name).join("panic.log");
     std::fs::create_dir_all(log_file_path.parent().unwrap()).expect("Failed to create log directory");
 
     panic::set_hook(Box::new(move |info| {
-        let backtrace = Backtrace::new();
+        let backtrace = backtrace::Backtrace::new();
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -501,17 +552,59 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
             .open(&log_file_path)
             .expect("Failed to open panic log file");
 
-        writeln!(file, "Panic occurred: {}", info).expect("Failed to write panic info");
-        writeln!(file, "Backtrace:\n{:?}\n", backtrace).expect("Failed to write backtrace");
+        // Write formatted timestamp
+        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
 
-        writeln!(file, "Last {} log entries:\n", MAX_LOG_LINES).expect("Failed to write log header");
+        // Extract panic location information if available
+        let location = if let Some(location) = info.location() {
+            format!("{}:{}", location.file(), location.line())
+        } else {
+            "unknown location".to_string()
+        };
+
+        // Create formatted messages that we'll use for both console and file
+        let header_msg = format!("[PANIC] at {} - {}", location, info);
+        let backtrace_header = "[PANIC] Backtrace:";
+        
+        // Format backtrace lines
+        let mut backtrace_lines = Vec::new();
+        for line in format!("{:?}", backtrace).lines() {
+            backtrace_lines.push(format!("[BACKTRACE] {}", line.trim()));
+        }
+        
+        // Log header to file
+        writeln!(file, "{} {}", timestamp, header_msg).expect("Failed to write panic info");
+        writeln!(file, "{} {}", timestamp, backtrace_header).expect("Failed to write backtrace header");
+        
+        // Log backtrace to file
+        for line in &backtrace_lines {
+            writeln!(file, "{} {}", timestamp, line).expect("Failed to write backtrace line");
+        }
+        
+        // Add double linebreak between backtrace and log entries
+        writeln!(file).expect("Failed to write newline");
+        writeln!(file).expect("Failed to write second newline");
+
+        // Dump the last N log lines from the buffer with timestamps
+        writeln!(file, "{} [PANIC] Last {} log entries:", timestamp, MAX_LOG_LINES)
+            .expect("Failed to write log header");
 
         let buffer = log_buffer.lock().unwrap();
         for log in buffer.iter() {
-            writeln!(file, "{}", log).expect("Failed to write log entry");
+            writeln!(file, "{} {}", timestamp, log).expect("Failed to write log entry");
         }
+        
+        // ALSO PRINT TO CONSOLE (this is the new part)
+        // Use eprintln! to print to stderr
+        eprintln!("\n\n{}", header_msg);
+        eprintln!("{}", backtrace_header);
+        for line in &backtrace_lines {
+            eprintln!("{}", line);
+        }
+        eprintln!("\nA complete crash log has been written to: {}", log_file_path.display());
     }));
 }
+
 
 pub fn open_in_file_explorer(path: &str) {
     if cfg!(target_os = "windows") {
