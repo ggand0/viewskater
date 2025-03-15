@@ -40,17 +40,23 @@ pub struct CpuScene {
 
 impl CpuScene {
     pub fn new(image_bytes: Vec<u8>, use_cached_texture: bool) -> Self {
-        // Attempt to load dimensions from image bytes
-        let dimensions = match image::load_from_memory(&image_bytes) {
-            Ok(img) => {
-                let (width, height) = img.dimensions();
-                debug!("CpuScene::new - loaded image with dimensions: {}x{}", width, height);
-                (width, height)
-            },
-            Err(e) => {
-                error!("CpuScene::new - Failed to load image dimensions: {:?}", e);
-                (0, 0) // Default to 0,0 if we can't determine dimensions
+        // Check if image_bytes is empty before attempting to load
+        let dimensions = if !image_bytes.is_empty() {
+            match image::load_from_memory(&image_bytes) {
+                Ok(img) => {
+                    let (width, height) = img.dimensions();
+                    debug!("CpuScene::new - loaded image with dimensions: {}x{}", width, height);
+                    (width, height)
+                },
+                Err(e) => {
+                    error!("CpuScene::new - Failed to load image dimensions: {:?}", e);
+                    (0, 0) // Default to 0,0 if we can't determine dimensions
+                }
             }
+        } else {
+            // No image data provided, use default dimensions
+            debug!("CpuScene::new - No image data provided, using default dimensions");
+            (0, 0)
         };
         
         CpuScene {
