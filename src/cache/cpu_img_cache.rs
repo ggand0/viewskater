@@ -1,16 +1,11 @@
+#[allow(unused_imports)]
+use log::{debug, info, warn, error};
 
 use std::io;
 use std::fs;
 use std::path::PathBuf;
-use crate::cache::img_cache::{ImageCache, CachedData, ImageCacheBackend};
-use crate::cache::cache_utils::{shift_cache_left, shift_cache_right, load_pos};
+use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 
-use crate::loading_status::LoadingStatus;
-use crate::cache::img_cache::{LoadOperation, LoadOperationType};
-use std::path::Path;
-
-#[allow(unused_imports)]
-use log::{debug, info, warn, error};
 
 pub struct CpuImageCache;
 
@@ -63,15 +58,14 @@ impl ImageCacheBackend for CpuImageCache {
         Ok(())
     }
 
-    //fn load_pos(&mut self, new_image: Option<CachedData>, pos: usize, image_index: isize) -> Result<bool, io::Error> {
     fn load_pos(
         &mut self,
         new_image: Option<CachedData>,
         pos: usize,
         image_index: isize,
-        cached_data: &mut Vec<Option<CachedData>>,
-        cached_image_indices: &mut Vec<isize>,
-        cache_count: usize,
+        _cached_data: &mut Vec<Option<CachedData>>,
+        _cached_image_indices: &mut Vec<isize>,
+        _cache_count: usize,
     ) -> Result<bool, io::Error> {
         match new_image {
             Some(CachedData::Cpu(_)) => {

@@ -1,7 +1,6 @@
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
-    //pub use iced;
     pub use iced_custom as iced;
 }
 
@@ -22,6 +21,7 @@ use log::{Level, debug, info, warn, error};
 use image;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+#[allow(unused_imports)]
 use std::time::{Instant, Duration};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -32,8 +32,7 @@ use std::io;
 use crate::Arc;
 
 use crate::pane;
-use crate::pane::Pane;
-use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_operation, load_all_images_in_queue};
+use crate::cache::img_cache::{LoadOperation, load_all_images_in_queue};
 use crate::widgets::shader::scene::Scene;
 use crate::loading_status::LoadingStatus;
 use crate::app::Message;
@@ -42,9 +41,11 @@ use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::file_io;
 
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
+
+#[allow(dead_code)]
 static LAST_SLIDER_LOAD: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now()));
 
-const THROTTLE_INTERVAL_MS: u64 = 100; // Default throttle interval 
+const _THROTTLE_INTERVAL_MS: u64 = 100; // Default throttle interval 
 
 fn load_full_res_image(
     device: &Arc<wgpu::Device>,
@@ -66,8 +67,6 @@ fn load_full_res_image(
         // Process only the specified pane
         vec![pane_index as usize]
     };
-
-    let mut tasks: Vec<Task<Message>> = Vec::new();
 
     // Process each pane in the list
     for idx in pane_indices {
@@ -140,7 +139,7 @@ fn load_full_res_image(
                         pane.current_image = cached_data.clone();
                         
                         // Update scene if using CPU-based cached data
-                        if let CachedData::Cpu(img) = &cached_data {
+                        if let CachedData::Cpu(_img) = &cached_data {
                             // Create a new scene with the CPU image
                             pane.scene = Some(Scene::new(Some(&cached_data)));
                             
@@ -169,7 +168,7 @@ fn load_full_res_image(
 fn get_loading_tasks_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    is_gpu_supported: bool,
+    _is_gpu_supported: bool,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: usize,
@@ -225,20 +224,7 @@ fn get_loading_tasks_slider(
         loading_status.print_queue();
 
         // Generate loading tasks
-        //let local_tasks = load_all_images_in_queue(panes, loading_status);
         let local_tasks = load_all_images_in_queue(device, queue, CacheStrategy::Gpu, panes, loading_status);
-
-        // Convert `panes` into a vector of mutable references
-        let mut pane_refs: Vec<&mut Pane> = panes.iter_mut().collect();
-
-        // NOTE: temporary workaround to make it compile
-        // Call the function with `pane_refs`
-        /*let local_tasks = load_images_by_operation(
-            device, queue, is_gpu_supported,
-            &mut pane_refs, loading_status);*/
-        //debug!("get_loading_tasks_slider - local_tasks.len(): {}", local_tasks.len());
-
-
         tasks.push(local_tasks);
     }
 
@@ -378,10 +364,6 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
         debug!("Throttling slider image load at position {}", pos);
         return Task::none();
     }
-
-    // Always use async on Linux for better responsiveness
-    #[cfg(target_os = "linux")]
-    let use_async = true;
 
     if use_async {
         // Collect tasks for all applicable panes
@@ -559,27 +541,38 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
             img_cache.cached_image_indices[target_index] = pos as isize;
             img_cache.current_index = pos;
 
-            let loaded_image = img_cache.get_initial_image().unwrap().as_vec().unwrap();
-            pane.slider_image = Some(iced::widget::image::Handle::from_bytes(loaded_image));
-            
-            /*let img_path = match img_cache.image_paths.get(pos) {
-                Some(path) => path,
-                None => return Err(io::Error::new(io::ErrorKind::NotFound, "Image path not found")),
-            };
-
-            //let bytes = resize_and_load_image(img_path, true).unwrap();
-            //pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
-
-            let (img, orig_width, orig_height) = resize_and_load_image(img_path, true).unwrap();
-            info!("slider image size: {}x{}", orig_width, orig_height);
-            let rgba = img.to_rgba8();
-            let raw_bytes = rgba.into_raw();
-            pane.slider_image = Some(iced::widget::image::Handle::from_rgba(orig_width, orig_height, raw_bytes));*/
-
-            Ok(())
+            // Use the new method that ensures we get CPU data
+            match img_cache.get_initial_image_as_cpu() {
+                Ok(bytes) => {
+                    pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                    Ok(())
+                },
+                Err(err) => {
+                    debug!("Failed to get CPU image data for slider: {}", err);
+                    
+                    // Fallback: load directly from file
+                    if let Some(img_path) = img_cache.image_paths.get(pos) {
+                        match std::fs::read(img_path) {
+                            Ok(bytes) => {
+                                pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                                Ok(())
+                            },
+                            Err(err) => Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("Failed to read image file for slider: {}", err),
+                            ))
+                        }
+                    } else {
+                        Err(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            "Image path not found for slider",
+                        ))
+                    }
+                }
+            }
         }
         Err(err) => {
-            //debug!("update_pos(): Error loading image: {}", err);
+            debug!("update_pos(): Error loading image: {}", err);
             Err(err)
         }
     }

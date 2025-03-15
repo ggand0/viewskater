@@ -94,7 +94,7 @@ pub fn button_style(theme: &WinitTheme, status: button::Status, style_type: &str
     }
 }
 
-fn transparent_style(theme: &WinitTheme, status: button::Status) -> Style {
+fn _transparent_style(theme: &WinitTheme, status: button::Status) -> Style {
     button_style(theme, status, "transparent")
 }
 

@@ -1,4 +1,6 @@
 use std::time::{Duration, Instant};
+
+#[allow(unused_imports)]
 use log::{debug, info};
 
 pub struct TimingStats {
@@ -44,6 +46,7 @@ pub struct ScopedTimer<'a> {
 }
 
 impl<'a> ScopedTimer<'a> {
+    #[allow(dead_code)]
     pub fn new(stats: &'a mut TimingStats) -> Self {
         Self {
             start: Instant::now(),

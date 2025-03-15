@@ -5436,6 +5436,7 @@ dependencies = [
  "backtrace",
  "bytemuck",
  "cargo-bundle",
+ "chrono",
  "console_log",
  "dirs 5.0.1",
  "env_logger",
