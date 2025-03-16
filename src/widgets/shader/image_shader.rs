@@ -25,6 +25,7 @@ pub struct ImageShader<Message> {
     max_scale: f32,
     scale_step: f32,
     _phantom: PhantomData<Message>,
+    debug: bool,
 }
 
 impl<Message> ImageShader<Message> {
@@ -32,9 +33,10 @@ impl<Message> ImageShader<Message> {
     pub fn new(scene: Option<&Scene>) -> Self {
         // Clone the Scene if it exists
         let scene_clone = scene.cloned();
+        let debug = false;
         
         // Add debug output to track scene creation
-        if scene.is_some() {
+        if debug && scene.is_some() {
             debug!("ImageShader::new - Created with a scene");
             if let Some(ref s) = scene {
                 if s.get_texture().is_some() {
@@ -44,7 +46,9 @@ impl<Message> ImageShader<Message> {
                 }
             }
         } else {
-            debug!("ImageShader::new - Created with NO scene");
+            if debug {
+                debug!("ImageShader::new - Created with NO scene");
+            }
         }
         
         Self {
@@ -56,6 +60,7 @@ impl<Message> ImageShader<Message> {
             max_scale: 10.0,
             scale_step: 0.10,
             _phantom: PhantomData,
+            debug: debug,
         }
     }
     
@@ -220,6 +225,7 @@ pub struct ImagePrimitive {
     content_bounds: Rectangle,
     scale: f32,
     offset: Vector,
+    debug: bool,
 }
 
 impl shader::Primitive for ImagePrimitive {
@@ -238,13 +244,17 @@ impl shader::Primitive for ImagePrimitive {
         let scale_factor = viewport.scale_factor() as f32;
         let viewport_size = viewport.physical_size();
         
-        debug!("ImagePrimitive::prepare - Starting prepare");
-        debug!("ImagePrimitive::prepare - Content bounds: {:?}", self.content_bounds);
-        debug!("ImagePrimitive::prepare - Viewport: {:?}, scale: {}", viewport_size, scale_factor);
+        if self.debug {
+            debug!("ImagePrimitive::prepare - Starting prepare");
+            debug!("ImagePrimitive::prepare - Content bounds: {:?}", self.content_bounds);
+            debug!("ImagePrimitive::prepare - Viewport: {:?}, scale: {}", viewport_size, scale_factor);
+        }
         
         // Get texture from scene
         if let Some(texture) = self.scene.get_texture() {
-            debug!("ImagePrimitive::prepare - Got texture {}x{}", texture.width(), texture.height());
+            if self.debug {
+                debug!("ImagePrimitive::prepare - Got texture {}x{}", texture.width(), texture.height());
+            }
             
             let texture_size = (texture.width(), texture.height());
             
@@ -256,7 +266,9 @@ impl shader::Primitive for ImagePrimitive {
             
             let bounds_relative = (x_rel, y_rel, width_rel, height_rel);
             
-            debug!("ImagePrimitive::prepare - Relative bounds: {:?}", bounds_relative);
+            if self.debug {
+                debug!("ImagePrimitive::prepare - Relative bounds: {:?}", bounds_relative);
+            }
             
             // Create a unique pipeline key based on these bounds
             let pipeline_key = format!("img_pipeline_{:.4}_{:.4}_{:.4}_{:.4}", 
@@ -265,7 +277,6 @@ impl shader::Primitive for ImagePrimitive {
             
             // Ensure we have a registry to store pipelines
             if !storage.has::<PipelineRegistry>() {
-                debug!("ImagePrimitive::prepare - Creating new PipelineRegistry");
                 storage.store(PipelineRegistry::default());
             }
             
@@ -273,8 +284,10 @@ impl shader::Primitive for ImagePrimitive {
             
             // Create pipeline if it doesn't exist or reuse existing one
             if !registry.pipelines.contains_key(&pipeline_key) {
-                debug!("ImagePrimitive::prepare - Creating new pipeline for key {}", pipeline_key);
-                
+                if self.debug {
+                    debug!("ImagePrimitive::prepare - Creating new pipeline for key {}", pipeline_key);
+                }
+
                 let pipeline = TexturePipeline::new(
                     device,
                     queue,
@@ -286,13 +299,16 @@ impl shader::Primitive for ImagePrimitive {
                 );
                 
                 registry.pipelines.insert(pipeline_key.clone(), pipeline);
-                debug!("ImagePrimitive::prepare - Pipeline created and stored");
+                if self.debug {
+                    debug!("ImagePrimitive::prepare - Pipeline created and stored");
+                }
             } else {
-                debug!("ImagePrimitive::prepare - Reusing existing pipeline for key {}", pipeline_key);
                 
                 // Update the texture in the existing pipeline
                 if let Some(pipeline) = registry.pipelines.get_mut(&pipeline_key) {
-                    debug!("ImagePrimitive::prepare - Updating texture in existing pipeline");
+                    if self.debug {
+                        debug!("ImagePrimitive::prepare - Updating texture in existing pipeline");
+                    }
                     pipeline.update_texture(device, queue, Arc::clone(texture));
                 }
             }
@@ -308,11 +324,11 @@ impl shader::Primitive for ImagePrimitive {
         target: &wgpu::TextureView,
         clip_bounds: &Rectangle<u32>,
     ) {
-        debug!("ImagePrimitive::render - Starting render");
-        
         // Get texture from scene
         if let Some(texture) = self.scene.get_texture() {
-            debug!("ImagePrimitive::render - Got texture {}x{}", texture.width(), texture.height());
+            if self.debug {
+                debug!("ImagePrimitive::render - Got texture {}x{}", texture.width(), texture.height());
+            }
             
             // Access the pipeline registry
             if let Some(registry) = storage.get::<PipelineRegistry>() {
@@ -333,10 +349,7 @@ impl shader::Primitive for ImagePrimitive {
                                             bounds_relative.0, bounds_relative.1,
                                             bounds_relative.2, bounds_relative.3);
                     
-                    debug!("ImagePrimitive::render - Looking for pipeline with key: {}", pipeline_key);
-                    
                     if let Some(pipeline) = registry.pipelines.get(&pipeline_key) {
-                        debug!("ImagePrimitive::render - Found pipeline, rendering");
                         pipeline.render(target, encoder, clip_bounds);
                     } else {
                         debug!("ImagePrimitive::render - Pipeline NOT found for key: {}", pipeline_key);
@@ -439,8 +452,6 @@ where
                             })
                             .clamp(self.min_scale, self.max_scale);
                             
-                            debug!("ImageShader::on_event - New scale: {}", state.scale);
-                            
                             // Calculate the scaled size
                             let scaled_size = self.calculate_scaled_size(bounds.size(), state.scale);
                             
@@ -464,7 +475,10 @@ where
                                 },
                             );
                             
-                            debug!("ImageShader::on_event - New offset: {:?}", state.current_offset);
+                            if self.debug {
+                                debug!("ImageShader::on_event - New scale: {}", state.scale);
+                                debug!("ImageShader::on_event - New offset: {:?}", state.current_offset);
+                            }
                         }
                     }
                 }
@@ -481,7 +495,9 @@ where
                 state.cursor_grabbed_at = Some(cursor_position);
                 state.starting_offset = state.current_offset;
                 
-                debug!("ImageShader::on_event - Mouse grabbed at: {:?}", cursor_position);
+                if self.debug {
+                    debug!("ImageShader::on_event - Mouse grabbed at: {:?}", cursor_position);
+                }
                 
                 event::Status::Captured
             }
@@ -490,7 +506,6 @@ where
                 
                 if state.cursor_grabbed_at.is_some() {
                     state.cursor_grabbed_at = None;
-                    debug!("ImageShader::on_event - Mouse released");
                     
                     event::Status::Captured
                 } else {
@@ -528,7 +543,9 @@ where
                     };
                     
                     state.current_offset = Vector::new(x, y);
-                    debug!("ImageShader::on_event - Panning, new offset: {:?}", state.current_offset);
+                    if self.debug {
+                        debug!("ImageShader::on_event - Panning, new offset: {:?}", state.current_offset);
+                    }
                     
                     event::Status::Captured
                 } else {
@@ -569,14 +586,9 @@ where
         layout: layout::Layout<'_>,
         _cursor: mouse::Cursor,
         _viewport: &Rectangle,
-    ) {
-        debug!("ImageShader::draw - Drawing widget");
-        
+    ) { 
         if let Some(scene) = &self.scene {
-            debug!("ImageShader::draw - Scene available");
-            
             let bounds = layout.bounds();
-            debug!("ImageShader::draw - Layout bounds: {:?}", bounds);
             
             let state = tree.state.downcast_ref::<ImageShaderState>();
             
@@ -588,21 +600,23 @@ where
             
             // Apply content fit with scaling
             let content_bounds = self.calculate_content_bounds(bounds, scaled_size, offset);
-            
-            debug!("ImageShader::draw - Content bounds: {:?}", content_bounds);
+
+            if self.debug {
+                debug!("ImageShader::draw - Scene available");
+                debug!("ImageShader::draw - Layout bounds: {:?}", bounds);
+                debug!("ImageShader::draw - Content bounds: {:?}", content_bounds);
+            }
             
             if scene.get_texture().is_some() {
-                debug!("ImageShader::draw - Scene has texture, creating primitive");
-                
                 let primitive = ImagePrimitive {
                     scene: scene.clone(),
                     bounds,
                     content_bounds,
                     scale: state.scale,
                     offset,
+                    debug: self.debug,
                 };
                 
-                debug!("ImageShader::draw - Calling renderer.draw_primitive");
                 renderer.draw_primitive(bounds, primitive);
             } else {
                 debug!("ImageShader::draw - Scene has NO texture! Skipping primitive creation");
