@@ -39,6 +39,8 @@ use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy};
 use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::file_io;
+use crate::pane::IMAGE_RENDER_TIMES;
+use crate::pane::IMAGE_RENDER_FPS;
 
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
 
@@ -546,6 +548,32 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
             match img_cache.get_initial_image_as_cpu() {
                 Ok(bytes) => {
                     pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                    
+                    // Record image rendering time for FPS calculation
+                    if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+                        let now = Instant::now();
+                        render_times.push(now);
+                        
+                        // Calculate image rendering FPS
+                        if render_times.len() > 1 {
+                            let oldest = render_times[0];
+                            let elapsed = now.duration_since(oldest);
+                            
+                            if elapsed.as_secs_f32() > 0.0 {
+                                let fps = render_times.len() as f32 / elapsed.as_secs_f32();
+                                
+                                // Store the current image rendering FPS
+                                if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
+                                    *image_fps = fps;
+                                }
+                                
+                                // Keep only recent frames (last 3 seconds)
+                                let cutoff = now - std::time::Duration::from_secs(3);
+                                render_times.retain(|&t| t > cutoff);
+                            }
+                        }
+                    }
+                    
                     Ok(())
                 },
                 Err(err) => {
@@ -556,6 +584,32 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                         match std::fs::read(img_path) {
                             Ok(bytes) => {
                                 pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                                
+                                // Record image rendering time for FPS calculation (for fallback path)
+                                if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+                                    let now = Instant::now();
+                                    render_times.push(now);
+                                    
+                                    // Calculate image rendering FPS
+                                    if render_times.len() > 1 {
+                                        let oldest = render_times[0];
+                                        let elapsed = now.duration_since(oldest);
+                                        
+                                        if elapsed.as_secs_f32() > 0.0 {
+                                            let fps = render_times.len() as f32 / elapsed.as_secs_f32();
+                                            
+                                            // Store the current image rendering FPS
+                                            if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
+                                                *image_fps = fps;
+                                            }
+                                            
+                                            // Keep only recent frames (last 3 seconds)
+                                            let cutoff = now - std::time::Duration::from_secs(3);
+                                            render_times.retain(|&t| t > cutoff);
+                                        }
+                                    }
+                                }
+                                
                                 Ok(())
                             },
                             Err(err) => Err(io::Error::new(
