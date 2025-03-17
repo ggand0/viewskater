@@ -55,7 +55,7 @@ use iced_futures::futures::channel::oneshot;
 use crate::utils::timing::TimingStats;
 use crate::app::{Message, DataViewer};
 use crate::widgets::shader::scene::Scene;
-
+use crate::config::CONFIG;
 // Import the correct channel types
 use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
 
@@ -548,7 +548,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         event_loop
                         .create_window(
                             winit::window::WindowAttributes::default()
-                                .with_inner_size(winit::dpi::PhysicalSize::new(1200, 800))
+                                .with_inner_size(winit::dpi::PhysicalSize::new(
+                                    CONFIG.window_width, 
+                                    CONFIG.window_height
+                                ))
                                 .with_title("ViewSkater")
                                 .with_resizable(true)
                         )
