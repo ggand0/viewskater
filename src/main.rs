@@ -74,6 +74,14 @@ static _WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
 
 static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
 
+// Add these to track the phase relationship
+static LAST_RENDER_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
+    Mutex::new(Instant::now())
+});
+static LAST_ASYNC_DELIVERY_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
+    Mutex::new(Instant::now())
+});
+
 fn load_icon() -> Option<winit::window::Icon> {
     let image = image::load_from_memory(ICON).ok()?.into_rgba8();
     let (width, height) = image.dimensions();
@@ -168,7 +176,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             resized: bool,
             moved: bool,                // Flag to track window movement
             redraw: bool,
-            debug: Debug,
+            debug: bool,
+            debug_tool: Debug,
             _event_sender: StdSender<Event<Action<Message>>>,
             control_receiver: StdReceiver<Control>,
             _context: task::Context<'static>,
@@ -217,6 +226,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     moved,
                     redraw,
                     debug,
+                    debug_tool,
                     control_receiver,
                     custom_theme,
                     ..
@@ -298,7 +308,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         text_color: Color::WHITE,
                                     },
                                     clipboard,
-                                    debug,
+                                    debug_tool,
                                 );
                                 //let update_time = update_start.elapsed();
                                 //STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
@@ -371,21 +381,27 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             frame.texture.format(),
                                             &view,
                                             viewport,
-                                            &debug.overlay(),
+                                            &debug_tool.overlay(),
                                         );
                                         let present_time = present_start.elapsed();
-                                        debug!("Renderer present took {:?}", present_time);
-
+                                        
                                         // Submit the commands to the queue
                                         let submit_start = Instant::now();
                                         engine.submit(queue, encoder);
                                         let submit_time = submit_start.elapsed();
-                                        debug!("Command submission took {:?}", submit_time);
                                         
                                         let present_frame_start = Instant::now();
                                         frame.present();
                                         let present_frame_time = present_frame_start.elapsed();
-                                        debug!("Frame presentation took {:?}", present_frame_time);
+
+                                        // Add tracking here to monitor the render cycle
+                                        track_render_cycle();
+
+                                        if *debug {
+                                            debug!("Renderer present took {:?}", present_time);
+                                            debug!("Command submission took {:?}", submit_time);
+                                            debug!("Frame presentation took {:?}", present_frame_time);
+                                        }
 
                                         // Update the mouse cursor
                                         window.set_cursor(
@@ -451,7 +467,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         renderer,
                                         std::iter::once(w),
                                         Size::new(viewport.physical_size().width as f32, viewport.physical_size().height as f32),
-                                        debug,
+                                        debug_tool,
                                     );
                                 }
                                 Action::Output(message) => {
@@ -622,7 +638,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         Arc::clone(&device), Arc::clone(&queue), backend);
 
                     // Initialize iced
-                    let mut debug = Debug::new();
+                    let mut debug_tool = Debug::new();
                     let engine = Engine::new(
                         &adapter, &device, &queue, format, None);
                     engine.create_image_cache(&device); // Manually create image cache
@@ -643,7 +659,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         shader_widget,
                         viewport.logical_size(),
                         &mut renderer,
-                        &mut debug,
+                        &mut debug_tool,
                     );
 
                     // Set control flow
@@ -699,7 +715,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         resized: false,
                         moved: false,
                         redraw: true,
-                        debug,
+                        debug: false,
+                        debug_tool,
                         _event_sender: event_sender,
                         control_receiver,
                         _context: context,
@@ -767,4 +784,30 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     };
     
     event_loop.run_app(&mut runner)
+}
+
+// Called in render method
+fn track_render_cycle() {
+    if let Ok(mut time) = LAST_RENDER_TIME.lock() {
+        let now = Instant::now();
+        let elapsed = now.duration_since(*time);
+        *time = now;
+        debug!("TIMING: Render frame time: {:?}", elapsed);
+    }
+}
+
+// Called when an async image completes
+fn track_async_delivery() {
+    if let Ok(mut time) = LAST_ASYNC_DELIVERY_TIME.lock() {
+        let now = Instant::now();
+        let elapsed = now.duration_since(*time);
+        *time = now;
+        debug!("TIMING: Async delivery time: {:?}", elapsed);
+    }
+    
+    // Also check phase alignment
+    if let (Ok(render_time), Ok(async_time)) = (LAST_RENDER_TIME.lock(), LAST_ASYNC_DELIVERY_TIME.lock()) {
+        let phase_diff = async_time.duration_since(*render_time);
+        debug!("TIMING: Phase difference: {:?}", phase_diff);
+    }
 }
