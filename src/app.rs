@@ -51,6 +51,8 @@ use crate::loading_status;
 use crate::loading_handler;
 use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
+use crate::pane::IMAGE_RENDER_TIMES;
+use crate::pane::IMAGE_RENDER_FPS;
 
 
 #[allow(dead_code)]
@@ -635,6 +637,8 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::SliderImageWidgetLoaded(result) => {
                 match result {
                     Ok((pane_idx, pos, handle)) => {
+                        // Track each async image delivery completion
+                        crate::track_async_delivery();
                         
                         // Use the specified pane index instead of hardcoded 0
                         if let Some(pane) = self.panes.get_mut(pane_idx) {
@@ -643,6 +647,34 @@ impl iced_winit::runtime::Program for DataViewer {
                             
                             // Also update the cache state to keep everything in sync
                             pane.img_cache.current_index = pos;
+                            
+                            // Only record FPS for the first pane to avoid double-counting in dual-pane mode
+                            if pane_idx == 0 {
+                                // Record image rendering time for FPS calculation
+                                if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+                                    let now = Instant::now();
+                                    render_times.push(now);
+                                    
+                                    // Calculate image rendering FPS
+                                    if render_times.len() > 1 {
+                                        let oldest = render_times[0];
+                                        let elapsed = now.duration_since(oldest);
+                                        
+                                        if elapsed.as_secs_f32() > 0.0 {
+                                            let fps = render_times.len() as f32 / elapsed.as_secs_f32();
+                                            
+                                            // Store the current image rendering FPS
+                                            if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
+                                                *image_fps = fps;
+                                            }
+                                            
+                                            // Keep only recent frames (last 3 seconds)
+                                            let cutoff = now - std::time::Duration::from_secs(3);
+                                            render_times.retain(|&t| t > cutoff);
+                                        }
+                                    }
+                                }
+                            }
                             
                             debug!("Slider image loaded for pane {} at position {}", pane_idx, pos);
                         } else {
