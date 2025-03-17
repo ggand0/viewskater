@@ -546,10 +546,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     
                     let window = Arc::new(
                         event_loop
-                            .create_window(
-                                winit::window::WindowAttributes::default(),
-                            )
-                            .expect("Create window"),
+                        .create_window(
+                            winit::window::WindowAttributes::default()
+                                .with_inner_size(winit::dpi::PhysicalSize::new(1200, 800))
+                                .with_title("ViewSkater")
+                                .with_resizable(true)
+                        )
+                        .expect("Create window"),
                     );
 
                     if let Some(icon) = load_icon() {
