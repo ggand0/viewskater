@@ -1,4 +1,3 @@
-
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
@@ -636,6 +635,7 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::SliderImageWidgetLoaded(result) => {
                 match result {
                     Ok((pane_idx, pos, handle)) => {
+                        
                         // Use the specified pane index instead of hardcoded 0
                         if let Some(pane) = self.panes.get_mut(pane_idx) {
                             // Update the image widget handle directly
@@ -705,7 +705,8 @@ impl iced_winit::runtime::Program for DataViewer {
                         &mut self.panes, 
                         pane_index, 
                         value as usize, 
-                        use_async
+                        use_async,
+                        false
                     );
                 } else {
                     let pane_index_usize = pane_index as usize;
@@ -730,7 +731,8 @@ impl iced_winit::runtime::Program for DataViewer {
                         &mut self.panes, 
                         pane_index, 
                         value as usize, 
-                        use_async
+                        use_async,
+                        false
                     );
                 }
             }

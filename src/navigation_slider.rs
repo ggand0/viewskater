@@ -314,32 +314,33 @@ pub async fn create_async_image_widget_task(
     }
 }
 
-pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, use_async: bool) -> Task<Message> {
+pub fn update_pos(
+    panes: &mut Vec<pane::Pane>, 
+    pane_index: isize, 
+    pos: usize, 
+    use_async: bool,
+    throttle: bool
+) -> Task<Message> {
     // Store the latest position in the atomic variable for reference
     LATEST_SLIDER_POS.store(pos, Ordering::SeqCst);
     
-    // Platform-specific throttling - use different thresholds for Linux
-    #[cfg(target_os = "linux")]
-    const PLATFORM_THROTTLE_MS: u64 = 10; // Much lower for Linux/X11
-    
-    // TODO: Make this an option
-    //#[cfg(not(target_os = "linux"))]
-    //const PLATFORM_THROTTLE_MS: u64 = THROTTLE_INTERVAL_MS;
-    
-    // Throttling logic during rapid slider movement - With safety check
-    #[cfg(target_os = "linux")]
-    let should_process = {
+    // Determine if we should process this update based on throttling settings
+    let should_process = if throttle {
+        // Platform-specific throttling - use different thresholds for Linux
+        #[cfg(target_os = "linux")]
+        const PLATFORM_THROTTLE_MS: u64 = 1; // Much lower for Linux/X11
+        
+        #[cfg(not(target_os = "linux"))]
+        const PLATFORM_THROTTLE_MS: u64 = _THROTTLE_INTERVAL_MS;
+        
+        // Throttling logic during rapid slider movement - With safety check
         let mut last_load = LAST_SLIDER_LOAD.lock().unwrap();
         let now = Instant::now();
-        debug!("##################################TIMESTAMP DEBUG - now: {:?}, last_load: {:?}", now, *last_load);
-        
+
         // Enhanced safety check for time inconsistencies
         let elapsed = match now.checked_duration_since(*last_load) {
             Some(duration) => duration,
-            None => {
-                // System clock jumped backward or other timing inconsistency
-                debug!("Time inconsistency detected in slider throttling - using default interval");
-                
+            None => {                
                 // Update last_load to current time to avoid repeated issues
                 *last_load = now;
                 
@@ -354,10 +355,10 @@ pub fn update_pos(panes: &mut Vec<pane::Pane>, pane_index: isize, pos: usize, us
         } else {
             false
         }
+    } else {
+        // No throttling, always process
+        true
     };
-
-    #[cfg(not(target_os = "linux"))]
-    let should_process = true;
     
     // Skip processing if we're throttling
     if !should_process {
