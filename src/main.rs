@@ -15,7 +15,7 @@ mod app;
 mod utils;
 
 #[allow(unused_imports)]
-use log::{Level, debug, info, warn, error};
+use log::{Level, trace, debug, info, warn, error};
 
 use std::task::Wake;
 use std::task::Waker;
@@ -398,9 +398,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         track_render_cycle();
 
                                         if *debug {
-                                            debug!("Renderer present took {:?}", present_time);
-                                            debug!("Command submission took {:?}", submit_time);
-                                            debug!("Frame presentation took {:?}", present_frame_time);
+                                            trace!("Renderer present took {:?}", present_time);
+                                            trace!("Command submission took {:?}", submit_time);
+                                            trace!("Frame presentation took {:?}", present_frame_time);
                                         }
 
                                         // Update the mouse cursor
@@ -798,7 +798,7 @@ fn track_render_cycle() {
         let now = Instant::now();
         let elapsed = now.duration_since(*time);
         *time = now;
-        debug!("TIMING: Render frame time: {:?}", elapsed);
+        trace!("TIMING: Render frame time: {:?}", elapsed);
     }
 }
 
@@ -808,12 +808,12 @@ fn track_async_delivery() {
         let now = Instant::now();
         let elapsed = now.duration_since(*time);
         *time = now;
-        debug!("TIMING: Async delivery time: {:?}", elapsed);
+        trace!("TIMING: Async delivery time: {:?}", elapsed);
     }
     
     // Also check phase alignment
     if let (Ok(render_time), Ok(async_time)) = (LAST_RENDER_TIME.lock(), LAST_ASYNC_DELIVERY_TIME.lock()) {
         let phase_diff = async_time.duration_since(*render_time);
-        debug!("TIMING: Phase difference: {:?}", phase_diff);
+        trace!("TIMING: Phase difference: {:?}", phase_diff);
     }
 }

@@ -637,6 +637,9 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::SliderImageWidgetLoaded(result) => {
                 match result {
                     Ok((pane_idx, pos, handle)) => {
+                        // Track each async image delivery
+                        crate::track_async_delivery();
+
                         // Use the specified pane index instead of hardcoded 0
                         if let Some(pane) = self.panes.get_mut(pane_idx) {
                             // Update the image widget handle directly
