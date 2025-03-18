@@ -195,6 +195,12 @@ impl DataViewer {
             }
         }
 
+        // Clear any cached slider images to prevent displaying stale images
+        for pane in self.panes.iter_mut() {
+            pane.slider_image = None;
+            pane.slider_scene = None;
+        }
+
         let pane_file_lengths = self.panes.iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
         let pane = &mut self.panes[pane_index];
@@ -705,6 +711,13 @@ impl iced_winit::runtime::Program for DataViewer {
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
                     
+                    // Clear any stale slider image if this is the first slider movement after loading a new directory
+                    if self.panes[0].slider_image.is_none() {
+                        for pane in self.panes.iter_mut() {
+                            pane.slider_scene = None;
+                        }
+                    }
+                    
                     return navigation_slider::update_pos(
                         &mut self.panes, 
                         pane_index, 
@@ -730,6 +743,11 @@ impl iced_winit::runtime::Program for DataViewer {
                     let pane = &mut self.panes[pane_index_usize];
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
+                    
+                    // Clear any stale slider image if this is the first slider movement after loading a new directory
+                    if pane.slider_image.is_none() {
+                        pane.slider_scene = None;
+                    }
                     
                     return navigation_slider::update_pos(
                         &mut self.panes, 
