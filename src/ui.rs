@@ -89,7 +89,7 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
 
 
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
-    // Get both FPS values
+    // Get UI event loop FPS
     let ui_fps = {
         if let Ok(fps) = CURRENT_FPS.lock() {
             *fps
@@ -98,12 +98,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         }
     };
     
-    let image_fps = {
-        if let Ok(fps) = IMAGE_RENDER_FPS.lock() {
-            *fps
-        } else {
-            0.0
-        }
+    // Get image render FPS (image content refresh rate)
+    // During slider movement use iced_wgpu::get_image_fps()
+    // Otherwise use IMAGE_RENDER_FPS
+    let image_fps = if app.is_slider_moving {
+        iced_wgpu::get_image_fps()
+    } else {
+        IMAGE_RENDER_FPS.lock().map(|fps| *fps as f64).unwrap_or(0.0)
     };
 
     let fps_display = if app.show_fps {

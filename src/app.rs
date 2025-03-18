@@ -637,9 +637,6 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::SliderImageWidgetLoaded(result) => {
                 match result {
                     Ok((pane_idx, pos, handle)) => {
-                        // Track each async image delivery completion
-                        crate::track_async_delivery();
-                        
                         // Use the specified pane index instead of hardcoded 0
                         if let Some(pane) = self.panes.get_mut(pane_idx) {
                             // Update the image widget handle directly
@@ -647,34 +644,6 @@ impl iced_winit::runtime::Program for DataViewer {
                             
                             // Also update the cache state to keep everything in sync
                             pane.img_cache.current_index = pos;
-                            
-                            // Only record FPS for the first pane to avoid double-counting in dual-pane mode
-                            if pane_idx == 0 {
-                                // Record image rendering time for FPS calculation
-                                if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
-                                    let now = Instant::now();
-                                    render_times.push(now);
-                                    
-                                    // Calculate image rendering FPS
-                                    if render_times.len() > 1 {
-                                        let oldest = render_times[0];
-                                        let elapsed = now.duration_since(oldest);
-                                        
-                                        if elapsed.as_secs_f32() > 0.0 {
-                                            let fps = render_times.len() as f32 / elapsed.as_secs_f32();
-                                            
-                                            // Store the current image rendering FPS
-                                            if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
-                                                *image_fps = fps;
-                                            }
-                                            
-                                            // Keep only recent frames (last 3 seconds)
-                                            let cutoff = now - std::time::Duration::from_secs(3);
-                                            render_times.retain(|&t| t > cutoff);
-                                        }
-                                    }
-                                }
-                            }
                             
                             debug!("Slider image loaded for pane {} at position {}", pane_idx, pos);
                         } else {
@@ -772,7 +741,26 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::SliderReleased(pane_index, value) => {
                 debug!("SLIDER_DEBUG: SliderReleased event received");
                 self.is_slider_moving = false;
-
+                
+                // Get the final image FPS AND the timestamps
+                let final_image_fps = iced_wgpu::get_image_fps();
+                let upload_timestamps = iced_wgpu::get_image_upload_timestamps();
+                
+                // Sync our application's image render times with the ones from iced_wgpu
+                if !upload_timestamps.is_empty() {
+                    if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+                        // Convert VecDeque to Vec for our storage
+                        *render_times = upload_timestamps.into_iter().collect();
+                        
+                        // Update FPS based on the final calculated value
+                        if let Ok(mut fps) = IMAGE_RENDER_FPS.lock() {
+                            *fps = final_image_fps as f32;
+                            debug!("SLIDER_DEBUG: Synced image fps tracking, final FPS: {:.1}", final_image_fps);
+                        }
+                    }
+                }
+                
+                // Continue with loading remaining images
                 if pane_index == -1 {
                     return navigation_slider::load_remaining_images(
                         &self.device, &self.queue, self.is_gpu_supported,

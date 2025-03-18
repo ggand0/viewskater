@@ -118,6 +118,12 @@ pub fn render_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
                     // Keep only recent frames (last 3 seconds)
                     let cutoff = now - std::time::Duration::from_secs(3);
                     render_times.retain(|&t| t > cutoff);
+                    
+                    // Sync back to iced_wgpu tracker for bidirectional sync
+                    // Convert Vec to VecDeque for iced_wgpu
+                    let timestamps: std::collections::VecDeque<Instant> = 
+                        render_times.iter().cloned().collect();
+                    iced_wgpu::sync_image_tracker_timestamps(timestamps);
                 }
             }
         }
@@ -172,6 +178,12 @@ pub fn render_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
                     // Keep only recent frames (last 3 seconds)
                     let cutoff = now - std::time::Duration::from_secs(3);
                     render_times.retain(|&t| t > cutoff);
+                    
+                    // Sync back to iced_wgpu tracker for bidirectional sync
+                    // Convert Vec to VecDeque for iced_wgpu
+                    let timestamps: std::collections::VecDeque<Instant> = 
+                        render_times.iter().cloned().collect();
+                    iced_wgpu::sync_image_tracker_timestamps(timestamps);
                 }
             }
         }
