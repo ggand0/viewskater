@@ -247,8 +247,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 WindowEvent::Focused(false) => {
                                     event_loop.set_control_flow(ControlFlow::Wait);
                                 }
-                                WindowEvent::Resized(_size) => {
-                                    *resized = true;
+                                WindowEvent::Resized(size) => {
+                                    if size.width > 0 && size.height > 0 {
+                                        *resized = true;
+                                    } else {
+                                        // Skip resizing and avoid configuring the surface
+                                        *resized = false;
+                                    }
                                 }
                                 WindowEvent::Moved(_) => {
                                     *moved = true;
