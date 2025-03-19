@@ -701,10 +701,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.last_slider_update = Instant::now();
 
                 // Always use async on Linux for better responsiveness
-                #[cfg(target_os = "linux")]
                 let use_async = true;
-                #[cfg(not(target_os = "linux"))]
-                let use_async = false;
                 
                 if pane_index == -1 {
                     // Master slider - only relevant when is_slider_dual is false
