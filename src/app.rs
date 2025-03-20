@@ -720,7 +720,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         pane_index, 
                         value as usize, 
                         use_async,
-                        false
+                        true
                     );
                 } else {
                     let pane_index_usize = pane_index as usize;
@@ -751,7 +751,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         pane_index, 
                         value as usize, 
                         use_async,
-                        false
+                        true
                     );
                 }
             }
