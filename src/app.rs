@@ -702,6 +702,14 @@ impl iced_winit::runtime::Program for DataViewer {
 
                 // Always use async on Linux for better responsiveness
                 let use_async = true;
+
+                // Use throttle for Linux
+                #[cfg(target_os = "linux")]
+                let use_throttle = true;
+
+                #[cfg(not(target_os = "linux"))]
+                let use_throttle = false;
+
                 
                 if pane_index == -1 {
                     // Master slider - only relevant when is_slider_dual is false
@@ -720,7 +728,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         pane_index, 
                         value as usize, 
                         use_async,
-                        true
+                        use_throttle,
                     );
                 } else {
                     let pane_index_usize = pane_index as usize;
@@ -751,7 +759,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         pane_index, 
                         value as usize, 
                         use_async,
-                        true
+                        use_throttle,
                     );
                 }
             }
