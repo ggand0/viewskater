@@ -29,21 +29,38 @@ pollster = "0.4.0"
 tracing-subscriber = "0.3"
 guillotiere = "0.6"
 chrono = { version = "0.4", features = ["clock"] }
+memmap2 = "0.9.5"
 
-[target.'cfg(not(target_os = "linux"))'.dependencies]
-iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = [
-    "image", "tokio", "svg", "lazy", "wgpu"
+# Use custom iced
+iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "perf-linux", features = [
+    "image", "tokio", "svg", "lazy", "wgpu", "advanced"
 ] }
-iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["wgpu"] }
-iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["tokio"] }
-iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-iced-0.11.0", features = [
+iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
+iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
+iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "perf-linux", features = ["wgpu"] }
+iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
+iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
+iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "perf-linux", features = ["tokio"] }
+iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
+iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-0.11.0-perflinux", features = [
     "menu", "quad"
 ] }
+
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = [
+#    "image", "tokio", "svg", "lazy", "wgpu"
+#] }
+#iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["wgpu"] }
+#iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["tokio"] }
+#iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-iced-0.11.0", features = [
+#    "menu", "quad"
+#] }
 
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -58,19 +75,19 @@ iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", 
 #iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
 
 # Use custom iced
-iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = [
-    "image", "tokio", "svg", "lazy", "wgpu"
-] }
-iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["wgpu"] }
-iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["tokio"] }
-iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-iced-0.11.0", features = [
-    "menu", "quad"
-] }
+#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = [
+#    "image", "tokio", "svg", "lazy", "wgpu"
+#] }
+#iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["wgpu"] }
+#iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["tokio"] }
+#iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
+#iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-iced-0.11.0", features = [
+#    "menu", "quad"
+#] }
 
 [dev-dependencies]
 cargo-bundle = "0.6.0"
