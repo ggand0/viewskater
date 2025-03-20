@@ -368,6 +368,11 @@ impl DataViewer {
                 }
             }
 
+            Key::Named(Named::F3)  => {
+                self.show_fps = !self.show_fps;
+                debug!("Toggled debug FPS display: {}", self.show_fps);
+            }
+
             _ => {}
         }
 
