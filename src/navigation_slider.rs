@@ -300,16 +300,40 @@ pub async fn create_async_image_widget_task(
     pos: usize,
     pane_idx: usize
 ) -> Result<(usize, usize, Handle), (usize, usize)> {
+    // Start overall timer
+    let task_start = std::time::Instant::now();
+    
     // Check if position is valid
     if pos >= img_paths.len() {
         return Err((pane_idx, pos));
     }
     
+    // Start file reading timer
+    let read_start = std::time::Instant::now();
+    
     // Load image bytes directly without resizing
-    match file_io::read_image_bytes(&img_paths[pos]) {
+    let bytes_result = file_io::read_image_bytes(&img_paths[pos]);
+    
+    // Measure file reading time
+    let read_time = read_start.elapsed();
+    debug!("PERF: File read time for pos {}: {:?}", pos, read_time);
+    
+    match bytes_result {
         Ok(bytes) => {
+            // Start handle creation timer
+            let handle_start = std::time::Instant::now();
+            
             // Convert directly to Handle without resizing
             let handle = iced::widget::image::Handle::from_bytes(bytes);
+            
+            // Measure handle creation time
+            let handle_time = handle_start.elapsed();
+            debug!("PERF: Handle creation time for pos {}: {:?}", pos, handle_time);
+            
+            // Measure total function time
+            let total_time = task_start.elapsed();
+            debug!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
+            
             Ok((pane_idx, pos, handle))
         },
         Err(_) => Err((pane_idx, pos)),
@@ -330,7 +354,7 @@ pub fn update_pos(
     let should_process = if throttle {
         // Platform-specific throttling - use different thresholds for Linux
         #[cfg(target_os = "linux")]
-        const PLATFORM_THROTTLE_MS: u64 = 1; // Much lower for Linux/X11
+        const PLATFORM_THROTTLE_MS: u64 = 10; // Much lower for Linux/X11
         
         #[cfg(not(target_os = "linux"))]
         const PLATFORM_THROTTLE_MS: u64 = _THROTTLE_INTERVAL_MS;

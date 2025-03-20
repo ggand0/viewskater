@@ -56,8 +56,8 @@ use crate::utils::timing::TimingStats;
 use crate::app::{Message, DataViewer};
 use crate::widgets::shader::scene::Scene;
 use crate::config::CONFIG;
-// Import the correct channel types
 use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
+use iced_wgpu::{get_image_rendering_diagnostics, log_image_rendering_stats};
 
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
@@ -65,7 +65,7 @@ static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
 static CURRENT_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
     Mutex::new(0.0)
 });
-static _STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("State Update"))
 });
 static _WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
@@ -295,7 +295,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             // If there are events pending
                             if !state.is_queue_empty() {
                                 // We update iced
-                                let _update_start = Instant::now();
+                                let update_start = Instant::now();
                                 let (_, task) = state.update(
                                     viewport.logical_size(),
                                     cursor_position
@@ -315,8 +315,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     clipboard,
                                     debug_tool,
                                 );
-                                //let update_time = update_start.elapsed();
-                                //STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
+                                let update_time = update_start.elapsed();
+                                STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
 
                                 let _ = 'runtime_call: {
                                     let Some(t) = task else {
@@ -402,6 +402,20 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         // Add tracking here to monitor the render cycle
                                         track_render_cycle();
 
+                                        // Always log these if they're abnormally long
+                                        if present_time.as_millis() > 50 {
+                                            warn!("BOTTLENECK: Renderer present took {:?}", present_time);
+                                        }
+                                        
+                                        if submit_time.as_millis() > 50 {
+                                            warn!("BOTTLENECK: Command submission took {:?}", submit_time);
+                                        }
+                                        
+                                        if present_frame_time.as_millis() > 50 {
+                                            warn!("BOTTLENECK: Frame presentation took {:?}", present_frame_time);
+                                        }
+
+                                        // Original debug logging
                                         if *debug {
                                             trace!("Renderer present took {:?}", present_time);
                                             trace!("Command submission took {:?}", submit_time);
@@ -441,7 +455,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         
                                         if elapsed.as_secs() >= 1 {
                                             let fps = frame_times.len() as f32 / elapsed.as_secs_f32();
-                                            info!("Current FPS: {:.1}", fps);
+                                            //info!("Current FPS: {:.1}", fps);
                                             
                                             // Store the current FPS value
                                             if let Ok(mut current_fps) = CURRENT_FPS.lock() {
@@ -803,6 +817,38 @@ fn track_render_cycle() {
         let now = Instant::now();
         let elapsed = now.duration_since(*time);
         *time = now;
+        
+        // Use the new diagnostics APIs
+        let (fps, upload_secs, render_secs, min_render, max_render, frame_count) = 
+            get_image_rendering_diagnostics();
+        
+        // Check for bottlenecks
+        if elapsed.as_millis() > 50 {
+            warn!("LONG FRAME DETECTED: Render time: {:?}", elapsed);
+            warn!("Image stats: FPS={:.1}, Upload={:.2}ms, Render={:.2}ms, Min={:.2}ms, Max={:.2}ms",
+                 fps, upload_secs * 1000.0, render_secs * 1000.0, 
+                 min_render * 1000.0, max_render * 1000.0);
+            
+            // Log detailed stats to console
+            log_image_rendering_stats();
+            
+            // Check if upload or render is the bottleneck
+            if upload_secs > 0.050 {  // 50ms threshold
+                warn!("BOTTLENECK: GPU texture upload is slow: {:.2}ms avg", upload_secs * 1000.0);
+            }
+            
+            if render_secs > 0.050 {  // 50ms threshold
+                warn!("BOTTLENECK: GPU render time is slow: {:.2}ms avg", render_secs * 1000.0);
+            }
+        }
+        
+        // Display diagnostics in UI during development
+        if frame_count % 60 == 0 {
+            // Periodic stats logging
+            debug!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms", 
+                  fps, upload_secs * 1000.0, render_secs * 1000.0);
+        }
+        
         trace!("TIMING: Render frame time: {:?}", elapsed);
     }
 }
@@ -815,6 +861,10 @@ fn track_async_delivery() {
         *time = now;
         trace!("TIMING: Async delivery time: {:?}", elapsed);
     }
+
+    // Check image rendering FPS from custom iced_wgpu
+    let image_fps = iced_wgpu::get_image_fps();
+    trace!("TIMING: Image FPS: {}", image_fps);
     
     // Also check phase alignment
     if let (Ok(render_time), Ok(async_time)) = (LAST_RENDER_TIME.lock(), LAST_ASYNC_DELIVERY_TIME.lock()) {
