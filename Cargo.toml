@@ -1,5 +1,5 @@
 [package]
-name = "view_skater"
+name = "viewskater"
 version = "0.2.0-beta.1"
 edition = "2021"
 description = "A fast image viewer for browsing large collections of images."
