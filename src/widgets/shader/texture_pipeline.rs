@@ -1,16 +1,14 @@
-use iced_wgpu::wgpu;
-use iced_wgpu::wgpu::util::DeviceExt;
 use std::sync::Arc;
-use iced_core::Rectangle;
-
-use crate::utils::timing::TimingStats;
-use once_cell::sync::Lazy;
 use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use iced_core::Rectangle;
+use iced_wgpu::wgpu::{self, util::DeviceExt};
+use crate::utils::timing::TimingStats;
 
-static TEXTURE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static _TEXTURE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Texture Update"))
 });
-static SHADER_RENDER_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static _SHADER_RENDER_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Shader Render"))
 });
 
@@ -27,11 +25,11 @@ pub struct TexturePipeline {
 impl TexturePipeline {
     pub fn new(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _queue: &wgpu::Queue,
         format: wgpu::TextureFormat,
         texture: Arc<wgpu::Texture>,
-        render_size: (u32, u32),
-        image_size: (u32, u32),
+        _render_size: (u32, u32),
+        _image_size: (u32, u32),
         bounds_relative: (f32, f32, f32, f32),
     ) -> Self {
         let debug = false;

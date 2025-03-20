@@ -1,64 +1,28 @@
-#[cfg(target_os = "linux")]
-mod other_os {
-    //pub use iced;
-    pub use iced_custom as iced;
-}
-
-#[cfg(not(target_os = "linux"))]
-mod macos {
-    pub use iced_custom as iced;
-}
-
-#[cfg(target_os = "linux")]
-use other_os::*;
-
-#[cfg(not(target_os = "linux"))]
-use macos::*;
-
-
-//use crate::image_cache;
-use crate::ui_builder::get_footer;
-use crate::app::Message;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
 
-use crate::file_io;
-use crate::file_io::{is_file, is_directory, get_file_index};
-
-//use iced::widget::{container, column, text};
-//use iced::{Element, Length};
-use iced_widget::{container, row, column, text};
-use iced_winit::core::{Element, Length};
+use iced_widget::{container, text};
+use iced_winit::core::Length;
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
-use image::GenericImageView;
-
-
-use crate::menu::PaneLayout;
-use crate::widgets::{dualslider::DualSlider, split::{Axis, Split}, viewer};
-use crate::cache::img_cache::ImageCache;
-use crate::cache::img_cache::CachedData;
-use crate::widgets::shader::scene::Scene;
-use crate::atlas::entry::{self, Entry};
-use crate::widgets::shader::atlas_scene::AtlasScene;
-use crate::config::CONFIG;
-use crate::widgets::shader::image_shader::ImageShader;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
-use crate::cache::img_cache::CacheStrategy;
-use crate::widgets::shader::cpu_scene::CpuScene;
-use iced_core::Length::Fill;
 use iced_widget::{center, Container};
-use iced_widget::shader;
-use crate::file_io::ImageError;
+
+use crate::config::CONFIG;
+use crate::app::Message;
+use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
+use crate::menu::PaneLayout;
+use crate::widgets::viewer;
+use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
+use crate::file_io::{self, is_file, is_directory, get_file_index, ImageError};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
-
-use std::time::Instant;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
 
 pub static IMAGE_RENDER_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
@@ -67,14 +31,11 @@ pub static IMAGE_RENDER_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
     Mutex::new(0.0)
 });
 
-//#[derive(Clone)]
 pub struct Pane {
     pub directory_path: Option<String>,
     pub dir_loaded: bool,
     pub img_cache: ImageCache,
     pub current_image: CachedData, // <-- Now stores either CPU or GPU image
-    //pub cpu_preview_image: Option<CachedData>, // for CPU previews
-    pub cpu_preview_image: Option<Handle>,
     pub is_next_image_loaded: bool, // whether the next image in cache is loaded
     pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
     pub slider_value: u16,
@@ -105,7 +66,6 @@ impl Default for Pane {
             is_selected_cache: true,
             scene: None,
             slider_scene: None, // Default to None
-            cpu_preview_image: None,
             backend: wgpu::Backend::Vulkan,
             device: None,
             queue: None,
@@ -126,7 +86,6 @@ impl Pane {
             dir_loaded: false,
             img_cache: ImageCache::default(),
             current_image: CachedData::Cpu(vec![]),
-            cpu_preview_image: None,
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -208,7 +167,7 @@ impl Pane {
             self.img_cache.loading_queue.len() < CONFIG.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < CONFIG.max_being_loaded_queue_size
     }
 
-    pub fn set_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
+    pub fn render_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
 
@@ -218,14 +177,6 @@ impl Pane {
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1; 
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
-
-            /*let loaded_image = img_cache
-                .get_image_by_index(next_image_index_to_render as usize)
-                .unwrap()
-                .as_vec()
-                .expect("Failed to convert CachedData to Vec<u8>");
-            let handle = iced::widget::image::Handle::from_bytes(loaded_image.clone());
-            self.current_image = handle;*/
 
             // Retrieve the cached image (GPU or CPU)
             if let Ok(cached_image) = img_cache.get_image_by_index(next_image_index_to_render as usize) {
@@ -251,17 +202,6 @@ impl Pane {
                         self.current_image = CachedData::Gpu(Arc::clone(&texture)); 
                         self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-                    }
-                    CachedData::Atlas { atlas, entry } => {  // Use struct pattern with named fields
-                        debug!("Setting Atlas as current_image");
-                        self.current_image = CachedData::Atlas {  // Create with named fields
-                            atlas: Arc::clone(atlas),
-                            entry: entry.clone(),
-                        };
-                        
-                        // If you need to update scene with the atlas, add that here
-                        // For example:
-                        // self.scene = Some(Scene::new_with_atlas(...));
                     }
                 }
             } else {
@@ -289,7 +229,7 @@ impl Pane {
         did_render_happen
     }
 
-    pub fn set_prev_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
+    pub fn render_prev_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
         let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
 
@@ -325,13 +265,6 @@ impl Pane {
                             self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                         }
-                        CachedData::Atlas { atlas, entry } => {  // Use struct pattern with named fields
-                            debug!("Setting Atlas as current_image");
-                            self.current_image = CachedData::Atlas {  // Create with named fields
-                                atlas: Arc::clone(atlas),
-                                entry: entry.clone(),
-                            };
-                        }
                     }
                 } else {
                     debug!("Failed to retrieve next cached image.");
@@ -363,16 +296,15 @@ impl Pane {
         did_render_happen
     }
 
-
     #[allow(unused_assignments)]
     pub fn initialize_dir_path(
         &mut self,
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
-        is_gpu_supported: bool,
+        _is_gpu_supported: bool,
         pane_layout: &PaneLayout,
         pane_file_lengths: &[usize],
-        pane_index: usize,
+        _pane_index: usize,
         path: PathBuf,
         is_slider_dual: bool,
         slider_value: &mut u16,
@@ -411,7 +343,17 @@ impl Pane {
         };
 
         self.directory_path = Some(dir_path);
-        let mut is_dir_size_bigger = false;
+        
+        // Calculate if directory size is bigger than other panes
+        let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+        let is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
+            true
+        } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+            true
+        } else {
+            _file_paths.len() >= *longest_file_length
+        };
+        debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
 
         // Determine initial index and update slider
         if is_file(&path) {
@@ -446,7 +388,6 @@ impl Pane {
             initial_index,
             Some(device_clone),
             Some(queue_clone),
-            self.backend,
         )
         .unwrap();
 
@@ -474,10 +415,6 @@ impl Pane {
                     self.current_image = CachedData::Gpu(Arc::clone(texture));
                     self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                     self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-
-                    /*if let Some(scene) = &mut self.scene {
-                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue));
-                    }*/
                 }
                 CachedData::Cpu(image_bytes) => {
                     debug!("Using CPU image for initial image");
@@ -489,36 +426,10 @@ impl Pane {
                         scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue), self.pane_id);
                     }
                 }
-                CachedData::Atlas { atlas, entry } => {
-                    debug!("Using Atlas entry for initial image");
-                    self.current_image = CachedData::Atlas {
-                        atlas: Arc::clone(atlas),
-                        entry: entry.clone(),
-                    };
-                    
-                    // Get size information from the entry
-                    let size = match &entry {
-                        entry::Entry::Contiguous(allocation) => allocation.size(),
-                        entry::Entry::Fragmented { size, .. } => *size,
-                    };
-                    
-                    // Create the atlas scene with the Arc<RwLock<Atlas>>
-                    // No need to access the atlas guard here as AtlasScene now works with RwLock
-                    let mut atlas_scene = AtlasScene::new(Arc::clone(atlas));
-                    
-                    // Update the atlas scene with the entry
-                    atlas_scene.update_image(entry.clone(), size.width, size.height);
-                    self.scene = Some(Scene::AtlasScene(atlas_scene));
-                }
             }
         } else {
             debug!("Failed to retrieve initial image");
         }
-
-
-        // Calculate if directory size is bigger than other panes
-        let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-        debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
 
         // Update slider value
         let current_slider_value = initial_index as u16;
@@ -526,7 +437,7 @@ impl Pane {
         if is_slider_dual {
             *slider_value = current_slider_value;
             self.slider_value = current_slider_value;
-        } else if is_dir_size_bigger {
+        } else if *pane_layout == PaneLayout::SinglePane || *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
             *slider_value = current_slider_value;
         }
         debug!("slider_value: {:?}", *slider_value);
@@ -536,11 +447,9 @@ impl Pane {
         
         self.img_cache = img_cache;
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
-
-        
     }
 
-    fn build_ui_container(&self, is_slider_moving: bool) -> Container<'_, Message, WinitTheme, Renderer> {
+    pub fn build_ui_container(&self, is_slider_moving: bool) -> Container<'_, Message, WinitTheme, Renderer> {
         if self.dir_loaded {
             if is_slider_moving && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
@@ -555,10 +464,6 @@ impl Pane {
                 .width(Length::Fill)
                 .height(Length::Fill)
             } else if let Some(scene) = &self.scene {
-                // Use shader/scene for normal viewing (better quality)
-                //let shader_widget = shader(scene)
-                //    .width(Fill)
-                //    .height(Fill);
                 let shader_widget = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
@@ -610,137 +515,4 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
 
     let pane = &panes[max_dir_size_index];
     pane.img_cache.current_index as usize
-}
-
-pub fn build_ui_dual_pane_slider1(
-    panes: &[Pane],
-    ver_divider_position: Option<u16>,
-    is_slider_moving: bool
-) -> Element<Message, WinitTheme, Renderer> {
-    let first_img = panes[0].build_ui_container(is_slider_moving);
-    let second_img = panes[1].build_ui_container(is_slider_moving);
-    
-    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    Split::new(
-        false,
-        first_img,
-        second_img,
-        is_selected,
-        ver_divider_position,
-        Axis::Vertical,
-        Message::OnVerResize,
-        Message::ResetSplit,
-        Message::FileDropped,
-        Message::PaneSelected
-    )
-    .into()
-}
-
-pub fn build_ui_dual_pane_slider2(
-    panes: &[Pane],
-    ver_divider_position: Option<u16>,
-    show_footer: bool,
-    is_slider_moving: bool
-) -> Element<Message, WinitTheme, Renderer> {
-    let footer_texts = vec![
-        format!(
-            "{}/{}",
-            panes[0].img_cache.current_index + 1,
-            panes[0].img_cache.num_files
-        ),
-        format!(
-            "{}/{}",
-            panes[1].img_cache.current_index + 1,
-            panes[1].img_cache.num_files
-        )
-    ];
-
-    let first_img = if panes[0].dir_loaded {
-        container(
-            if show_footer { 
-                column![
-                    panes[0].build_ui_container(is_slider_moving),
-                    DualSlider::new(
-                        0..=(panes[0].img_cache.num_files - 1) as u16,
-                        panes[0].slider_value,
-                        0,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), 0)
-                ]
-            } else { 
-                column![
-                    panes[0].build_ui_container(is_slider_moving),
-                    DualSlider::new(
-                        0..=(panes[0].img_cache.num_files - 1) as u16,
-                        panes[0].slider_value,
-                        0,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                ]
-            }
-        )
-    } else {
-        container(column![
-            text(String::from(""))
-                .width(Length::Fill)
-                .height(Length::Fill),
-        ])
-    };
-
-    let second_img = if panes[1].dir_loaded {
-        container(
-            if show_footer { 
-                column![
-                    panes[1].build_ui_container(is_slider_moving),
-                    DualSlider::new(
-                        0..=(panes[1].img_cache.num_files - 1) as u16,
-                        panes[1].slider_value,
-                        1,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), 1)
-                ]
-            } else { 
-                column![
-                    panes[1].build_ui_container(is_slider_moving),
-                    DualSlider::new(
-                        0..=(panes[1].img_cache.num_files - 1) as u16,
-                        panes[1].slider_value,
-                        1,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                ]
-            }
-        )
-    } else {
-        container(column![
-            text(String::from(""))
-                .width(Length::Fill)
-                .height(Length::Fill),
-        ])
-    };
-
-    let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    Split::new(
-        true,
-        first_img,
-        second_img,
-        is_selected,
-        ver_divider_position,
-        Axis::Vertical,
-        Message::OnVerResize,
-        Message::ResetSplit,
-        Message::FileDropped,
-        Message::PaneSelected
-    )
-    .into()
 }

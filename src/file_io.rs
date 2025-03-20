@@ -12,29 +12,22 @@ use tokio::time::Instant;
 use log::{Level, debug, info, warn, error};
 
 use std::panic;
-use std::fs::{OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use env_logger::{fmt::Color};
-use log::{LevelFilter, Metadata, Record};
-use backtrace::Backtrace;
+use std::error::Error as StdError;
+use std::io;
 use std::process::Command;
-
-use iced_wgpu::wgpu;
-use image::GenericImageView;
-use crate::cache::img_cache::CachedData;
-use std::fs::File;
-
-use crate::utils::timing::TimingStats;
 use once_cell::sync::Lazy;
+use env_logger::fmt::Color;
+use log::{LevelFilter, Metadata, Record};
+use image::GenericImageView;
+use iced_wgpu::wgpu;
 
-//use crate::cache::cache_strategy::CacheStrategy;
+use crate::cache::img_cache::CachedData;
+use crate::utils::timing::TimingStats;
 use crate::cache::img_cache::CacheStrategy;
-use crate::atlas::atlas::Atlas;
-use crate::atlas::entry;
-
-use std::sync::RwLock;
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
@@ -43,6 +36,7 @@ static GPU_UPLOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("GPU Upload"))
 });
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Error {
     DialogClosed,
@@ -211,75 +205,12 @@ async fn load_image_gpu_async(
     Ok(None)
 }
 
-async fn load_image_atlas_async(
-    path: Option<&str>,
-    device: &Arc<wgpu::Device>,
-    queue: &Arc<wgpu::Queue>,
-    atlas: &Arc<RwLock<Atlas>>
-) -> Result<Option<CachedData>, std::io::ErrorKind> {
-    if let Some(path) = path {
-        let file_path = Path::new(path);
-        let start = Instant::now();
-
-        match image::open(file_path) {
-            Ok(img) => {
-                let rgba_image = img.to_rgba8();
-                let (width, height) = img.dimensions();
-                let duration = start.elapsed();
-                IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
-
-                // Create a command encoder for atlas upload
-                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Atlas Upload Encoder"),
-                });
-
-                let upload_start = Instant::now();
-                
-                // Use a block scope to ensure the guard is dropped
-                let entry_result = {
-                    // Get a write lock to the Atlas - this will be dropped at end of this scope
-                    let mut atlas_guard = atlas.write().unwrap();
-                    
-                    // Now we can call upload on the mutable reference
-                    atlas_guard.upload(
-                        device.clone(), 
-                        &mut encoder, 
-                        width, 
-                        height, 
-                        &rgba_image
-                    )
-                }; // <-- atlas_guard is definitely dropped here
-                
-                if let Some(entry) = entry_result {
-                    // Submit the upload command
-                    queue.submit(std::iter::once(encoder.finish()));
-                    
-                    let upload_duration = upload_start.elapsed();
-                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
-                    
-                    return Ok(Some(CachedData::Atlas {
-                        atlas: Arc::clone(atlas),
-                        entry,
-                    }));
-                } else {
-                    // Atlas upload failed, fall back to individual texture
-                    debug!("Atlas upload failed for {}, falling back to individual texture", path);
-                    return load_image_gpu_async(Some(path), device, queue).await;
-                }
-            }
-            Err(_) => return Err(std::io::ErrorKind::InvalidData),
-        }
-    }
-
-    Ok(None)
-}
 
 pub async fn load_images_async(
     paths: Vec<Option<String>>, 
     cache_strategy: CacheStrategy,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    atlas: Option<Arc<RwLock<Atlas>>>,
     load_operation: LoadOperation
 ) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
@@ -288,7 +219,6 @@ pub async fn load_images_async(
     let futures = paths.into_iter().map(|path| {
         let device = Arc::clone(device);
         let queue = Arc::clone(queue);
-        let atlas_clone = atlas.clone();
         
         async move {
             let path_str = path.as_deref();
@@ -301,16 +231,6 @@ pub async fn load_images_async(
                     debug!("load_images_async - loading image with GPU strategy");
                     load_image_gpu_async(path_str, &device, &queue).await
                 },
-                CacheStrategy::Atlas => {
-                    debug!("load_images_async - loading image with Atlas strategy");
-                    if let Some(atlas) = atlas_clone {
-                        load_image_atlas_async(path_str, &device, &queue, &atlas).await
-                    } else {
-                        // Fall back to GPU if atlas isn't available
-                        debug!("Atlas not available, falling back to GPU strategy");
-                        load_image_gpu_async(path_str, &device, &queue).await
-                    }
-                }
             }
         }
     });
@@ -372,13 +292,6 @@ pub async fn pick_file() -> Result<String, Error> {
 }
 
 
-/*pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
-    Ok((None, Some(operation)))
-}
-
-pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<Vec<u8>>>, Option<LoadOperation>), std::io::ErrorKind> {
-    Ok((vec![None; count], Some(operation)))
-}*/
 #[allow(dead_code)]
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<CachedData>, Option<LoadOperation>), std::io::ErrorKind> {
     Ok((None, Some(operation)))
@@ -388,7 +301,7 @@ pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Re
     Ok((vec![None; count], Some(operation)))
 }
 
-pub async fn literal_empty_async_block() -> Result<(), std::io::ErrorKind> {
+pub async fn _literal_empty_async_block() -> Result<(), std::io::ErrorKind> {
     Ok(())
 }
 
@@ -406,8 +319,7 @@ pub fn get_file_index(files: &[PathBuf], file: &PathBuf) -> Option<usize> {
     files.iter().position(|f| f.file_name() == Some(file_name))
 }
 
-use std::error::Error as StdError;
-use std::io;
+
 
 #[derive(Debug)]
 pub enum ImageError {
@@ -434,22 +346,6 @@ pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageErro
     let dir_entries = fs::read_dir(directory_path)
         .map_err(|e| ImageError::DirectoryError(e))?;
 
-    /*if let Ok(paths) = fs::read_dir(directory_path) {
-        for entry in paths.flatten() {
-            if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
-                // Check if the extension is among allowed extensions
-                if allowed_extensions.contains(&extension.to_lowercase().as_str()) {
-                    image_paths.push(entry.path());
-                }
-            }
-        }
-    }
-
-    // Sort paths like Nautilus file viewer. (`image_paths.sort()` won't achieve this)
-    alphanumeric_sort::sort_path_slice(&mut image_paths);
-    image_paths
-        
-    */
     for entry in dir_entries.flatten() {
         if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
             if allowed_extensions.contains(&extension.to_lowercase().as_str()) {
@@ -475,19 +371,29 @@ struct BufferLogger {
 }
 
 impl BufferLogger {
+    #[allow(dead_code)]
     fn new() -> Self {
         Self {
             log_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(MAX_LOG_LINES))),
         }
     }
 
-    fn log_to_buffer(&self, message: &str, target: &str) {
+    fn log_to_buffer(&self, message: &str, target: &str, line: Option<u32>, _module_path: Option<&str>) {
         if target.starts_with("view_skater") {
             let mut buffer = self.log_buffer.lock().unwrap();
             if buffer.len() == MAX_LOG_LINES {
                 buffer.pop_front();
             }
-            buffer.push_back(message.to_string());
+            
+            // Format the log message to include only line number to avoid duplication
+            // The module is already in the target in most cases
+            let formatted_message = if let Some(line_num) = line {
+                format!("{}:{} {}", target, line_num, message)
+            } else {
+                format!("{} {}", target, message)
+            };
+            
+            buffer.push_back(formatted_message);
         }
     }
 
@@ -497,6 +403,7 @@ impl BufferLogger {
         buffer.iter().cloned().collect()
     }
 
+    #[allow(dead_code)]
     fn get_shared_buffer(&self) -> Arc<Mutex<VecDeque<String>>> {
         Arc::clone(&self.log_buffer)
     }
@@ -510,13 +417,19 @@ impl log::Log for BufferLogger {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             let message = format!("{:<5} {}", record.level(), record.args());
-            self.log_to_buffer(&message, record.target());
+            self.log_to_buffer(
+                &message, 
+                record.target(), 
+                record.line(), 
+                record.module_path()
+            );
         }
     }
 
     fn flush(&self) {}
 }
 
+#[allow(dead_code)]
 struct CompositeLogger {
     console_logger: env_logger::Logger,
     buffer_logger: BufferLogger,
@@ -542,33 +455,71 @@ impl log::Log for CompositeLogger {
     }
 }
 
+use env_logger::fmt::Formatter; // Correct import
+use chrono::Utc;
+
+#[allow(dead_code)]
 pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     let buffer_logger = BufferLogger::new();
     let shared_buffer = buffer_logger.get_shared_buffer();
 
     let mut builder = env_logger::Builder::new();
+    
+    // First check if RUST_LOG is set - if so, use that configuration
     if std::env::var("RUST_LOG").is_ok() {
         builder.parse_env("RUST_LOG");
-    } else if cfg!(debug_assertions) {
-        builder.filter(Some("view_skater"), LevelFilter::Debug);
     } else {
-        builder.filter(Some("view_skater"), LevelFilter::Info);
+        // If RUST_LOG is not set, use different defaults for debug/release builds
+        if cfg!(debug_assertions) {
+            // In debug mode, show debug logs and above
+            builder.filter(Some("view_skater"), LevelFilter::Debug);
+        } else {
+            // In release mode, only show errors by default
+            builder.filter(Some("view_skater"), LevelFilter::Error);
+        }
     }
 
+    // Filter out all other crates' logs
     builder.filter(None, LevelFilter::Off);
 
-    builder.format(|buf, record| {
-        let mut style = buf.style();
+    builder.format(|buf: &mut Formatter, record: &Record| {
+        let mut level_style = buf.style();
+        let mut meta_style = buf.style(); // For timestamp & filename/line number
+    
+        // Set colors
         match record.level() {
-            Level::Error => style.set_color(Color::Red),
-            Level::Warn => style.set_color(Color::Yellow),
-            Level::Info => style.set_color(Color::Green),
-            Level::Debug => style.set_color(Color::Blue),
-            Level::Trace => style.set_color(Color::White),
+            Level::Error => level_style.set_color(Color::Red).set_bold(true),
+            Level::Warn => level_style.set_color(Color::Yellow).set_bold(true),
+            Level::Info => level_style.set_color(Color::Green).set_bold(true),
+            Level::Debug => level_style.set_color(Color::Blue).set_bold(true),
+            Level::Trace => level_style.set_color(Color::White),
         };
-        writeln!(buf, "{:<5} {}", style.value(record.level()), record.args())
+    
+        meta_style.set_color(Color::Rgb(120, 120, 120)); // Dark grey for timestamps & filename/line numbers
+    
+        let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ"); // ISO 8601 UTC format
+        
+        // Include module path and line number in formatted output
+        let module_info = if let (Some(module), Some(line)) = (record.module_path(), record.line()) {
+            format!("{}:{}", module, line)
+        } else if let Some(module) = record.module_path() {
+            module.to_string()
+        } else if let Some(line) = record.line() {
+            format!("line:{}", line)
+        } else {
+            "unknown".to_string()
+        };
+    
+        writeln!(
+            buf,
+            "{} {} {} {}",
+            meta_style.value(timestamp),                      // Dark grey timestamp
+            level_style.value(record.level()),               // Colorized log level
+            meta_style.value(module_info),                   // Module:line
+            record.args()                                    // Log message
+        )
     });
-
+    
     let console_logger = builder.build();
 
     let composite_logger = CompositeLogger {
@@ -577,6 +528,8 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     };
 
     log::set_boxed_logger(Box::new(composite_logger)).expect("Failed to set logger");
+    
+    // Always set the maximum level to Trace so that filtering works correctly
     log::set_max_level(LevelFilter::Trace);
 
     shared_buffer
@@ -591,7 +544,7 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
     std::fs::create_dir_all(log_file_path.parent().unwrap()).expect("Failed to create log directory");
 
     panic::set_hook(Box::new(move |info| {
-        let backtrace = Backtrace::new();
+        let backtrace = backtrace::Backtrace::new();
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -599,17 +552,59 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
             .open(&log_file_path)
             .expect("Failed to open panic log file");
 
-        writeln!(file, "Panic occurred: {}", info).expect("Failed to write panic info");
-        writeln!(file, "Backtrace:\n{:?}\n", backtrace).expect("Failed to write backtrace");
+        // Write formatted timestamp
+        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
 
-        writeln!(file, "Last {} log entries:\n", MAX_LOG_LINES).expect("Failed to write log header");
+        // Extract panic location information if available
+        let location = if let Some(location) = info.location() {
+            format!("{}:{}", location.file(), location.line())
+        } else {
+            "unknown location".to_string()
+        };
+
+        // Create formatted messages that we'll use for both console and file
+        let header_msg = format!("[PANIC] at {} - {}", location, info);
+        let backtrace_header = "[PANIC] Backtrace:";
+        
+        // Format backtrace lines
+        let mut backtrace_lines = Vec::new();
+        for line in format!("{:?}", backtrace).lines() {
+            backtrace_lines.push(format!("[BACKTRACE] {}", line.trim()));
+        }
+        
+        // Log header to file
+        writeln!(file, "{} {}", timestamp, header_msg).expect("Failed to write panic info");
+        writeln!(file, "{} {}", timestamp, backtrace_header).expect("Failed to write backtrace header");
+        
+        // Log backtrace to file
+        for line in &backtrace_lines {
+            writeln!(file, "{} {}", timestamp, line).expect("Failed to write backtrace line");
+        }
+        
+        // Add double linebreak between backtrace and log entries
+        writeln!(file).expect("Failed to write newline");
+        writeln!(file).expect("Failed to write second newline");
+
+        // Dump the last N log lines from the buffer with timestamps
+        writeln!(file, "{} [PANIC] Last {} log entries:", timestamp, MAX_LOG_LINES)
+            .expect("Failed to write log header");
 
         let buffer = log_buffer.lock().unwrap();
         for log in buffer.iter() {
-            writeln!(file, "{}", log).expect("Failed to write log entry");
+            writeln!(file, "{} {}", timestamp, log).expect("Failed to write log entry");
         }
+        
+        // ALSO PRINT TO CONSOLE (this is the new part)
+        // Use eprintln! to print to stderr
+        eprintln!("\n\n{}", header_msg);
+        eprintln!("{}", backtrace_header);
+        for line in &backtrace_lines {
+            eprintln!("{}", line);
+        }
+        eprintln!("\nA complete crash log has been written to: {}", log_file_path.display());
     }));
 }
+
 
 pub fn open_in_file_explorer(path: &str) {
     if cfg!(target_os = "windows") {

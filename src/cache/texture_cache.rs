@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use std::hash::{Hash, Hasher};
+
+#[allow(unused_imports)]
 use log::{debug, info, warn};
 use image::GenericImageView;
-use iced_wgpu::wgpu::util::DeviceExt;
 
 /// A simple cache for GPU textures created from CPU images.
 /// This avoids recreating textures for the same image data.
@@ -35,7 +36,7 @@ impl TextureCache {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         image_bytes: &[u8],
-        dimensions: (u32, u32),
+        _dimensions: (u32, u32),
     ) -> Option<Arc<wgpu::Texture>> {
         // Safety check for empty data
         if image_bytes.is_empty() {
@@ -187,7 +188,7 @@ impl TextureCache {
     }
 
     /// Get cache statistics
-    pub fn stats(&self) -> (usize, usize) {
+    pub fn _stats(&self) -> (usize, usize) {
         (self.hits, self.misses)
     }
 }

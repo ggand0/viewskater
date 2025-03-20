@@ -1,7 +1,6 @@
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
-    //pub use iced;
     pub use iced_custom as iced;
 }
 
@@ -16,21 +15,17 @@ use other_os::*;
 #[cfg(not(target_os = "linux"))]
 use macos::*;
 
-use crate::pane;
-use crate::cache::img_cache::{LoadOperation, LoadOperationType, load_images_by_operation, load_all_images_in_queue};
-use crate::pane::{Pane, get_master_slider_value};
-use crate::widgets::shader::scene::Scene;
-use crate::menu::PaneLayout;
-use crate::loading_status::LoadingStatus;
-use crate::app::Message;
-use iced::Task;
-use std::io;
-use crate::Arc;
-use iced_wgpu::wgpu;
-use crate::cache::img_cache::{CachedData, CacheStrategy};
+use std::sync::Arc;
 use std::time::Instant;
-use crate::pane::IMAGE_RENDER_TIMES;
-use crate::pane::IMAGE_RENDER_FPS;
+use iced::Task;
+use iced_wgpu::wgpu;
+use crate::app::Message;
+use crate::pane::{self, Pane, get_master_slider_value};
+use crate::menu::PaneLayout;
+use crate::cache::img_cache::{CacheStrategy, LoadOperation, LoadOperationType, load_images_by_operation};
+use crate::loading_status::LoadingStatus;
+use crate::pane::{IMAGE_RENDER_TIMES, IMAGE_RENDER_FPS};
+
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -87,13 +82,13 @@ pub fn are_panes_cached_prev(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
 }
 
 
-pub fn set_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
+pub fn render_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
     let mut did_render_happen = false;
 
-    // Set the next image for all panes
+    // Render the next image for all panes
     for (_cache_index, pane) in panes.iter_mut().enumerate() {
-        let render_happened = pane.set_next_image(_pane_layout, is_slider_dual);
-        debug!("set_next_image_all - render_happened: {}", render_happened);
+        let render_happened = pane.render_next_image(_pane_layout, is_slider_dual);
+        debug!("render_next_image_all - render_happened: {}", render_happened);
 
         if render_happened {
             did_render_happen = true;
@@ -123,6 +118,12 @@ pub fn set_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
                     // Keep only recent frames (last 3 seconds)
                     let cutoff = now - std::time::Duration::from_secs(3);
                     render_times.retain(|&t| t > cutoff);
+                    
+                    // Sync back to iced_wgpu tracker for bidirectional sync
+                    // Convert Vec to VecDeque for iced_wgpu
+                    let timestamps: std::collections::VecDeque<Instant> = 
+                        render_times.iter().cloned().collect();
+                    iced_wgpu::sync_image_tracker_timestamps(timestamps);
                 }
             }
         }
@@ -131,9 +132,8 @@ pub fn set_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
     did_render_happen
 }
 
-pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
+pub fn render_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
     let mut did_render_happen = false;
-    debug!("set_prev_image_all0");
 
     // First, check if the prev images of all panes are loaded.
     // If not, assume they haven't been loaded yet and wait for the next render cycle.
@@ -145,14 +145,13 @@ pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
             return false;
         }
     }
-    debug!("set_prev_image_all1");
 
-    // Set the prev image for all panes
+    // Render the prev image for all panes
     for (_cache_index, pane) in panes.iter_mut().enumerate() {
-        let render_happened = pane.set_prev_image(_pane_layout, is_slider_dual);
+        let render_happened = pane.render_prev_image(_pane_layout, is_slider_dual);
         if render_happened {
+            debug!("render_prev_image_all - render_happened: {}", render_happened);
             did_render_happen = true;
-            debug!("set_prev_image_all2");
         }
     }
 
@@ -179,6 +178,12 @@ pub fn set_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout,
                     // Keep only recent frames (last 3 seconds)
                     let cutoff = now - std::time::Duration::from_secs(3);
                     render_times.retain(|&t| t > cutoff);
+                    
+                    // Sync back to iced_wgpu tracker for bidirectional sync
+                    // Convert Vec to VecDeque for iced_wgpu
+                    let timestamps: std::collections::VecDeque<Instant> = 
+                        render_times.iter().cloned().collect();
+                    iced_wgpu::sync_image_tracker_timestamps(timestamps);
                 }
             }
         }
@@ -341,7 +346,6 @@ pub fn load_prev_images_all(
                 loading_status.enqueue_image_load(load_prev_operation);
             }
             return load_images_by_operation(
-                //Some(Arc::clone(&device)), Some(Arc::clone(&queue)), is_gpu_supported,
                 &device, &queue, cache_strategy,
                 panes, loading_status);
         }
@@ -400,9 +404,6 @@ fn should_enqueue_loading(
     load_operation: &LoadOperation,
     panes: &mut Vec<&mut Pane>,
 ) -> bool {
-    //debug!("should_enqueue_loading - is_image_index_within_bounds: {}", is_image_index_within_bounds);
-    //debug!("should_enqueue_loading - are_next_image_indices_in_queue: {}", loading_status.are_next_image_indices_in_queue(image_indices_to_load.clone()));
-    //debug!("should_enqueue_loading - is_blocking_loading_ops_in_queue: {}", loading_status.is_blocking_loading_ops_in_queue(panes, load_operation.clone()));
     is_image_index_within_bounds &&
         loading_status.are_next_image_indices_in_queue(image_indices_to_load.clone()) &&
         !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation.clone())
@@ -495,7 +496,6 @@ pub fn move_right_all(
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftNext)
         {
             tasks.push(load_next_images_all(
-                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                 &device, &queue, cache_strategy,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
@@ -513,8 +513,7 @@ pub fn move_right_all(
     debug!("move_right_all() - are_all_next_images_loaded(): {}", are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status));
     debug!("move_right_all() - panes[0].is_next_image_loaded: {}", panes_to_load[0].is_next_image_loaded);
     if !are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
-        //debug!("move_right_all() - setting next image...");
-        let did_render_happen: bool = set_next_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
+        let did_render_happen: bool = render_next_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
 
         if did_render_happen {// NOTE: I may need to edit the condition here
             loading_status.is_next_image_loaded = true;
@@ -522,9 +521,7 @@ pub fn move_right_all(
                 pane.is_next_image_loaded = true;
             }
 
-            //debug!("move_right_all() - loading next images...");
             tasks.push(load_next_images_all(
-                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                 &device, &queue, cache_strategy,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
@@ -604,7 +601,6 @@ pub fn move_left_all(
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftPrevious)
         {
             tasks.push(load_prev_images_all(
-                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                 &device, &queue, cache_strategy,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
@@ -624,7 +620,7 @@ pub fn move_left_all(
     
     if !are_all_prev_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
         debug!("move_left_all() - setting prev image...");
-        let did_render_happen: bool = set_prev_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
+        let did_render_happen: bool = render_prev_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
         for pane in panes_to_load.iter_mut() {
             pane.print_state();
         }
@@ -634,7 +630,6 @@ pub fn move_left_all(
 
             debug!("move_left_all() - loading prev images...");
             tasks.push(load_prev_images_all(
-                //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                 &device, &queue, cache_strategy,
                 &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
         }
