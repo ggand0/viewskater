@@ -388,7 +388,7 @@ pub fn update_pos(
     
     // Skip processing if we're throttling
     if !should_process {
-        debug!("Throttling slider image load at position {}", pos);
+        //debug!("Throttling slider image load at position {}", pos);
         return Task::none();
     }
 

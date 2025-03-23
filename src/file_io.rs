@@ -52,8 +52,6 @@ pub fn get_filename(path: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-
-use memmap2::Mmap;
 /// Reads an image file into a byte vector.
 /// 
 /// This function reads raw bytes from a file using memory mapping for

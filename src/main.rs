@@ -65,7 +65,7 @@ static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
 static CURRENT_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
     Mutex::new(0.0)
 });
-static STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
+static _STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("State Update"))
 });
 static _WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
@@ -295,7 +295,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             // If there are events pending
                             if !state.is_queue_empty() {
                                 // We update iced
-                                let update_start = Instant::now();
+                                //let update_start = Instant::now();
                                 let (_, task) = state.update(
                                     viewport.logical_size(),
                                     cursor_position
@@ -315,8 +315,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     clipboard,
                                     debug_tool,
                                 );
-                                let update_time = update_start.elapsed();
-                                STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
+                                //let update_time = update_start.elapsed();
+                                //STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
 
                                 let _ = 'runtime_call: {
                                     let Some(t) = task else {
@@ -361,7 +361,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             if *redraw {
                                 *redraw = false;
                                 
-                                let frame_start = Instant::now();
+                                //let frame_start = Instant::now();
 
                                 // Update window title dynamically based on the current image
                                 if !*moved {
@@ -429,8 +429,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             ),
                                         );
                                         
-                                        let total_frame_time = frame_start.elapsed();
-                                        debug!("Total frame time: {:?}", total_frame_time);
+                                        //let total_frame_time = frame_start.elapsed();
+                                        //debug!("Total frame time: {:?}", total_frame_time);
                                     }
                                     Err(error) => match error {
                                         wgpu::SurfaceError::OutOfMemory => {
@@ -849,7 +849,7 @@ fn track_render_cycle() {
                   fps, upload_secs * 1000.0, render_secs * 1000.0);
         }
         
-        trace!("TIMING: Render frame time: {:?}", elapsed);
+        //trace!("TIMING: Render frame time: {:?}", elapsed);
     }
 }
 
@@ -859,7 +859,7 @@ fn track_async_delivery() {
         let now = Instant::now();
         let elapsed = now.duration_since(*time);
         *time = now;
-        trace!("TIMING: Async delivery time: {:?}", elapsed);
+        trace!("TIMING: Interval time between async deliveries: {:?}", elapsed);
     }
 
     // Check image rendering FPS from custom iced_wgpu
