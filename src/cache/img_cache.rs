@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use std::io;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use image::GenericImageView;
 use iced_winit::runtime::Task;
 use iced_wgpu::wgpu;
 
