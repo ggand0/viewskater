@@ -64,3 +64,13 @@ name = "ViewSkater"
 identifier = "com.ggando.viewskater"
 icon = ["assets/icon_16.png", "assets/icon_32.png", "assets/icon_48.png", "assets/icon_128.png", "assets/icon_256.png"]
 short_description = "A fast image viewer for browsing large collections of images."
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
+# Use an optimized dev profile for faster runtime during development.
+[profile.dev]
+opt-level = 3
+lto = false
+codegen-units = 16
