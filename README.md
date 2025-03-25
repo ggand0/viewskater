@@ -28,7 +28,7 @@ To build a full release binary for packaging or distribution:
 cargo build --release
 ```
 
-See [`BUILDING.md`](./BUILDING.md) for full packaging instructions.
+See [`BUILDING.md`](./BUNDLING.md) for full packaging instructions.
 
 
 ## Usage
