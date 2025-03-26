@@ -173,7 +173,9 @@ impl Pane {
 
         img_cache.print_cache();
 
-        if img_cache.is_some_at_index(img_cache.cache_count as usize + img_cache.current_offset as usize + 1) {
+        // Safely compute target index as isize
+        let target_index_isize = img_cache.cache_count as isize + img_cache.current_offset + 1;
+        if target_index_isize >= 0 {
             let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1; 
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);

@@ -25,6 +25,7 @@ use std::time::Instant;
 use std::sync::Mutex;
 use std::time::Duration;
 use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use winit::{
     event::WindowEvent,
@@ -82,6 +83,11 @@ static LAST_ASYNC_DELIVERY_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
     Mutex::new(Instant::now())
 });
 
+// Add these static variables at module level
+static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
+const QUEUE_LOG_THRESHOLD: usize = 20;
+const QUEUE_RESET_THRESHOLD: usize = 50;
+
 fn load_icon() -> Option<winit::window::Icon> {
     let image = image::load_from_memory(ICON).ok()?.into_rgba8();
     let (width, height) = image.dimensions();
@@ -124,6 +130,23 @@ enum Event<T: 'static> {
         make_visible: bool,
         on_open: oneshot::Sender<()>,
     },
+}
+
+fn monitor_message_queue(state: &mut program::State<DataViewer>) {
+    // Check queue length
+    let queue_len = state.queued_messages_len();
+    LAST_QUEUE_LENGTH.store(queue_len, Ordering::SeqCst);
+    
+    // Log if the queue is getting large
+    if queue_len > QUEUE_LOG_THRESHOLD {
+        debug!("Message queue size: {}", queue_len);
+    }
+    
+    // Reset queue if it exceeds our threshold
+    if queue_len > QUEUE_RESET_THRESHOLD {
+        warn!("MESSAGE QUEUE OVERLOAD: {} messages pending - clearing queue", queue_len);
+        state.clear_queued_messages();
+    }
 }
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
@@ -238,6 +261,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             event: window_event,
                         }) => {
                             let _window_event_start = Instant::now();
+                            
+                            // Monitor the message queue and clear it if it's getting large
+                            monitor_message_queue(state);
                             
                             match window_event {
                                 WindowEvent::Focused(true) => {
@@ -429,8 +455,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             ),
                                         );
                                         
-                                        //let total_frame_time = frame_start.elapsed();
-                                        //debug!("Total frame time: {:?}", total_frame_time);
+                                        let total_frame_time = frame_start.elapsed();
+                                        trace!("Total frame time: {:?}", total_frame_time);
                                     }
                                     Err(error) => match error {
                                         wgpu::SurfaceError::OutOfMemory => {
@@ -455,7 +481,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         
                                         if elapsed.as_secs() >= 1 {
                                             let fps = frame_times.len() as f32 / elapsed.as_secs_f32();
-                                            //info!("Current FPS: {:.1}", fps);
+                                            trace!("Current FPS: {:.1}", fps);
                                             
                                             // Store the current FPS value
                                             if let Ok(mut current_fps) = CURRENT_FPS.lock() {

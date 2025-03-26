@@ -13,13 +13,23 @@ It aims to alleviate the challenges of exploring and comparing numerous images. 
 
 ## Installation
 Download the pre-built binaries from the [releases page](https://github.com/ggand0/viewskater/releases), or build it locally:
+
+```sh
+cargo run
 ```
-cargo run --release
+
+To see debug logs while running, set the `RUST_LOG` environment variable:
+```sh
+RUST_LOG=viewskater=debug cargo run
 ```
-If you'd like to see debug logs while running, specify the `RUST_LOG` flag:
+
+To build a full release binary for packaging or distribution:
+```sh
+cargo build --release
 ```
-RUST_LOG=view_skater=debug cargo run --release
-```
+
+See [`BUNDLING.md`](./BUNDLING.md) for full packaging instructions.
+
 
 ## Usage
 Drag and drop an image or a directory of images onto a pane, and navigate through the images using the **A / D** keys or the slider UI.

@@ -4,66 +4,40 @@ version = "0.2.0"
 edition = "2021"
 description = "A fast image viewer for browsing large collections of images."
 
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 env_logger = "0.10"
 console_log = "1.0"
 log = "0.4.20"
 tokio = { version = "1.32", features = ["rt", "sync", "macros", "time", "io-util", "fs"] }
-rfd = "0.12"
+rfd = { version = "0.12", default-features = false, features = ["xdg-portal"] }
 num-traits = "0.2"
 alphanumeric-sort = "1.5.3"
-image = "0.23"
+image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
 futures = "0.3"
 once_cell = "1.16"
 smol_str = "0.2.2"
 backtrace = "0.3"
 dirs = "5.0"
-lazy_static = "1.4"
 webbrowser = "0.7"
 bytemuck = { version = "1.0", features = ["derive"] }
-#iced_wgpu = "0.13.5"
-wgpu = "23.0"
-pollster = "0.4.0"
-tracing-subscriber = "0.3"
-guillotiere = "0.6"
 chrono = { version = "0.4", features = ["clock"] }
-memmap2 = "0.9.5"
 
 # Use custom iced
-iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "perf-linux", features = [
-    "image", "tokio", "svg", "lazy", "wgpu", "advanced"
+iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
+    "image", "tokio", "svg", "lazy", "wgpu"
 ] }
-iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
-iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
-iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "perf-linux", features = ["wgpu"] }
-iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
-iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
-iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "perf-linux", features = ["tokio"] }
-iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "perf-linux" }
-iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-0.11.0-perflinux", features = [
+iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["wgpu"] }
+iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["tokio"] }
+iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-0.11.0", features = [
     "menu", "quad"
 ] }
 
-
-[target.'cfg(not(target_os = "linux"))'.dependencies]
-#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = [
-#    "image", "tokio", "svg", "lazy", "wgpu"
-#] }
-#iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["wgpu"] }
-#iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["tokio"] }
-#iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-iced-0.11.0", features = [
-#    "menu", "quad"
-#] }
-
-
-[target.'cfg(target_os = "linux")'.dependencies]
 # Debug setup with local iced
 #iced_custom = { package = "iced", path = "../iced", features=["image", "tokio", "svg", "lazy", "wgpu", "advanced"] }
 #iced_winit = { path = "../iced/winit" }
@@ -74,22 +48,8 @@ iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", 
 #iced_futures = { path = "../iced/futures", features = ["tokio"] }
 #iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
 
-# Use custom iced
-#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = [
-#    "image", "tokio", "svg", "lazy", "wgpu"
-#] }
-#iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["wgpu"] }
-#iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1", features = ["tokio"] }
-#iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-winit-0.13.1" }
-#iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-iced-0.11.0", features = [
-#    "menu", "quad"
-#] }
-
-[dev-dependencies]
+# Used on macOS for generating .app bundles via `cargo bundle`
+[target.'cfg(target_os = "macos")'.dev-dependencies]
 cargo-bundle = "0.6.0"
 
 [build-dependencies]
@@ -104,3 +64,13 @@ name = "ViewSkater"
 identifier = "com.ggando.viewskater"
 icon = ["assets/icon_16.png", "assets/icon_32.png", "assets/icon_48.png", "assets/icon_128.png", "assets/icon_256.png"]
 short_description = "A fast image viewer for browsing large collections of images."
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
+# Use an optimized dev profile for faster runtime during development.
+[profile.dev]
+opt-level = 3
+lto = false
+codegen-units = 16
