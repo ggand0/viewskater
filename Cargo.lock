@@ -2146,8 +2146,8 @@ dependencies = [
 
 [[package]]
 name = "iced"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -2161,7 +2161,7 @@ dependencies = [
 [[package]]
 name = "iced_aw"
 version = "0.11.0"
-source = "git+https://github.com/ggand0/iced_aw.git?branch=custom-iced-0.11.0#0d4c0c6660c1d1b3e10985e9db975388407ee379"
+source = "git+https://github.com/ggand0/iced_aw.git?branch=custom-0.11.0#59ecaf3b01b724b19690ab11dde462491af23f70"
 dependencies = [
  "cfg-if",
  "chrono",
@@ -2174,8 +2174,8 @@ dependencies = [
 
 [[package]]
 name = "iced_core"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "bitflags 2.9.0",
  "bytes",
@@ -2195,15 +2195,15 @@ dependencies = [
 [[package]]
 name = "iced_fonts"
 version = "0.1.1"
-source = "git+https://github.com/ggand0/iced_fonts.git?branch=custom-iced-0.1.1#9df75c30d4d7149340d5187c17d4bfa48ac941e9"
+source = "git+https://github.com/ggand0/iced_fonts.git?branch=custom-0.1.1#63592406aeb28d7a561ca57464a440c39ff5f44c"
 dependencies = [
  "iced_core",
 ]
 
 [[package]]
 name = "iced_futures"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "futures",
  "iced_core",
@@ -2229,8 +2229,8 @@ dependencies = [
 
 [[package]]
 name = "iced_graphics"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "bitflags 2.9.0",
  "bytemuck",
@@ -2251,8 +2251,8 @@ dependencies = [
 
 [[package]]
 name = "iced_renderer"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -2263,8 +2263,8 @@ dependencies = [
 
 [[package]]
 name = "iced_runtime"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "bytes",
  "iced_core",
@@ -2275,8 +2275,8 @@ dependencies = [
 
 [[package]]
 name = "iced_tiny_skia"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2291,8 +2291,8 @@ dependencies = [
 
 [[package]]
 name = "iced_wgpu"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "bitflags 2.9.0",
  "bytemuck",
@@ -2312,8 +2312,8 @@ dependencies = [
 
 [[package]]
 name = "iced_widget"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "iced_renderer",
  "iced_runtime",
@@ -2327,8 +2327,8 @@ dependencies = [
 
 [[package]]
 name = "iced_winit"
-version = "0.13.1"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-winit-0.13.1#467c69cd15a7c3a83d9f0919571a35573878fb8c"
+version = "0.13.5"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#d8c9c8dc2c32df407b88f393b0a58bb45431f42b"
 dependencies = [
  "iced_futures",
  "iced_graphics",
