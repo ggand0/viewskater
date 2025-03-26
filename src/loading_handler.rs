@@ -64,16 +64,16 @@ pub fn handle_load_operation_all(
                     
                 match op {
                     LoadOperation::LoadNext(..) => {
-                        cache.move_next(Some(converted_data.take()).expect("Failed to move next"), target_index).unwrap();
+                        cache.move_next(converted_data.take(), target_index).unwrap();
                     }
                     LoadOperation::LoadPrevious(..) => {
-                        cache.move_prev(Some(converted_data.take()).expect("Failed to move previous"), target_index).unwrap();
+                        cache.move_prev(converted_data.take(), target_index).unwrap();
                     }
                     LoadOperation::ShiftNext(..) => {
-                        cache.move_next_edge(Some(converted_data.take()).expect("Failed to move next edge"), target_index).unwrap();
+                        cache.move_next_edge(converted_data.take(), target_index).unwrap();
                     }
                     LoadOperation::ShiftPrevious(..) => {
-                        cache.move_prev_edge(Some(converted_data.take()).expect("Failed to move previous edge"), target_index).unwrap();
+                        cache.move_prev_edge(converted_data.take(), target_index).unwrap();
                     }
                     LoadOperation::LoadPos((_, ref _target_indices_and_cache)) => {
                         // LoadPos is covered in `handle_load_pos_operation()`
