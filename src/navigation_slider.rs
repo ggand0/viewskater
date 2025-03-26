@@ -330,7 +330,7 @@ pub fn update_pos(
     let should_process = if throttle {
         // Platform-specific throttling - use different thresholds for Linux
         #[cfg(target_os = "linux")]
-        const PLATFORM_THROTTLE_MS: u64 = 1; // Much lower for Linux/X11
+        const PLATFORM_THROTTLE_MS: u64 = 10;
         
         #[cfg(not(target_os = "linux"))]
         const PLATFORM_THROTTLE_MS: u64 = _THROTTLE_INTERVAL_MS;
