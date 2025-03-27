@@ -22,6 +22,7 @@ dirs = "5.0"
 webbrowser = "0.7"
 bytemuck = { version = "1.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["clock"] }
+memmap2 = "0.9.5"
 
 # Use custom iced
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
@@ -71,6 +72,12 @@ codegen-units = 1
 
 # Use an optimized dev profile for faster runtime during development.
 [profile.dev]
+opt-level = 3
+lto = false
+codegen-units = 16
+
+[profile.opt-dev]
+inherits = "release"
 opt-level = 3
 lto = false
 codegen-units = 16

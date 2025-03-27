@@ -5265,6 +5265,7 @@ dependencies = [
  "iced_winit",
  "image 0.24.9",
  "log",
+ "memmap2",
  "num-traits 0.2.19",
  "once_cell",
  "rfd",
