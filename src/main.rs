@@ -59,6 +59,7 @@ use crate::widgets::shader::scene::Scene;
 use crate::config::CONFIG;
 use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
 use iced_wgpu::{get_image_rendering_diagnostics, log_image_rendering_stats};
+use iced_wgpu::engine::ImageConfig;
 
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
@@ -387,7 +388,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             if *redraw {
                                 *redraw = false;
                                 
-                                //let frame_start = Instant::now();
+                                let frame_start = Instant::now();
 
                                 // Update window title dynamically based on the current image
                                 if !*moved {
@@ -690,8 +691,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     // Initialize iced
                     let mut debug_tool = Debug::new();
+                    let config = ImageConfig {
+                        #[cfg(target_os = "macos")]
+                        use_parallel_processing: false,
+                        #[cfg(not(target_os = "macos"))]
+                        use_parallel_processing: true,
+                    };
                     let engine = Engine::new(
-                        &adapter, &device, &queue, format, None);
+                        &adapter, &device, &queue, format, None, Some(config));
                     engine.create_image_cache(&device); // Manually create image cache
 
                     // Manually register fonts
