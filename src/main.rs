@@ -691,11 +691,16 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     // Initialize iced
                     let mut debug_tool = Debug::new();
+
+                    #[cfg(target_os = "macos")]
                     let config = ImageConfig {
-                        #[cfg(target_os = "macos")]
                         use_parallel_processing: false,
-                        #[cfg(not(target_os = "macos"))]
+                        atlas_size: 2048,
+                    };
+                    #[cfg(not(target_os = "macos"))]
+                    let config = ImageConfig {
                         use_parallel_processing: true,
+                        atlas_size: 4096,
                     };
                     let engine = Engine::new(
                         &adapter, &device, &queue, format, None, Some(config));
