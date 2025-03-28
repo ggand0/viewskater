@@ -695,12 +695,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     #[cfg(target_os = "linux")]
                     let config = ImageConfig {
                         use_parallel_processing: true,
-                        atlas_size: 2048,
+                        atlas_size: CONFIG.atlas_size,
                     };
                     #[cfg(not(target_os = "linux"))]
                     let config = ImageConfig {
                         use_parallel_processing: false,
-                        atlas_size: 2048,
+                        atlas_size: CONFIG.atlas_size,
                     };
                     let engine = Engine::new(
                         &adapter, &device, &queue, format, None, Some(config));
