@@ -54,8 +54,8 @@ pub fn get_filename(path: &str) -> Option<String> {
 
 /// Reads an image file into a byte vector.
 /// 
-/// This function simply reads the raw bytes from a file without any processing
-/// or validation, making it faster than going through the image crate for raw data.
+/// This function reads raw bytes from a file using memory mapping for
+/// improved performance with large files.
 /// 
 /// # Arguments
 /// * `path` - The path to the image file
@@ -64,8 +64,9 @@ pub fn get_filename(path: &str) -> Option<String> {
 /// * `Ok(Vec<u8>)` - The raw bytes of the image file
 /// * `Err(io::Error)` - An error if reading fails
 pub fn read_image_bytes(path: &PathBuf) -> Result<Vec<u8>, std::io::Error> {
-    use std::fs;
-    use std::io;
+    use std::fs::File;
+    use std::io::{self, Read};
+    use memmap2::Mmap;
     
     // Verify the file exists before attempting to read
     if !path.exists() {
@@ -75,18 +76,26 @@ pub fn read_image_bytes(path: &PathBuf) -> Result<Vec<u8>, std::io::Error> {
         ));
     }
     
-    // Try to read the file bytes directly
-    match fs::read(path) {
-        Ok(bytes) => {
-            // Log only the size for performance
-            debug!("Read {} bytes from {}", bytes.len(), path.display());
-            Ok(bytes)
-        },
-        Err(err) => {
-            // Log the error and return it
-            error!("Failed to read file {}: {}", path.display(), err);
-            Err(err)
-        }
+    // Use memory mapping for efficient file reading
+    let file = File::open(path)?;
+    let metadata = file.metadata()?;
+    let file_size = metadata.len() as usize;
+    
+    // Only use mmap for files over a certain size (e.g., 1MB)
+    // For smaller files, regular reading is often faster
+    if file_size > 1_048_576 {
+        // Memory map the file for faster access
+        let mmap = unsafe { Mmap::map(&file)? };
+        let bytes = mmap.to_vec();
+        debug!("Read {} bytes from {} using mmap", bytes.len(), path.display());
+        Ok(bytes)
+    } else {
+        // For smaller files, regular reading is fine
+        let mut buffer = Vec::with_capacity(file_size);
+        let mut file = File::open(path)?;
+        file.read_to_end(&mut buffer)?;
+        debug!("Read {} bytes from {}", buffer.len(), path.display());
+        Ok(buffer)
     }
 }
 
