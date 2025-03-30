@@ -641,8 +641,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 let (device, queue) = adapter
                                     .request_device(
                                         &wgpu::DeviceDescriptor {
-                                            label: None,
-                                            required_features: adapter_features & wgpu::Features::default(),
+                                            label: Some("Main Device"),
+                                            required_features: wgpu::Features::empty() | wgpu::Features::TEXTURE_COMPRESSION_BC,
                                             required_limits: wgpu::Limits::default(),
                                         },
                                         None,

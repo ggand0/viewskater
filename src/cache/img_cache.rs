@@ -18,6 +18,7 @@ use crate::pane::Pane;
 use crate::pane;
 use crate::cache::cpu_img_cache::CpuImageCache;
 use crate::cache::gpu_img_cache::GpuImageCache;
+use crate::file_io;
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,12 +65,25 @@ impl CacheStrategy {
             CacheStrategy::Gpu => true,
         }
     }
+
+    pub fn with_compression(self, compression: CompressionStrategy) -> (Self, CompressionStrategy) {
+        // Returns a tuple of the strategy and compression type
+        (self, compression)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CompressionStrategy {
+    None,       // No compression
+    BC1,        // BC1 compression (DXT1)
+    // You can add ASTC later for macOS
 }
 
 #[derive(Debug, Clone)]
 pub enum CachedData {
     Cpu(Vec<u8>),                // CPU: Raw image bytes
-    Gpu(Arc<wgpu::Texture>),     // GPU: Use Arc to allow cloning
+    Gpu(Arc<wgpu::Texture>),     // GPU: Uncompressed texture
+    BC1(Arc<wgpu::Texture>),     // GPU: BC1 compressed texture
 }
 
 impl CachedData {
@@ -79,30 +93,65 @@ impl CachedData {
 
     pub fn width(&self) -> u32 {
         match self {
-            CachedData::Cpu(bytes) => {
-                // Attempt to decode image to get dimensions
-                if let Ok(img) = image::load_from_memory(bytes) {
-                    img.width()
+            CachedData::Cpu(data) => {
+                // Try to decode image and get width
+                if let Ok(image) = image::load_from_memory(data) {
+                    image.width()
                 } else {
                     0
                 }
             },
             CachedData::Gpu(texture) => texture.width(),
+            CachedData::BC1(texture) => texture.width(),
         }
     }
     
-    // Similar implementation for height()
+    pub fn height(&self) -> u32 {
+        match self {
+            CachedData::Cpu(data) => {
+                // Try to decode image and get height
+                if let Ok(image) = image::load_from_memory(data) {
+                    image.height()
+                } else {
+                    0
+                }
+            },
+            CachedData::Gpu(texture) => texture.height(),
+            CachedData::BC1(texture) => texture.height(),
+        }
+    }
+
+    pub fn handle(&self) -> Option<iced_core::image::Handle> {
+        match self {
+            CachedData::Cpu(data) => {
+                Some(iced_core::image::Handle::from_bytes(data.clone()))
+            },
+            CachedData::Gpu(_) => None, // No CPU handle for GPU-based textures
+            CachedData::BC1(_) => None, // No CPU handle for BC1 compressed textures
+        }
+    }
 }
 
 impl CachedData {
     pub fn len(&self) -> usize {
         match self {
             CachedData::Cpu(data) => data.len(),
-            //CachedData::Gpu(_) => 0, // Placeholder for GPU texture size
             CachedData::Gpu(texture) => {
                 let width = texture.width();
                 let height = texture.height();
                 4 * (width as usize) * (height as usize) // 4 bytes per pixel (RGBA8)
+            }
+            CachedData::BC1(texture) => {
+                // BC1 uses 8 bytes per 4x4 block, which is 0.5 bytes per pixel
+                let width = texture.width();
+                let height = texture.height();
+                
+                // Round up to nearest multiple of 4 if needed
+                let block_width = (width + 3) / 4;
+                let block_height = (height + 3) / 4;
+                
+                // Each 4x4 block is 8 bytes in BC1
+                (block_width * block_height * 8) as usize
             }
         }
     }
@@ -113,7 +162,19 @@ impl CachedData {
             CachedData::Gpu(_) => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "GPU data cannot be converted to a Vec<u8>",
-            ))
+            )),
+            CachedData::BC1(_) => todo!()
+        }
+    }
+
+    pub fn is_compressed(&self) -> bool {
+        matches!(self, CachedData::BC1(_))
+    }
+    
+    pub fn compression_format(&self) -> Option<&'static str> {
+        match self {
+            CachedData::BC1(_) => Some("BC1"),
+            _ => None,
         }
     }
 }
@@ -184,6 +245,7 @@ impl ImageCache {
         image_paths: Vec<PathBuf>,
         cache_count: usize,
         cache_strategy: CacheStrategy,
+        compression_strategy: CompressionStrategy,
         initial_index: usize,
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
@@ -230,7 +292,7 @@ impl ImageCache {
         }
 
         // Initialize the appropriate backend
-        image_cache.init_cache(device, queue, cache_strategy)?;
+        image_cache.init_cache(device, queue, cache_strategy, compression_strategy)?;
 
         Ok(image_cache)
     }
@@ -300,19 +362,16 @@ impl ImageCache {
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
         cache_strategy: CacheStrategy,
+        compression_strategy: CompressionStrategy,
     ) -> Result<(), io::Error> {
         let backend: Box<dyn ImageCacheBackend> = match cache_strategy {
-            CacheStrategy::Cpu => {
-                Box::new(CpuImageCache {})
-            },
+            CacheStrategy::Cpu => Box::new(CpuImageCache::new()),
             CacheStrategy::Gpu => {
                 if let (Some(device), Some(queue)) = (device, queue) {
-                    Box::new(GpuImageCache::new(device, queue))
+                    Box::new(GpuImageCache::new(device, queue)
+                        .with_compression(compression_strategy))
                 } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "GPU strategy selected but device/queue not provided",
-                    ));
+                    Box::new(CpuImageCache::new())
                 }
             },
         };
@@ -670,6 +729,7 @@ pub fn load_images_by_operation_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     pane_index: usize,
     target_indices_and_cache: Vec<Option<(isize, usize)>>,
@@ -709,8 +769,14 @@ pub fn load_images_by_operation_slider(
             
 
             let images_loading_task = async move {
-                load_images_async(
-                    paths, cache_strategy, &device_clone, &queue_clone, operation).await
+                file_io::load_images_async(
+                    paths, 
+                    cache_strategy, 
+                    &device_clone, 
+                    &queue_clone,
+                    compression_strategy,
+                    operation
+                ).await
             };
 
             Task::perform(images_loading_task, Message::ImagesLoaded)
@@ -728,6 +794,7 @@ pub fn load_images_by_indices(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<&mut Pane>, 
     target_indices: Vec<Option<isize>>, 
     operation: LoadOperation
@@ -759,11 +826,12 @@ pub fn load_images_by_indices(
         debug!("Task::perform started for {:?}", operation.clone());
         Task::perform(
             async move {
-                let result = load_images_async(
+                let result = file_io::load_images_async(
                     paths, 
                     cache_strategy, 
                     &device_clone, 
                     &queue_clone, 
+                    compression_strategy, 
                     operation
                 ).await;
                 result
@@ -781,7 +849,10 @@ pub fn load_images_by_operation(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
-    panes: &mut Vec<&mut Pane>, loading_status: &mut LoadingStatus) -> Task<Message> {
+    compression_strategy: CompressionStrategy,
+    panes: &mut Vec<&mut Pane>, 
+    loading_status: &mut LoadingStatus
+) -> Task<Message> {
     if !loading_status.loading_queue.is_empty() {
         debug!("load_images_by_operation - loading_status.loading_queue: {:?}", loading_status.loading_queue);
         if let Some(operation) = loading_status.loading_queue.pop_front() {
@@ -789,12 +860,26 @@ pub fn load_images_by_operation(
             debug!("load_images_by_operation - loading_status.being_loaded_queue: {:?}", loading_status.being_loaded_queue);
             match operation {
                 LoadOperation::LoadNext((ref _pane_indices, ref target_indicies)) => {
-                    load_images_by_indices(device, queue, cache_strategy,
-                        panes, target_indicies.clone(), operation)
+                    load_images_by_indices(
+                        device, 
+                        queue, 
+                        cache_strategy,
+                        compression_strategy,
+                        panes, 
+                        target_indicies.clone(), 
+                        operation
+                    )
                 }
                 LoadOperation::LoadPrevious((ref _pane_indices, ref target_indicies)) => {
-                    load_images_by_indices(device, queue, cache_strategy,
-                        panes, target_indicies.clone(), operation)
+                    load_images_by_indices(
+                        device, 
+                        queue, 
+                        cache_strategy,
+                        compression_strategy,
+                        panes, 
+                        target_indicies.clone(), 
+                        operation
+                    )
                 }
                 LoadOperation::ShiftNext((ref _pane_indices, ref _target_indicies)) => {
                     let empty_async_block = empty_async_block_vec(operation, panes.len());
@@ -819,8 +904,8 @@ pub fn load_images_by_operation(
 pub fn load_all_images_in_queue(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    //is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
 ) -> Task<Message> {
@@ -843,11 +928,11 @@ pub fn load_all_images_in_queue(
         loading_status.enqueue_image_being_loaded(operation.clone());
         match operation {
             LoadOperation::LoadPos((ref pane_index, ref target_indices_and_cache)) => {
-                // Handle LoadPos with the new structure of (image_index, cache_pos)
                 let task = load_images_by_operation_slider(
                     device,
                     queue,
                     cache_strategy,
+                    compression_strategy,
                     panes,
                     *pane_index,
                     target_indices_and_cache.clone(),

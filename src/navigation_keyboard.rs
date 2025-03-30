@@ -25,6 +25,7 @@ use crate::menu::PaneLayout;
 use crate::cache::img_cache::{CacheStrategy, LoadOperation, LoadOperationType, load_images_by_operation};
 use crate::loading_status::LoadingStatus;
 use crate::pane::{IMAGE_RENDER_TIMES, IMAGE_RENDER_FPS};
+use crate::cache::img_cache::CompressionStrategy;
 
 
 #[allow(unused_imports)]
@@ -243,6 +244,7 @@ pub fn load_next_images_all(
             return load_images_by_operation(
                 //Some(Arc::clone(&device)), Some(Arc::clone(&queue)), is_gpu_supported,
                 &device, &queue, cache_strategy,
+                CompressionStrategy::BC1,
                 panes, loading_status);
         }
     }
@@ -347,6 +349,7 @@ pub fn load_prev_images_all(
             }
             return load_images_by_operation(
                 &device, &queue, cache_strategy,
+                CompressionStrategy::BC1,
                 panes, loading_status);
         }
     }

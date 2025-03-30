@@ -59,6 +59,7 @@ pub fn handle_load_operation_all(
                 let mut converted_data = match image_data[pane_index].clone() {
                     Some(CachedData::Cpu(data)) => Some(CachedData::Cpu(data)),
                     Some(CachedData::Gpu(texture)) => Some(CachedData::Gpu(Arc::clone(&texture))),
+                    Some(CachedData::BC1(texture)) => Some(CachedData::BC1(Arc::clone(&texture))),
                     None => None,
                 };
                     
@@ -104,6 +105,18 @@ pub fn handle_load_operation_all(
                             debug!("Setting GPU texture as current_image");
                             pane.current_image = CachedData::Gpu(Arc::clone(&texture));
                             pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
+                        }
+                        CachedData::BC1(texture) => {
+                            info!("Setting BC1 compressed texture as current_image");
+                            pane.current_image = CachedData::BC1(Arc::clone(texture));
+                            pane.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
+                            
+                            // Ensure texture is created immediately to avoid black screens
+                            if let Some(scene) = &mut pane.scene {
+                                if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
+                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                }
+                            }
                         }
                     }
                 }
@@ -151,6 +164,10 @@ pub fn handle_load_pos_operation(
                             CachedData::Gpu(texture) => {
                                 cache.set_cached_data(*cache_pos, CachedData::Gpu(Arc::clone(texture)));
                             }
+                            CachedData::BC1(texture) => {
+                                info!("Creating BC1 compressed texture for scene");
+                                cache.set_cached_data(*cache_pos, CachedData::BC1(Arc::clone(texture)));
+                            }
                         }
                         
                         if cache.current_index == target_index_usize {
@@ -166,6 +183,18 @@ pub fn handle_load_pos_operation(
                                         debug!("Setting GPU texture as current_image");
                                         pane.current_image = CachedData::Gpu(Arc::clone(&texture));
                                         pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
+                                    }
+                                    CachedData::BC1(texture) => {
+                                        info!("Setting BC1 compressed texture as current_image");
+                                        pane.current_image = CachedData::BC1(Arc::clone(texture));
+                                        pane.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
+                                        
+                                        // Ensure texture is created immediately to avoid black screens
+                                        if let Some(scene) = &mut pane.scene {
+                                            if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
+                                                scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                            }
+                                        }
                                     }
                                 }
                             }

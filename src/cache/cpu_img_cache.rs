@@ -9,6 +9,12 @@ use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 
 pub struct CpuImageCache;
 
+impl CpuImageCache {
+    pub fn new() -> Self {
+        CpuImageCache
+    }
+}
+
 impl ImageCacheBackend for CpuImageCache {
     fn load_image(&self, index: usize, image_paths: &[PathBuf]) -> Result<CachedData, io::Error> {
         if let Some(path) = image_paths.get(index) {

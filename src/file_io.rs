@@ -28,6 +28,8 @@ use iced_wgpu::wgpu;
 use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
 use crate::cache::img_cache::CacheStrategy;
+use crate::cache::compression::{compress_image_bc1, CompressionAlgorithm};
+use crate::cache::img_cache::CompressionStrategy;
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
@@ -150,64 +152,142 @@ async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, 
     }
 }
 
+fn is_bc1_compatible(width: u32, height: u32) -> bool {
+    // BC1 compression requires dimensions to be multiples of 4
+    width % 4 == 0 && height % 4 == 0
+}
+
 #[allow(dead_code)]
 async fn load_image_gpu_async(
     path: Option<&str>, 
     device: &Arc<wgpu::Device>, 
-    queue: &Arc<wgpu::Queue>
+    queue: &Arc<wgpu::Queue>,
+    compression_strategy: CompressionStrategy
 ) -> Result<Option<CachedData>, std::io::ErrorKind> {
-    if let Some(path) = path {
-        let file_path = Path::new(path);
-        let start = Instant::now();
-
-        match image::open(file_path) {
+    if let Some(path_str) = path {
+        match image::open(path_str) {
             Ok(img) => {
-                let rgba_image = img.to_rgba8();
                 let (width, height) = img.dimensions();
-                let duration = start.elapsed();
-                IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
+                let rgba = img.to_rgba8();
+                
+                // Determine if we should use compression based on dimensions
+                let use_compression = match compression_strategy {
+                    CompressionStrategy::BC1 => {
+                        if is_bc1_compatible(width, height) {
+                            debug!("Compressing texture with BC1 ({} x {})", width, height);
+                            true
+                        } else {
+                            debug!("Image dimensions ({} x {}) not compatible with BC1 (not multiples of 4). Using uncompressed format.", width, height);
+                            false
+                        }
+                    },
+                    CompressionStrategy::None => false,
+                };
+                
+                if use_compression {
+                    // BC1 compression
+                    let start = Instant::now();
+                    
+                    // Create compressed texture
+                    let texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("BC1CompressedTexture"),
+                        size: wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Bc1RgbaUnormSrgb,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    });
+                    
+                    // Compress the image data
+                    let compressed_blocks = compress_image_bc1(
+                        &rgba, 
+                        width as usize, 
+                        height as usize,
+                        CompressionAlgorithm::RangeFit
+                    );
+                    
+                    // Calculate compressed data layout
+                    let blocks_x = (width + 3) / 4;
+                    let bytes_per_block = 8; // BC1 uses 8 bytes per 4x4 block
+                    let row_bytes = blocks_x * bytes_per_block;
+                    
+                    // Flatten the blocks into a single buffer
+                    let compressed_data: Vec<u8> = compressed_blocks.iter()
+                        .flat_map(|block| block.iter().copied())
+                        .collect();
+                    
+                    // Upload compressed data
+                    queue.write_texture(
+                        wgpu::ImageCopyTexture {
+                            texture: &texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        &compressed_data,
+                        wgpu::ImageDataLayout {
+                            offset: 0,
+                            bytes_per_row: Some(row_bytes),
+                            rows_per_image: None,
+                        },
+                        wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                    
+                    let upload_duration = start.elapsed();
+                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                    
+                    // Return compressed texture
+                    return Ok(Some(CachedData::BC1(Arc::new(texture))));
+                } else {
+                    // Use uncompressed format
+                    let texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("AsyncLoadedTexture"),
+                        size: wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    });
 
-                let upload_start = Instant::now();
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("AsyncLoadedTexture"),
-                    size: wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                });
-
-                queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &rgba_image,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(4 * width),
-                        rows_per_image: None,
-                    },
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-                let upload_duration = upload_start.elapsed();
-                GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
-
-                return Ok(Some(CachedData::Gpu(Arc::new(texture))));
+                    queue.write_texture(
+                        wgpu::ImageCopyTexture {
+                            texture: &texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        &rgba,
+                        wgpu::ImageDataLayout {
+                            offset: 0,
+                            bytes_per_row: Some(4 * width),
+                            rows_per_image: None,
+                        },
+                        wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                    return Ok(Some(CachedData::Gpu(Arc::new(texture))));
+                }
             }
-            Err(_) => return Err(std::io::ErrorKind::InvalidData),
+            Err(e) => return Err(std::io::ErrorKind::InvalidData),
         }
     }
 
@@ -220,10 +300,11 @@ pub async fn load_images_async(
     cache_strategy: CacheStrategy,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
+    compression_strategy: CompressionStrategy,
     load_operation: LoadOperation
 ) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
-    debug!("load_images_async - cache_strategy: {:?}", cache_strategy);
+    debug!("load_images_async - cache_strategy: {:?}, compression: {:?}", cache_strategy, compression_strategy);
 
     let futures = paths.into_iter().map(|path| {
         let device = Arc::clone(device);
@@ -237,8 +318,8 @@ pub async fn load_images_async(
                     load_image_cpu_async(path_str).await
                 },
                 CacheStrategy::Gpu => {
-                    debug!("load_images_async - loading image with GPU strategy");
-                    load_image_gpu_async(path_str, &device, &queue).await
+                    debug!("load_images_async - loading image with GPU strategy and compression: {:?}", compression_strategy);
+                    load_image_gpu_async(path_str, &device, &queue, compression_strategy).await
                 },
             }
         }
@@ -637,4 +718,35 @@ pub fn open_in_file_explorer(path: &str) {
     } else {
         error!("Opening directories is not supported on this OS.");
     }
+}
+
+fn pad_image_for_bc1(img: &image::RgbaImage) -> (image::RgbaImage, u32, u32) {
+    let (width, height) = img.dimensions();
+    
+    // Calculate padded dimensions
+    let padded_width = (width + 3) & !3;  // Round up to next multiple of 4
+    let padded_height = (height + 3) & !3;  // Round up to next multiple of 4
+    
+    // If no padding needed, return original
+    if width == padded_width && height == padded_height {
+        return (img.clone(), width, height);
+    }
+    
+    // Create a new image with padded dimensions
+    let mut padded = image::RgbaImage::new(padded_width, padded_height);
+    
+    // Copy the original image data
+    for y in 0..height {
+        for x in 0..width {
+            padded.put_pixel(x, y, *img.get_pixel(x, y));
+        }
+    }
+    
+    // Fill the padding with transparent pixels or repeat border pixels
+    // This is a simple approach - you might want a more sophisticated padding strategy
+    
+    debug!("Padded image from {}x{} to {}x{} for BC1 compatibility", 
+           width, height, padded_width, padded_height);
+    
+    (padded, padded_width, padded_height)
 }

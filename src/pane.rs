@@ -15,7 +15,7 @@ use iced_widget::{center, Container};
 
 use crate::config::CONFIG;
 use crate::app::Message;
-use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
+use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache, CompressionStrategy};
 use crate::menu::PaneLayout;
 use crate::widgets::viewer;
 use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
@@ -205,6 +205,12 @@ impl Pane {
                         self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }
+                    CachedData::BC1(texture) => {
+                        debug!("Setting BC1 compressed texture as current_image");
+                        self.current_image = CachedData::BC1(Arc::clone(&texture));
+                        self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture))))); 
+                        self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                    }
                 }
             } else {
                 debug!("Failed to retrieve next cached image.");
@@ -265,6 +271,12 @@ impl Pane {
                             debug!("Setting GPU texture as current_image");
                             self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
                             self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                            self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                        }
+                        CachedData::BC1(texture) => {
+                            debug!("Setting BC1 compressed texture as current_image");
+                            self.current_image = CachedData::BC1(Arc::clone(&texture));
+                            self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                         }
                     }
@@ -387,6 +399,7 @@ impl Pane {
             _file_paths,
             CONFIG.cache_size,
             CacheStrategy::Gpu,
+            CompressionStrategy::BC1,
             initial_index,
             Some(device_clone),
             Some(queue_clone),
@@ -416,6 +429,12 @@ impl Pane {
                     debug!("Using GPU texture for initial image");
                     self.current_image = CachedData::Gpu(Arc::clone(texture));
                     self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                    self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                }
+                CachedData::BC1(texture) => {
+                    debug!("Using BC1 compressed texture for initial image");
+                    self.current_image = CachedData::BC1(Arc::clone(texture));
+                    self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture))))); 
                     self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                 }
                 CachedData::Cpu(image_bytes) => {

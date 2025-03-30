@@ -41,6 +41,7 @@ use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::file_io;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
+use crate::cache::img_cache::CompressionStrategy;
 
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
 
@@ -226,7 +227,14 @@ fn get_loading_tasks_slider(
         loading_status.print_queue();
 
         // Generate loading tasks
-        let local_tasks = load_all_images_in_queue(device, queue, CacheStrategy::Gpu, panes, loading_status);
+        let local_tasks = load_all_images_in_queue(
+            device, 
+            queue, 
+            CacheStrategy::Gpu,
+            CompressionStrategy::BC1,
+            panes, 
+            loading_status
+        );
         tasks.push(local_tasks);
     }
 

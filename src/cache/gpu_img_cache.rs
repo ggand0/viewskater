@@ -6,17 +6,37 @@ use std::io;
 use std::sync::Arc;
 use image::GenericImageView;
 use iced_wgpu::wgpu;
-use crate::cache::img_cache::{CachedData, ImageCacheBackend};
+use crate::cache::img_cache::{CachedData, ImageCacheBackend, CompressionStrategy};
 
 
 pub struct GpuImageCache {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
+    compression_strategy: CompressionStrategy,
 }
 
 impl GpuImageCache {
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
-        Self { device, queue }
+        Self { 
+            device, 
+            queue, 
+            compression_strategy: CompressionStrategy::None 
+        }
+    }
+    
+    pub fn with_compression(mut self, strategy: CompressionStrategy) -> Self {
+        self.compression_strategy = strategy;
+        self
+    }
+    
+    // Helper to determine if we should use compression
+    fn should_use_compression(&self, width: u32, height: u32) -> bool {
+        // Consider skipping compression for very small images
+        if width < 64 || height < 64 {
+            return false;
+        }
+        
+        matches!(self.compression_strategy, CompressionStrategy::BC1)
     }
 }
 
