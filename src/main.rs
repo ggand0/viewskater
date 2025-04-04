@@ -406,8 +406,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         let present_start = Instant::now();
                                         renderer.present(
                                             engine,
-                                            device,
-                                            queue,
+                                            &device,
+                                            &queue,
                                             &mut encoder,
                                             None,
                                             frame.texture.format(),
@@ -692,14 +692,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     // Initialize iced
                     let mut debug_tool = Debug::new();
 
-                    #[cfg(target_os = "linux")]
                     let config = ImageConfig {
-                        use_parallel_processing: true,
-                        atlas_size: CONFIG.atlas_size,
-                    };
-                    #[cfg(not(target_os = "linux"))]
-                    let config = ImageConfig {
-                        use_parallel_processing: false,
                         atlas_size: CONFIG.atlas_size,
                     };
                     let engine = Engine::new(

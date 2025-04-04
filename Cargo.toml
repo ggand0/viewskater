@@ -26,17 +26,17 @@ memmap2 = "0.9.5"
 rayon = "1.8"
 
 # Use custom iced
-iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", tag = "custom-0.13-vsk-0.2.1", features = [
+iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
     "image", "tokio", "svg", "lazy", "wgpu"
 ] }
-iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", tag = "custom-0.13-vsk-0.2.1" }
-iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", tag = "custom-0.13-vsk-0.2.1" }
-iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", tag = "custom-0.13-vsk-0.2.1", features = ["wgpu"] }
-iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", tag = "custom-0.13-vsk-0.2.1" }
-iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", tag = "custom-0.13-vsk-0.2.1" }
-iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", tag = "custom-0.13-vsk-0.2.1", features = ["tokio"] }
-iced_graphics = { git = "https://github.com/ggand0/iced.git", tag = "custom-0.13-vsk-0.2.1" }
-iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", tag = "custom-0.11.0-vsk-0.2.1", features = [
+iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["wgpu"] }
+iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["tokio"] }
+iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-0.11.0", features = [
     "menu", "quad"
 ] }
 
