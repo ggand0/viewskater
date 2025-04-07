@@ -52,6 +52,7 @@ use iced_wgpu::graphics::text::font_system;
 use iced_winit::futures::futures::task;
 use iced_winit::core::window;
 use iced_futures::futures::channel::oneshot;
+use iced_wgpu::engine::CompressionStrategy;
 
 use crate::utils::timing::TimingStats;
 use crate::app::{Message, DataViewer};
@@ -694,6 +695,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     let config = ImageConfig {
                         atlas_size: CONFIG.atlas_size,
+                        compression_strategy: CompressionStrategy::Bc1,
                     };
                     let engine = Engine::new(
                         &adapter, &device, &queue, format, None, Some(config));
