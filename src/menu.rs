@@ -25,6 +25,7 @@ use iced_widget::button::Style;
 use iced_winit::core::Theme as WinitTheme;
 use iced_winit::core::font::Font;
 use iced_wgpu::Renderer;
+use iced_wgpu::engine::CompressionStrategy;
 
 use iced_aw::menu::{self, Item, Menu};
 use iced_aw::{menu_bar, menu_items};
@@ -232,10 +233,30 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     .max_width(180.0)
     .spacing(0.0);
 
+    // Create the formatted strings for compression strategy menu
+    let no_compression_text = if app.compression_strategy == CompressionStrategy::None { "[x] No compression" } else { "[  ] No compression" };
+    let bc1_compression_text = if app.compression_strategy == CompressionStrategy::Bc1 { "[x] BC1 compression" } else { "[  ] BC1 compression" };
+
+    let compression_submenu = Menu::new(menu_items!(
+        (labeled_button(
+            no_compression_text,
+            MENU_ITEM_FONT_SIZE,
+            Message::SetCompressionStrategy(CompressionStrategy::None)
+        ))
+        (labeled_button(
+            bc1_compression_text,
+            MENU_ITEM_FONT_SIZE,
+            Message::SetCompressionStrategy(CompressionStrategy::Bc1)
+        ))
+    ))
+    .max_width(180.0)
+    .spacing(0.0);
+
     Menu::new(menu_items!(
         (submenu_button("Pane Layout", MENU_ITEM_FONT_SIZE), pane_layout_submenu)
         (submenu_button("Controls", MENU_ITEM_FONT_SIZE), controls_menu)
         (submenu_button("Cache Type", MENU_ITEM_FONT_SIZE), cache_type_submenu)
+        (submenu_button("Compression", MENU_ITEM_FONT_SIZE), compression_submenu)
     ))
     .max_width(120.0)
     .spacing(0.0)
