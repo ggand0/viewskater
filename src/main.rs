@@ -186,7 +186,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             queue: Arc<wgpu::Queue>,
             surface: wgpu::Surface<'static>,
             format: wgpu::TextureFormat,
-            engine: Engine,
+            engine: Arc<Mutex<Engine>>,
             renderer: Renderer,
             state: program::State<DataViewer>,
             cursor_position: Option<winit::dpi::PhysicalPosition<f64>>,
@@ -405,22 +405,25 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         });
 
                                         let present_start = Instant::now();
-                                        renderer.present(
-                                            engine,
-                                            &device,
-                                            &queue,
-                                            &mut encoder,
-                                            None,
-                                            frame.texture.format(),
-                                            &view,
-                                            viewport,
-                                            &debug_tool.overlay(),
-                                        );
+                                        {
+                                            let mut engine_guard = engine.lock().unwrap();
+                                            renderer.present(
+                                                &mut *engine_guard,
+                                                &device,
+                                                &queue,
+                                                &mut encoder,
+                                                None,
+                                                frame.texture.format(),
+                                                &view,
+                                                viewport,
+                                                &debug_tool.overlay(),
+                                            );
+                                            engine_guard.submit(&queue, encoder);
+                                        }
                                         let present_time = present_start.elapsed();
                                         
                                         // Submit the commands to the queue
                                         let submit_start = Instant::now();
-                                        engine.submit(queue, encoder);
                                         let submit_time = submit_start.elapsed();
                                         
                                         let present_frame_start = Instant::now();
@@ -635,8 +638,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .await
                                 .expect("Create adapter");
 
-                                let adapter_features = adapter.features();
-
                                 let capabilities = surface.get_capabilities(&adapter);
                                 
                                 let (device, queue) = adapter
@@ -686,10 +687,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     let queue = Arc::new(queue);
                     let backend = adapter.get_info().backend;
 
-                    // Pass a cloned Arc reference to DataViewer
-                    let shader_widget = DataViewer::new(
-                        Arc::clone(&device), Arc::clone(&queue), backend);
-
                     // Initialize iced
                     let mut debug_tool = Debug::new();
 
@@ -697,9 +694,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         atlas_size: CONFIG.atlas_size,
                         compression_strategy: CompressionStrategy::Bc1,
                     };
-                    let engine = Engine::new(
-                        &adapter, &device, &queue, format, None, Some(config));
-                    engine.create_image_cache(&device); // Manually create image cache
+                    let engine = Arc::new(Mutex::new(Engine::new(
+                        &adapter, &device, &queue, format, None, Some(config))));
+                    {
+                        let engine_guard = engine.lock().unwrap();
+                        engine_guard.create_image_cache(&device);
+                    }
 
                     // Manually register fonts
                     register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
@@ -708,10 +708,19 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     
                     let mut renderer = Renderer::new(
                         &device,
-                        &engine,
+                        &engine.lock().unwrap(), // Lock the mutex to get &Engine
                         Font::with_name("Roboto"),
                         Pixels::from(16),
                     );
+
+                    // Pass a cloned Arc reference to DataViewer
+                    let shader_widget = DataViewer::new(
+                        Arc::clone(&device), 
+                        Arc::clone(&queue), 
+                        backend,
+                        Arc::clone(&engine)  // Pass the Arc<Mutex<Engine>>
+                    );
+
 
                     let state = program::State::new(
                         shader_widget,

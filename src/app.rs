@@ -34,7 +34,8 @@ use iced::{
 use iced_core::keyboard::{self, Key, key::Named};
 use iced::widget::image::Handle;
 use iced_widget::{row, column, container, text};
-use iced_wgpu::{wgpu, Renderer};
+use iced_wgpu::{wgpu, Renderer, Engine};
+use iced_wgpu::engine::CompressionStrategy;
 use iced_winit::core::Theme as WinitTheme;
 use iced_winit::core::{Color, Element};
 use iced_winit::runtime::Task;
@@ -53,6 +54,7 @@ use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
+use crate::CONFIG;
 
 
 #[allow(dead_code)]
@@ -95,6 +97,7 @@ pub enum Message {
     BackgroundColorChanged(Color),
     TimerTick,
     SetCacheStrategy(CacheStrategy),
+    SetCompressionStrategy(CompressionStrategy),
     ToggleFpsDisplay(bool),
 }
 
@@ -125,10 +128,17 @@ pub struct DataViewer {
     pub is_slider_moving: bool,
     pub backend: wgpu::Backend,
     pub show_fps: bool,
+    pub compression_strategy: CompressionStrategy,
+    pub engine: Arc<Mutex<Engine>>,
 }
 
 impl DataViewer {
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
+    pub fn new(
+        device: Arc<wgpu::Device>, 
+        queue: Arc<wgpu::Queue>, 
+        backend: wgpu::Backend,
+        engine: Arc<Mutex<Engine>>,  // Change parameter type
+    ) -> Self {
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -156,6 +166,8 @@ impl DataViewer {
             backend: backend,
             cache_strategy: CacheStrategy::Gpu,
             show_fps: false,
+            compression_strategy: CompressionStrategy::Bc1, // Initialize with BC1 as default
+            engine, // Store the Arc<Mutex<Engine>>
         }
     }
 
@@ -487,6 +499,60 @@ impl DataViewer {
                 };
     
                 format!("Left: {} | Right: {}", left_pane_filename, right_pane_filename)
+            }
+        }
+    }
+
+
+    fn update_cache_strategy(&mut self, strategy: CacheStrategy) {
+        debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
+        self.cache_strategy = strategy;
+        
+        // Get current pane file lengths
+        let pane_file_lengths: Vec<usize> = self.panes.iter()
+            .map(|p| p.img_cache.num_files)
+            .collect();
+        
+        // Reinitialize all loaded panes with the new cache strategy
+        for (i, pane) in self.panes.iter_mut().enumerate() {
+            if let Some(dir_path) = &pane.directory_path.clone() {
+                if pane.dir_loaded {
+                    let path = PathBuf::from(dir_path);
+                    
+                    // Reinitialize the pane with the current directory
+                    pane.initialize_dir_path(
+                        Arc::clone(&self.device),
+                        Arc::clone(&self.queue),
+                        self.is_gpu_supported,
+                        &self.pane_layout,
+                        &pane_file_lengths,
+                        i,
+                        path,
+                        self.is_slider_dual,
+                        &mut self.slider_value,
+                    );
+                }
+            }
+        }
+    }
+
+    fn update_compression_strategy(&mut self, strategy: CompressionStrategy) {
+        if self.compression_strategy != strategy {
+            self.compression_strategy = strategy;
+            
+            debug!("Changing compression strategy to {:?}", strategy);
+            
+            // Update the engine
+            let config = iced_wgpu::engine::ImageConfig {
+                atlas_size: CONFIG.atlas_size,
+                compression_strategy: strategy,
+            };
+            
+            if let Ok(mut engine) = self.engine.lock() {
+                engine.update_image_config(config, &self.device);
+                
+                // Force reload images if needed
+                // This depends on your implementation details
             }
         }
     }
@@ -853,35 +919,10 @@ impl iced_winit::runtime::Program for DataViewer {
                 debug!("TimerTick received");
             }
             Message::SetCacheStrategy(strategy) => {
-                debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
-                self.cache_strategy = strategy;
-                
-                // Get current pane file lengths
-                let pane_file_lengths: Vec<usize> = self.panes.iter()
-                    .map(|p| p.img_cache.num_files)
-                    .collect();
-                
-                // Reinitialize all loaded panes with the new cache strategy
-                for (i, pane) in self.panes.iter_mut().enumerate() {
-                    if let Some(dir_path) = &pane.directory_path.clone() {
-                        if pane.dir_loaded {
-                            let path = PathBuf::from(dir_path);
-                            
-                            // Reinitialize the pane with the current directory
-                            pane.initialize_dir_path(
-                                Arc::clone(&self.device),
-                                Arc::clone(&self.queue),
-                                self.is_gpu_supported,
-                                &self.pane_layout,
-                                &pane_file_lengths,
-                                i,
-                                path,
-                                self.is_slider_dual,
-                                &mut self.slider_value,
-                            );
-                        }
-                    }
-                }
+                self.update_cache_strategy(strategy);
+            }
+            Message::SetCompressionStrategy(strategy) => {
+                self.update_compression_strategy(strategy);
             }
             Message::ToggleFpsDisplay(value) => {
                 self.show_fps = value;
@@ -899,9 +940,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            //let update_end = Instant::now();
-            //let update_duration = update_end.duration_since(update_start);
-            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else if self.skate_left {
             self.update_counter = 0;
@@ -915,9 +953,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            //let update_end = Instant::now();
-            //let update_duration = update_end.duration_since(update_start);
-            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else {
             // Log that there's no task to perform once
@@ -925,9 +960,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 debug!("No skate mode detected, update_counter: {}", self.update_counter);
                 self.update_counter += 1;
             }
-            //let update_end = Instant::now();
-            //let update_duration = update_end.duration_since(update_start);
-            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
 
             iced_winit::runtime::Task::none()
         }
