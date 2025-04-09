@@ -165,10 +165,14 @@ async fn load_image_gpu_async(
     compression_strategy: CompressionStrategy
 ) -> Result<Option<CachedData>, std::io::ErrorKind> {
     if let Some(path_str) = path {
+        let start = Instant::now();
+
         match image::open(path_str) {
             Ok(img) => {
                 let (width, height) = img.dimensions();
                 let rgba = img.to_rgba8();
+                let duration = start.elapsed();
+                IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
                 
                 // Determine if we should use compression based on dimensions
                 let use_compression = match compression_strategy {
@@ -184,10 +188,9 @@ async fn load_image_gpu_async(
                     CompressionStrategy::None => false,
                 };
                 
+                let start = Instant::now();
                 if use_compression {
                     // BC1 compression
-                    let start = Instant::now();
-                    
                     // Create compressed texture
                     let texture = device.create_texture(&wgpu::TextureDescriptor {
                         label: Some("BC1CompressedTexture"),
@@ -284,10 +287,16 @@ async fn load_image_gpu_async(
                             depth_or_array_layers: 1,
                         },
                     );
+
+                    let upload_duration = start.elapsed();
+                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
                     return Ok(Some(CachedData::Gpu(Arc::new(texture))));
                 }
             }
-            Err(e) => return Err(std::io::ErrorKind::InvalidData),
+            Err(e) => {
+                error!("Error opening image: {:?}", e);
+                return Err(std::io::ErrorKind::InvalidData);
+            }
         }
     }
 
@@ -718,35 +727,4 @@ pub fn open_in_file_explorer(path: &str) {
     } else {
         error!("Opening directories is not supported on this OS.");
     }
-}
-
-fn pad_image_for_bc1(img: &image::RgbaImage) -> (image::RgbaImage, u32, u32) {
-    let (width, height) = img.dimensions();
-    
-    // Calculate padded dimensions
-    let padded_width = (width + 3) & !3;  // Round up to next multiple of 4
-    let padded_height = (height + 3) & !3;  // Round up to next multiple of 4
-    
-    // If no padding needed, return original
-    if width == padded_width && height == padded_height {
-        return (img.clone(), width, height);
-    }
-    
-    // Create a new image with padded dimensions
-    let mut padded = image::RgbaImage::new(padded_width, padded_height);
-    
-    // Copy the original image data
-    for y in 0..height {
-        for x in 0..width {
-            padded.put_pixel(x, y, *img.get_pixel(x, y));
-        }
-    }
-    
-    // Fill the padding with transparent pixels or repeat border pixels
-    // This is a simple approach - you might want a more sophisticated padding strategy
-    
-    debug!("Padded image from {}x{} to {}x{} for BC1 compatibility", 
-           width, height, padded_width, padded_height);
-    
-    (padded, padded_width, padded_height)
 }
