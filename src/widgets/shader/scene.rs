@@ -30,7 +30,7 @@ pub enum ScenePrimitive {
 
 impl Scene {
     pub fn new(initial_image: Option<&CachedData>) -> Self {
-        let (texture, texture_size) = match initial_image {
+        let (texture, _texture_size) = match initial_image {
             Some(CachedData::Gpu(tex)) => (
                 Some(Arc::clone(tex)), (tex.width(), tex.height())
             ),

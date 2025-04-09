@@ -9,10 +9,9 @@ pub type Bc1Block = [u8; 8];
 pub type RgbaBlock = [[u8; 4]; 16];
 
 /// Defines available compression algorithms
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub enum CompressionAlgorithm {
-    /// Basic compression (original implementation)
-    Basic,
     /// RangeFit algorithm - faster with good quality
     RangeFit,
 }
@@ -184,74 +183,8 @@ fn compress_bc1_block_rangefit(block: &RgbaBlock) -> Bc1Block {
 /// Compresses a 4x4 block of RGBA pixels using the specified algorithm
 pub fn compress_bc1_block(block: &RgbaBlock, algorithm: CompressionAlgorithm) -> Bc1Block {
     match algorithm {
-        CompressionAlgorithm::Basic => compress_bc1_block_basic(block),
         CompressionAlgorithm::RangeFit => compress_bc1_block_rangefit(block),
     }
-}
-
-// Rename the original implementation to basic
-fn compress_bc1_block_basic(block: &RgbaBlock) -> Bc1Block {
-    let mut min_color = (255, 255, 255);
-    let mut max_color = (0, 0, 0);
-
-    for &pixel in block.iter() {
-        let (r, g, b) = (pixel[0], pixel[1], pixel[2]);
-
-        if r + g + b < min_color.0 + min_color.1 + min_color.2 {
-            min_color = (r, g, b);
-        }
-        if r + g + b > max_color.0 + max_color.1 + max_color.2 {
-            max_color = (r, g, b);
-        }
-    }
-
-    let color0 = rgb_to_rgb565(min_color.0, min_color.1, min_color.2);
-    let color1 = rgb_to_rgb565(max_color.0, max_color.1, max_color.2);
-
-    let mut palette = [min_color, max_color, (0, 0, 0), (0, 0, 0)];
-
-    if color0 > color1 {
-        palette[2] = (
-            (2 * min_color.0 + max_color.0) / 3,
-            (2 * min_color.1 + max_color.1) / 3,
-            (2 * min_color.2 + max_color.2) / 3,
-        );
-        palette[3] = (
-            (min_color.0 + 2 * max_color.0) / 3,
-            (min_color.1 + 2 * max_color.1) / 3,
-            (min_color.2 + 2 * max_color.2) / 3,
-        );
-    } else {
-        palette[2] = (
-            (min_color.0 + max_color.0) / 2,
-            (min_color.1 + max_color.1) / 2,
-            (min_color.2 + max_color.2) / 2,
-        );
-        palette[3] = (0, 0, 0);
-    }
-
-    let mut indices = 0u32;
-    for (i, &pixel) in block.iter().enumerate() {
-        let color = (pixel[0], pixel[1], pixel[2]);
-        let mut best_index = 0;
-        let mut best_distance = f32::MAX;
-
-        for (j, &palette_color) in palette.iter().enumerate() {
-            let distance = color_distance(color, palette_color);
-            if distance < best_distance {
-                best_distance = distance;
-                best_index = j;
-            }
-        }
-        indices |= (best_index as u32) << (2 * i);
-    }
-
-    let mut block_data = [0u8; 8];
-    block_data[0..2].copy_from_slice(&color0.to_le_bytes());
-    block_data[2..4].copy_from_slice(&color1.to_le_bytes());
-    block_data[4..8].copy_from_slice(&indices.to_le_bytes());
-
-    block_data
 }
 
 /// Compresses an entire image of RGBA pixels

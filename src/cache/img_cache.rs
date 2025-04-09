@@ -11,7 +11,7 @@ use std::sync::Arc;
 use iced_winit::runtime::Task;
 use iced_wgpu::wgpu;
 
-use crate::file_io::{load_images_async, empty_async_block_vec};
+use crate::file_io::empty_async_block_vec;
 use crate::loading_status::LoadingStatus;
 use crate::app::Message;
 use crate::pane::Pane;   
@@ -64,11 +64,6 @@ impl CacheStrategy {
             CacheStrategy::Cpu => false,
             CacheStrategy::Gpu => true,
         }
-    }
-
-    pub fn with_compression(self, compression: CompressionStrategy) -> (Self, CompressionStrategy) {
-        // Returns a tuple of the strategy and compression type
-        (self, compression)
     }
 }
 

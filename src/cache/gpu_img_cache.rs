@@ -29,15 +29,6 @@ impl GpuImageCache {
         self
     }
     
-    // Helper to determine if we should use compression
-    fn should_use_compression(&self, width: u32, height: u32) -> bool {
-        // Consider skipping compression for very small images
-        if width < 64 || height < 64 {
-            return false;
-        }
-        
-        matches!(self.compression_strategy, CompressionStrategy::BC1)
-    }
 }
 
 impl ImageCacheBackend for GpuImageCache {
