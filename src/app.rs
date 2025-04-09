@@ -34,7 +34,7 @@ use iced::{
 use iced_core::keyboard::{self, Key, key::Named};
 use iced::widget::image::Handle;
 use iced_widget::{row, column, container, text};
-use iced_wgpu::{wgpu, Renderer, Engine};
+use iced_wgpu::{wgpu, Renderer};
 use iced_wgpu::engine::CompressionStrategy;
 use iced_winit::core::Theme as WinitTheme;
 use iced_winit::core::{Color, Element};
@@ -54,14 +54,14 @@ use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
-use crate::CONFIG;
+use crate::RendererRequest;
 
+use std::sync::mpsc::Sender;
 
 #[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("App Update"))
 });
-
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -129,7 +129,7 @@ pub struct DataViewer {
     pub backend: wgpu::Backend,
     pub show_fps: bool,
     pub compression_strategy: CompressionStrategy,
-    pub engine: Arc<Mutex<Engine>>,
+    pub renderer_request_sender: Sender<RendererRequest>,
 }
 
 impl DataViewer {
@@ -137,7 +137,7 @@ impl DataViewer {
         device: Arc<wgpu::Device>, 
         queue: Arc<wgpu::Queue>, 
         backend: wgpu::Backend,
-        engine: Arc<Mutex<Engine>>,  // Change parameter type
+        renderer_request_sender: Sender<RendererRequest>,
     ) -> Self {
         Self {
             title: String::from("ViewSkater"),
@@ -163,11 +163,11 @@ impl DataViewer {
             background_color: Color::WHITE,
             last_slider_update: Instant::now(),
             is_slider_moving: false,
-            backend: backend,
+            backend,
             cache_strategy: CacheStrategy::Gpu,
             show_fps: false,
-            compression_strategy: CompressionStrategy::Bc1, // Initialize with BC1 as default
-            engine, // Store the Arc<Mutex<Engine>>
+            compression_strategy: CompressionStrategy::Bc1,
+            renderer_request_sender,
         }
     }
 
@@ -540,19 +540,15 @@ impl DataViewer {
         if self.compression_strategy != strategy {
             self.compression_strategy = strategy;
             
-            debug!("Changing compression strategy to {:?}", strategy);
+            debug!("Queuing compression strategy change to {:?}", strategy);
             
-            // Update the engine
-            let config = iced_wgpu::engine::ImageConfig {
-                atlas_size: CONFIG.atlas_size,
-                compression_strategy: strategy,
-            };
-            
-            if let Ok(mut engine) = self.engine.lock() {
-                engine.update_image_config(config, &self.device);
-                
-                // Force reload images if needed
-                // This depends on your implementation details
+            // Instead of trying to lock renderer directly, send a request to the main thread
+            if let Err(e) = self.renderer_request_sender.send(
+                RendererRequest::UpdateCompressionStrategy(strategy)
+            ) {
+                error!("Failed to queue compression strategy change: {:?}", e);
+            } else {
+                debug!("Compression strategy change request sent successfully");
             }
         }
     }
