@@ -6,6 +6,7 @@ use image::DynamicImage;
 use std::sync::Arc;
 use wgpu::{Device, Queue};
 use iced_wgpu::wgpu;
+use iced_wgpu::engine::CompressionStrategy;
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
@@ -35,9 +36,26 @@ pub fn create_gpu_texture(
     device: &wgpu::Device,
     width: u32,
     height: u32,
+    compression_strategy: CompressionStrategy,
 ) -> wgpu::Texture {
+    // Check if we should use compression
+    let use_compression = match compression_strategy {
+        CompressionStrategy::Bc1 => {
+            // BC1 compression requires dimensions to be multiples of 4
+            if width % 4 == 0 && height % 4 == 0 {
+                debug!("Creating BC1 compressed texture ({} x {})", width, height);
+                true
+            } else {
+                debug!("Image dimensions ({} x {}) not compatible with BC1. Using uncompressed format.", width, height);
+                false
+            }
+        },
+        CompressionStrategy::None => false,
+    };
+
+    // Create texture with appropriate format
     device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("LoadedTexture"),
+        label: Some(if use_compression { "CompressedTexture" } else { "LoadedTexture" }),
         size: wgpu::Extent3d {
             width,
             height,
@@ -46,7 +64,11 @@ pub fn create_gpu_texture(
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        format: if use_compression { 
+            wgpu::TextureFormat::Bc1RgbaUnormSrgb 
+        } else {
+            wgpu::TextureFormat::Rgba8UnormSrgb
+        },
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     })
@@ -88,15 +110,67 @@ pub fn load_image_resized_sync(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     existing_texture: &mut Arc<wgpu::Texture>,
+    compression_strategy: CompressionStrategy,
 ) -> Result<(), io::Error> {
     let img = load_and_resize_image(img_path, is_slider_move)?;
     let (image_bytes, width, height) = convert_image_to_rgba(&img);
 
-    // Create a new texture if needed
-    let texture = Arc::new(create_gpu_texture(device, width, height));
+    // Check if we should use compression
+    let use_compression = match compression_strategy {
+        CompressionStrategy::Bc1 => {
+            // BC1 compression requires dimensions to be multiples of 4
+            width % 4 == 0 && height % 4 == 0
+        },
+        CompressionStrategy::None => false,
+    };
+
+    // Create a new texture with appropriate format
+    let texture = Arc::new(create_gpu_texture(device, width, height, compression_strategy));
     
-    // Upload the image data to GPU
-    upload_texture(queue, &texture, &image_bytes, width, height);
+    if use_compression {
+        // Compress the image data
+        use crate::cache::compression::{compress_image_bc1, CompressionAlgorithm};
+        let compressed_blocks = compress_image_bc1(
+            &image_bytes,
+            width as usize,
+            height as usize,
+            CompressionAlgorithm::RangeFit
+        );
+
+        // Calculate compressed data layout
+        let blocks_x = (width + 3) / 4;
+        let bytes_per_block = 8; // BC1 uses 8 bytes per 4x4 block
+        let row_bytes = blocks_x * bytes_per_block;
+
+        // Flatten the blocks into a single buffer
+        let compressed_data: Vec<u8> = compressed_blocks.iter()
+            .flat_map(|block| block.iter().copied())
+            .collect();
+
+        // Upload compressed data
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &compressed_data,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(row_bytes),
+                rows_per_image: None,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+    } else {
+        // Upload the uncompressed image data
+        upload_texture(queue, &texture, &image_bytes, width, height);
+    }
 
     *existing_texture = texture; // Replace the old texture
 

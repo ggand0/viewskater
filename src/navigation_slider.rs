@@ -54,6 +54,7 @@ fn load_full_res_image(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     is_gpu_supported: bool,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     pane_index: isize,
     pos: usize,
@@ -110,10 +111,10 @@ fn load_full_res_image(
                         CachedData::Gpu(tex) => Some(tex.clone()),
                         _ => None,
                     })
-                    .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1))); // Placeholder
+                    .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1, compression_strategy)));
 
                 // Load the full-resolution image synchronously
-                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture) {
+                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy) {
                     debug!("Failed to load full-res image {} for pane {}: {}", img_path.display(), idx, err);
                     continue;
                 }
@@ -263,10 +264,11 @@ pub fn load_remaining_images(
 
     let mut tasks = Vec::new();
 
-    // 🔹 First, load the full-resolution image **synchronously**
-    let full_res_task = load_full_res_image(device, queue, is_gpu_supported, panes, pane_index, pos);
-    tasks.push(full_res_task); // Ensure it's executed first
+    // First, load the full-resolution image **synchronously**
+    let full_res_task = load_full_res_image(device, queue, is_gpu_supported, compression_strategy, panes, pane_index, pos);
+    tasks.push(full_res_task);
 
+    // Then, load the neighboring images asynchronously
     if pane_index == -1 {
         // Dynamic loading: load the central image synchronously, and others asynchronously
         let cache_indices: Vec<usize> = panes
