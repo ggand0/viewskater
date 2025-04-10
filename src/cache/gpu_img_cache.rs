@@ -13,27 +13,21 @@ use iced_wgpu::engine::CompressionStrategy;
 pub struct GpuImageCache {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    compression_strategy: CompressionStrategy,
 }
 
 impl GpuImageCache {
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
-        Self { 
-            device, 
-            queue, 
-            compression_strategy: CompressionStrategy::None 
-        }
+        Self { device, queue }
     }
-    
-    pub fn with_compression(mut self, strategy: CompressionStrategy) -> Self {
-        self.compression_strategy = strategy;
-        self
-    }
-    
 }
 
 impl ImageCacheBackend for GpuImageCache {
-    fn load_image(&self, index: usize, image_paths: &[PathBuf]) -> Result<CachedData, io::Error> {
+    fn load_image(
+        &self, 
+        index: usize, 
+        image_paths: &[PathBuf], 
+        compression_strategy: CompressionStrategy
+    ) -> Result<CachedData, io::Error> {
         if let Some(image_path) = image_paths.get(index) {
             let img = image::open(image_path).map_err(|e| {
                 io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e))
@@ -45,12 +39,12 @@ impl ImageCacheBackend for GpuImageCache {
 
             // Use our utility function to determine if compression should be used
             let use_compression = crate::cache::cache_utils::should_use_compression(
-                width, height, self.compression_strategy
+                width, height, compression_strategy
             );
 
             // Create the texture with the appropriate format
             let texture = crate::cache::cache_utils::create_gpu_texture(
-                &self.device, width, height, self.compression_strategy
+                &self.device, width, height, compression_strategy
             );
 
             if use_compression {
@@ -86,6 +80,7 @@ impl ImageCacheBackend for GpuImageCache {
         cached_data: &mut Vec<Option<CachedData>>,
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
+        compression_strategy: CompressionStrategy,
     ) -> Result<(), io::Error> {
         let start_index: isize;
         let end_index: isize;
@@ -109,7 +104,7 @@ impl ImageCacheBackend for GpuImageCache {
             if cache_index > image_paths.len() as isize - 1 {
                 break;
             }
-            let image = self.load_image(cache_index as usize, image_paths)?;
+            let image = self.load_image(cache_index as usize, image_paths, compression_strategy)?;
             cached_data[i] = Some(image);
             cached_image_indices[i] = cache_index;
         }
@@ -146,6 +141,7 @@ impl ImageCacheBackend for GpuImageCache {
         cached_data: &mut Vec<Option<CachedData>>,
         cached_image_indices: &mut Vec<isize>,
         cache_count: usize,
+        _compression_strategy: CompressionStrategy,
     ) -> Result<bool, io::Error> {
         println!("GpuCache: Setting image at position {}", pos);
     

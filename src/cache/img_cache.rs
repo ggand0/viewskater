@@ -169,7 +169,13 @@ impl CachedData {
 }
 
 pub trait ImageCacheBackend {
-    fn load_image(&self, index: usize, image_paths: &[PathBuf]) -> Result<CachedData, io::Error>;
+    fn load_image(
+        &self, 
+        index: usize, 
+        image_paths: &[PathBuf],
+        compression_strategy: CompressionStrategy
+    ) -> Result<CachedData, io::Error>;
+    
     fn load_initial_images(
         &mut self,
         image_paths: &[PathBuf],
@@ -178,6 +184,7 @@ pub trait ImageCacheBackend {
         cached_data: &mut Vec<Option<CachedData>>,
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
+        compression_strategy: CompressionStrategy,
     ) -> Result<(), io::Error>;
     
     #[allow(dead_code)]
@@ -189,6 +196,7 @@ pub trait ImageCacheBackend {
         cached_data: &mut Vec<Option<CachedData>>,
         cached_image_indices: &mut Vec<isize>,
         cache_count: usize,
+        compression_strategy: CompressionStrategy,
     ) -> Result<bool, io::Error>;
 }
 
@@ -207,6 +215,7 @@ pub struct ImageCache {
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
     pub slider_texture: Option<Arc<wgpu::Texture>>,
+    pub compression_strategy: CompressionStrategy,
 }
 
 impl Default for ImageCache {
@@ -224,6 +233,7 @@ impl Default for ImageCache {
             cached_data: Vec::new(),
             backend: Box::new(CpuImageCache {}),
             slider_texture: None,
+            compression_strategy: CompressionStrategy::None,
         }
     }
 }
@@ -258,6 +268,7 @@ impl ImageCache {
             being_loaded_queue: VecDeque::new(),
             slider_texture: None,
             backend: Box::new(CpuImageCache {}), // Temporary CPU backend, will be replaced
+            compression_strategy,
         };
 
         // Initialize the slider texture if using GPU
@@ -297,7 +308,7 @@ impl ImageCache {
     }
 
     pub fn load_image(&self, index: usize) -> Result<CachedData, io::Error> {
-        self.backend.load_image(index, &self.image_paths)
+        self.backend.load_image(index, &self.image_paths, self.compression_strategy)
     }
 
     pub fn _load_pos(
@@ -315,6 +326,7 @@ impl ImageCache {
             &mut self.cached_data,
             &mut self.cached_image_indices,
             self.cache_count,
+            self.compression_strategy,
         )
     }
 
@@ -326,6 +338,7 @@ impl ImageCache {
             &mut self.cached_data,
             &mut self.cached_image_indices,
             &mut self.current_offset,
+            self.compression_strategy,
         )
     }
 
@@ -357,8 +370,7 @@ impl ImageCache {
             CacheStrategy::Cpu => Box::new(CpuImageCache::new()),
             CacheStrategy::Gpu => {
                 if let (Some(device), Some(queue)) = (device, queue) {
-                    Box::new(GpuImageCache::new(device, queue)
-                        .with_compression(compression_strategy))
+                    Box::new(GpuImageCache::new(device, queue))
                 } else {
                     Box::new(CpuImageCache::new())
                 }
@@ -367,7 +379,12 @@ impl ImageCache {
 
         //self.backend = Some(backend);
         self.backend = backend;
+        self.compression_strategy = compression_strategy;
         Ok(())
+    }
+
+    pub fn _set_compression_strategy(&mut self, strategy: CompressionStrategy) {
+        self.compression_strategy = strategy;
     }
 }
 
