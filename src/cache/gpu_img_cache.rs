@@ -8,7 +8,6 @@ use image::GenericImageView;
 use iced_wgpu::wgpu;
 use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 use iced_wgpu::engine::CompressionStrategy;
-use crate::cache::compression::{compress_image_bc1, CompressionAlgorithm};
 
 
 pub struct GpuImageCache {
@@ -42,118 +41,36 @@ impl ImageCacheBackend for GpuImageCache {
 
             let rgba_image = img.to_rgba8();
             let (width, height) = img.dimensions();
+            let rgba_data = rgba_image.into_raw();
 
-            // Determine if we should use compression based on dimensions
-            let use_compression = match self.compression_strategy {
-                CompressionStrategy::Bc1 => {
-                    // BC1 compression requires dimensions to be multiples of 4
-                    if width % 4 == 0 && height % 4 == 0 {
-                        debug!("Using BC1 compression for image ({} x {})", width, height);
-                        true
-                    } else {
-                        debug!("Image dimensions ({} x {}) not compatible with BC1. Using uncompressed format.", width, height);
-                        false
-                    }
-                },
-                CompressionStrategy::None => false,
-            };
+            // Use our utility function to determine if compression should be used
+            let use_compression = crate::cache::cache_utils::should_use_compression(
+                width, height, self.compression_strategy
+            );
+
+            // Create the texture with the appropriate format
+            let texture = crate::cache::cache_utils::create_gpu_texture(
+                &self.device, width, height, self.compression_strategy
+            );
 
             if use_compression {
-                // Create a BC1 compressed texture
-                let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("CacheTexture_BC1"),
-                    size: wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Bc1RgbaUnormSrgb,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                });
-
-                // Compress the image data
-                let compressed_blocks = compress_image_bc1(
-                    &rgba_image,
-                    width as usize,
-                    height as usize,
-                    CompressionAlgorithm::RangeFit
+                // Use the utility to compress and upload
+                let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
+                    &rgba_data, width, height
                 );
-
-                // Calculate compressed data layout
-                let blocks_x = (width + 3) / 4;
-                let bytes_per_block = 8; // BC1 uses 8 bytes per 4x4 block
-                let row_bytes = blocks_x * bytes_per_block;
-
-                // Flatten the blocks into a single buffer
-                let compressed_data: Vec<u8> = compressed_blocks.iter()
-                    .flat_map(|block| block.iter().copied())
-                    .collect();
-
-                // Upload compressed data
-                self.queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &compressed_data,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(row_bytes),
-                        rows_per_image: None,
-                    },
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
+                
+                // Upload using the utility function
+                crate::cache::cache_utils::upload_compressed_texture(
+                    &self.queue, &texture, &compressed_data, width, height, row_bytes
                 );
-
-                // Return BC1 compressed texture
+                
                 Ok(CachedData::BC1(texture.into()))
             } else {
-                // Use uncompressed format (existing code)
-                let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("CacheTexture"),
-                    size: wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb, // Use sRGB-aware format
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                });
-
-                // Upload the texture using `queue.write_texture()`
-                self.queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &rgba_image,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(4 * width),
-                        rows_per_image: None, // None is correct because it's contiguous
-                    },
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
+                // Upload uncompressed using the utility function
+                crate::cache::cache_utils::upload_uncompressed_texture(
+                    &self.queue, &texture, &rgba_data, width, height
                 );
-
+                
                 Ok(CachedData::Gpu(texture.into()))
             }
         } else {
