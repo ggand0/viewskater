@@ -394,9 +394,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 *resized = false;
                             }
 
-                            // Process any pending renderer requests
-                            // NOTE: we need to use a while loop to process all pending requests
+                            // Process any pending renderer requests to update iced_wgpu's config
+                            // NOTE1: we need to use a while loop to process all pending requests
                             // because try_recv() only returns one request at a time
+                            // NOTE2: we need to do this sender/receiver pattern to avoid deadlocks
                             while let Ok(request) = renderer_request_receiver.try_recv() {
                                 match request {
                                     RendererRequest::UpdateCompressionStrategy(strategy) => {

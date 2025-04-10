@@ -563,6 +563,33 @@ impl DataViewer {
                 error!("Failed to queue compression strategy change: {:?}", e);
             } else {
                 debug!("Compression strategy change request sent successfully");
+
+                // Get current pane file lengths
+                let pane_file_lengths: Vec<usize> = self.panes.iter()
+                .map(|p| p.img_cache.num_files)
+                .collect();
+
+                // Recreate image cache
+                for (i, pane) in self.panes.iter_mut().enumerate() {
+                    if let Some(dir_path) = &pane.directory_path.clone() {
+                        if pane.dir_loaded {
+                            let path = PathBuf::from(dir_path);
+                            
+                            // Reinitialize the pane with the current directory
+                            pane.initialize_dir_path(
+                                Arc::clone(&self.device),
+                                Arc::clone(&self.queue),
+                                self.is_gpu_supported,
+                                &self.pane_layout,
+                                &pane_file_lengths,
+                                i,
+                                path,
+                                self.is_slider_dual,
+                                &mut self.slider_value,
+                            );
+                        }
+                    }
+                }
             }
         }
     }
