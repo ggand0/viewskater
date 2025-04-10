@@ -41,7 +41,7 @@ use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::file_io;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
-use crate::cache::img_cache::CompressionStrategy;
+use iced_wgpu::engine::CompressionStrategy;
 
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
 
@@ -172,6 +172,7 @@ fn get_loading_tasks_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     _is_gpu_supported: bool,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: usize,
@@ -231,7 +232,7 @@ fn get_loading_tasks_slider(
             device, 
             queue, 
             CacheStrategy::Gpu,
-            CompressionStrategy::BC1,
+            compression_strategy,
             panes, 
             loading_status
         );
@@ -250,6 +251,7 @@ pub fn load_remaining_images(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     is_gpu_supported: bool,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: isize,
@@ -275,8 +277,15 @@ pub fn load_remaining_images(
 
         for cache_index in cache_indices {
             let local_tasks = get_loading_tasks_slider(
-                device, queue, is_gpu_supported,
-                panes, loading_status, cache_index, pos);
+                device,
+                queue,
+                is_gpu_supported,
+                compression_strategy,
+                panes,
+                loading_status,
+                cache_index,
+                pos
+            );
             debug!("load_remaining_images - local_tasks.len(): {}", local_tasks.len());
             tasks.extend(local_tasks);
         }
@@ -284,8 +293,14 @@ pub fn load_remaining_images(
         if let Some(pane) = panes.get_mut(pane_index as usize) {
             if pane.dir_loaded {
                 let local_tasks = get_loading_tasks_slider(
-                    device, queue, is_gpu_supported,
-                    panes, loading_status, pane_index as usize, pos);
+                    device,
+                    queue,
+                    is_gpu_supported,
+                    compression_strategy,
+                    panes,
+                    loading_status,
+                    pane_index as usize,
+                    pos);
                 tasks.extend(local_tasks);
             } else {
                 tasks.push(Task::none());

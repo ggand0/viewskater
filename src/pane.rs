@@ -15,12 +15,12 @@ use iced_widget::{center, Container};
 
 use crate::config::CONFIG;
 use crate::app::Message;
-use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache, CompressionStrategy};
+use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
 use crate::menu::PaneLayout;
 use crate::widgets::viewer;
 use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
 use crate::file_io::{self, is_file, is_directory, get_file_index, ImageError};
-
+use iced_wgpu::engine::CompressionStrategy;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
@@ -399,7 +399,7 @@ impl Pane {
             _file_paths,
             CONFIG.cache_size,
             CacheStrategy::Gpu,
-            CompressionStrategy::BC1,
+            CompressionStrategy::Bc1,
             initial_index,
             Some(device_clone),
             Some(queue_clone),

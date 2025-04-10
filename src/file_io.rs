@@ -29,7 +29,7 @@ use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
 use crate::cache::img_cache::CacheStrategy;
 use crate::cache::compression::{compress_image_bc1, CompressionAlgorithm};
-use crate::cache::img_cache::CompressionStrategy;
+use iced_wgpu::engine::CompressionStrategy;
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
@@ -176,7 +176,7 @@ async fn load_image_gpu_async(
                 
                 // Determine if we should use compression based on dimensions
                 let use_compression = match compression_strategy {
-                    CompressionStrategy::BC1 => {
+                    CompressionStrategy::Bc1 => {
                         if is_bc1_compatible(width, height) {
                             debug!("Compressing texture with BC1 ({} x {})", width, height);
                             true

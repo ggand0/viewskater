@@ -19,6 +19,7 @@ use crate::pane;
 use crate::cache::cpu_img_cache::CpuImageCache;
 use crate::cache::gpu_img_cache::GpuImageCache;
 use crate::file_io;
+use iced_wgpu::engine::CompressionStrategy;
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,13 +66,6 @@ impl CacheStrategy {
             CacheStrategy::Gpu => true,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CompressionStrategy {
-    None,       // No compression
-    BC1,        // BC1 compression (DXT1)
-    // You can add ASTC later for macOS
 }
 
 #[derive(Debug, Clone)]

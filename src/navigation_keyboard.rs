@@ -25,7 +25,7 @@ use crate::menu::PaneLayout;
 use crate::cache::img_cache::{CacheStrategy, LoadOperation, LoadOperationType, load_images_by_operation};
 use crate::loading_status::LoadingStatus;
 use crate::pane::{IMAGE_RENDER_TIMES, IMAGE_RENDER_FPS};
-use crate::cache::img_cache::CompressionStrategy;
+use iced_wgpu::engine::CompressionStrategy;
 
 
 #[allow(unused_imports)]
@@ -198,6 +198,7 @@ pub fn load_next_images_all(
     queue: &Arc<wgpu::Queue>,
     //is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<&mut Pane>,
     pane_indices: Vec<usize>,
     loading_status: &mut LoadingStatus,
@@ -244,7 +245,7 @@ pub fn load_next_images_all(
             return load_images_by_operation(
                 //Some(Arc::clone(&device)), Some(Arc::clone(&queue)), is_gpu_supported,
                 &device, &queue, cache_strategy,
-                CompressionStrategy::BC1,
+                compression_strategy,
                 panes, loading_status);
         }
     }
@@ -315,6 +316,7 @@ pub fn load_prev_images_all(
     queue: &Arc<wgpu::Queue>,
     //is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<&mut Pane>,
     pane_indices: Vec<usize>,
     loading_status: &mut LoadingStatus,
@@ -349,7 +351,7 @@ pub fn load_prev_images_all(
             }
             return load_images_by_operation(
                 &device, &queue, cache_strategy,
-                CompressionStrategy::BC1,
+                compression_strategy,
                 panes, loading_status);
         }
     }
@@ -438,6 +440,7 @@ pub fn move_right_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>, 
     loading_status: &mut LoadingStatus,
     slider_value: &mut u16,
@@ -499,8 +502,16 @@ pub fn move_right_all(
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftNext)
         {
             tasks.push(load_next_images_all(
-                &device, &queue, cache_strategy,
-                &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+                &device,
+                &queue,
+                cache_strategy,
+                compression_strategy,
+                &mut panes_to_load,
+                indices_to_load.clone(),
+                loading_status,
+                pane_layout,
+                is_slider_dual
+            ));
         }
 
         // If panes already reached the edge, mark their is_next_image_loaded as true
@@ -525,8 +536,16 @@ pub fn move_right_all(
             }
 
             tasks.push(load_next_images_all(
-                &device, &queue, cache_strategy,
-                &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+                &device,
+                &queue,
+                cache_strategy,
+                compression_strategy,
+                &mut panes_to_load,
+                indices_to_load.clone(),
+                loading_status,
+                pane_layout,
+                is_slider_dual
+            ));    
         }
     }
 
@@ -551,6 +570,7 @@ pub fn move_left_all(
     queue: &Arc<wgpu::Queue>,
     //is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     slider_value: &mut u16,
@@ -604,8 +624,14 @@ pub fn move_left_all(
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftPrevious)
         {
             tasks.push(load_prev_images_all(
-                &device, &queue, cache_strategy,
-                &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+                &device,
+                &queue,
+                cache_strategy,
+                compression_strategy,
+                &mut panes_to_load,
+                indices_to_load.clone(),
+                loading_status,
+                pane_layout, is_slider_dual));
         }
         // If panes already reached the edge, mark their is_next_image_loaded as true
         // We already picked the pane with the largest dir size, so we don't have to worry about the rest
@@ -633,8 +659,14 @@ pub fn move_left_all(
 
             debug!("move_left_all() - loading prev images...");
             tasks.push(load_prev_images_all(
-                &device, &queue, cache_strategy,
-                &mut panes_to_load, indices_to_load.clone(), loading_status, pane_layout, is_slider_dual));
+                &device,
+                &queue,
+                cache_strategy,
+                compression_strategy,
+                &mut panes_to_load,
+                indices_to_load.clone(),
+                loading_status,
+                pane_layout, is_slider_dual));
         }
     }
 

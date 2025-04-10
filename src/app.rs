@@ -344,9 +344,16 @@ impl DataViewer {
                         debug!("move_left_all from handle_key_pressed_event()");
                         let task = move_left_all(
                             //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                            &self.device, &self.queue, self.cache_strategy,
-                            &mut self.panes, &mut self.loading_status, &mut self.slider_value,
-                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                            &self.device,
+                            &self.queue,
+                            self.cache_strategy,
+                            self.compression_strategy,
+                            &mut self.panes,
+                            &mut self.loading_status,
+                            &mut self.slider_value,
+                            &self.pane_layout,
+                            self.is_slider_dual,
+                            self.last_opened_pane as usize);
                         tasks.push(task);
                     }
                 }
@@ -372,9 +379,16 @@ impl DataViewer {
 
                     let task = move_right_all(
                         //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                        &self.device, &self.queue, self.cache_strategy,
-                        &mut self.panes, &mut self.loading_status, &mut self.slider_value,
-                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                        &self.device,
+                        &self.queue,
+                        self.cache_strategy,
+                        self.compression_strategy,
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        &mut self.slider_value,
+                        &self.pane_layout,
+                        self.is_slider_dual,
+                        self.last_opened_pane as usize);
                     tasks.push(task);
                     debug!("handle_key_pressed_event() - tasks count: {}", tasks.len());
                 }
@@ -856,12 +870,24 @@ impl iced_winit::runtime::Program for DataViewer {
                 // Continue with loading remaining images
                 if pane_index == -1 {
                     return navigation_slider::load_remaining_images(
-                        &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index, value as usize);
+                        &self.device,
+                        &self.queue,
+                        self.is_gpu_supported,
+                        self.compression_strategy,
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        pane_index,
+                        value as usize);
                 } else {
                     return navigation_slider::load_remaining_images(
-                        &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
+                        &self.device,
+                        &self.queue,
+                        self.is_gpu_supported,
+                        self.compression_strategy,
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        pane_index as isize,
+                        value as usize);
                 }
             }
 
@@ -928,7 +954,10 @@ impl iced_winit::runtime::Program for DataViewer {
         if self.skate_right {
             self.update_counter = 0;
             let task = move_right_all(
-                &self.device, &self.queue, self.cache_strategy,
+                &self.device,
+                &self.queue,
+                self.cache_strategy,
+                self.compression_strategy,
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -941,7 +970,10 @@ impl iced_winit::runtime::Program for DataViewer {
             self.update_counter = 0;
             debug!("move_left_all from self.skate_left block");
             let task = move_left_all(
-                &self.device, &self.queue, self.cache_strategy,
+                &self.device,
+                &self.queue,
+                self.cache_strategy,
+                self.compression_strategy,
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
