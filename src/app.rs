@@ -35,6 +35,7 @@ use iced_core::keyboard::{self, Key, key::Named};
 use iced::widget::image::Handle;
 use iced_widget::{row, column, container, text};
 use iced_wgpu::{wgpu, Renderer};
+use iced_wgpu::engine::CompressionStrategy;
 use iced_winit::core::Theme as WinitTheme;
 use iced_winit::core::{Color, Element};
 use iced_winit::runtime::Task;
@@ -53,13 +54,14 @@ use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
+use crate::RendererRequest;
 
+use std::sync::mpsc::Sender;
 
 #[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("App Update"))
 });
-
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -95,6 +97,7 @@ pub enum Message {
     BackgroundColorChanged(Color),
     TimerTick,
     SetCacheStrategy(CacheStrategy),
+    SetCompressionStrategy(CompressionStrategy),
     ToggleFpsDisplay(bool),
 }
 
@@ -125,10 +128,17 @@ pub struct DataViewer {
     pub is_slider_moving: bool,
     pub backend: wgpu::Backend,
     pub show_fps: bool,
+    pub compression_strategy: CompressionStrategy,
+    pub renderer_request_sender: Sender<RendererRequest>,
 }
 
 impl DataViewer {
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend) -> Self {
+    pub fn new(
+        device: Arc<wgpu::Device>, 
+        queue: Arc<wgpu::Queue>, 
+        backend: wgpu::Backend,
+        renderer_request_sender: Sender<RendererRequest>,
+    ) -> Self {
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -141,7 +151,7 @@ impl DataViewer {
             show_footer: true,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
-            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0)],
+            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0, CompressionStrategy::Bc1)],
             loading_status: loading_status::LoadingStatus::default(),
             skate_right: false,
             skate_left: false,
@@ -153,9 +163,13 @@ impl DataViewer {
             background_color: Color::WHITE,
             last_slider_update: Instant::now(),
             is_slider_moving: false,
-            backend: backend,
+            backend,
             cache_strategy: CacheStrategy::Gpu,
+            //cache_strategy: CacheStrategy::Cpu,
             show_fps: false,
+            //compression_strategy: CompressionStrategy::Bc1,
+            compression_strategy: CompressionStrategy::None,
+            renderer_request_sender,
         }
     }
 
@@ -186,11 +200,12 @@ impl DataViewer {
             while self.panes.len() <= pane_index {
                 let new_pane_id = self.panes.len();
                 debug!("Creating new pane at index {}", new_pane_id);
-                self.panes.push(pane::Pane::new(
+                self.panes.push(pane::Pane::new(    
                     Arc::clone(&self.device), 
                     Arc::clone(&self.queue),
                     self.backend,
-                    new_pane_id // Pass the pane_id matching its index
+                    new_pane_id, // Pass the pane_id matching its index
+                    self.compression_strategy
                 ));
             }
         }
@@ -210,6 +225,8 @@ impl DataViewer {
             Arc::clone(&self.device),
             Arc::clone(&self.queue),
             self.is_gpu_supported,
+            self.cache_strategy,
+            self.compression_strategy,
             &self.pane_layout,
             &pane_file_lengths,
             pane_index,
@@ -332,9 +349,16 @@ impl DataViewer {
                         debug!("move_left_all from handle_key_pressed_event()");
                         let task = move_left_all(
                             //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                            &self.device, &self.queue, self.cache_strategy,
-                            &mut self.panes, &mut self.loading_status, &mut self.slider_value,
-                            &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                            &self.device,
+                            &self.queue,
+                            self.cache_strategy,
+                            self.compression_strategy,
+                            &mut self.panes,
+                            &mut self.loading_status,
+                            &mut self.slider_value,
+                            &self.pane_layout,
+                            self.is_slider_dual,
+                            self.last_opened_pane as usize);
                         tasks.push(task);
                     }
                 }
@@ -360,9 +384,16 @@ impl DataViewer {
 
                     let task = move_right_all(
                         //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
-                        &self.device, &self.queue, self.cache_strategy,
-                        &mut self.panes, &mut self.loading_status, &mut self.slider_value,
-                        &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize);
+                        &self.device,
+                        &self.queue,
+                        self.cache_strategy,
+                        self.compression_strategy,
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        &mut self.slider_value,
+                        &self.pane_layout,
+                        self.is_slider_dual,
+                        self.last_opened_pane as usize);
                     tasks.push(task);
                     debug!("handle_key_pressed_event() - tasks count: {}", tasks.len());
                 }
@@ -487,6 +518,88 @@ impl DataViewer {
                 };
     
                 format!("Left: {} | Right: {}", left_pane_filename, right_pane_filename)
+            }
+        }
+    }
+
+
+    fn update_cache_strategy(&mut self, strategy: CacheStrategy) {
+        debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
+        self.cache_strategy = strategy;
+        
+        // Get current pane file lengths
+        let pane_file_lengths: Vec<usize> = self.panes.iter()
+            .map(|p| p.img_cache.num_files)
+            .collect();
+        
+        // Reinitialize all loaded panes with the new cache strategy
+        for (i, pane) in self.panes.iter_mut().enumerate() {
+            if let Some(dir_path) = &pane.directory_path.clone() {
+                if pane.dir_loaded {
+                    let path = PathBuf::from(dir_path);
+                    
+                    // Reinitialize the pane with the current directory
+                    pane.initialize_dir_path(
+                        Arc::clone(&self.device),
+                        Arc::clone(&self.queue),
+                        self.is_gpu_supported,
+                        self.cache_strategy,
+                        self.compression_strategy,
+                        &self.pane_layout,
+                        &pane_file_lengths,
+                        i,
+                        path,
+                        self.is_slider_dual,
+                        &mut self.slider_value,
+                    );
+                }
+            }
+        }
+    }
+
+    fn update_compression_strategy(&mut self, strategy: CompressionStrategy) {
+        if self.compression_strategy != strategy {
+            self.compression_strategy = strategy;
+            
+            debug!("Queuing compression strategy change to {:?}", strategy);
+            
+            // Instead of trying to lock renderer directly, send a request to the main thread
+            if let Err(e) = self.renderer_request_sender.send(
+                RendererRequest::UpdateCompressionStrategy(strategy)
+            ) {
+                error!("Failed to queue compression strategy change: {:?}", e);
+            } else {
+                debug!("Compression strategy change request sent successfully");
+
+                // Get current pane file lengths
+                let pane_file_lengths: Vec<usize> = self.panes.iter()
+                .map(|p| p.img_cache.num_files)
+                .collect();
+
+                // Recreate image cache
+                for (i, pane) in self.panes.iter_mut().enumerate() {
+                    if let Some(dir_path) = &pane.directory_path.clone() {
+                        if pane.dir_loaded {
+                            let path = PathBuf::from(dir_path);
+                            
+                            // Reinitialize the pane with the current directory
+                            pane.initialize_dir_path(
+                                Arc::clone(&self.device),
+                                Arc::clone(&self.queue),
+                                self.is_gpu_supported,
+                                self.cache_strategy,
+                                self.compression_strategy,
+                                &self.pane_layout,
+                                &pane_file_lengths,
+                                i,
+                                path,
+                                self.is_slider_dual,
+                                &mut self.slider_value,
+                                
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -794,12 +907,26 @@ impl iced_winit::runtime::Program for DataViewer {
                 // Continue with loading remaining images
                 if pane_index == -1 {
                     return navigation_slider::load_remaining_images(
-                        &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index, value as usize);
+                        &self.device,
+                        &self.queue,
+                        self.is_gpu_supported,
+                        self.cache_strategy,
+                        self.compression_strategy,
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        pane_index,
+                        value as usize);
                 } else {
                     return navigation_slider::load_remaining_images(
-                        &self.device, &self.queue, self.is_gpu_supported,
-                        &mut self.panes, &mut self.loading_status, pane_index as isize, value as usize);
+                        &self.device,
+                        &self.queue,
+                        self.is_gpu_supported,
+                        self.cache_strategy,
+                        self.compression_strategy,
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        pane_index as isize,
+                        value as usize);
                 }
             }
 
@@ -853,35 +980,10 @@ impl iced_winit::runtime::Program for DataViewer {
                 debug!("TimerTick received");
             }
             Message::SetCacheStrategy(strategy) => {
-                debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
-                self.cache_strategy = strategy;
-                
-                // Get current pane file lengths
-                let pane_file_lengths: Vec<usize> = self.panes.iter()
-                    .map(|p| p.img_cache.num_files)
-                    .collect();
-                
-                // Reinitialize all loaded panes with the new cache strategy
-                for (i, pane) in self.panes.iter_mut().enumerate() {
-                    if let Some(dir_path) = &pane.directory_path.clone() {
-                        if pane.dir_loaded {
-                            let path = PathBuf::from(dir_path);
-                            
-                            // Reinitialize the pane with the current directory
-                            pane.initialize_dir_path(
-                                Arc::clone(&self.device),
-                                Arc::clone(&self.queue),
-                                self.is_gpu_supported,
-                                &self.pane_layout,
-                                &pane_file_lengths,
-                                i,
-                                path,
-                                self.is_slider_dual,
-                                &mut self.slider_value,
-                            );
-                        }
-                    }
-                }
+                self.update_cache_strategy(strategy);
+            }
+            Message::SetCompressionStrategy(strategy) => {
+                self.update_compression_strategy(strategy);
             }
             Message::ToggleFpsDisplay(value) => {
                 self.show_fps = value;
@@ -891,7 +993,10 @@ impl iced_winit::runtime::Program for DataViewer {
         if self.skate_right {
             self.update_counter = 0;
             let task = move_right_all(
-                &self.device, &self.queue, self.cache_strategy,
+                &self.device,
+                &self.queue,
+                self.cache_strategy,
+                self.compression_strategy,
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -899,15 +1004,15 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            //let update_end = Instant::now();
-            //let update_duration = update_end.duration_since(update_start);
-            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else if self.skate_left {
             self.update_counter = 0;
             debug!("move_left_all from self.skate_left block");
             let task = move_left_all(
-                &self.device, &self.queue, self.cache_strategy,
+                &self.device,
+                &self.queue,
+                self.cache_strategy,
+                self.compression_strategy,
                 &mut self.panes,
                 &mut self.loading_status,
                 &mut self.slider_value,
@@ -915,9 +1020,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
-            //let update_end = Instant::now();
-            //let update_duration = update_end.duration_since(update_start);
-            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
             task
         } else {
             // Log that there's no task to perform once
@@ -925,9 +1027,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 debug!("No skate mode detected, update_counter: {}", self.update_counter);
                 self.update_counter += 1;
             }
-            //let update_end = Instant::now();
-            //let update_duration = update_end.duration_since(update_start);
-            //APP_UPDATE_STATS.lock().unwrap().add_measurement(update_duration);
 
             iced_winit::runtime::Task::none()
         }

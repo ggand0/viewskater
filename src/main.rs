@@ -52,6 +52,7 @@ use iced_wgpu::graphics::text::font_system;
 use iced_winit::futures::futures::task;
 use iced_winit::core::window;
 use iced_futures::futures::channel::oneshot;
+use iced_wgpu::engine::CompressionStrategy;
 
 use crate::utils::timing::TimingStats;
 use crate::app::{Message, DataViewer};
@@ -60,6 +61,7 @@ use crate::config::CONFIG;
 use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
 use iced_wgpu::{get_image_rendering_diagnostics, log_image_rendering_stats};
 use iced_wgpu::engine::ImageConfig;
+use std::sync::mpsc::{self, Receiver};
 
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
@@ -150,6 +152,12 @@ fn monitor_message_queue(state: &mut program::State<DataViewer>) {
     }
 }
 
+// Define a message type for renderer configuration requests
+enum RendererRequest {
+    UpdateCompressionStrategy(CompressionStrategy),
+    // Add other renderer configuration requests here if needed
+}
+
 pub fn main() -> Result<(), winit::error::EventLoopError> {
     // Set up panic hook to log to a file
     let app_name = "viewskater";
@@ -185,8 +193,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             queue: Arc<wgpu::Queue>,
             surface: wgpu::Surface<'static>,
             format: wgpu::TextureFormat,
-            engine: Engine,
-            renderer: Renderer,
+            engine: Arc<Mutex<Engine>>,
+            renderer: Arc<Mutex<Renderer>>,
             state: program::State<DataViewer>,
             cursor_position: Option<winit::dpi::PhysicalPosition<f64>>,
             clipboard: Clipboard,
@@ -206,6 +214,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             control_receiver: StdReceiver<Control>,
             _context: task::Context<'static>,
             custom_theme: Theme,
+            renderer_request_receiver: Receiver<RendererRequest>,
         },
     }
 
@@ -253,6 +262,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     debug_tool,
                     control_receiver,
                     custom_theme,
+                    renderer_request_receiver,
                     ..
                 } => {
                     // Handle events in ready state
@@ -334,7 +344,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         })
                                         .map(mouse::Cursor::Available)
                                         .unwrap_or(mouse::Cursor::Unavailable),
-                                    renderer,
+                                    &mut *renderer.lock().unwrap(),
                                     &custom_theme,
                                     &renderer::Style {
                                         text_color: Color::WHITE,
@@ -384,6 +394,32 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 *resized = false;
                             }
 
+                            // Process any pending renderer requests to update iced_wgpu's config
+                            // NOTE1: we need to use a while loop to process all pending requests
+                            // because try_recv() only returns one request at a time
+                            // NOTE2: we need to do this sender/receiver pattern to avoid deadlocks
+                            while let Ok(request) = renderer_request_receiver.try_recv() {
+                                match request {
+                                    RendererRequest::UpdateCompressionStrategy(strategy) => {
+                                        debug!("Main thread handling compression strategy update to {:?}", strategy);
+                                        
+                                        let config = ImageConfig {
+                                            atlas_size: CONFIG.atlas_size,
+                                            compression_strategy: strategy,
+                                        };
+                                        
+                                        // We already have locks for renderer and engine in the rendering code
+                                        let mut engine_guard = engine.lock().unwrap();
+                                        let mut renderer_guard = renderer.lock().unwrap();
+                                        
+                                        // Update the config safely from the main render thread
+                                        renderer_guard.update_image_config(&device, &mut *engine_guard, config);
+                                        
+                                        debug!("Compression strategy updated successfully in main thread");
+                                    }
+                                }
+                            }
+
                             // Render if needed
                             if *redraw {
                                 *redraw = false;
@@ -404,22 +440,29 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         });
 
                                         let present_start = Instant::now();
-                                        renderer.present(
-                                            engine,
-                                            &device,
-                                            &queue,
-                                            &mut encoder,
-                                            None,
-                                            frame.texture.format(),
-                                            &view,
-                                            viewport,
-                                            &debug_tool.overlay(),
-                                        );
+                                        {
+                                            let mut engine_guard = engine.lock().unwrap();
+                                            let mut renderer_guard = renderer.lock().unwrap();
+                                            
+                                            renderer_guard.present(
+                                                &mut *engine_guard,
+                                                &device,
+                                                &queue,
+                                                &mut encoder,
+                                                None,
+                                                frame.texture.format(),
+                                                &view,
+                                                viewport,
+                                                &debug_tool.overlay(),
+                                            );
+                                            
+                                            // Submit commands while still holding the lock
+                                            engine_guard.submit(&queue, encoder);
+                                        }
                                         let present_time = present_start.elapsed();
                                         
                                         // Submit the commands to the queue
                                         let submit_start = Instant::now();
-                                        engine.submit(queue, encoder);
                                         let submit_time = submit_start.elapsed();
                                         
                                         let present_frame_start = Instant::now();
@@ -510,7 +553,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             match action {
                                 Action::Widget(w) => {
                                     state.operate(
-                                        renderer,
+                                        &mut *renderer.lock().unwrap(),
                                         std::iter::once(w),
                                         Size::new(viewport.physical_size().width as f32, viewport.physical_size().height as f32),
                                         debug_tool,
@@ -634,15 +677,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .await
                                 .expect("Create adapter");
 
-                                let adapter_features = adapter.features();
-
                                 let capabilities = surface.get_capabilities(&adapter);
                                 
                                 let (device, queue) = adapter
                                     .request_device(
                                         &wgpu::DeviceDescriptor {
-                                            label: None,
-                                            required_features: adapter_features & wgpu::Features::default(),
+                                            label: Some("Main Device"),
+                                            required_features: wgpu::Features::empty() | wgpu::Features::TEXTURE_COMPRESSION_BC,
                                             required_limits: wgpu::Limits::default(),
                                         },
                                         None,
@@ -685,36 +726,50 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     let queue = Arc::new(queue);
                     let backend = adapter.get_info().backend;
 
-                    // Pass a cloned Arc reference to DataViewer
-                    let shader_widget = DataViewer::new(
-                        Arc::clone(&device), Arc::clone(&queue), backend);
-
                     // Initialize iced
                     let mut debug_tool = Debug::new();
 
                     let config = ImageConfig {
                         atlas_size: CONFIG.atlas_size,
+                        compression_strategy: CompressionStrategy::Bc1,
                     };
-                    let engine = Engine::new(
-                        &adapter, &device, &queue, format, None, Some(config));
-                    engine.create_image_cache(&device); // Manually create image cache
+                    let engine = Arc::new(Mutex::new(Engine::new(
+                        &adapter, &device, &queue, format, None, Some(config))));
+                    {
+                        let engine_guard = engine.lock().unwrap();
+                        engine_guard.create_image_cache(&device);
+                    }
 
                     // Manually register fonts
                     register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
                     register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
                     register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
                     
-                    let mut renderer = Renderer::new(
+                    // Create renderer with Arc<Mutex>
+                    let renderer = Arc::new(Mutex::new(Renderer::new(
                         &device,
-                        &engine,
+                        &engine.lock().unwrap(),
                         Font::with_name("Roboto"),
                         Pixels::from(16),
+                    )));
+
+                    // Create the renderer request channel
+                    let (renderer_request_sender, renderer_request_receiver) = mpsc::channel();
+
+                    // Pass a cloned Arc reference to DataViewer
+                    let shader_widget = DataViewer::new(
+                        Arc::clone(&device), 
+                        Arc::clone(&queue), 
+                        backend,
+                        renderer_request_sender,
                     );
 
+                    // Update state creation to lock renderer
+                    let mut renderer_guard = renderer.lock().unwrap();
                     let state = program::State::new(
                         shader_widget,
                         viewport.logical_size(),
-                        &mut renderer,
+                        &mut *renderer_guard,
                         &mut debug_tool,
                     );
 
@@ -761,7 +816,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         surface,
                         format,
                         engine,
-                        renderer,
+                        renderer: renderer.clone(),
                         state,
                         cursor_position: None,
                         modifiers: ModifiersState::default(),
@@ -776,7 +831,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         _event_sender: event_sender,
                         control_receiver,
                         _context: context,
-                        custom_theme
+                        custom_theme,
+                        renderer_request_receiver,
                     };
                 }
                 Self::Ready { .. } => {
@@ -876,7 +932,7 @@ fn track_render_cycle() {
         // Display diagnostics in UI during development
         if frame_count % 60 == 0 {
             // Periodic stats logging
-            debug!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms", 
+            trace!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms", 
                   fps, upload_secs * 1000.0, render_secs * 1000.0);
         }
         

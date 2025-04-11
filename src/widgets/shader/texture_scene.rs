@@ -28,6 +28,9 @@ impl TextureScene {
             Some(CachedData::Gpu(tex)) => (
                 Some(Arc::clone(tex)), (tex.width(), tex.height())
             ),
+            Some(CachedData::BC1(tex)) => (
+                Some(Arc::clone(tex)), (tex.width(), tex.height())
+            ),
             _ => (None, (0, 0)),
         };
         

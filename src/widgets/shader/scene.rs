@@ -34,9 +34,12 @@ impl Scene {
             Some(CachedData::Gpu(texture)) => {
                 Scene::TextureScene(TextureScene::new(Some(&CachedData::Gpu(Arc::clone(texture)))))
             }
+            Some(CachedData::BC1(texture)) => {
+                Scene::TextureScene(TextureScene::new(Some(&CachedData::BC1(Arc::clone(texture)))))
+            },
             Some(CachedData::Cpu(image_bytes)) => {
                 Scene::CpuScene(CpuScene::new(image_bytes.clone(), true))
-            }
+            },
             _ => {
                 Scene::TextureScene(TextureScene::new(None))
             }

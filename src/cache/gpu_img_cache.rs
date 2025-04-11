@@ -7,6 +7,7 @@ use std::sync::Arc;
 use image::GenericImageView;
 use iced_wgpu::wgpu;
 use crate::cache::img_cache::{CachedData, ImageCacheBackend};
+use iced_wgpu::engine::CompressionStrategy;
 
 
 pub struct GpuImageCache {
@@ -21,7 +22,12 @@ impl GpuImageCache {
 }
 
 impl ImageCacheBackend for GpuImageCache {
-    fn load_image(&self, index: usize, image_paths: &[PathBuf]) -> Result<CachedData, io::Error> {
+    fn load_image(
+        &self, 
+        index: usize, 
+        image_paths: &[PathBuf], 
+        compression_strategy: CompressionStrategy
+    ) -> Result<CachedData, io::Error> {
         if let Some(image_path) = image_paths.get(index) {
             let img = image::open(image_path).map_err(|e| {
                 io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e))
@@ -29,45 +35,38 @@ impl ImageCacheBackend for GpuImageCache {
 
             let rgba_image = img.to_rgba8();
             let (width, height) = img.dimensions();
+            let rgba_data = rgba_image.into_raw();
 
-            // Create a GPU texture based on the image dimensions
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("CacheTexture"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb, // Use sRGB-aware format
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-
-            // Upload the texture using `queue.write_texture()`
-            self.queue.write_texture(
-                wgpu::ImageCopyTexture {
-                    texture: &texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &rgba_image,
-                wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: Some(4 * width),
-                    rows_per_image: None, // None is correct because it's contiguous
-                },
-                wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
+            // Use our utility function to determine if compression should be used
+            let use_compression = crate::cache::cache_utils::should_use_compression(
+                width, height, compression_strategy
             );
 
-            Ok(CachedData::Gpu(texture.into()))
+            // Create the texture with the appropriate format
+            let texture = crate::cache::cache_utils::create_gpu_texture(
+                &self.device, width, height, compression_strategy
+            );
+
+            if use_compression {
+                // Use the utility to compress and upload
+                let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
+                    &rgba_data, width, height
+                );
+                
+                // Upload using the utility function
+                crate::cache::cache_utils::upload_compressed_texture(
+                    &self.queue, &texture, &compressed_data, width, height, row_bytes
+                );
+                
+                Ok(CachedData::BC1(texture.into()))
+            } else {
+                // Upload uncompressed using the utility function
+                crate::cache::cache_utils::upload_uncompressed_texture(
+                    &self.queue, &texture, &rgba_data, width, height
+                );
+                
+                Ok(CachedData::Gpu(texture.into()))
+            }
         } else {
             Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid image index"))
         }
@@ -81,6 +80,7 @@ impl ImageCacheBackend for GpuImageCache {
         cached_data: &mut Vec<Option<CachedData>>,
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
+        compression_strategy: CompressionStrategy,
     ) -> Result<(), io::Error> {
         let start_index: isize;
         let end_index: isize;
@@ -104,7 +104,7 @@ impl ImageCacheBackend for GpuImageCache {
             if cache_index > image_paths.len() as isize - 1 {
                 break;
             }
-            let image = self.load_image(cache_index as usize, image_paths)?;
+            let image = self.load_image(cache_index as usize, image_paths, compression_strategy)?;
             cached_data[i] = Some(image);
             cached_image_indices[i] = cache_index;
         }
@@ -141,6 +141,7 @@ impl ImageCacheBackend for GpuImageCache {
         cached_data: &mut Vec<Option<CachedData>>,
         cached_image_indices: &mut Vec<isize>,
         cache_count: usize,
+        _compression_strategy: CompressionStrategy,
     ) -> Result<bool, io::Error> {
         println!("GpuCache: Setting image at position {}", pos);
     

@@ -41,6 +41,7 @@ use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::file_io;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
+use iced_wgpu::engine::CompressionStrategy;
 
 pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
 
@@ -53,6 +54,7 @@ fn load_full_res_image(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     is_gpu_supported: bool,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     pane_index: isize,
     pos: usize,
@@ -109,10 +111,10 @@ fn load_full_res_image(
                         CachedData::Gpu(tex) => Some(tex.clone()),
                         _ => None,
                     })
-                    .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1))); // Placeholder
+                    .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1, compression_strategy)));
 
                 // Load the full-resolution image synchronously
-                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture) {
+                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy) {
                     debug!("Failed to load full-res image {} for pane {}: {}", img_path.display(), idx, err);
                     continue;
                 }
@@ -171,6 +173,8 @@ fn get_loading_tasks_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     _is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: usize,
@@ -226,7 +230,14 @@ fn get_loading_tasks_slider(
         loading_status.print_queue();
 
         // Generate loading tasks
-        let local_tasks = load_all_images_in_queue(device, queue, CacheStrategy::Gpu, panes, loading_status);
+        let local_tasks = load_all_images_in_queue(
+            device, 
+            queue, 
+            cache_strategy,
+            compression_strategy,
+            panes, 
+            loading_status
+        );
         tasks.push(local_tasks);
     }
 
@@ -242,6 +253,8 @@ pub fn load_remaining_images(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: isize,
@@ -253,10 +266,11 @@ pub fn load_remaining_images(
 
     let mut tasks = Vec::new();
 
-    // 🔹 First, load the full-resolution image **synchronously**
-    let full_res_task = load_full_res_image(device, queue, is_gpu_supported, panes, pane_index, pos);
-    tasks.push(full_res_task); // Ensure it's executed first
+    // First, load the full-resolution image **synchronously**
+    let full_res_task = load_full_res_image(device, queue, is_gpu_supported, compression_strategy, panes, pane_index, pos);
+    tasks.push(full_res_task);
 
+    // Then, load the neighboring images asynchronously
     if pane_index == -1 {
         // Dynamic loading: load the central image synchronously, and others asynchronously
         let cache_indices: Vec<usize> = panes
@@ -267,8 +281,16 @@ pub fn load_remaining_images(
 
         for cache_index in cache_indices {
             let local_tasks = get_loading_tasks_slider(
-                device, queue, is_gpu_supported,
-                panes, loading_status, cache_index, pos);
+                device,
+                queue,
+                is_gpu_supported,
+                cache_strategy,
+                compression_strategy,
+                panes,
+                loading_status,
+                cache_index,
+                pos
+            );
             debug!("load_remaining_images - local_tasks.len(): {}", local_tasks.len());
             tasks.extend(local_tasks);
         }
@@ -276,8 +298,15 @@ pub fn load_remaining_images(
         if let Some(pane) = panes.get_mut(pane_index as usize) {
             if pane.dir_loaded {
                 let local_tasks = get_loading_tasks_slider(
-                    device, queue, is_gpu_supported,
-                    panes, loading_status, pane_index as usize, pos);
+                    device,
+                    queue,
+                    is_gpu_supported,
+                    cache_strategy,
+                    compression_strategy,
+                    panes,
+                    loading_status,
+                    pane_index as usize,
+                    pos);
                 tasks.extend(local_tasks);
             } else {
                 tasks.push(Task::none());

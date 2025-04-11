@@ -28,6 +28,7 @@ use iced_wgpu::wgpu;
 use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
 use crate::cache::img_cache::CacheStrategy;
+use iced_wgpu::engine::CompressionStrategy;
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
@@ -150,64 +151,69 @@ async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, 
     }
 }
 
+
 #[allow(dead_code)]
 async fn load_image_gpu_async(
     path: Option<&str>, 
     device: &Arc<wgpu::Device>, 
-    queue: &Arc<wgpu::Queue>
+    queue: &Arc<wgpu::Queue>,
+    compression_strategy: CompressionStrategy
 ) -> Result<Option<CachedData>, std::io::ErrorKind> {
-    if let Some(path) = path {
-        let file_path = Path::new(path);
+    if let Some(path_str) = path {
         let start = Instant::now();
 
-        match image::open(file_path) {
+        match image::open(path_str) {
             Ok(img) => {
-                let rgba_image = img.to_rgba8();
                 let (width, height) = img.dimensions();
+                let rgba = img.to_rgba8();
+                let rgba_data = rgba.as_raw();
+                
                 let duration = start.elapsed();
                 IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
-
+                
                 let upload_start = Instant::now();
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("AsyncLoadedTexture"),
-                    size: wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                });
 
-                queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &rgba_image,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(4 * width),
-                        rows_per_image: None,
-                    },
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
+                // Use our utility to check if compression is applicable
+                let use_compression = crate::cache::cache_utils::should_use_compression(
+                    width, height, compression_strategy
                 );
-                let upload_duration = upload_start.elapsed();
-                GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
-
-                return Ok(Some(CachedData::Gpu(Arc::new(texture))));
+                
+                // Create texture with the appropriate format
+                let texture = crate::cache::cache_utils::create_gpu_texture(
+                    device, width, height, compression_strategy
+                );
+                
+                if use_compression {
+                    // Use utility to compress and upload
+                    let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
+                        &rgba_data, width, height
+                    );
+                    
+                    // Upload using the utility
+                    crate::cache::cache_utils::upload_compressed_texture(
+                        queue, &texture, &compressed_data, width, height, row_bytes
+                    );
+                    
+                    let upload_duration = upload_start.elapsed();
+                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                    
+                    return Ok(Some(CachedData::BC1(Arc::new(texture))));
+                } else {
+                    // Upload uncompressed
+                    crate::cache::cache_utils::upload_uncompressed_texture(
+                        queue, &texture, &rgba_data, width, height
+                    );
+                    
+                    let upload_duration = upload_start.elapsed();
+                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                    
+                    return Ok(Some(CachedData::Gpu(Arc::new(texture))));
+                }
             }
-            Err(_) => return Err(std::io::ErrorKind::InvalidData),
+            Err(e) => {
+                error!("Error opening image: {:?}", e);
+                return Err(std::io::ErrorKind::InvalidData);
+            }
         }
     }
 
@@ -220,10 +226,11 @@ pub async fn load_images_async(
     cache_strategy: CacheStrategy,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
+    compression_strategy: CompressionStrategy,
     load_operation: LoadOperation
 ) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
-    debug!("load_images_async - cache_strategy: {:?}", cache_strategy);
+    debug!("load_images_async - cache_strategy: {:?}, compression: {:?}", cache_strategy, compression_strategy);
 
     let futures = paths.into_iter().map(|path| {
         let device = Arc::clone(device);
@@ -237,8 +244,8 @@ pub async fn load_images_async(
                     load_image_cpu_async(path_str).await
                 },
                 CacheStrategy::Gpu => {
-                    debug!("load_images_async - loading image with GPU strategy");
-                    load_image_gpu_async(path_str, &device, &queue).await
+                    debug!("load_images_async - loading image with GPU strategy and compression: {:?}", compression_strategy);
+                    load_image_gpu_async(path_str, &device, &queue, compression_strategy).await
                 },
             }
         }
