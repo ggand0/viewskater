@@ -89,6 +89,11 @@ static LAST_MEMORY_UPDATE: Lazy<Mutex<Instant>> = Lazy::new(|| {
     Mutex::new(Instant::now())
 });
 
+// Add this alongside your other statics
+static LAST_STATS_UPDATE: Lazy<Mutex<Instant>> = Lazy::new(|| {
+    Mutex::new(Instant::now())
+});
+
 static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
 
 // Add these to track the phase relationship
@@ -569,27 +574,36 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     let now = Instant::now();
                                     frame_times.push(now);
                                     
-                                    // Calculate FPS every second
-                                    if frame_times.len() > 1 {
-                                        let oldest = frame_times[0];
-                                        let elapsed = now.duration_since(oldest);
-                                        
-                                        if elapsed.as_secs() >= 1 {
-                                            let fps = frame_times.len() as f32 / elapsed.as_secs_f32();
-                                            trace!("Current FPS: {:.1}", fps);
-                                            
-                                            // Store the current FPS value
-                                            if let Ok(mut current_fps) = CURRENT_FPS.lock() {
-                                                *current_fps = fps;
-                                            }
-                                            
-                                            // Update memory usage approximately once per second
-                                            update_memory_usage();
-                                            
-                                            // Keep only recent frames
-                                            let cutoff = now - Duration::from_secs(1);
-                                            frame_times.retain(|&t| t > cutoff);
+                                    // Only update stats once per second
+                                    let should_update_stats = {
+                                        if let Ok(last_update) = LAST_STATS_UPDATE.lock() {
+                                            last_update.elapsed().as_secs() >= 1
+                                        } else {
+                                            false
                                         }
+                                    };
+                                    
+                                    if should_update_stats {
+                                        // Update the timestamp
+                                        if let Ok(mut last_update) = LAST_STATS_UPDATE.lock() {
+                                            *last_update = now;
+                                        }
+                                        
+                                        // Clean up old frames
+                                        let cutoff = now - Duration::from_secs(1);
+                                        frame_times.retain(|&t| t > cutoff);
+                                        
+                                        // Calculate FPS
+                                        let fps = frame_times.len() as f32;
+                                        trace!("Current FPS: {:.1}", fps);
+                                        
+                                        // Store the current FPS value
+                                        if let Ok(mut current_fps) = CURRENT_FPS.lock() {
+                                            *current_fps = fps;
+                                        }
+                                        
+                                        // Update memory usage (which has its own throttling as a backup)
+                                        update_memory_usage();
                                     }
                                 }
                             }
