@@ -932,7 +932,7 @@ fn track_render_cycle() {
         // Display diagnostics in UI during development
         if frame_count % 60 == 0 {
             // Periodic stats logging
-            debug!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms", 
+            trace!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms", 
                   fps, upload_secs * 1000.0, render_secs * 1000.0);
         }
         

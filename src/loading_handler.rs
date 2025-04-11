@@ -57,11 +57,21 @@ pub fn handle_load_operation_all(
             if target_image_to_load == target_index {
                 // Convert `Option<Vec<u8>>` to `Option<CachedData>`
                 let mut converted_data = match image_data[pane_index].clone() {
-                    Some(CachedData::Cpu(data)) => Some(CachedData::Cpu(data)),
-                    Some(CachedData::Gpu(texture)) => Some(CachedData::Gpu(Arc::clone(&texture))),
-                    Some(CachedData::BC1(texture)) => Some(CachedData::BC1(Arc::clone(&texture))),
+                    Some(CachedData::Cpu(data)) => {
+                        debug!("Cpu data");
+                        Some(CachedData::Cpu(data))
+                    }
+                    Some(CachedData::Gpu(texture)) => {
+                        debug!("Gpu texture");
+                        Some(CachedData::Gpu(Arc::clone(&texture)))
+                    }
+                    Some(CachedData::BC1(texture)) => {
+                        debug!("BC1 texture");
+                        Some(CachedData::BC1(Arc::clone(&texture)))
+                    }
                     None => None,
                 };
+                
                     
                 match op {
                     LoadOperation::LoadNext(..) => {
