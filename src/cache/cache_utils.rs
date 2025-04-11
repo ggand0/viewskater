@@ -8,6 +8,7 @@ use wgpu::{Device, Queue};
 use iced_wgpu::wgpu;
 use iced_wgpu::engine::CompressionStrategy;
 use crate::cache::compression::{compress_image_bc1, CompressionAlgorithm};
+use texpresso::{Format, Params, Algorithm, COLOUR_WEIGHTS_PERCEPTUAL};
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
@@ -81,6 +82,8 @@ pub fn create_gpu_texture(
 }
 
 /// Compresses image data using BC1 algorithm
+/// TODO: Remove this after confirming that the texpresso compression is stable
+#[allow(dead_code)]
 pub fn compress_image_data(
     rgba_data: &[u8],
     width: u32,
@@ -168,27 +171,71 @@ pub fn upload_compressed_texture(
     );
 }
 
+/// Compresses an image using the texpresso library (BC1/DXT1 format)
+pub fn compress_image_data_texpresso(image_data: &[u8], width: u32, height: u32) -> (Vec<u8>, u32) {
+    // Create 4x4 blocks of RGBA data from the image
+    let width_usize = width as usize;
+    let height_usize = height as usize;
+    
+    // Calculate the output size
+    let blocks_wide = (width_usize + 3) / 4;
+    let blocks_tall = (height_usize + 3) / 4;
+    let block_size = Format::Bc1.block_size();
+    let output_size = blocks_wide * blocks_tall * block_size;
+    
+    // Create output buffer
+    let mut compressed_data = vec![0u8; output_size];
+    
+    // Set up compression parameters
+    let params = Params {
+        //algorithm: Algorithm::ClusterFit, // Higher quality but still fast
+        algorithm: Algorithm::RangeFit,
+        weights: COLOUR_WEIGHTS_PERCEPTUAL,
+        weigh_colour_by_alpha: true, // Better for images with transparency
+    };
+    
+    // Compress the image
+    Format::Bc1.compress(
+        image_data, 
+        width_usize, 
+        height_usize, 
+        params, 
+        &mut compressed_data
+    );
+    
+    // Calculate bytes per row
+    let bytes_per_row = blocks_wide * block_size;
+    
+    (compressed_data, bytes_per_row as u32)
+}
+
 /// Creates and uploads a texture with the appropriate format and data
 pub fn create_and_upload_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    rgba_data: &[u8],
+    image_data: &[u8],
     width: u32,
     height: u32,
     compression_strategy: CompressionStrategy,
 ) -> wgpu::Texture {
     let use_compression = should_use_compression(width, height, compression_strategy);
     
-    // Create texture with right format
     let texture = create_gpu_texture(device, width, height, compression_strategy);
-    
+
     if use_compression {
-        // Compress and upload
-        let (compressed_data, row_bytes) = compress_image_data(rgba_data, width, height);
-        upload_compressed_texture(queue, &texture, &compressed_data, width, height, row_bytes);
+        // Use texpresso for compression when BC1 is selected
+        match compression_strategy {
+            CompressionStrategy::Bc1 => {
+                let (compressed_data, bytes_per_row) = compress_image_data_texpresso(image_data, width, height);
+                upload_compressed_texture(queue, &texture, &compressed_data, width, height, bytes_per_row);
+            },
+            _ => {
+                // Raise an error if an unsupported compression strategy is used
+                panic!("Unsupported compression strategy: {:?}", compression_strategy);
+            }
+        }
     } else {
-        // Upload uncompressed
-        upload_uncompressed_texture(queue, &texture, rgba_data, width, height);
+        upload_uncompressed_texture(queue, &texture, image_data, width, height);
     }
     
     texture
