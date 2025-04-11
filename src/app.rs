@@ -151,7 +151,7 @@ impl DataViewer {
             show_footer: true,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
-            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0)],
+            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0, CompressionStrategy::Bc1)],
             loading_status: loading_status::LoadingStatus::default(),
             skate_right: false,
             skate_left: false,
@@ -165,8 +165,10 @@ impl DataViewer {
             is_slider_moving: false,
             backend,
             cache_strategy: CacheStrategy::Gpu,
+            //cache_strategy: CacheStrategy::Cpu,
             show_fps: false,
-            compression_strategy: CompressionStrategy::Bc1,
+            //compression_strategy: CompressionStrategy::Bc1,
+            compression_strategy: CompressionStrategy::None,
             renderer_request_sender,
         }
     }
@@ -198,11 +200,12 @@ impl DataViewer {
             while self.panes.len() <= pane_index {
                 let new_pane_id = self.panes.len();
                 debug!("Creating new pane at index {}", new_pane_id);
-                self.panes.push(pane::Pane::new(
+                self.panes.push(pane::Pane::new(    
                     Arc::clone(&self.device), 
                     Arc::clone(&self.queue),
                     self.backend,
-                    new_pane_id // Pass the pane_id matching its index
+                    new_pane_id, // Pass the pane_id matching its index
+                    self.compression_strategy
                 ));
             }
         }
@@ -222,6 +225,8 @@ impl DataViewer {
             Arc::clone(&self.device),
             Arc::clone(&self.queue),
             self.is_gpu_supported,
+            self.cache_strategy,
+            self.compression_strategy,
             &self.pane_layout,
             &pane_file_lengths,
             pane_index,
@@ -538,6 +543,8 @@ impl DataViewer {
                         Arc::clone(&self.device),
                         Arc::clone(&self.queue),
                         self.is_gpu_supported,
+                        self.cache_strategy,
+                        self.compression_strategy,
                         &self.pane_layout,
                         &pane_file_lengths,
                         i,
@@ -580,12 +587,15 @@ impl DataViewer {
                                 Arc::clone(&self.device),
                                 Arc::clone(&self.queue),
                                 self.is_gpu_supported,
+                                self.cache_strategy,
+                                self.compression_strategy,
                                 &self.pane_layout,
                                 &pane_file_lengths,
                                 i,
                                 path,
                                 self.is_slider_dual,
                                 &mut self.slider_value,
+                                
                             );
                         }
                     }
@@ -900,6 +910,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         &self.device,
                         &self.queue,
                         self.is_gpu_supported,
+                        self.cache_strategy,
                         self.compression_strategy,
                         &mut self.panes,
                         &mut self.loading_status,
@@ -910,6 +921,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         &self.device,
                         &self.queue,
                         self.is_gpu_supported,
+                        self.cache_strategy,
                         self.compression_strategy,
                         &mut self.panes,
                         &mut self.loading_status,

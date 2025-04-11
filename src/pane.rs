@@ -49,6 +49,7 @@ pub struct Pane {
     pub device: Option<Arc<wgpu::Device>>,
     pub queue: Option<Arc<wgpu::Queue>>,
     pub pane_id: usize, // New field for pane identification
+    pub compression_strategy: CompressionStrategy,
 }
 
 impl Default for Pane {
@@ -71,12 +72,19 @@ impl Default for Pane {
             queue: None,
             slider_image: None,
             pane_id: 0, // Default to pane 0
+            compression_strategy: CompressionStrategy::None,
         }
     }
 }
 
 impl Pane {
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, backend: wgpu::Backend, pane_id: usize) -> Self {
+    pub fn new(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        backend: wgpu::Backend,
+        pane_id: usize,
+        compression_strategy: CompressionStrategy
+    ) -> Self {
         let scene = Scene::new(None);
         // Create a dedicated CPU-based scene for slider
         let slider_scene = Scene::CpuScene(CpuScene::new(vec![], true));
@@ -99,6 +107,7 @@ impl Pane {
             queue: Some(queue),
             slider_image: None,
             pane_id, // Use the provided pane_id
+            compression_strategy,
         }
     }
 
@@ -129,7 +138,8 @@ impl Pane {
                             Arc::clone(device), 
                             Arc::clone(queue), 
                             first_pane.backend,
-                            i // Use the index as the pane_id
+                            i, // Use the index as the pane_id
+                            first_pane.compression_strategy
                         ));
                     } else {
                         // Fallback if no device/queue available
@@ -316,6 +326,8 @@ impl Pane {
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
         _is_gpu_supported: bool,
+        cache_strategy: CacheStrategy,
+        compression_strategy: CompressionStrategy,
         pane_layout: &PaneLayout,
         pane_file_lengths: &[usize],
         _pane_index: usize,
@@ -398,8 +410,8 @@ impl Pane {
         let mut img_cache = ImageCache::new(
             _file_paths,
             CONFIG.cache_size,
-            CacheStrategy::Gpu,
-            CompressionStrategy::Bc1,
+            cache_strategy,
+            compression_strategy,
             initial_index,
             Some(device_clone),
             Some(queue_clone),
