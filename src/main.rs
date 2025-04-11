@@ -63,6 +63,9 @@ use iced_wgpu::{get_image_rendering_diagnostics, log_image_rendering_stats};
 use iced_wgpu::engine::ImageConfig;
 use std::sync::mpsc::{self, Receiver};
 
+// Updated sysinfo import - remove the traits
+use sysinfo::{System, Pid, ProcessesToUpdate};
+
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
 });
@@ -74,6 +77,16 @@ static _STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
 });
 static _WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Window Event"))
+});
+
+// Add this alongside your other statics
+static CURRENT_MEMORY_USAGE: Lazy<Mutex<u64>> = Lazy::new(|| {
+    Mutex::new(0)
+});
+
+// Add this to track last memory update time
+static LAST_MEMORY_UPDATE: Lazy<Mutex<Instant>> = Lazy::new(|| {
+    Mutex::new(Instant::now())
 });
 
 static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
@@ -156,6 +169,44 @@ fn monitor_message_queue(state: &mut program::State<DataViewer>) {
 enum RendererRequest {
     UpdateCompressionStrategy(CompressionStrategy),
     // Add other renderer configuration requests here if needed
+}
+
+// Update this function to use the newer sysinfo API
+fn update_memory_usage() {
+    // Check if we should update (only once per second)
+    let should_update = {
+        if let Ok(last_update) = LAST_MEMORY_UPDATE.lock() {
+            last_update.elapsed().as_secs() >= 1
+        } else {
+            true
+        }
+    };
+    
+    if !should_update {
+        return;
+    }
+    
+    // Update the timestamp
+    if let Ok(mut last_update) = LAST_MEMORY_UPDATE.lock() {
+        *last_update = Instant::now();
+    }
+    
+    // Now proceed with the update
+    let mut system = System::new();
+    let pid = Pid::from_u32(std::process::id());
+    
+    // Refresh specifically for this process
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    
+    if let Some(process) = system.process(pid) {
+        let memory_used = process.memory();
+        if let Ok(mut mem) = CURRENT_MEMORY_USAGE.lock() {
+            *mem = memory_used;
+        }
+    }
+    
+    // Use trace level instead of debug for this message
+    trace!("Memory usage updated: {} bytes", CURRENT_MEMORY_USAGE.lock().unwrap());
 }
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
@@ -513,7 +564,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     },
                                 }
 
-                                // Record frame time
+                                // Record frame time and update memory usage
                                 if let Ok(mut frame_times) = FRAME_TIMES.lock() {
                                     let now = Instant::now();
                                     frame_times.push(now);
@@ -531,6 +582,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             if let Ok(mut current_fps) = CURRENT_FPS.lock() {
                                                 *current_fps = fps;
                                             }
+                                            
+                                            // Update memory usage approximately once per second
+                                            update_memory_usage();
                                             
                                             // Keep only recent frames
                                             let cutoff = now - Duration::from_secs(1);
