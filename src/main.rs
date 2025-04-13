@@ -157,6 +157,8 @@ fn monitor_message_queue(state: &mut program::State<DataViewer>) {
     // Check queue length
     let queue_len = state.queued_messages_len();
     LAST_QUEUE_LENGTH.store(queue_len, Ordering::SeqCst);
+
+    //trace!("Message queue size: {}", queue_len);
     
     // Log if the queue is getting large
     if queue_len > QUEUE_LOG_THRESHOLD {
@@ -526,7 +528,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         let present_frame_time = present_frame_start.elapsed();
 
                                         // Add tracking here to monitor the render cycle
-                                        track_render_cycle();
+                                        if *debug {
+                                            track_render_cycle();
+                                        }
 
                                         // Always log these if they're abnormally long
                                         if present_time.as_millis() > 50 {
@@ -555,8 +559,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             ),
                                         );
                                         
-                                        let total_frame_time = frame_start.elapsed();
-                                        trace!("Total frame time: {:?}", total_frame_time);
+                                        if *debug {
+                                            let total_frame_time = frame_start.elapsed();
+                                            trace!("Total frame time: {:?}", total_frame_time);
+                                        }
                                     }
                                     Err(error) => match error {
                                         wgpu::SurfaceError::OutOfMemory => {
