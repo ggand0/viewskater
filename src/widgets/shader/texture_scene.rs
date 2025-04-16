@@ -100,7 +100,7 @@ impl TexturePrimitive {
     }
 }
 
-// Add this struct to hold multiple pipeline instances
+// Struct to hold multiple pipeline instances
 #[derive(Debug, Default)]
 pub struct PipelineRegistry {
     pipelines: std::collections::HashMap<String, TexturePipeline>,

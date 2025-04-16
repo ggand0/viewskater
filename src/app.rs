@@ -173,8 +173,17 @@ impl DataViewer {
         }
     }
 
+    pub fn clear_primitive_storage(&mut self) {
+        if let Err(e) = self.renderer_request_sender.send(RendererRequest::ClearPrimitiveStorage) {
+            error!("Failed to send ClearPrimitiveStorage request: {:?}", e);
+        }
+    }
+
     pub fn reset_state(&mut self) {
-        // First reset all panes
+        // Reset loading status
+        self.loading_status = loading_status::LoadingStatus::default();
+
+        // Reset all panes
         for pane in &mut self.panes {
             pane.reset_state();
         }
@@ -186,14 +195,17 @@ impl DataViewer {
         self.slider_value = 0;
         self.prev_slider_value = 0;
         self.last_opened_pane = 0;
-        self.loading_status = loading_status::LoadingStatus::default();
+        
         self.skate_right = false;
         self.update_counter = 0;
         self.show_about = false;
         self.last_slider_update = Instant::now();
         self.is_slider_moving = false;
 
-        crate::utils::mem::log_memory("DataViewer::reset_state: After reset_state");   
+        crate::utils::mem::log_memory("DataViewer::reset_state: After reset_state");
+
+        // Clear primitive storage
+        self.clear_primitive_storage();
     }
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
@@ -319,6 +331,7 @@ impl DataViewer {
                 // Close the selected panes
                 if modifiers.control() {
                     self.reset_state();
+                    //self.clear_primitive_storage();
                 }
             }
 
