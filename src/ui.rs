@@ -33,7 +33,7 @@ use crate::menu::PaneLayout;
 use crate::{app::Message, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
 use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
-use crate::{CURRENT_FPS, pane::IMAGE_RENDER_FPS};
+use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -107,9 +107,19 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         IMAGE_RENDER_FPS.lock().map(|fps| *fps as f64).unwrap_or(0.0)
     };
 
+    // Get memory usage in MB
+    let memory_mb = {
+        if let Ok(mem) = CURRENT_MEMORY_USAGE.lock() {
+            *mem as f64 / 1024.0 / 1024.0
+        } else {
+            0.0
+        }
+    };
+
     let fps_display = if app.show_fps {
         container(
-            text(format!("UI: {:.1} FPS | Image: {:.1} FPS", ui_fps, image_fps))
+            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | Mem: {:.1} MB", 
+                         ui_fps, image_fps, memory_mb))
                 .size(14)
                 .style(|_theme| iced::widget::text::Style {
                     color: Some(Color::from([1.0, 1.0, 1.0])),

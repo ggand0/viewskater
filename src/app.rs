@@ -173,22 +173,27 @@ impl DataViewer {
         }
     }
 
-    fn reset_state(&mut self) {
+    pub fn reset_state(&mut self) {
+        // First reset all panes
+        for pane in &mut self.panes {
+            pane.reset_state();
+        }
+        
+        // Reset viewer state
         self.title = String::from("ViewSkater");
         self.directory_path = None;
         self.current_image_index = 0;
         self.slider_value = 0;
         self.prev_slider_value = 0;
         self.last_opened_pane = 0;
-        for pane in self.panes.iter_mut() {
-            pane.reset_state();
-        }
         self.loading_status = loading_status::LoadingStatus::default();
         self.skate_right = false;
         self.update_counter = 0;
         self.show_about = false;
         self.last_slider_update = Instant::now();
         self.is_slider_moving = false;
+
+        crate::utils::mem::log_memory("DataViewer::reset_state: After reset_state");   
     }
 
     fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
@@ -313,11 +318,7 @@ impl DataViewer {
             Key::Character("w") => {
                 // Close the selected panes
                 if modifiers.control() {
-                    for pane in self.panes.iter_mut() {
-                        if pane.is_selected {
-                            pane.reset_state();
-                        }
-                    }
+                    self.reset_state();
                 }
             }
 
