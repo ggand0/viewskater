@@ -23,6 +23,7 @@ use crate::file_io::{self, is_file, is_directory, get_file_index, ImageError};
 use iced_wgpu::engine::CompressionStrategy;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
+use crate::utils::mem;
 
 pub static IMAGE_RENDER_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
@@ -119,11 +120,26 @@ impl Pane {
     }
 
     pub fn reset_state(&mut self) {
+        // Clear the scene which holds texture references
+        self.scene = None;
+        
+        // Clear the slider scene holding texture references
+        self.slider_scene = None;
+        
+        // Drop the current images
+        self.current_image = CachedData::Cpu(vec![]);
+        self.slider_image = None;
+        
+        // Explicitly reset the image cache
+        self.img_cache.clear_cache();
+        self.img_cache = ImageCache::default();
+        
+        // Reset other state
         self.directory_path = None;
         self.dir_loaded = false;
-        self.img_cache = ImageCache::default();
-        self.current_image = CachedData::Cpu(vec![]);
         self.is_next_image_loaded = true;
+        self.is_prev_image_loaded = true;
+        self.is_selected = true;
         self.slider_value = 0;
         self.prev_slider_value = 0;
     }
@@ -211,7 +227,7 @@ impl Pane {
                     }
                     CachedData::Gpu(texture) => {
                         debug!("Setting GPU texture as current_image");
-                        self.current_image = CachedData::Gpu(Arc::clone(&texture)); 
+                        self.current_image = CachedData::Gpu(Arc::clone(&texture));
                         self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }
@@ -335,6 +351,8 @@ impl Pane {
         is_slider_dual: bool,
         slider_value: &mut u16,
     ) {
+        mem::log_memory("Before pane initialization");
+        
         let mut _file_paths: Vec<PathBuf> = Vec::new();
         let initial_index: usize;
 
@@ -418,9 +436,14 @@ impl Pane {
         )
         .unwrap();
 
+        // Track memory before loading initial images
+        mem::log_memory("Pane::initialize_dir_path: Before loading initial images");
+        
         // Load initial images into the cache
         img_cache.load_initial_images().unwrap();
-        ////img_cache.print_cache();
+        
+        mem::log_memory("Pane::initialize_dir_path: After loading initial images");
+        
         for (index, image_option) in img_cache.cached_data.iter().enumerate() {
             match image_option {
                 Some(image_bytes) => {
