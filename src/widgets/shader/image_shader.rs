@@ -13,6 +13,8 @@ use iced_widget::shader::{self, Viewport, Storage};
 use iced_wgpu::{wgpu, primitive};
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use crate::Scene;
+use std::collections::HashMap;
+use std::collections::VecDeque;
 
 
 /// A specialized shader widget for displaying images with proper aspect ratio.
@@ -283,7 +285,7 @@ impl shader::Primitive for ImagePrimitive {
             let registry = storage.get_mut::<PipelineRegistry>().unwrap();
             
             // Create pipeline if it doesn't exist or reuse existing one
-            if !registry.pipelines.contains_key(&pipeline_key) {
+            if !registry.contains_key(&pipeline_key) {
                 if self.debug {
                     debug!("ImagePrimitive::prepare - Creating new pipeline for key {}", pipeline_key);
                 }
@@ -298,14 +300,14 @@ impl shader::Primitive for ImagePrimitive {
                     bounds_relative,
                 );
                 
-                registry.pipelines.insert(pipeline_key.clone(), pipeline);
+                registry.insert(pipeline_key.clone(), pipeline);
                 if self.debug {
                     debug!("ImagePrimitive::prepare - Pipeline created and stored");
                 }
             } else {
                 
                 // Update the texture in the existing pipeline
-                if let Some(pipeline) = registry.pipelines.get_mut(&pipeline_key) {
+                if let Some(pipeline) = registry.get_mut(&pipeline_key) {
                     if self.debug {
                         debug!("ImagePrimitive::prepare - Updating texture in existing pipeline");
                     }
@@ -349,7 +351,7 @@ impl shader::Primitive for ImagePrimitive {
                                             bounds_relative.0, bounds_relative.1,
                                             bounds_relative.2, bounds_relative.3);
                     
-                    if let Some(pipeline) = registry.pipelines.get(&pipeline_key) {
+                    if let Some(pipeline) = registry.get_ref(&pipeline_key) {
                         pipeline.render(target, encoder, clip_bounds);
                     } else {
                         debug!("ImagePrimitive::render - Pipeline NOT found for key: {}", pipeline_key);
@@ -382,9 +384,83 @@ impl shader::Primitive for ImagePrimitive {
 }
 
 // Registry to store pipelines
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PipelineRegistry {
-    pipelines: std::collections::HashMap<String, TexturePipeline>,
+    pipelines: HashMap<String, TexturePipeline>,
+    keys_order: VecDeque<String>,  // Tracks usage order
+    max_pipelines: usize,          // Maximum number of pipelines to keep
+}
+
+impl Default for PipelineRegistry {
+    fn default() -> Self {
+        Self {
+            pipelines: HashMap::default(),
+            keys_order: VecDeque::default(),
+            max_pipelines: 30,  // Default value, adjust based on your needs
+        }
+    }
+}
+
+impl PipelineRegistry {
+    // Add a method to insert a pipeline with LRU tracking
+    pub fn insert(&mut self, key: String, pipeline: TexturePipeline) {
+        // If key already exists, update its position in the order list
+        if self.pipelines.contains_key(&key) {
+            // Remove the key from its current position
+            if let Some(pos) = self.keys_order.iter().position(|k| k == &key) {
+                self.keys_order.remove(pos);
+            }
+        } else if self.pipelines.len() >= self.max_pipelines && !self.keys_order.is_empty() {
+            // We're at capacity and adding a new pipeline, remove the oldest one
+            if let Some(oldest_key) = self.keys_order.pop_front() {
+                self.pipelines.remove(&oldest_key);
+            }
+        }
+        
+        // Add the key to the end (most recently used)
+        self.keys_order.push_back(key.clone());
+        
+        // Insert or update the pipeline
+        self.pipelines.insert(key, pipeline);
+    }
+    
+    // Add a method to get a pipeline while updating LRU tracking
+    pub fn get(&mut self, key: &str) -> Option<&TexturePipeline> {
+        if self.pipelines.contains_key(key) {
+            // Update usage order: move this key to the end (most recently used)
+            if let Some(pos) = self.keys_order.iter().position(|k| k == key) {
+                self.keys_order.remove(pos);
+                self.keys_order.push_back(key.to_string());
+            }
+            
+            return self.pipelines.get(key);
+        }
+        None
+    }
+    
+    // Add a method to get a mutable pipeline while updating LRU tracking
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut TexturePipeline> {
+        if self.pipelines.contains_key(key) {
+            // Update usage order: move this key to the end (most recently used)
+            if let Some(pos) = self.keys_order.iter().position(|k| k == key) {
+                self.keys_order.remove(pos);
+                self.keys_order.push_back(key.to_string());
+            }
+            
+            return self.pipelines.get_mut(key);
+        }
+        None
+    }
+    
+    // Method to check if a key exists
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.pipelines.contains_key(key)
+    }
+    
+    // Add a non-mutable version of get that doesn't update LRU tracking
+    pub fn get_ref(&self, key: &str) -> Option<&TexturePipeline> {
+        self.pipelines.get(key)
+    }
 }
 
 // Implement Widget for our ImageShader
