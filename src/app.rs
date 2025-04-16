@@ -975,6 +975,9 @@ impl iced_winit::runtime::Program for DataViewer {
                 Event::Window(iced::window::Event::FileDropped(dropped_paths, _position)) => {
                     match self.pane_layout {
                         PaneLayout::SinglePane => {
+                            // Reset state first
+                            self.reset_state(-1);
+
                             debug!("File dropped: {:?}", dropped_paths.clone());
                             self.initialize_dir_path(dropped_paths[0].clone(), 0);
                         },
