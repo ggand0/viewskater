@@ -416,6 +416,22 @@ impl ImageCache {
 
     #[allow(dead_code)]
     pub fn clear_cache(&mut self) {
+        // Clear all collections
+        self.cached_data.clear();
+        self.cached_image_indices.clear();
+        self.cache_states.clear();
+        self.image_paths.clear();
+        self.num_files = 0;
+        self.current_index = 0;
+        self.current_offset = 0;
+        self.cache_count = 0;
+        self.slider_texture = None;
+
+        // Clear the loading queues
+        self.loading_queue.clear();
+        self.being_loaded_queue.clear();
+
+        // Reinitialize the cached_data vector (load_initial_images() expects this format)
         let mut cached_data = Vec::new();
         for _ in 0..(self.cache_count * 2 + 1) {
             cached_data.push(None);

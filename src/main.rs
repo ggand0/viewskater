@@ -63,6 +63,8 @@ use iced_wgpu::{get_image_rendering_diagnostics, log_image_rendering_stats};
 use iced_wgpu::engine::ImageConfig;
 use std::sync::mpsc::{self, Receiver};
 
+static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
+
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
 });
@@ -75,25 +77,15 @@ static _STATE_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
 static _WINDOW_EVENT_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Window Event"))
 });
-
-// Add this alongside your other statics
 static CURRENT_MEMORY_USAGE: Lazy<Mutex<u64>> = Lazy::new(|| {
     Mutex::new(0)
 });
-
-// Add this to track last memory update time
 static LAST_MEMORY_UPDATE: Lazy<Mutex<Instant>> = Lazy::new(|| {
     Mutex::new(Instant::now())
 });
-
-// Add this alongside your other statics
 static LAST_STATS_UPDATE: Lazy<Mutex<Instant>> = Lazy::new(|| {
     Mutex::new(Instant::now())
 });
-
-static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
-
-// Add these to track the phase relationship
 static LAST_RENDER_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
     Mutex::new(Instant::now())
 });
@@ -101,7 +93,6 @@ static LAST_ASYNC_DELIVERY_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
     Mutex::new(Instant::now())
 });
 
-// Add these static variables at module level
 static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
 const QUEUE_LOG_THRESHOLD: usize = 20;
 const QUEUE_RESET_THRESHOLD: usize = 50;
@@ -172,6 +163,7 @@ fn monitor_message_queue(state: &mut program::State<DataViewer>) {
 // Define a message type for renderer configuration requests
 enum RendererRequest {
     UpdateCompressionStrategy(CompressionStrategy),
+    ClearPrimitiveStorage,
     // Add other renderer configuration requests here if needed
 }
 
@@ -439,6 +431,16 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         
                                         debug!("Compression strategy updated successfully in main thread");
                                     }
+                                    RendererRequest::ClearPrimitiveStorage => {
+                                        debug!("Main thread handling primitive storage clear request");
+                                        
+                                        // Get engine lock
+                                        let mut engine_guard = engine.lock().unwrap();
+                                        
+                                        // Access the primitive storage directly
+                                        engine_guard.clear_primitive_storage();
+                                        debug!("Primitive storage cleared successfully");
+                                    },
                                 }
                             }
 
