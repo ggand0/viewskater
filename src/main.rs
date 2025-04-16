@@ -63,9 +63,6 @@ use iced_wgpu::{get_image_rendering_diagnostics, log_image_rendering_stats};
 use iced_wgpu::engine::ImageConfig;
 use std::sync::mpsc::{self, Receiver};
 
-// Updated sysinfo import - remove the traits
-use sysinfo::{System, Pid, ProcessesToUpdate};
-
 static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
 });
@@ -178,42 +175,9 @@ enum RendererRequest {
     // Add other renderer configuration requests here if needed
 }
 
-// Update this function to use the newer sysinfo API
 fn update_memory_usage() {
-    // Check if we should update (only once per second)
-    let should_update = {
-        if let Ok(last_update) = LAST_MEMORY_UPDATE.lock() {
-            last_update.elapsed().as_secs() >= 1
-        } else {
-            true
-        }
-    };
-    
-    if !should_update {
-        return;
-    }
-    
-    // Update the timestamp
-    if let Ok(mut last_update) = LAST_MEMORY_UPDATE.lock() {
-        *last_update = Instant::now();
-    }
-    
-    // Now proceed with the update
-    let mut system = System::new();
-    let pid = Pid::from_u32(std::process::id());
-    
-    // Refresh specifically for this process
-    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
-    
-    if let Some(process) = system.process(pid) {
-        let memory_used = process.memory();
-        if let Ok(mut mem) = CURRENT_MEMORY_USAGE.lock() {
-            *mem = memory_used;
-        }
-    }
-    
-    // Use trace level instead of debug for this message
-    trace!("Memory usage updated: {} bytes", CURRENT_MEMORY_USAGE.lock().unwrap());
+    // Just delegate to the utils::mem implementation
+    utils::mem::update_memory_usage();
 }
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
