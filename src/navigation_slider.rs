@@ -16,7 +16,7 @@ use other_os::*;
 use macos::*;
 
 #[allow(unused_imports)]
-use log::{Level, debug, info, warn, error};
+use log::{Level, trace, debug, info, warn, error};
 
 use image;
 use std::path::PathBuf;
@@ -345,7 +345,7 @@ pub async fn create_async_image_widget_task(
     
     // Measure file reading time
     let read_time = read_start.elapsed();
-    debug!("PERF: File read time for pos {}: {:?}", pos, read_time);
+    trace!("PERF: File read time for pos {}: {:?}", pos, read_time);
     
     match bytes_result {
         Ok(bytes) => {
@@ -357,11 +357,11 @@ pub async fn create_async_image_widget_task(
             
             // Measure handle creation time
             let handle_time = handle_start.elapsed();
-            debug!("PERF: Handle creation time for pos {}: {:?}", pos, handle_time);
+            trace!("PERF: Handle creation time for pos {}: {:?}", pos, handle_time);
             
             // Measure total function time
             let total_time = task_start.elapsed();
-            debug!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
+            trace!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
             
             Ok((pane_idx, pos, handle))
         },
