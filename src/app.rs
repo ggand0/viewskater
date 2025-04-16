@@ -179,13 +179,17 @@ impl DataViewer {
         }
     }
 
-    pub fn reset_state(&mut self) {
+    pub fn reset_state(&mut self, pane_index: isize) {
         // Reset loading status
         self.loading_status = loading_status::LoadingStatus::default();
 
         // Reset all panes
-        for pane in &mut self.panes {
-            pane.reset_state();
+        if pane_index == -1 {
+            for pane in &mut self.panes {
+                pane.reset_state();
+            }
+        } else {
+            self.panes[pane_index as usize].reset_state();
         }
         
         // Reset viewer state
@@ -330,8 +334,7 @@ impl DataViewer {
             Key::Character("w") => {
                 // Close the selected panes
                 if modifiers.control() {
-                    self.reset_state();
-                    //self.clear_primitive_storage();
+                    self.reset_state(-1);
                 }
             }
 
@@ -665,12 +668,17 @@ impl iced_winit::runtime::Program for DataViewer {
                 });
             }
             Message::FileDropped(pane_index, dropped_path) => {
+                // Reset state first
+                debug!("Message::FileDropped - Resetting state");
+                self.reset_state(pane_index);
+
+                // Loads the dropped file/directory
                 debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
                 debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}", self.panes[pane_index as usize].dir_loaded, pane_index, self.last_opened_pane);
                 self.initialize_dir_path( PathBuf::from(dropped_path), pane_index as usize);
             }
             Message::Close => {
-                self.reset_state();
+                self.reset_state(-1);
                 debug!("directory_path: {:?}", self.directory_path);
                 debug!("self.current_image_index: {}", self.current_image_index);
                 for (_cache_index, pane) in self.panes.iter_mut().enumerate() {
@@ -978,8 +986,11 @@ impl iced_winit::runtime::Program for DataViewer {
                 Event::Window(iced::window::Event::FileDropped(dropped_path, _)) => {
                     match self.pane_layout {
                         PaneLayout::SinglePane => {
+                            // Reset state first
+                            debug!("window::Event::FileDropped - Resetting state");
+                            self.reset_state(-1);
+
                             debug!("File dropped: {:?}", dropped_path);
-                            //self.initialize_dir_path(dropped_path, 0);
                             self.initialize_dir_path(dropped_path[0].clone(), 0);
                         },
                         PaneLayout::DualPane => {}
