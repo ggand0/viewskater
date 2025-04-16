@@ -2148,7 +2148,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -2176,7 +2176,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "bitflags 2.9.0",
  "bytes",
@@ -2204,7 +2204,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "futures",
  "iced_core",
@@ -2231,7 +2231,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "bitflags 2.9.0",
  "bytemuck",
@@ -2253,7 +2253,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -2265,7 +2265,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "bytes",
  "iced_core",
@@ -2277,7 +2277,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2293,7 +2293,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "bitflags 2.9.0",
  "bytemuck",
@@ -2316,7 +2316,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "iced_renderer",
  "iced_runtime",
@@ -2331,7 +2331,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#2b36dd7d38cd530e2767ef9229bacaf32d459ab3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#70eb0a25ebbf16db4fb02b0fcd50521b0c2f929d"
 dependencies = [
  "iced_futures",
  "iced_graphics",
@@ -2755,9 +2755,9 @@ checksum = "03087c2bad5e1034e8cace5926dec053fb3790248370865f5117a7d0213354c8"
 
 [[package]]
 name = "libc"
-version = "0.2.171"
+version = "0.2.172"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
+checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
 name = "libflate"
@@ -3856,9 +3856,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.94"
+version = "1.0.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31971752e70b8b2686d7e46ec17fb38dad4051d94024c88df49b667caea9c84"
+checksum = "02b3e5e68a3a1a02aad3ec490a98007cbc13c37cbe84a3cd7b8e406d76e7f778"
 dependencies = [
  "unicode-ident",
 ]
@@ -4417,9 +4417,9 @@ dependencies = [
 
 [[package]]
 name = "self_cell"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2fdfc24bc566f839a2da4c4295b82db7d25a24253867d5c64355abb5799bdbe"
+checksum = "0f7d95a54511e0c7be3f51e8867aa8cf35148d7b9445d44de2f943e2b206e749"
 
 [[package]]
 name = "semver"
