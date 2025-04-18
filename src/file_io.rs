@@ -499,23 +499,9 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     builder.filter(None, LevelFilter::Off);
 
     builder.format(|buf: &mut Formatter, record: &Record| {
-        let mut level_style = buf.style();
-        let mut meta_style = buf.style(); // For timestamp & filename/line number
-    
-        // Set colors
-        match record.level() {
-            Level::Error => level_style.set_color(Color::Red).set_bold(true),
-            Level::Warn => level_style.set_color(Color::Yellow).set_bold(true),
-            Level::Info => level_style.set_color(Color::Green).set_bold(true),
-            Level::Debug => level_style.set_color(Color::Blue).set_bold(true),
-            Level::Trace => level_style.set_color(Color::White),
-        };
-    
-        meta_style.set_color(Color::Rgb(120, 120, 120)); // Dark grey for timestamps & filename/line numbers
-    
-        let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ"); // ISO 8601 UTC format
+        let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
         
-        // Include module path and line number in formatted output
+        // Create the module:line part
         let module_info = if let (Some(module), Some(line)) = (record.module_path(), record.line()) {
             format!("{}:{}", module, line)
         } else if let Some(module) = record.module_path() {
@@ -525,14 +511,39 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
         } else {
             "unknown".to_string()
         };
-    
+        
+        let mut level_style = buf.style();
+        let mut meta_style = buf.style();
+        
+        // Set level colors
+        match record.level() {
+            Level::Error => level_style.set_color(Color::Red).set_bold(true),
+            Level::Warn => level_style.set_color(Color::Yellow).set_bold(true),
+            Level::Info => level_style.set_color(Color::Green).set_bold(true),
+            Level::Debug => level_style.set_color(Color::Blue).set_bold(true),
+            Level::Trace => level_style.set_color(Color::White),
+        };
+        
+        // Set meta style color based on platform
+        #[cfg(target_os = "macos")]
+        {
+            // Color::Rgb does not work on macOS, so we use Color::Blue as a workaround
+            meta_style.set_color(Color::Blue);
+        }
+        
+        #[cfg(not(target_os = "macos"))]
+        {
+            // Color formatting with Color::Rgb works fine on Windows/Linux
+            meta_style.set_color(Color::Rgb(120, 120, 120));
+        }
+        
         writeln!(
             buf,
             "{} {} {} {}",
-            meta_style.value(timestamp),                      // Dark grey timestamp
-            level_style.value(record.level()),               // Colorized log level
-            meta_style.value(module_info),                   // Module:line
-            record.args()                                    // Log message
+            meta_style.value(timestamp),
+            level_style.value(record.level()),
+            meta_style.value(module_info),
+            record.args()
         )
     });
     
