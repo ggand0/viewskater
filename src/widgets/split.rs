@@ -355,6 +355,7 @@ where
                 // Detect double-click event on the divider
                 if divider_layout
                     .bounds()
+                    .expand(10.0)
                     .contains(cursor.position().unwrap_or_default())
                 {
                     split_state.dragging = true;
@@ -521,8 +522,10 @@ where
         let divider_layout = children
             .next()
             .expect("Graphics: Layout should have a divider layout");
+        
+        // Increase the hitbox expansion from 5.0 to 10.0 pixels
         let divider_mouse_interaction = if divider_layout
-            .bounds().expand(5.0)
+            .bounds().expand(10.0)
             .contains(cursor.position().unwrap_or_default())
         {
             match self.axis {
@@ -532,6 +535,7 @@ where
         } else {
             mouse::Interaction::default()
         };
+        
         let second_layout = children
             .next()
             .expect("Graphics: Layout should have a second layout");
