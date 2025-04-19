@@ -180,7 +180,7 @@ where
             //divider_init_position: divider_position,
             axis,
             padding: 0.0,
-            spacing: 10.0, // was 5.0
+            spacing: 5.0, // was 5.0
             width: Length::Fill,
             height: Length::Fill,
             min_size_first: 5,
@@ -734,7 +734,7 @@ where
                 },
                 shadow: Default::default(), // No shadow
             },
-            Background::Color(Color::from_rgb(0.8, 0.8, 0.8)), // Using a brighter color for debugging
+            Background::Color(Color::from_rgb(0.2, 0.2, 0.2)),
         );
         
 
