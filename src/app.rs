@@ -99,6 +99,7 @@ pub enum Message {
     SetCacheStrategy(CacheStrategy),
     SetCompressionStrategy(CompressionStrategy),
     ToggleFpsDisplay(bool),
+    ToggleSplitOrientation(bool),
 }
 
 pub struct DataViewer {
@@ -130,6 +131,7 @@ pub struct DataViewer {
     pub show_fps: bool,
     pub compression_strategy: CompressionStrategy,
     pub renderer_request_sender: Sender<RendererRequest>,
+    pub is_horizontal_split: bool,
 }
 
 impl DataViewer {
@@ -170,6 +172,7 @@ impl DataViewer {
             //compression_strategy: CompressionStrategy::Bc1,
             compression_strategy: CompressionStrategy::None,
             renderer_request_sender,
+            is_horizontal_split: false,
         }
     }
 
@@ -620,6 +623,10 @@ impl DataViewer {
             }
         }
     }
+
+    fn toggle_split_orientation(&mut self) {
+        self.is_horizontal_split = !self.is_horizontal_split;
+    }
 }
 
 
@@ -1016,6 +1023,7 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ToggleFpsDisplay(value) => {
                 self.show_fps = value;
             }
+            Message::ToggleSplitOrientation(_bool) => { self.toggle_split_orientation(); },
         }
 
         if self.skate_right {
