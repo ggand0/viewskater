@@ -524,7 +524,14 @@ impl DataViewer {
                 }
             }
             PaneLayout::DualPane => {
-                let left_pane_filename = if self.panes[0].dir_loaded {
+                // Select labels based on split orientation
+                let (first_label, second_label) = if self.is_horizontal_split {
+                    ("Top", "Bottom")
+                } else {
+                    ("Left", "Right")
+                };
+
+                let first_pane_filename = if self.panes[0].dir_loaded {
                     self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index]
                         .file_name()
                         .map(|name| name.to_string_lossy().to_string())
@@ -532,8 +539,8 @@ impl DataViewer {
                 } else {
                     String::from("No File")
                 };
-    
-                let right_pane_filename = if self.panes[1].dir_loaded {
+
+                let second_pane_filename = if self.panes[1].dir_loaded {
                     self.panes[1].img_cache.image_paths[self.panes[1].img_cache.current_index]
                         .file_name()
                         .map(|name| name.to_string_lossy().to_string())
@@ -541,8 +548,8 @@ impl DataViewer {
                 } else {
                     String::from("No File")
                 };
-    
-                format!("Left: {} | Right: {}", left_pane_filename, right_pane_filename)
+
+                format!("{}: {} | {}: {}", first_label, first_pane_filename, second_label, second_pane_filename)
             }
         }
     }
