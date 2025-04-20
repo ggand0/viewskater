@@ -209,7 +209,7 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
         }))
         (container(
             toggler::Toggler::new(
-                Some("  Horizontal Split".into()),
+                Some("  Horizontal Split (H)".into()),
                 app.is_horizontal_split,
                 Message::ToggleSplitOrientation,
             ).width(Length::Fill)
