@@ -34,6 +34,7 @@ use crate::{app::Message, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
 use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
 use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
+use crate::menu::MENU_BAR_HEIGHT;
 
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -227,9 +228,10 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 // Use individual sliders for each pane (build_ui_dual_pane_slider2)
                 let panes = build_ui_dual_pane_slider2(
                     &app.panes, 
-                    app.ver_divider_position,
+                    app.divider_position,
                     app.show_footer,
-                    app.is_slider_moving
+                    app.is_slider_moving,
+                    app.is_horizontal_split
                 );
                 
                 container(
@@ -250,8 +252,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 // Build panes using the split component
                 let panes = build_ui_dual_pane_slider1(
                     &app.panes, 
-                    app.ver_divider_position,
-                    app.is_slider_moving
+                    app.divider_position,
+                    app.is_slider_moving,
+                    app.is_horizontal_split
                 );
 
                 let footer_texts = vec![
@@ -309,8 +312,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
 pub fn build_ui_dual_pane_slider1(
     panes: &[Pane],
-    ver_divider_position: Option<u16>,
-    is_slider_moving: bool
+    divider_position: Option<u16>,
+    is_slider_moving: bool,
+    is_horizontal_split: bool
 ) -> Element<Message, WinitTheme, Renderer> {
     let first_img = panes[0].build_ui_container(is_slider_moving);
     let second_img = panes[1].build_ui_container(is_slider_moving);
@@ -321,12 +325,13 @@ pub fn build_ui_dual_pane_slider1(
         first_img,
         second_img,
         is_selected,
-        ver_divider_position,
-        Axis::Vertical,
-        Message::OnVerResize,
+        divider_position,
+        if is_horizontal_split { Axis::Horizontal } else { Axis::Vertical },
+        Message::OnSplitResize,
         Message::ResetSplit,
         Message::FileDropped,
-        Message::PaneSelected
+        Message::PaneSelected,
+        MENU_BAR_HEIGHT,
     )
     .into()
 }
@@ -334,9 +339,10 @@ pub fn build_ui_dual_pane_slider1(
 
 pub fn build_ui_dual_pane_slider2(
     panes: &[Pane],
-    ver_divider_position: Option<u16>,
+    divider_position: Option<u16>,
     show_footer: bool,
-    is_slider_moving: bool
+    is_slider_moving: bool,
+    is_horizontal_split: bool
 ) -> Element<Message, WinitTheme, Renderer> {
     let footer_texts = vec![
         format!(
@@ -431,12 +437,13 @@ pub fn build_ui_dual_pane_slider2(
         first_img,
         second_img,
         is_selected,
-        ver_divider_position,
-        Axis::Vertical,
-        Message::OnVerResize,
+        divider_position,
+        if is_horizontal_split { Axis::Horizontal } else { Axis::Vertical },
+        Message::OnSplitResize,
         Message::ResetSplit,
         Message::FileDropped,
-        Message::PaneSelected
+        Message::PaneSelected,
+        MENU_BAR_HEIGHT,
     )
     .into()
 }

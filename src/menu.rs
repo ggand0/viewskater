@@ -42,9 +42,16 @@ pub enum PaneLayout {
     DualPane,
 }
 
-const _MENU_FONT_SIZE : u16 = 16;
+const MENU_FONT_SIZE : u16 = 16;
 const MENU_ITEM_FONT_SIZE : u16 = 14;
 const _CARET_PATH : &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/svg/caret-right-fill.svg");
+
+// Menu padding constants
+const MENU_PADDING_VERTICAL: u16 = 4; // padding for top and bottom
+const MENU_PADDING_HORIZONTAL: u16 = 8; // padding for left and right
+
+// A constant for the menu bar height that other components can reference
+pub const MENU_BAR_HEIGHT: f32 = (MENU_FONT_SIZE + MENU_PADDING_VERTICAL * 2) as f32; // 16px base height + 8px padding
 
 pub fn button_style(theme: &WinitTheme, status: button::Status, style_type: &str) -> Style {
     match style_type {
@@ -202,6 +209,16 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
         }))
         (container(
             toggler::Toggler::new(
+                Some("  Horizontal Split (H)".into()),
+                app.is_horizontal_split,
+                Message::ToggleSplitOrientation,
+            ).width(Length::Fill)
+        ).style(|_theme: &WinitTheme| container::Style {
+            text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+            ..container::Style::default()
+        }))
+        (container(
+            toggler::Toggler::new(
                 Some("  Toggle FPS Display".into()),
                 app.show_fps,
                 Message::ToggleFpsDisplay,
@@ -298,37 +315,37 @@ pub fn build_menu(app: &DataViewer) -> MenuBar<Message, WinitTheme, Renderer> {
     menu_bar!(
         (
             container(
-                text("File").size(16).font(Font::with_name("Roboto"))
+                text("File").size(MENU_FONT_SIZE).font(Font::with_name("Roboto"))
             )
             .style(|_theme: &WinitTheme| container::Style {
                 text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
                 ..container::Style::default()
             })
-            .padding([4, 8]),
+            .padding([MENU_PADDING_VERTICAL, MENU_PADDING_HORIZONTAL]),
             menu_1(app)
         )
 
         (
             container(
-                text("Controls").size(16).font(Font::with_name("Roboto")),//.align_y(alignment::Vertical::Center)
+                text("Controls").size(MENU_FONT_SIZE).font(Font::with_name("Roboto")),//.align_y(alignment::Vertical::Center)
             )
             .style(|_theme: &WinitTheme| container::Style {
                 text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
                 ..container::Style::default()
             })
-            .padding([4, 8]),
+            .padding([MENU_PADDING_VERTICAL, MENU_PADDING_HORIZONTAL]), // // [top/bottom, left/right
             menu_3(app)
         )
 
         (
             container(
-                text("Help").size(16).font(Font::with_name("Roboto"))
+                text("Help").size(MENU_FONT_SIZE).font(Font::with_name("Roboto"))
             )
             .style(|_theme: &WinitTheme| container::Style {
                 text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
                 ..container::Style::default()
             })
-            .padding([4, 8]),
+            .padding([MENU_PADDING_VERTICAL, MENU_PADDING_HORIZONTAL]),
             menu_help(app)
         )
     )

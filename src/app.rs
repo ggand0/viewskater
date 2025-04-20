@@ -85,8 +85,7 @@ pub enum Message {
     SliderImageWidgetLoaded(Result<(usize, usize, Handle), (usize, usize)>),
     Event(Event),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
-    OnVerResize(u16),
-    OnHorResize(u16),
+    OnSplitResize(u16),
     ResetSplit(u16),
     ToggleSliderType(bool),
     TogglePaneLayout(PaneLayout),
@@ -99,6 +98,7 @@ pub enum Message {
     SetCacheStrategy(CacheStrategy),
     SetCompressionStrategy(CompressionStrategy),
     ToggleFpsDisplay(bool),
+    ToggleSplitOrientation(bool),
 }
 
 pub struct DataViewer {
@@ -108,8 +108,7 @@ pub struct DataViewer {
     pub current_image_index: usize,
     pub slider_value: u16,                              // for master slider
     pub prev_slider_value: u16,                         // for master slider
-    pub ver_divider_position: Option<u16>,
-    pub hor_divider_position: Option<u16>,
+    pub divider_position: Option<u16>,
     pub is_slider_dual: bool,
     pub show_footer: bool,
     pub pane_layout: PaneLayout,
@@ -130,6 +129,7 @@ pub struct DataViewer {
     pub show_fps: bool,
     pub compression_strategy: CompressionStrategy,
     pub renderer_request_sender: Sender<RendererRequest>,
+    pub is_horizontal_split: bool,
 }
 
 impl DataViewer {
@@ -145,8 +145,7 @@ impl DataViewer {
             current_image_index: 0,
             slider_value: 0,
             prev_slider_value: 0,
-            ver_divider_position: None,
-            hor_divider_position: None,
+            divider_position: None,
             is_slider_dual: false,
             show_footer: true,
             pane_layout: PaneLayout::SinglePane,
@@ -170,6 +169,7 @@ impl DataViewer {
             //compression_strategy: CompressionStrategy::Bc1,
             compression_strategy: CompressionStrategy::None,
             renderer_request_sender,
+            is_horizontal_split: false,
         }
     }
 
@@ -270,6 +270,14 @@ impl DataViewer {
             Key::Named(Named::Space) | Key::Character("b") => {
                 debug!("Space pressed");
                 self.toggle_slider_type();
+            }
+
+            Key::Character("h") | Key::Character("H") => {
+                debug!("H key pressed");
+                // Only toggle split orientation in dual pane mode
+                if self.pane_layout == PaneLayout::DualPane {
+                    self.toggle_split_orientation();
+                }
             }
 
             Key::Character("1") => {
@@ -516,7 +524,14 @@ impl DataViewer {
                 }
             }
             PaneLayout::DualPane => {
-                let left_pane_filename = if self.panes[0].dir_loaded {
+                // Select labels based on split orientation
+                let (first_label, second_label) = if self.is_horizontal_split {
+                    ("Top", "Bottom")
+                } else {
+                    ("Left", "Right")
+                };
+
+                let first_pane_filename = if self.panes[0].dir_loaded {
                     self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index]
                         .file_name()
                         .map(|name| name.to_string_lossy().to_string())
@@ -524,8 +539,8 @@ impl DataViewer {
                 } else {
                     String::from("No File")
                 };
-    
-                let right_pane_filename = if self.panes[1].dir_loaded {
+
+                let second_pane_filename = if self.panes[1].dir_loaded {
                     self.panes[1].img_cache.image_paths[self.panes[1].img_cache.current_index]
                         .file_name()
                         .map(|name| name.to_string_lossy().to_string())
@@ -533,8 +548,8 @@ impl DataViewer {
                 } else {
                     String::from("No File")
                 };
-    
-                format!("Left: {} | Right: {}", left_pane_filename, right_pane_filename)
+
+                format!("{}: {} | {}: {}", first_label, first_pane_filename, second_label, second_pane_filename)
             }
         }
     }
@@ -619,6 +634,10 @@ impl DataViewer {
                 }
             }
         }
+    }
+
+    fn toggle_split_orientation(&mut self) {
+        self.is_horizontal_split = !self.is_horizontal_split;
     }
 }
 
@@ -726,9 +745,8 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 }
             }
-            Message::OnVerResize(position) => { self.ver_divider_position = Some(position); },
-            Message::OnHorResize(position) => { self.hor_divider_position = Some(position); },
-            Message::ResetSplit(_position) => { self.ver_divider_position = None; },
+            Message::OnSplitResize(position) => { self.divider_position = Some(position); },
+            Message::ResetSplit(_position) => { self.divider_position = None; },
             Message::ToggleSliderType(_bool) => { self.toggle_slider_type(); },
             Message::TogglePaneLayout(pane_layout) => { self.toggle_pane_layout(pane_layout); },
             Message::ToggleFooter(_bool) => { self.toggle_footer(); },
@@ -1016,6 +1034,7 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ToggleFpsDisplay(value) => {
                 self.show_fps = value;
             }
+            Message::ToggleSplitOrientation(_bool) => { self.toggle_split_orientation(); },
         }
 
         if self.skate_right {

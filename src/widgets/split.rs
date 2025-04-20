@@ -128,6 +128,9 @@ where
 
     // Whether to enable pane selection
     enable_pane_selection: bool,
+
+    // Add a new field for the menu bar height
+    menu_bar_height: f32,
 }
 
 impl<'a, Message, Theme, Renderer> Split<'a, Message, Theme, Renderer>
@@ -155,6 +158,8 @@ where
         on_double_click: G,
         on_drop: H,
         on_select: I,
+        // Add menu_bar_height parameter, with a default of 0
+        menu_bar_height: f32,
     ) -> Self
     where
         A: Into<Element<'a, Message, Theme, Renderer>>,
@@ -180,7 +185,7 @@ where
             //divider_init_position: divider_position,
             axis,
             padding: 0.0,
-            spacing: 5.0,
+            spacing: 5.0, // was 5.0
             width: Length::Fill,
             height: Length::Fill,
             min_size_first: 5,
@@ -191,6 +196,7 @@ where
             on_select: Box::new(on_select),
             class: Theme::default(),
             enable_pane_selection: enable_pane_selection,
+            menu_bar_height,
         }
     }
 
@@ -295,8 +301,12 @@ where
             .layout(tree, renderer, limits);
 
         match self.axis {
-            Axis::Horizontal => horizontal_split(tree, self, renderer, limits, &space),
-            Axis::Vertical => vertical_split(tree, self, renderer, limits, &space),
+            Axis::Horizontal => {
+                horizontal_split(tree, self, renderer, limits, &space)
+            },
+            Axis::Vertical => {
+                vertical_split(tree, self, renderer, limits, &space)
+            },
         }
     }
 
@@ -349,6 +359,7 @@ where
                 // Detect double-click event on the divider
                 if divider_layout
                     .bounds()
+                    .expand(10.0)
                     .contains(cursor.position().unwrap_or_default())
                 {
                     split_state.dragging = true;
@@ -364,7 +375,7 @@ where
                                 Axis::Horizontal => cursor.position().map(|p| p.y),
                                 Axis::Vertical => cursor.position().map(|p| p.x),
                             };
-    
+                            
                             if let Some(position) = double_click_position {
                                 self.divider_position = None;
                                 split_state.dragging = false;
@@ -404,74 +415,53 @@ where
                 debug!("FILEHOVER POSITION: {:?}", position);
             }
 
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
-            Event::Window(iced::window::Event::FileDropped(paths, position)) => {
-                debug!("FILEDROP POSITION: {:?}", position);
-                let mut index = 0;
-                debug!("layout children length: {}", layout.children().count());
-                for child_layout in layout.children() {
-                    // debug!("Child layout: {:?}", child_layout);
-                    let bounds = child_layout.bounds();
-                    debug!("Child bounds: {:?}", bounds);
-                    // debug!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
-                    // debug!("Cursor position: {:?}", cursor.position());
-
-                    // TODO: Implement enum LayoutItem { Pane, Divider }
-                    /////// BEGIN HACK
-                    if (bounds.width - 5.0).abs() < std::f32::EPSILON {
-                        // This is a divider
-                        continue;
-                    }debug!("split debug1");
-                    /////// END HACK
-            
-                    let custom_position = Point::new(position.x as f32, position.y as f32);
-                    debug!("custom_position, bounds.contains(custom_position: {:?}, {:?}", custom_position, bounds.contains(custom_position));
-                    if bounds.contains(custom_position) {
-                        shell.publish((self.on_drop)(index, paths[0].to_string_lossy().to_string()));
-                    }
-            
-                    index += 1;
-                }
-            }
-
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileHovered(_path)) => {
                 // Access the cursor position from the FileHovered event
                 debug!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
-
             }
-    
+
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            Event::Window(iced::window::Event::FileDropped(paths, position)) => {
+                debug!("FILEDROP POSITION: {:?}", position);
+                
+                let mut children = layout.children();
+                let first_layout = children.next().expect("Missing first layout");
+                let _divider_layout = children.next().expect("Missing divider layout");
+                let second_layout = children.next().expect("Missing second layout");
+                
+                // Convert position to Point for checking
+                let custom_position = Point::new(position.x as f32, position.y as f32);
+                
+                // Check which pane contains the position
+                if first_layout.bounds().contains(custom_position) {
+                    shell.publish((self.on_drop)(0, paths[0].to_string_lossy().to_string()));
+                } else if second_layout.bounds().contains(custom_position) {
+                    shell.publish((self.on_drop)(1, paths[0].to_string_lossy().to_string()));
+                }
+            }
+
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileDropped(path, _)) => {
-                let mut index = 0;
-                debug!("layout children length: {}", layout.children().count());
-                for child_layout in layout.children() {
-                    debug!("Child layout: {:?}", child_layout);
-                    let bounds = child_layout.bounds();
-                    debug!("Child bounds: {:?}", bounds);
-                    debug!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
-                    // debug!("Cursor position: {:?}", cursor.position());
-    
-                    // TODO: Implement enum LayoutItem { Pane, Divider }
-                    /////// BEGIN HACK
-                    if (bounds.width - 5.0).abs() < std::f32::EPSILON {
-                        // This is a divider
-                        continue;
-                    }
-                    /////// END HACK
-    
-                    // Workaround for the winit bug on Mac OS when dragging files with trackpad
-                    /*if cursor.position().unwrap_or_default() == (iced::Point { x: 0.0, y: 0.0 }) {
-                        shell.publish(((self.on_drop)(-2, path.to_string_lossy().to_string())));
-                        return event::Status::Captured;
-                    }*/
-            
-                    if bounds.contains(cursor.position().unwrap_or_default()) {
-                        //shell.publish((self.on_drop)(index, path.to_string_lossy().to_string()));
-                        shell.publish((self.on_drop)(index, path[0].to_string_lossy().to_string()));
-                        break;
-                    }
-                    index += 1;
+                let mut children = layout.children();
+                let first_layout = children.next().expect("Missing first layout");
+                let _divider_layout = children.next().expect("Missing divider layout");
+                let second_layout = children.next().expect("Missing second layout");
+                
+                debug!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
+                
+                // Check which pane the cursor is over and use the correct index
+                let cursor_pos = cursor.position().unwrap_or_default();
+                
+                // Check first pane (index 0)
+                if first_layout.bounds().contains(cursor_pos) {
+                    debug!("FileDropped - First pane");
+                    shell.publish((self.on_drop)(0, path[0].to_string_lossy().to_string()));
+                } 
+                // Check second pane (index 1)
+                else if second_layout.bounds().contains(cursor_pos) {
+                    debug!("FileDropped - Second pane");
+                    shell.publish((self.on_drop)(1, path[0].to_string_lossy().to_string()));
                 }
             }
 
@@ -485,14 +475,14 @@ where
 
             Event::Mouse(mouse::Event::CursorMoved { position })
             | Event::Touch(touch::Event::FingerMoved { position, .. }) => {
-                // debug!("CursorMoved Cursor position: {:?}", position);
                 if split_state.dragging {
                     let position = match self.axis {
-                        Axis::Horizontal => position.y,
+                        // NOTE: Subtract menu_bar_height to account for the height of the menu bar
+                        // e.g., 16px base height coming from the font size + 4px padding on top/bottom sides
+                        Axis::Horizontal => position.y - self.menu_bar_height,
                         Axis::Vertical => position.x,
                     };
                     shell.publish((self.on_resize)(position as u16));
-
                 }
             }
 
@@ -536,8 +526,10 @@ where
         let divider_layout = children
             .next()
             .expect("Graphics: Layout should have a divider layout");
+        
+        // Increase the hitbox expansion from 5.0 to 10.0 pixels
         let divider_mouse_interaction = if divider_layout
-            .bounds().expand(5.0)
+            .bounds().expand(10.0)
             .contains(cursor.position().unwrap_or_default())
         {
             match self.axis {
@@ -547,6 +539,7 @@ where
         } else {
             mouse::Interaction::default()
         };
+        
         let second_layout = children
             .next()
             .expect("Graphics: Layout should have a second layout");
@@ -715,34 +708,30 @@ where
         let bounds = divider_layout.bounds();
         let is_horizontal = bounds.width >= bounds.height;
 
-        // Create a modified Rectangle for a thin line
+        // Create a modified Rectangle for a thin line, centered within the divider area
         let thin_rectangle = if is_horizontal {
             // For horizontal dividers
             Rectangle {
-                x: bounds.x - 5.0,
-                y: bounds.y,
-                width: bounds.width + 5.0,
+                x: bounds.x,
+                y: bounds.y + (bounds.height - 1.0) / 2.0, // Center the 1px line
+                width: bounds.width + 10.0,
                 height: 1.0,
             }
         } else {
             // For vertical dividers
-            // TODO: when there's another pane above, -5.0/+5.0,
-            // when it's not, 0.0/+10.0
             Rectangle {
-                x: bounds.x + 2.0,
+                x: bounds.x + (bounds.width - 1.0) / 2.0, // Center the 1px line
                 y: bounds.y,
                 width: 1.0,
-                height: bounds.height + 10.0,
+                height: bounds.height + 10.0, // `+ 10.0` is needed to make the divider reach the top edge of footer
             }
         };
 
-
-        // Draw the divider
+        // Draw the divider (thin line)
         renderer.fill_quad(
             renderer::Quad {
                 bounds: thin_rectangle,
                 border: Border {
-                    //color: style_divider.divider_border_color,
                     color: style_divider.border.color,
                     width: 0.0,
                     radius: Radius::new(0.0),
@@ -907,43 +896,48 @@ where
     Renderer: 'a + renderer::Renderer,
     Theme: Catalog,
 {
-    if space.bounds().height
-        < split.spacing + f32::from(split.min_size_first + split.min_size_second)
-    {
-        return Node::with_children(
-            space.bounds().size(),
-            vec![
-                split.first.as_widget().layout(
-                    &mut tree.children[0],
-                    renderer,
-                    &limits.clone().shrink(Size::new(0.0, space.bounds().height)),
-                ),
-                Node::new(Size::new(space.bounds().height, split.spacing)),
-                split.second.as_widget().layout(
-                    &mut tree.children[1],
-                    renderer,
-                    &limits.clone().shrink(Size::new(0.0, space.bounds().width)),
-                ),
-            ],
-        );
+    let total_height = space.bounds().height;
+
+    if total_height < split.spacing + f32::from(split.min_size_first + split.min_size_second) {
+        return Node::with_children(space.bounds().size(), vec![
+            split.first.as_widget().layout(
+                &mut tree.children[0],
+                renderer,
+                &limits.clone().shrink(Size::new(0.0, total_height)),
+            ),
+            Node::new(Size::new(space.bounds().width, split.spacing)),
+            split.second.as_widget().layout(
+                &mut tree.children[1],
+                renderer,
+                &limits.clone().shrink(Size::new(0.0, total_height)),
+            ),
+        ]);
     }
 
-    let divider_position = split
-        .divider_position
-        .unwrap_or_else(|| (space.bounds().height / 2.0) as u16)
-        .max((split.spacing / 2.0) as u16);
-    let divider_position = (divider_position - (split.spacing / 2.0) as u16).clamp(
-        split.min_size_first,
-        space.bounds().height as u16 - split.min_size_second - split.spacing as u16,
+    // Calculate available content height (total minus spacing)
+    let available_content_height = total_height - split.spacing;
+    
+    // Calculate equal height for both panes
+    let equal_pane_height = available_content_height / 2.0;
+    
+    // Default divider position is set to create equal panes
+    let divider_position = split.divider_position.unwrap_or_else(|| equal_pane_height as u16);
+    
+    // divider_position is always positive: measure from start (top)
+    let effective_position = divider_position.max(((split.spacing / 2.0) as i16).try_into().unwrap()) as f32;
+
+    // Clamp the effective position to respect minimum sizes
+    let clamped_position = effective_position.clamp(
+        split.min_size_first as f32,
+        total_height - split.min_size_second as f32 - split.spacing,
     );
 
     let padding = Padding::from(split.padding as u16);
+
+    // Layout first element
     let first_limits = limits
         .clone()
-        .shrink(Size::new(
-            0.0,
-            space.bounds().height - f32::from(divider_position),
-        ))
+        .shrink(Size::new(0.0, total_height - clamped_position))
         .shrink(padding);
     let mut first = split
         .first
@@ -954,25 +948,38 @@ where
         space.bounds().y + split.padding,
     ));
 
+    // Keep the divider code mostly unchanged, but make the node as tall as split.spacing
+    // The actual divider line will be drawn centered within this space
     let mut divider = Node::new(Size::new(space.bounds().width, split.spacing));
-    divider.move_to_mut(Point::new(space.bounds().x, f32::from(divider_position)));
+    divider.move_to_mut(Point::new(space.bounds().x, clamped_position));
 
+    // Layout second element
     let second_limits = limits
         .clone()
-        .shrink(Size::new(0.0, f32::from(divider_position) + split.spacing))
+        .shrink(Size::new(0.0, clamped_position + split.spacing))
         .shrink(padding);
-    let mut second =
-        split
-            .second
-            .as_widget()
-            .layout(&mut tree.children[1], renderer, &second_limits);
+    let mut second = split
+        .second
+        .as_widget()
+        .layout(&mut tree.children[1], renderer, &second_limits);
     second.move_to_mut(Point::new(
         space.bounds().x + split.padding,
-        space.bounds().y + f32::from(divider_position) + split.spacing + split.padding,
+        space.bounds().y + clamped_position + split.spacing + split.padding,
     ));
 
+    // Debug logs to verify positions and heights
+    //debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}", 
+    //       equal_pane_height,
+    //       space.bounds().y + split.padding,
+    //       clamped_position,
+    //       space.bounds().y + clamped_position + split.spacing + split.padding,
+    //       clamped_position - (space.bounds().y + split.padding),
+    //       total_height - (clamped_position + split.spacing + split.padding*2.0));
+
+    // Maintain the original 3-node structure expected by other methods
     Node::with_children(space.bounds().size(), vec![first, divider, second])
 }
+
 
 /// Do a vertical split.
 fn vertical_split<'a, Message, Theme, Renderer>(
@@ -986,9 +993,13 @@ where
     Renderer: 'a + renderer::Renderer,
     Theme: Catalog,
 {
+    let bounds = space.bounds();
+    debug!("VERTICAL Split calculation - bounds: {:?}", bounds);
+    
     if space.bounds().width
         < split.spacing + f32::from(split.min_size_first + split.min_size_second)
     {
+        debug!("VERTICAL Split - insufficient width for proper split, using fallback layout");
         return Node::with_children(
             space.bounds().size(),
             vec![
@@ -1007,23 +1018,48 @@ where
         );
     }
 
+    // Calculate the actual size available for content (excluding padding)
+    let available_width = space.bounds().width - (2.0 * split.padding);
+    
+    // Define spacing around the divider (on each side)
+    let gap = split.spacing; // Gap between content and divider
+    let divider_width = 1.0; // Width of the actual divider line
+    let total_spacing = 2.0 * gap + divider_width; // Total space needed for divider + gaps
+    
+    // Calculate the divider position (position where the divider's center will be)
     let divider_position = split
         .divider_position
-        .unwrap_or_else(|| (space.bounds().width / 2.0) as u16)
-        .max((split.spacing / 2.0) as u16);
-    let divider_position = (divider_position - (split.spacing / 2.0) as u16).clamp(
+        .unwrap_or_else(|| (available_width / 2.0) as u16)
+        .max((total_spacing / 2.0) as u16);
+    
+    // Ensure divider position remains within bounds
+    let divider_position = divider_position.clamp(
         split.min_size_first,
-        space.bounds().width as u16 - split.min_size_second - split.spacing as u16,
+        (available_width - f32::from(split.min_size_second) - total_spacing) as u16,
     );
+    
+    debug!("VERTICAL Split calculation: available_width={}, divider_position={}, spacing={}", 
+           available_width, divider_position, split.spacing);
+    
+    // Calculate positions of elements
+    let divider_center_x = space.bounds().x + split.padding + f32::from(divider_position);
+    
+    // The first element should end before the left gap
+    let first_end_x = divider_center_x - gap - divider_width/2.0;
+    
+    // The divider should be in the center of the gap
+    let divider_left_x = divider_center_x - divider_width/2.0;
+    
+    // The second element should start after the right gap
+    let second_start_x = divider_center_x + gap + divider_width/2.0;
 
-    let padding = Padding::from(split.padding as u16);
+    // Layout the first element with appropriate width
+    let first_width = first_end_x - (space.bounds().x + split.padding);
     let first_limits = limits
         .clone()
-        .shrink(Size::new(
-            space.bounds().width - f32::from(divider_position),
-            0.0,
-        ))
-        .shrink(padding);
+        .width(first_width)
+        .shrink(Padding::from(split.padding as u16));
+    
     let mut first = split
         .first
         .as_widget()
@@ -1033,24 +1069,51 @@ where
         space.bounds().y + split.padding,
     ));
 
-    let mut divider = Node::new(Size::new(split.spacing, space.bounds().height));
-    divider.move_to_mut(Point::new(f32::from(divider_position), space.bounds().y));
+    // Create the divider node (thin line in center)
+    let mut divider = Node::new(Size::new(divider_width, space.bounds().height));
+    divider.move_to_mut(Point::new(divider_left_x, space.bounds().y));
 
+    // Layout the second element
+    let second_width = space.bounds().width - second_start_x;
     let second_limits = limits
         .clone()
-        .shrink(Size::new(f32::from(divider_position) + split.spacing, 0.0))
-        .shrink(padding);
+        .width(second_width)
+        .shrink(Padding::from(split.padding as u16));
+    
     let mut second =
         split
             .second
             .as_widget()
             .layout(&mut tree.children[1], renderer, &second_limits);
     second.move_to_mut(Point::new(
-        space.bounds().x + f32::from(divider_position) + split.spacing + split.padding,
+        second_start_x,
         space.bounds().y + split.padding,
     ));
 
-    Node::with_children(space.bounds().size(), vec![first, divider, second])
+    debug!("VERTICAL Spacing: {}, First right edge: {}, Divider left: {}, Divider right: {}, Second left: {}, Gap size: {}", 
+        split.spacing,
+        first_end_x,
+        divider_left_x,
+        divider_left_x + divider_width,
+        second_start_x,
+        gap
+    );
+
+    let result = Node::with_children(space.bounds().size(), vec![first, divider, second]);
+    
+    // Debug output to verify the bounds are correct
+    let children = result.children();
+    if children.len() >= 3 {
+        debug!("VERTICAL First pane bounds: {:?}", children[0].bounds());
+        debug!("VERTICAL Divider bounds: {:?}", children[1].bounds());
+        debug!("VERTICAL Second pane bounds: {:?}", children[2].bounds());
+        
+        // Add total width check to verify we don't exceed available space
+        let total_used_width = children[0].bounds().width + divider_width + (2.0 * gap) + children[2].bounds().width;
+        debug!("VERTICAL Total width used: {} (available: {})", total_used_width, bounds.width);
+    }
+    
+    result
 }
 
 impl<'a, Message, Theme, Renderer> From<Split<'a, Message, Theme, Renderer>>
