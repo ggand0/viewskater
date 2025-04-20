@@ -599,6 +599,27 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         debug_tool,
                                     );
                                 }
+                                Action::Clipboard(action) => {
+                                    match action {
+                                        iced_runtime::clipboard::Action::Write { target, contents } => {
+                                            debug!("Main thread received clipboard write request: {:?}, {:?}", target, contents);
+                                            
+                                            // Write to the clipboard using the Clipboard instance
+                                            clipboard.write(target, contents);
+                                            debug!("Successfully wrote to clipboard");
+                                        }
+                                        iced_runtime::clipboard::Action::Read { target, channel } => {
+                                            debug!("Main thread received clipboard read request: {:?}", target);
+                                            
+                                            // Read from clipboard and send result back through the channel
+                                            let content = clipboard.read(target);
+                                            
+                                            if let Err(err) = channel.send(content) {
+                                                error!("Failed to send clipboard content through channel: {:?}", err);
+                                            }
+                                        }
+                                    }
+                                }
                                 Action::Output(message) => {
                                     state.queue_message(message);
                                 }
