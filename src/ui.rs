@@ -34,6 +34,7 @@ use crate::{app::Message, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
 use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
 use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
+use crate::menu::MENU_BAR_HEIGHT;
 
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -329,7 +330,8 @@ pub fn build_ui_dual_pane_slider1(
         Message::OnVerResize,
         Message::ResetSplit,
         Message::FileDropped,
-        Message::PaneSelected
+        Message::PaneSelected,
+        MENU_BAR_HEIGHT,
     )
     .into()
 }
@@ -440,7 +442,8 @@ pub fn build_ui_dual_pane_slider2(
         Message::OnVerResize,
         Message::ResetSplit,
         Message::FileDropped,
-        Message::PaneSelected
+        Message::PaneSelected,
+        MENU_BAR_HEIGHT,
     )
     .into()
 }

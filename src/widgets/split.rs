@@ -128,6 +128,9 @@ where
 
     // Whether to enable pane selection
     enable_pane_selection: bool,
+
+    // Add a new field for the menu bar height
+    menu_bar_height: f32,
 }
 
 impl<'a, Message, Theme, Renderer> Split<'a, Message, Theme, Renderer>
@@ -155,6 +158,8 @@ where
         on_double_click: G,
         on_drop: H,
         on_select: I,
+        // Add menu_bar_height parameter, with a default of 0
+        menu_bar_height: f32,
     ) -> Self
     where
         A: Into<Element<'a, Message, Theme, Renderer>>,
@@ -191,6 +196,7 @@ where
             on_select: Box::new(on_select),
             class: Theme::default(),
             enable_pane_selection: enable_pane_selection,
+            menu_bar_height,
         }
     }
 
@@ -296,11 +302,9 @@ where
 
         match self.axis {
             Axis::Horizontal => {
-                debug!("split.rs - layout() - Horizontal Split");
                 horizontal_split(tree, self, renderer, limits, &space)
             },
             Axis::Vertical => {
-                debug!("split.rs - layout() - Vertical Split");
                 vertical_split(tree, self, renderer, limits, &space)
             },
         }
@@ -371,7 +375,7 @@ where
                                 Axis::Horizontal => cursor.position().map(|p| p.y),
                                 Axis::Vertical => cursor.position().map(|p| p.x),
                             };
-    
+                            
                             if let Some(position) = double_click_position {
                                 self.divider_position = None;
                                 split_state.dragging = false;
@@ -423,7 +427,7 @@ where
                 
                 let mut children = layout.children();
                 let first_layout = children.next().expect("Missing first layout");
-                let divider_layout = children.next().expect("Missing divider layout");
+                let _divider_layout = children.next().expect("Missing divider layout");
                 let second_layout = children.next().expect("Missing second layout");
                 
                 // Convert position to Point for checking
@@ -471,14 +475,14 @@ where
 
             Event::Mouse(mouse::Event::CursorMoved { position })
             | Event::Touch(touch::Event::FingerMoved { position, .. }) => {
-                // debug!("CursorMoved Cursor position: {:?}", position);
                 if split_state.dragging {
                     let position = match self.axis {
-                        Axis::Horizontal => position.y,
+                        // NOTE: Subtract menu_bar_height to account for the height of the menu bar
+                        // e.g., 16px base height coming from the font size + 4px padding on top/bottom sides
+                        Axis::Horizontal => position.y - self.menu_bar_height,
                         Axis::Vertical => position.x,
                     };
                     shell.publish((self.on_resize)(position as u16));
-
                 }
             }
 
@@ -963,14 +967,14 @@ where
         space.bounds().y + clamped_position + split.spacing + split.padding,
     ));
 
-    // Add debug logs to verify positions and heights
-    debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}", 
-           equal_pane_height,
-           space.bounds().y + split.padding,
-           clamped_position,
-           space.bounds().y + clamped_position + split.spacing + split.padding,
-           clamped_position - (space.bounds().y + split.padding),
-           total_height - (clamped_position + split.spacing + split.padding*2.0));
+    // Debug logs to verify positions and heights
+    //debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}", 
+    //       equal_pane_height,
+    //       space.bounds().y + split.padding,
+    //       clamped_position,
+    //       space.bounds().y + clamped_position + split.spacing + split.padding,
+    //       clamped_position - (space.bounds().y + split.padding),
+    //       total_height - (clamped_position + split.spacing + split.padding*2.0));
 
     // Maintain the original 3-node structure expected by other methods
     Node::with_children(space.bounds().size(), vec![first, divider, second])
