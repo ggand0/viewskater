@@ -272,6 +272,14 @@ impl DataViewer {
                 self.toggle_slider_type();
             }
 
+            Key::Character("h") | Key::Character("H") => {
+                debug!("H key pressed");
+                // Only toggle split orientation in dual pane mode
+                if self.pane_layout == PaneLayout::DualPane {
+                    self.toggle_split_orientation();
+                }
+            }
+
             Key::Character("1") => {
                 debug!("Key1 pressed");
                 if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
