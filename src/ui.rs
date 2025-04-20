@@ -228,7 +228,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 // Use individual sliders for each pane (build_ui_dual_pane_slider2)
                 let panes = build_ui_dual_pane_slider2(
                     &app.panes, 
-                    app.ver_divider_position,
+                    app.divider_position,
                     app.show_footer,
                     app.is_slider_moving,
                     app.is_horizontal_split
@@ -252,7 +252,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 // Build panes using the split component
                 let panes = build_ui_dual_pane_slider1(
                     &app.panes, 
-                    app.ver_divider_position,
+                    app.divider_position,
                     app.is_slider_moving,
                     app.is_horizontal_split
                 );
@@ -312,7 +312,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
 pub fn build_ui_dual_pane_slider1(
     panes: &[Pane],
-    ver_divider_position: Option<u16>,
+    divider_position: Option<u16>,
     is_slider_moving: bool,
     is_horizontal_split: bool
 ) -> Element<Message, WinitTheme, Renderer> {
@@ -325,9 +325,9 @@ pub fn build_ui_dual_pane_slider1(
         first_img,
         second_img,
         is_selected,
-        ver_divider_position,
+        divider_position,
         if is_horizontal_split { Axis::Horizontal } else { Axis::Vertical },
-        Message::OnVerResize,
+        Message::OnSplitResize,
         Message::ResetSplit,
         Message::FileDropped,
         Message::PaneSelected,
@@ -339,7 +339,7 @@ pub fn build_ui_dual_pane_slider1(
 
 pub fn build_ui_dual_pane_slider2(
     panes: &[Pane],
-    ver_divider_position: Option<u16>,
+    divider_position: Option<u16>,
     show_footer: bool,
     is_slider_moving: bool,
     is_horizontal_split: bool
@@ -437,9 +437,9 @@ pub fn build_ui_dual_pane_slider2(
         first_img,
         second_img,
         is_selected,
-        ver_divider_position,
+        divider_position,
         if is_horizontal_split { Axis::Horizontal } else { Axis::Vertical },
-        Message::OnVerResize,
+        Message::OnSplitResize,
         Message::ResetSplit,
         Message::FileDropped,
         Message::PaneSelected,

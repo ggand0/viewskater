@@ -85,8 +85,7 @@ pub enum Message {
     SliderImageWidgetLoaded(Result<(usize, usize, Handle), (usize, usize)>),
     Event(Event),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
-    OnVerResize(u16),
-    OnHorResize(u16),
+    OnSplitResize(u16),
     ResetSplit(u16),
     ToggleSliderType(bool),
     TogglePaneLayout(PaneLayout),
@@ -109,8 +108,7 @@ pub struct DataViewer {
     pub current_image_index: usize,
     pub slider_value: u16,                              // for master slider
     pub prev_slider_value: u16,                         // for master slider
-    pub ver_divider_position: Option<u16>,
-    pub hor_divider_position: Option<u16>,
+    pub divider_position: Option<u16>,
     pub is_slider_dual: bool,
     pub show_footer: bool,
     pub pane_layout: PaneLayout,
@@ -147,8 +145,7 @@ impl DataViewer {
             current_image_index: 0,
             slider_value: 0,
             prev_slider_value: 0,
-            ver_divider_position: None,
-            hor_divider_position: None,
+            divider_position: None,
             is_slider_dual: false,
             show_footer: true,
             pane_layout: PaneLayout::SinglePane,
@@ -733,9 +730,8 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 }
             }
-            Message::OnVerResize(position) => { self.ver_divider_position = Some(position); },
-            Message::OnHorResize(position) => { self.hor_divider_position = Some(position); },
-            Message::ResetSplit(_position) => { self.ver_divider_position = None; },
+            Message::OnSplitResize(position) => { self.divider_position = Some(position); },
+            Message::ResetSplit(_position) => { self.divider_position = None; },
             Message::ToggleSliderType(_bool) => { self.toggle_slider_type(); },
             Message::TogglePaneLayout(pane_layout) => { self.toggle_pane_layout(pane_layout); },
             Message::ToggleFooter(_bool) => { self.toggle_footer(); },
