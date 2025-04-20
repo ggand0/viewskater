@@ -35,6 +35,7 @@ use crate::widgets::shader::image_shader::ImageShader;
 use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
 use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
+use iced_widget::tooltip;
 
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -55,15 +56,45 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
 }
 
 pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message, WinitTheme, Renderer> {
-    let copy_filename_button = button(file_copy_icon())
-        .padding( iced::padding::all(2) )
-        .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
-        .on_press(Message::CopyFilename(pane_index));
+    let copy_filename_button = tooltip(
+        button(file_copy_icon())
+            .padding(iced::padding::all(2))
+            .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
+            .on_press(Message::CopyFilename(pane_index)),
+        container(text("Copy filename").size(14))
+            .padding(5)
+            .style(|theme: &WinitTheme| container::Style {
+                text_color: Some(Color::from([1.0, 1.0, 1.0])),
+                background: Some(theme.extended_palette().background.strong.color.into()),
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 0.0,
+                    color: Color::TRANSPARENT,
+                },
+                ..container::Style::default()
+            }),
+        tooltip::Position::Top,
+    );
 
-    let copy_filepath_button = button(folder_copy_icon())
-        .padding( iced::padding::all(2) )
-        .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
-        .on_press(Message::CopyFilePath(pane_index));
+    let copy_filepath_button = tooltip(
+        button(folder_copy_icon())
+            .padding(iced::padding::all(2))
+            .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
+            .on_press(Message::CopyFilePath(pane_index)),
+        container(text("Copy file path").size(14))
+            .padding(5)
+            .style(|theme: &WinitTheme| container::Style {
+                text_color: Some(Color::from([1.0, 1.0, 1.0])),
+                background: Some(theme.extended_palette().background.strong.color.into()),
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 0.0,
+                    color: Color::TRANSPARENT,
+                },
+                ..container::Style::default()
+            }),
+        tooltip::Position::Top,
+    );
 
     container::<Message, WinitTheme, Renderer>(
         row![
