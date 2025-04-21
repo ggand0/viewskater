@@ -189,6 +189,7 @@ pub struct ImageShaderState {
     starting_offset: Vector,
     current_offset: Vector,
     cursor_grabbed_at: Option<Point>,
+    last_click_time: Option<std::time::Instant>,
 }
 
 impl ImageShaderState {
@@ -198,6 +199,7 @@ impl ImageShaderState {
             starting_offset: Vector::default(),
             current_offset: Vector::default(),
             cursor_grabbed_at: None,
+            last_click_time: None,
         }
     }
     
@@ -402,7 +404,7 @@ impl Default for PipelineRegistry {
 }
 
 impl PipelineRegistry {
-    // Add a method to insert a pipeline with LRU tracking
+    // Method to insert a pipeline with LRU tracking
     pub fn insert(&mut self, key: String, pipeline: TexturePipeline) {
         // If key already exists, update its position in the order list
         if self.pipelines.contains_key(&key) {
@@ -424,8 +426,8 @@ impl PipelineRegistry {
         self.pipelines.insert(key, pipeline);
     }
     
-    // Add a method to get a pipeline while updating LRU tracking
-    pub fn get(&mut self, key: &str) -> Option<&TexturePipeline> {
+    // Method to get a pipeline while updating LRU tracking
+    pub fn _get(&mut self, key: &str) -> Option<&TexturePipeline> {
         if self.pipelines.contains_key(key) {
             // Update usage order: move this key to the end (most recently used)
             if let Some(pos) = self.keys_order.iter().position(|k| k == key) {
@@ -438,7 +440,7 @@ impl PipelineRegistry {
         None
     }
     
-    // Add a method to get a mutable pipeline while updating LRU tracking
+    // Method to get a mutable pipeline while updating LRU tracking
     pub fn get_mut(&mut self, key: &str) -> Option<&mut TexturePipeline> {
         if self.pipelines.contains_key(key) {
             // Update usage order: move this key to the end (most recently used)
@@ -457,7 +459,7 @@ impl PipelineRegistry {
         self.pipelines.contains_key(key)
     }
     
-    // Add a non-mutable version of get that doesn't update LRU tracking
+    // Non-mutable version of get that doesn't update LRU tracking
     pub fn get_ref(&self, key: &str) -> Option<&TexturePipeline> {
         self.pipelines.get(key)
     }
@@ -568,6 +570,28 @@ where
                 
                 let state = tree.state.downcast_mut::<ImageShaderState>();
                 
+                // Check for double-click
+                if let Some(last_click_time) = state.last_click_time {
+                    let elapsed = last_click_time.elapsed();
+                    if elapsed < std::time::Duration::from_millis(500) {
+                        // Double-click detected - reset zoom and pan
+                        state.scale = 1.0;
+                        state.current_offset = Vector::default();
+                        state.starting_offset = Vector::default();
+                        state.last_click_time = None;
+                        
+                        if self.debug {
+                            debug!("ImageShader::on_event - Double-click detected, resetting zoom and pan");
+                        }
+                        
+                        return event::Status::Captured;
+                    }
+                }
+                
+                // Update last click time for potential double-click detection
+                state.last_click_time = Some(std::time::Instant::now());
+                
+                // Continue with original click handling
                 state.cursor_grabbed_at = Some(cursor_position);
                 state.starting_offset = state.current_offset;
                 
