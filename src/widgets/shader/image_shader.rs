@@ -15,6 +15,7 @@ use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use crate::Scene;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use crate::widgets::split::DIVIDER_HITBOX_EXPANSION;
 
 
 /// A specialized shader widget for displaying images with proper aspect ratio.
@@ -518,19 +519,19 @@ where
 
         // Adjust the effective mouse bounds to account for the split divider's expanded hitbox
         let effective_bounds = if self.is_horizontal_split {
-            // For horizontal split, shrink top and bottom by 10px
+            // For horizontal split, shrink top and bottom by the divider hitbox expansion amount
             Rectangle {
                 x: bounds.x,
-                y: bounds.y + 10.0, 
+                y: bounds.y + DIVIDER_HITBOX_EXPANSION, 
                 width: bounds.width,
-                height: bounds.height - 20.0,
+                height: bounds.height - (2.0 * DIVIDER_HITBOX_EXPANSION),
             }
         } else {
-            // For vertical split, shrink left and right by 10px
+            // For vertical split, shrink left and right by the divider hitbox expansion amount
             Rectangle {
-                x: bounds.x + 10.0,
+                x: bounds.x + DIVIDER_HITBOX_EXPANSION,
                 y: bounds.y,
-                width: bounds.width - 20.0, 
+                width: bounds.width - (2.0 * DIVIDER_HITBOX_EXPANSION), 
                 height: bounds.height,
             }
         };

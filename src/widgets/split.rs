@@ -68,6 +68,9 @@ use std::time::{Duration, Instant};
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
+/// Amount to expand the divider hitbox by on each side in pixels
+pub const DIVIDER_HITBOX_EXPANSION: f32 = 10.0;
+
 /// A split can divide the available space by half to display two different elements.
 /// It can split horizontally or vertically.
 ///
@@ -533,9 +536,9 @@ where
             .next()
             .expect("Graphics: Layout should have a divider layout");
         
-        // Increase the hitbox expansion from 5.0 to 10.0 pixels
+        // Use the constant instead of hardcoded value
         let divider_mouse_interaction = if divider_layout
-            .bounds().expand(10.0)
+            .bounds().expand(DIVIDER_HITBOX_EXPANSION)
             .contains(cursor.position().unwrap_or_default())
         {
             match self.axis {
@@ -695,7 +698,7 @@ where
         );
 
         let bounds_divider = divider_layout.bounds();
-        let is_mouse_over_divider = cursor.is_over(bounds_divider.expand(5.0));
+        let is_mouse_over_divider = cursor.is_over(bounds_divider.expand(DIVIDER_HITBOX_EXPANSION / 2.0));
 
         let status_divider = if is_mouse_over_divider {
             let state = tree.state.downcast_ref::<State>();
