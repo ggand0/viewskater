@@ -15,6 +15,7 @@ use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use crate::Scene;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use crate::widgets::split::DIVIDER_HITBOX_EXPANSION;
 
 
 /// A specialized shader widget for displaying images with proper aspect ratio.
@@ -28,6 +29,7 @@ pub struct ImageShader<Message> {
     scale_step: f32,
     _phantom: PhantomData<Message>,
     debug: bool,
+    is_horizontal_split: bool,
 }
 
 impl<Message> ImageShader<Message> {
@@ -63,6 +65,7 @@ impl<Message> ImageShader<Message> {
             scale_step: 0.10,
             _phantom: PhantomData,
             debug: debug,
+            is_horizontal_split: false,
         }
     }
     
@@ -179,6 +182,12 @@ impl<Message> ImageShader<Message> {
         
         // Fallback to original bounds if no texture
         bounds
+    }
+
+    /// Set the horizontal split flag
+    pub fn horizontal_split(mut self, is_horizontal: bool) -> Self {
+        self.is_horizontal_split = is_horizontal;
+        self
     }
 }
 
@@ -507,10 +516,30 @@ where
         _viewport: &Rectangle,
     ) -> event::Status {
         let bounds = layout.bounds();
+
+        // Adjust the effective mouse bounds to account for the split divider's expanded hitbox
+        let effective_bounds = if self.is_horizontal_split {
+            // For horizontal split, shrink top and bottom by the divider hitbox expansion amount
+            Rectangle {
+                x: bounds.x,
+                y: bounds.y + DIVIDER_HITBOX_EXPANSION, 
+                width: bounds.width,
+                height: bounds.height - (2.0 * DIVIDER_HITBOX_EXPANSION),
+            }
+        } else {
+            // For vertical split, shrink left and right by the divider hitbox expansion amount
+            Rectangle {
+                x: bounds.x + DIVIDER_HITBOX_EXPANSION,
+                y: bounds.y,
+                width: bounds.width - (2.0 * DIVIDER_HITBOX_EXPANSION), 
+                height: bounds.height,
+            }
+        };
+
         
         match event {
             core::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
-                let Some(cursor_position) = cursor.position_over(bounds) else {
+                let Some(cursor_position) = cursor.position_over(effective_bounds) else {
                     return event::Status::Ignored;
                 };
                 
@@ -564,7 +593,7 @@ where
                 event::Status::Captured
             }
             core::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                let Some(cursor_position) = cursor.position_over(bounds) else {
+                let Some(cursor_position) = cursor.position_over(effective_bounds) else {
                     return event::Status::Ignored;
                 };
                 
@@ -579,6 +608,9 @@ where
                         state.current_offset = Vector::default();
                         state.starting_offset = Vector::default();
                         state.last_click_time = None;
+
+                        // Reset the current_offset to zero
+                        state.current_offset = Vector::default();
                         
                         if self.debug {
                             debug!("ImageShader::on_event - Double-click detected, resetting zoom and pan");

@@ -68,6 +68,9 @@ use std::time::{Duration, Instant};
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
+/// Amount to expand the divider hitbox by on each side in pixels
+pub const DIVIDER_HITBOX_EXPANSION: f32 = 10.0;
+
 /// A split can divide the available space by half to display two different elements.
 /// It can split horizontally or vertically.
 ///
@@ -129,8 +132,11 @@ where
     // Whether to enable pane selection
     enable_pane_selection: bool,
 
-    // Add a new field for the menu bar height
+    // Field for the menu bar height
     menu_bar_height: f32,
+
+    // Field for the debug flag
+    debug: bool,
 }
 
 impl<'a, Message, Theme, Renderer> Split<'a, Message, Theme, Renderer>
@@ -197,6 +203,7 @@ where
             class: Theme::default(),
             enable_pane_selection: enable_pane_selection,
             menu_bar_height,
+            debug: false,
         }
     }
 
@@ -412,13 +419,17 @@ where
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Event::Window(iced::window::Event::FileHovered(position)) => {
                 // Access the cursor position from the FileHovered event
-                debug!("FILEHOVER POSITION: {:?}", position);
+                if self.debug {
+                    debug!("FILEHOVER POSITION: {:?}", position);
+                }
             }
 
             #[cfg(target_os = "linux")]
             Event::Window(iced::window::Event::FileHovered(_path)) => {
                 // Access the cursor position from the FileHovered event
-                debug!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
+                if self.debug {
+                    debug!("FileHovered Cursor position: {:?}", cursor.position().unwrap_or_default());
+                }
             }
 
             #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -455,12 +466,10 @@ where
                 
                 // Check first pane (index 0)
                 if first_layout.bounds().contains(cursor_pos) {
-                    debug!("FileDropped - First pane");
                     shell.publish((self.on_drop)(0, path[0].to_string_lossy().to_string()));
                 } 
                 // Check second pane (index 1)
                 else if second_layout.bounds().contains(cursor_pos) {
-                    debug!("FileDropped - Second pane");
                     shell.publish((self.on_drop)(1, path[0].to_string_lossy().to_string()));
                 }
             }
@@ -527,9 +536,9 @@ where
             .next()
             .expect("Graphics: Layout should have a divider layout");
         
-        // Increase the hitbox expansion from 5.0 to 10.0 pixels
+        // Use the constant instead of hardcoded value
         let divider_mouse_interaction = if divider_layout
-            .bounds().expand(10.0)
+            .bounds().expand(DIVIDER_HITBOX_EXPANSION)
             .contains(cursor.position().unwrap_or_default())
         {
             match self.axis {
@@ -689,7 +698,7 @@ where
         );
 
         let bounds_divider = divider_layout.bounds();
-        let is_mouse_over_divider = cursor.is_over(bounds_divider.expand(5.0));
+        let is_mouse_over_divider = cursor.is_over(bounds_divider.expand(DIVIDER_HITBOX_EXPANSION / 2.0));
 
         let status_divider = if is_mouse_over_divider {
             let state = tree.state.downcast_ref::<State>();
@@ -968,13 +977,15 @@ where
     ));
 
     // Debug logs to verify positions and heights
-    //debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}", 
-    //       equal_pane_height,
-    //       space.bounds().y + split.padding,
-    //       clamped_position,
-    //       space.bounds().y + clamped_position + split.spacing + split.padding,
-    //       clamped_position - (space.bounds().y + split.padding),
-    //       total_height - (clamped_position + split.spacing + split.padding*2.0));
+    if split.debug{
+        debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}", 
+            equal_pane_height,
+            space.bounds().y + split.padding,
+            clamped_position,
+            space.bounds().y + clamped_position + split.spacing + split.padding,
+            clamped_position - (space.bounds().y + split.padding),
+            total_height - (clamped_position + split.spacing + split.padding*2.0));
+    }
 
     // Maintain the original 3-node structure expected by other methods
     Node::with_children(space.bounds().size(), vec![first, divider, second])
@@ -994,7 +1005,7 @@ where
     Theme: Catalog,
 {
     let bounds = space.bounds();
-    debug!("VERTICAL Split calculation - bounds: {:?}", bounds);
+    if split.debug{ debug!("VERTICAL Split calculation - bounds: {:?}", bounds); }
     
     if space.bounds().width
         < split.spacing + f32::from(split.min_size_first + split.min_size_second)
@@ -1038,8 +1049,8 @@ where
         (available_width - f32::from(split.min_size_second) - total_spacing) as u16,
     );
     
-    debug!("VERTICAL Split calculation: available_width={}, divider_position={}, spacing={}", 
-           available_width, divider_position, split.spacing);
+    if split.debug{ debug!("VERTICAL Split calculation: available_width={}, divider_position={}, spacing={}", 
+        available_width, divider_position, split.spacing); }
     
     // Calculate positions of elements
     let divider_center_x = space.bounds().x + split.padding + f32::from(divider_position);
@@ -1090,29 +1101,31 @@ where
         space.bounds().y + split.padding,
     ));
 
-    debug!("VERTICAL Spacing: {}, First right edge: {}, Divider left: {}, Divider right: {}, Second left: {}, Gap size: {}", 
-        split.spacing,
-        first_end_x,
-        divider_left_x,
-        divider_left_x + divider_width,
-        second_start_x,
-        gap
-    );
-
     let result = Node::with_children(space.bounds().size(), vec![first, divider, second]);
-    
-    // Debug output to verify the bounds are correct
-    let children = result.children();
-    if children.len() >= 3 {
-        debug!("VERTICAL First pane bounds: {:?}", children[0].bounds());
-        debug!("VERTICAL Divider bounds: {:?}", children[1].bounds());
-        debug!("VERTICAL Second pane bounds: {:?}", children[2].bounds());
-        
-        // Add total width check to verify we don't exceed available space
-        let total_used_width = children[0].bounds().width + divider_width + (2.0 * gap) + children[2].bounds().width;
-        debug!("VERTICAL Total width used: {} (available: {})", total_used_width, bounds.width);
+
+    if split.debug{
+        debug!("VERTICAL Spacing: {}, First right edge: {}, Divider left: {}, Divider right: {}, Second left: {}, Gap size: {}", 
+            split.spacing,
+            first_end_x,
+            divider_left_x,
+            divider_left_x + divider_width,
+            second_start_x,
+            gap
+        );
+
+        // Debug output to verify the bounds are correct
+        let children = result.children();
+        if children.len() >= 3 {
+            debug!("VERTICAL First pane bounds: {:?}", children[0].bounds());
+            debug!("VERTICAL Divider bounds: {:?}", children[1].bounds());
+            debug!("VERTICAL Second pane bounds: {:?}", children[2].bounds());
+            
+            // Add total width check to verify we don't exceed available space
+            let total_used_width = children[0].bounds().width + divider_width + (2.0 * gap) + children[2].bounds().width;
+            debug!("VERTICAL Total width used: {} (available: {})", total_used_width, bounds.width);
+        }
     }
-    
+
     result
 }
 
