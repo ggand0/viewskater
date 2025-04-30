@@ -282,18 +282,43 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
 
 pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
+    
+    // Create submenu for "Open Folder"
+    let open_folder_submenu = Menu::new(menu_items!(
+        (labeled_button(
+            "Pane 1 (Alt+1)",
+            MENU_ITEM_FONT_SIZE,
+            Message::OpenFolder(0)
+        ))
+        (labeled_button(
+            "Pane 2 (Alt+2)",
+            MENU_ITEM_FONT_SIZE,
+            Message::OpenFolder(1)
+        ))
+    ))
+    .max_width(180.0)
+    .spacing(0.0);
+    
+    // Create submenu for "Open File"
+    let open_file_submenu = Menu::new(menu_items!(
+        (labeled_button(
+            "Pane 1 (Alt+Ctrl+1)",
+            MENU_ITEM_FONT_SIZE,
+            Message::OpenFile(0)
+        ))
+        (labeled_button(
+            "Pane 2 (Alt+Ctrl+2)",
+            MENU_ITEM_FONT_SIZE,
+            Message::OpenFile(1)
+        ))
+    ))
+    .max_width(180.0)
+    .spacing(0.0);
+    
     menu_tpl_2(
         menu_items!(
-            (labeled_button(
-                "Open Folder (Alt+1 or 2)",
-                MENU_ITEM_FONT_SIZE,
-                Message::OpenFolder(0)
-            ))
-            (labeled_button(
-                "Open File (Alt+Ctrl+1 or 2)",
-                MENU_ITEM_FONT_SIZE,
-                Message::OpenFile(0)
-            ))
+            (submenu_button("Open Folder", MENU_ITEM_FONT_SIZE), open_folder_submenu)
+            (submenu_button("Open File", MENU_ITEM_FONT_SIZE), open_file_submenu)
             (labeled_button("Close (Ctrl+W)", MENU_ITEM_FONT_SIZE, Message::Close))
             (labeled_button("Quit (Ctrl+Q)", MENU_ITEM_FONT_SIZE, Message::Quit))
         )
