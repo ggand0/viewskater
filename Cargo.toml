@@ -66,7 +66,7 @@ FileDescription = "A fast image viewer for browsing large collections of images.
 [package.metadata.bundle]
 name = "ViewSkater"
 identifier = "com.ggando.viewskater"
-icon = ["assets/icon_16.png", "assets/icon_32.png", "assets/icon_48.png", "assets/icon_128.png", "assets/icon_256.png"]
+icon = ["assets/ViewSkater.icns"]
 short_description = "A fast image viewer for browsing large collections of images."
 
 [profile.release]
