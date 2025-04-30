@@ -713,7 +713,12 @@ impl iced_winit::runtime::Program for DataViewer {
                 match result {
                     Ok(dir) => {
                         debug!("Folder opened: {}", dir);
-                        self.initialize_dir_path(PathBuf::from(dir), pane_index);
+                        // Only allow opening in pane_index > 0 if we're in dual pane mode
+                        if pane_index > 0 && self.pane_layout == PaneLayout::SinglePane {
+                            debug!("Ignoring request to open folder in pane {} while in single-pane mode", pane_index);
+                        } else {
+                            self.initialize_dir_path(PathBuf::from(dir), pane_index);
+                        }
                     }
                     Err(err) => {
                         debug!("Folder open failed: {:?}", err);
