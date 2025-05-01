@@ -28,33 +28,76 @@ pub fn update_memory_usage() -> u64 {
         *last_update = Instant::now();
     }
     
-    // Use sysinfo for cross-platform memory tracking
+    // Special handling for Apple platforms where sandboxed apps can't access process info
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        // Try to get memory info, but don't expect it to work in sandboxed environments
+        let memory_used = match try_get_memory_usage() {
+            Some(mem) => {
+                // If it works, update the global memory tracking
+                if let Ok(mut mem_lock) = CURRENT_MEMORY_USAGE.lock() {
+                    *mem_lock = mem;
+                }
+                mem
+            },
+            None => {
+                // Default to -1 as a marker that it's not available
+                if let Ok(mut mem_lock) = CURRENT_MEMORY_USAGE.lock() {
+                    *mem_lock = u64::MAX; // Special value to indicate unavailable
+                }
+                u64::MAX
+            }
+        };
+        
+        return memory_used;
+    }
+    
+    // For non-Apple platforms, use the original implementation
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    {
+        // Use sysinfo for cross-platform memory tracking
+        let mut system = System::new();
+        let pid = Pid::from_u32(std::process::id());
+        
+        // Refresh specifically for this process
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+        
+        let memory_used = if let Some(process) = system.process(pid) {
+            let memory = process.memory();
+            
+            // Update the global memory tracking
+            if let Ok(mut mem) = CURRENT_MEMORY_USAGE.lock() {
+                *mem = memory;
+            }
+            
+            memory
+        } else {
+            0
+        };
+        
+        trace!("Memory usage updated: {} bytes", memory_used);
+        return memory_used;
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn try_get_memory_usage() -> Option<u64> {
+    // Try to get memory usage, but return None if it fails
+    // This allows us to gracefully handle the sandboxed environment
     let mut system = System::new();
     let pid = Pid::from_u32(std::process::id());
     
-    // Refresh specifically for this process
     system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
-    
-    let memory_used = if let Some(process) = system.process(pid) {
-        let memory = process.memory();
-        
-        // Update the global memory tracking
-        if let Ok(mut mem) = CURRENT_MEMORY_USAGE.lock() {
-            *mem = memory;
-        }
-        
-        memory
-    } else {
-        0
-    };
-    
-    trace!("Memory usage updated: {} bytes", memory_used);
-    memory_used
+    system.process(pid).map(|process| process.memory())
 }
 
 pub fn log_memory(label: &str) {
     // Use the unified memory tracking function
     let memory_bytes = update_memory_usage();
-    let memory_mb = memory_bytes as f64 / 1024.0 / 1024.0;
-    info!("MEMORY [{:.2}MB] - {}", memory_mb, label);
+    if memory_bytes == u64::MAX {
+        info!("MEMORY [N/A] - {} (unavailable in sandbox)", label);
+    } else {
+        let memory_mb = memory_bytes as f64 / 1024.0 / 1024.0;
+        info!("MEMORY [{:.2}MB] - {}", memory_mb, label);
+    }
 }

@@ -142,16 +142,27 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     // Get memory usage in MB
     let memory_mb = {
         if let Ok(mem) = CURRENT_MEMORY_USAGE.lock() {
-            *mem as f64 / 1024.0 / 1024.0
+            if *mem == u64::MAX {
+                // Special value indicating memory info is unavailable
+                -1.0 // Use negative value as a marker
+            } else {
+                *mem as f64 / 1024.0 / 1024.0
+            }
         } else {
             0.0
         }
     };
 
     let fps_display = if app.show_fps {
+        let memory_text = if memory_mb < 0.0 {
+            "Mem: N/A".to_string()
+        } else {
+            format!("Mem: {:.1} MB", memory_mb)
+        };
+        
         container(
-            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | Mem: {:.1} MB", 
-                         ui_fps, image_fps, memory_mb))
+            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | {}", 
+                         ui_fps, image_fps, memory_text))
                 .size(14)
                 .style(|_theme| iced::widget::text::Style {
                     color: Some(Color::from([1.0, 1.0, 1.0])),
