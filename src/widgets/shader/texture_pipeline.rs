@@ -191,7 +191,7 @@ impl TexturePipeline {
             return; // No update needed
         }
         
-        self.texture = new_texture.clone();
+        self.texture = new_texture;
         
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,

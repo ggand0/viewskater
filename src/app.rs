@@ -28,7 +28,7 @@ use log::{Level, debug, info, warn, error};
 
 use iced::{
     clipboard, event::Event,
-    widget::{self, button},
+    widget::button,
     font::{self, Font},
 };
 use iced_core::keyboard::{self, Key, key::Named};
@@ -735,10 +735,10 @@ impl iced_winit::runtime::Program for DataViewer {
                 let img_path = self.panes[pane_index].img_cache
                     .image_paths[self.panes[pane_index].img_cache.current_index]
                     .file_name().map(|name| name.to_string_lossy().to_string());
-                if let Some(img_path) = img_path {
-                    if let Some(filename) = file_io::get_filename(&img_path) {
+                if let Some(filename) = img_path {
+                    if let Some(filename) = file_io::get_filename(&filename) {
                         debug!("Filename: {}", filename);
-                        return clipboard::write::<Message>(filename.to_string());
+                        return clipboard::write::<Message>(filename);
                     }
                 }
             }
@@ -795,7 +795,7 @@ impl iced_winit::runtime::Program for DataViewer {
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_index,
-                                        target_indices_and_cache.clone(),
+                                        target_indices_and_cache,
                                         image_data,
                                     );
                                 }

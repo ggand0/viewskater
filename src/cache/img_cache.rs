@@ -787,7 +787,7 @@ pub fn load_images_by_operation_slider(
         if !paths.is_empty() {
             let device_clone = Arc::clone(device);
             let queue_clone = Arc::clone(queue);
-            debug!("Task::perform started for {:?}", operation.clone());
+            debug!("Task::perform started for {:?}", operation);
             
 
             let images_loading_task = async move {
@@ -845,7 +845,7 @@ pub fn load_images_by_indices(
         let device_clone = Arc::clone(device);
         let queue_clone = Arc::clone(queue);
 
-        debug!("Task::perform started for {:?}", operation.clone());
+        debug!("Task::perform started for {:?}", operation);
         Task::perform(
             async move {
                 let result = file_io::load_images_async(
