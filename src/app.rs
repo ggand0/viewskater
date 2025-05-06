@@ -665,8 +665,13 @@ impl iced_winit::runtime::Program for DataViewer {
             }
             Message::ShowAbout => {
                 self.show_about = true;
-                return widget::focus_next()
-            }
+                
+                // Schedule a follow-up redraw in the next frame
+                return Task::perform(async {
+                    // Small delay to ensure state has been updated
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }, |_| Message::Nothing);
+            },
             Message::HideAbout => {
                 self.show_about = false;
             }
