@@ -76,8 +76,8 @@ pub enum CachedData {
 }
 
 impl CachedData {
-    pub fn take(self) -> Option<Self> {
-        Some(self)
+    pub fn take(self) -> Self {
+        self
     }
 
     pub fn width(&self) -> u32 {
@@ -292,7 +292,7 @@ impl ImageCache {
         }
 
         // Initialize the appropriate backend
-        image_cache.init_cache(device, queue, cache_strategy, compression_strategy)?;
+        image_cache.init_cache(device, queue, cache_strategy, compression_strategy);
 
         Ok(image_cache)
     }
@@ -365,7 +365,7 @@ impl ImageCache {
         queue: Option<Arc<wgpu::Queue>>,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
-    ) -> Result<(), io::Error> {
+    ) {
         let backend: Box<dyn ImageCacheBackend> = match cache_strategy {
             CacheStrategy::Cpu => Box::new(CpuImageCache::new()),
             CacheStrategy::Gpu => {
@@ -380,7 +380,6 @@ impl ImageCache {
         //self.backend = Some(backend);
         self.backend = backend;
         self.compression_strategy = compression_strategy;
-        Ok(())
     }
 
     pub fn _set_compression_strategy(&mut self, strategy: CompressionStrategy) {
