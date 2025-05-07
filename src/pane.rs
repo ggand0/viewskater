@@ -426,7 +426,7 @@ impl Pane {
 
         // Instantiate a new image cache based on GPU support
         let mut img_cache = ImageCache::new(
-            _file_paths,
+            &_file_paths,
             CONFIG.cache_size,
             cache_strategy,
             compression_strategy,

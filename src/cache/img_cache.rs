@@ -241,7 +241,7 @@ impl Default for ImageCache {
 // Constructor, cached_data getter / setter, and type specific methods
 impl ImageCache {
     pub fn new(
-        image_paths: Vec<PathBuf>,
+        image_paths: &[PathBuf],
         cache_count: usize,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
@@ -256,7 +256,7 @@ impl ImageCache {
 
         // Initialize the image cache with the basic structure
         let mut image_cache = ImageCache {
-            image_paths: image_paths.clone(),
+            image_paths: image_paths.to_owned(),
             num_files: image_paths.len(),
             current_index: initial_index,
             current_offset: 0,
@@ -753,7 +753,7 @@ pub fn load_images_by_operation_slider(
     compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     pane_index: usize,
-    target_indices_and_cache: Vec<Option<(isize, usize)>>,
+    target_indices_and_cache: &[Option<(isize, usize)>],
     operation: LoadOperation
 ) -> Task<Message> {
     let mut paths = Vec::new();
@@ -817,7 +817,7 @@ pub fn load_images_by_indices(
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
     panes: &mut Vec<&mut Pane>, 
-    target_indices: Vec<Option<isize>>, 
+    target_indices: &[Option<isize>], 
     operation: LoadOperation
 ) -> Task<Message> {
     let mut paths = Vec::new();
@@ -887,8 +887,8 @@ pub fn load_images_by_operation(
                         cache_strategy,
                         compression_strategy,
                         panes, 
-                        target_indicies.clone(), 
-                        operation
+                        &target_indicies,
+                        operation.clone()
                     )
                 }
                 LoadOperation::LoadPrevious((ref _pane_indices, ref target_indicies)) => {
@@ -898,8 +898,8 @@ pub fn load_images_by_operation(
                         cache_strategy,
                         compression_strategy,
                         panes, 
-                        target_indicies.clone(), 
-                        operation
+                        &target_indicies,
+                        operation.clone()
                     )
                 }
                 LoadOperation::ShiftNext((ref _pane_indices, ref _target_indicies)) => {
@@ -956,8 +956,8 @@ pub fn load_all_images_in_queue(
                     compression_strategy,
                     panes,
                     *pane_index,
-                    target_indices_and_cache.clone(),
-                    operation,
+                    &target_indices_and_cache,
+                    operation.clone(),
                 );
                 tasks.push(task);
             }
