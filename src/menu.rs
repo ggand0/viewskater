@@ -168,8 +168,18 @@ fn submenu_button(label: &str, text_size: u16) -> button::Button<Message, WinitT
 }
 
 pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
-    let single_pane_text = if app.pane_layout == PaneLayout::SinglePane { "[x] Single Pane (Ctrl+1)" } else { "[  ] Single Pane (Ctrl+1)" };
-    let dual_pane_text = if app.pane_layout == PaneLayout::DualPane { "[x] Dual Pane (Ctrl+2)" } else { "[  ] Dual Pane (Ctrl+2)" };
+    // Use platform-specific modifier text for menu items
+    #[cfg(target_os = "macos")]
+    let (single_pane_text, dual_pane_text) = (
+        if app.pane_layout == PaneLayout::SinglePane { "[x] Single Pane (⌘1)" } else { "[  ] Single Pane (⌘1)" },
+        if app.pane_layout == PaneLayout::DualPane { "[x] Dual Pane (⌘2)" } else { "[  ] Dual Pane (⌘2)" }
+    );
+    
+    #[cfg(not(target_os = "macos"))]
+    let (single_pane_text, dual_pane_text) = (
+        if app.pane_layout == PaneLayout::SinglePane { "[x] Single Pane (Ctrl+1)" } else { "[  ] Single Pane (Ctrl+1)" },
+        if app.pane_layout == PaneLayout::DualPane { "[x] Dual Pane (Ctrl+2)" } else { "[  ] Dual Pane (Ctrl+2)" }
+    );
 
     let pane_layout_submenu = Menu::new(menu_items!(
         (labeled_button(
@@ -315,12 +325,19 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     .max_width(180.0)
     .spacing(0.0);
     
+    // Use platform-specific modifier text for menu items
+    #[cfg(target_os = "macos")]
+    let (close_text, quit_text) = ("Close (⌘W)", "Quit (⌘Q)");
+    
+    #[cfg(not(target_os = "macos"))]
+    let (close_text, quit_text) = ("Close (Ctrl+W)", "Quit (Ctrl+Q)");
+    
     menu_tpl_2(
         menu_items!(
             (submenu_button("Open Folder", MENU_ITEM_FONT_SIZE), open_folder_submenu)
             (submenu_button("Open File", MENU_ITEM_FONT_SIZE), open_file_submenu)
-            (labeled_button("Close (Ctrl+W)", MENU_ITEM_FONT_SIZE, Message::Close))
-            (labeled_button("Quit (Ctrl+Q)", MENU_ITEM_FONT_SIZE, Message::Quit))
+            (labeled_button(close_text, MENU_ITEM_FONT_SIZE, Message::Close))
+            (labeled_button(quit_text, MENU_ITEM_FONT_SIZE, Message::Quit))
         )
     )
 }
