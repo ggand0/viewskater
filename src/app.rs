@@ -364,6 +364,46 @@ impl DataViewer {
             }
 
             Key::Named(Named::ArrowLeft) | Key::Character("a") => {
+                // Check for first image navigation with platform modifier or Fn key
+                if is_platform_modifier(&modifiers) {
+                    debug!("Navigating to first image");
+                    
+                    // Find which panes need to be updated
+                    let mut operations = Vec::new();
+                    
+                    for (idx, pane) in self.panes.iter_mut().enumerate() {
+                        if pane.dir_loaded && (pane.is_selected || self.is_slider_dual) {
+                            // Navigate to the first image (index 0)
+                            if pane.img_cache.current_index > 0 {
+                                let new_pos = 0;
+                                pane.slider_value = new_pos as u16;
+                                self.slider_value = new_pos as u16;
+                                
+                                // Save the operation for later execution
+                                operations.push((idx as isize, new_pos));
+                            }
+                        }
+                    }
+                    
+                    // Now execute all operations after the loop is complete
+                    for (pane_idx, new_pos) in operations {
+                        tasks.push(crate::navigation_slider::load_remaining_images(
+                            &self.device,
+                            &self.queue,
+                            self.is_gpu_supported,
+                            self.cache_strategy,
+                            self.compression_strategy,
+                            &mut self.panes,
+                            &mut self.loading_status,
+                            pane_idx,
+                            new_pos,
+                        ));
+                    }
+                    
+                    return tasks;
+                }
+                
+                // Existing left-arrow logic
                 if self.skate_right {
                     self.skate_right = false;
 
@@ -385,7 +425,6 @@ impl DataViewer {
 
                         debug!("move_left_all from handle_key_pressed_event()");
                         let task = move_left_all(
-                            //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                             &self.device,
                             &self.queue,
                             self.cache_strategy,
@@ -399,9 +438,50 @@ impl DataViewer {
                         tasks.push(task);
                     }
                 }
-
             }
             Key::Named(Named::ArrowRight) | Key::Character("d") => {
+                // Check for last image navigation with platform modifier or Fn key
+                if is_platform_modifier(&modifiers) {
+                    debug!("Navigating to last image");
+                    
+                    // Find which panes need to be updated
+                    let mut operations = Vec::new();
+                    
+                    for (idx, pane) in self.panes.iter_mut().enumerate() {
+                        if pane.dir_loaded && (pane.is_selected || self.is_slider_dual) {
+                            // Get the last valid index
+                            if let Some(last_index) = pane.img_cache.image_paths.len().checked_sub(1) {
+                                if pane.img_cache.current_index < last_index {
+                                    let new_pos = last_index;
+                                    pane.slider_value = new_pos as u16;
+                                    self.slider_value = new_pos as u16;
+                                    
+                                    // Save the operation for later execution
+                                    operations.push((idx as isize, new_pos));
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Now execute all operations after the loop is complete
+                    for (pane_idx, new_pos) in operations {
+                        tasks.push(crate::navigation_slider::load_remaining_images(
+                            &self.device,
+                            &self.queue,
+                            self.is_gpu_supported,
+                            self.cache_strategy,
+                            self.compression_strategy,
+                            &mut self.panes,
+                            &mut self.loading_status,
+                            pane_idx,
+                            new_pos,
+                        ));
+                    }
+                    
+                    return tasks;
+                }
+                
+                // Existing right-arrow logic
                 debug!("Right key or 'D' key pressed!");
                 if self.skate_left {
                     self.skate_left = false;
@@ -420,7 +500,6 @@ impl DataViewer {
                     self.skate_right = false;
 
                     let task = move_right_all(
-                        //Some(Arc::clone(&self.device)), Some(Arc::clone(&self.queue)), self.is_gpu_supported,
                         &self.device,
                         &self.queue,
                         self.cache_strategy,
