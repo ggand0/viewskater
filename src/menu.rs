@@ -171,8 +171,8 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     // Use platform-specific modifier text for menu items
     #[cfg(target_os = "macos")]
     let (single_pane_text, dual_pane_text) = (
-        if app.pane_layout == PaneLayout::SinglePane { "[x] Single Pane (⌘1)" } else { "[  ] Single Pane (⌘1)" },
-        if app.pane_layout == PaneLayout::DualPane { "[x] Dual Pane (⌘2)" } else { "[  ] Dual Pane (⌘2)" }
+        if app.pane_layout == PaneLayout::SinglePane { "[x] Single Pane (Cmd+1)" } else { "[  ] Single Pane (Cmd+1)" },
+        if app.pane_layout == PaneLayout::DualPane { "[x] Dual Pane (Cmd+2)" } else { "[  ] Dual Pane (Cmd+2)" }
     );
     
     #[cfg(not(target_os = "macos"))]
@@ -327,7 +327,7 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     
     // Use platform-specific modifier text for menu items
     #[cfg(target_os = "macos")]
-    let (close_text, quit_text) = ("Close (⌘W)", "Quit (⌘Q)");
+    let (close_text, quit_text) = ("Close (Cmd+W)", "Quit (Cmd+Q)");
     
     #[cfg(not(target_os = "macos"))]
     let (close_text, quit_text) = ("Close (Ctrl+W)", "Quit (Ctrl+Q)");
