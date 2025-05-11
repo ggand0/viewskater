@@ -261,6 +261,16 @@ impl DataViewer {
 
     fn handle_key_pressed_event(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
+        
+        // Helper function to check for the platform-appropriate modifier key
+        let is_platform_modifier = |modifiers: &keyboard::Modifiers| -> bool {
+            #[cfg(target_os = "macos")]
+            return modifiers.logo(); // Use Command key on macOS
+            
+            #[cfg(not(target_os = "macos"))]
+            return modifiers.control(); // Use Control key on other platforms
+        };
+        
         match key.as_ref() {
             Key::Named(Named::Tab) => {
                 debug!("Tab pressed");
@@ -341,14 +351,16 @@ impl DataViewer {
             Key::Character("c") |
             Key::Character("w") => {
                 // Close the selected panes
-                if modifiers.control() {
+                if is_platform_modifier(&modifiers) {
                     self.reset_state(-1);
                 }
             }
 
             Key::Character("q") => {
                 // Terminate the app
-                std::process::exit(0);
+                if is_platform_modifier(&modifiers) {
+                    std::process::exit(0);
+                }
             }
 
             Key::Named(Named::ArrowLeft) | Key::Character("a") => {
