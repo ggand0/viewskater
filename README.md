@@ -50,6 +50,7 @@ You can switch to per-pane sliders by selecting the "Controls -> Controls -> Tog
 
 ## Resources
 - [Website](https://viewskater.com/)
+- [macOS App Store](https://apps.apple.com/us/app/viewskater/id6745068907)
 
 ## Acknowledgments
 ViewSkater's slider UI was inspired by the open-source project [emulsion](https://github.com/ArturKovacs/emulsion).
