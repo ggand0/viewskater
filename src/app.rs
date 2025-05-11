@@ -296,16 +296,16 @@ impl DataViewer {
                     self.panes[0].is_selected = !self.panes[0].is_selected;
                 }
 
-                // If alt+platform_modifier is pressed, load a file into pane0
-                if modifiers.alt() && is_platform_modifier(&modifiers) {
-                    debug!("Key1 Shift pressed");
+                // If shift+alt is pressed, load a file into pane0
+                if modifiers.shift() && modifiers.alt() {
+                    debug!("Key1 Shift+Alt pressed");
                     tasks.push(Task::perform(file_io::pick_file(), move |result| {
                         Message::FolderOpened(result, 0)
                     }));
                 }
 
                 // If alt is pressed, load a folder into pane0
-                if modifiers.alt() {
+                else if modifiers.alt() {
                     debug!("Key1 Alt pressed");
                     tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                         Message::FolderOpened(result, 0)
@@ -313,7 +313,7 @@ impl DataViewer {
                 }
 
                 // If platform_modifier is pressed, switch to single pane layout
-                if is_platform_modifier(&modifiers) {
+                else if is_platform_modifier(&modifiers) {
                     self.toggle_pane_layout(PaneLayout::SinglePane);
                 }
             }
@@ -324,16 +324,16 @@ impl DataViewer {
                         self.panes[1].is_selected = !self.panes[1].is_selected;
                     }
                 
-                    // If alt+platform_modifier is pressed, load a file into pane1
-                    if modifiers.alt() && is_platform_modifier(&modifiers) {
-                        debug!("Key2 Shift pressed");
+                    // If shift+alt is pressed, load a file into pane1
+                    if modifiers.shift() && modifiers.alt() {
+                        debug!("Key2 Shift+Alt pressed");
                         tasks.push(Task::perform(file_io::pick_file(), move |result| {
                             Message::FolderOpened(result, 1)
                         }));
                     }
 
                     // If alt is pressed, load a folder into pane1
-                    if modifiers.alt() {
+                    else if modifiers.alt() {
                         debug!("Key2 Alt pressed");
                         tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                             Message::FolderOpened(result, 1)
@@ -342,7 +342,7 @@ impl DataViewer {
                 }
 
                 // If platform_modifier is pressed, switch to dual pane layout
-                if is_platform_modifier(&modifiers) {
+                else if is_platform_modifier(&modifiers) {
                     debug!("Key2 Ctrl pressed");
                     self.toggle_pane_layout(PaneLayout::DualPane);
                 }

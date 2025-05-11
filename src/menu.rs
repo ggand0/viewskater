@@ -312,12 +312,12 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     // Create submenu for "Open File"
     let open_file_submenu = Menu::new(menu_items!(
         (labeled_button(
-            "Pane 1 (Alt+Ctrl+1)",
+            "Pane 1 (Shift+Alt+1)",
             MENU_ITEM_FONT_SIZE,
             Message::OpenFile(0)
         ))
         (labeled_button(
-            "Pane 2 (Alt+Ctrl+2)",
+            "Pane 2 (Shift+Alt+2)",
             MENU_ITEM_FONT_SIZE,
             Message::OpenFile(1)
         ))
