@@ -291,6 +291,10 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
 }
 
 pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
+    #[cfg(target_os = "macos")]
+    let menu_tpl_2 = |items| Menu::new(items).max_width(210.0).offset(5.0);
+    
+    #[cfg(not(target_os = "macos"))]
     let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
     
     // Use platform-specific modifier text for menu items
