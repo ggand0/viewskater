@@ -296,7 +296,7 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     // Use platform-specific modifier text for menu items
     #[cfg(target_os = "macos")]
     let (open_folder_text, open_file_text, close_text, quit_text) = 
-        ("Open Folder (⇧⌘O)", "Open File (⌘O)", "Close (⌘W)", "Quit (⌘Q)");
+        ("Open Folder (Cmd+Shift+O)", "Open File (Cmd+O)", "Close (Cmd+W)", "Quit (Cmd+Q)");
     
     #[cfg(not(target_os = "macos"))]
     let (open_folder_text, open_file_text, close_text, quit_text) = 
