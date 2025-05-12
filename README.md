@@ -49,6 +49,8 @@ You can switch to per-pane sliders by selecting the "Controls -> Controls -> Tog
 | Select Pane 1 / 2 (Dual slider)    | 1 / 2                | 1 / 2                  |
 | Open folder in Pane 1 / 2          | Alt + 1 / 2          | Alt + 1 / 2            |
 | Open file in Pane 1 / 2            | Shift + Alt + 1 / 2  | Shift + Alt + 1 / 2    |
+| Open file (Single pane)            | Cmd + O              | Ctrl + O               |
+| Open folder (Single pane)          | Cmd + Shift + O      | Ctrl + Shift + O       |
 | Toggle single / dual pane mode     | Cmd + 1 / 2          | Ctrl + 1 / 2           |
 | Close all panes                    | Cmd + W              | Ctrl + W               |
 | Exit                               | Cmd + Q              | Ctrl + Q               |

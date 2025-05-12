@@ -363,6 +363,32 @@ impl DataViewer {
                 }
             }
 
+            Key::Character("o") => {
+                // If platform_modifier is pressed, open a file or folder
+                if is_platform_modifier(&modifiers) {
+                    let pane_index = if self.pane_layout == PaneLayout::SinglePane {
+                        0 // Use first pane in single-pane mode
+                    } else {
+                        self.last_opened_pane as usize // Use last opened pane in dual-pane mode
+                    };
+                    debug!("o key pressed pane_index: {}", pane_index);
+
+                    // If shift is pressed or we have uppercase O, open folder
+                    if modifiers.shift() {
+                        debug!("Opening folder with platform_modifier+shift+o");
+                        tasks.push(Task::perform(file_io::pick_folder(), move |result| {
+                            Message::FolderOpened(result, pane_index)
+                        }));
+                    } else {
+                        // Otherwise open file
+                        debug!("Opening file with platform_modifier+o");
+                        tasks.push(Task::perform(file_io::pick_file(), move |result| {
+                            Message::FolderOpened(result, pane_index)
+                        }));
+                    }
+                }
+            }
+
             Key::Named(Named::ArrowLeft) | Key::Character("a") => {
                 // Check for first image navigation with platform modifier or Fn key
                 if is_platform_modifier(&modifiers) {

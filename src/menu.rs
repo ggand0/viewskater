@@ -293,6 +293,15 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
 pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
     
+    // Use platform-specific modifier text for menu items
+    #[cfg(target_os = "macos")]
+    let (open_folder_text, open_file_text, close_text, quit_text) = 
+        ("Open Folder (⇧⌘O)", "Open File (⌘O)", "Close (⌘W)", "Quit (⌘Q)");
+    
+    #[cfg(not(target_os = "macos"))]
+    let (open_folder_text, open_file_text, close_text, quit_text) = 
+        ("Open Folder (Ctrl+Shift+O)", "Open File (Ctrl+O)", "Close (Ctrl+W)", "Quit (Ctrl+Q)");
+    
     // Create submenu for "Open Folder"
     let open_folder_submenu = Menu::new(menu_items!(
         (labeled_button(
@@ -325,17 +334,10 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     .max_width(180.0)
     .spacing(0.0);
     
-    // Use platform-specific modifier text for menu items
-    #[cfg(target_os = "macos")]
-    let (close_text, quit_text) = ("Close (Cmd+W)", "Quit (Cmd+Q)");
-    
-    #[cfg(not(target_os = "macos"))]
-    let (close_text, quit_text) = ("Close (Ctrl+W)", "Quit (Ctrl+Q)");
-    
     menu_tpl_2(
         menu_items!(
-            (submenu_button("Open Folder", MENU_ITEM_FONT_SIZE), open_folder_submenu)
-            (submenu_button("Open File", MENU_ITEM_FONT_SIZE), open_file_submenu)
+            (submenu_button(open_folder_text, MENU_ITEM_FONT_SIZE), open_folder_submenu)
+            (submenu_button(open_file_text, MENU_ITEM_FONT_SIZE), open_file_submenu)
             (labeled_button(close_text, MENU_ITEM_FONT_SIZE, Message::Close))
             (labeled_button(quit_text, MENU_ITEM_FONT_SIZE, Message::Quit))
         )
