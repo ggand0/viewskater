@@ -1,4 +1,25 @@
 #!/bin/bash
+#
+# viewskater_wrapper.sh
+#
+# Purpose:
+# This wrapper script is intended for debugging macOS file association
+# events (e.g., when opening a file with ViewSkater from Finder) and
+# for capturing early startup logs or errors from the main application binary.
+#
+# Usage:
+# Revise Info.plist's CFBundleExecutable to point to this script.
+# e.g.,
+# <key>CFBundleExecutable</key>
+# <string>viewskater_wrapper.sh</string>
+#
+# How it works:
+# - Sets up a log file at $HOME/Library/Logs/ViewSkater/open_events.log.
+# - Logs invocation arguments and environment details.
+# - Executes the main "viewskater" binary located in the same directory
+#   as this script.
+# - Redirects stderr of the main binary to the log file.
+#
 BASEDIR=$(dirname "$0")
 LOG_FILE="$HOME/Library/Logs/ViewSkater/open_events.log"
 mkdir -p "$(dirname "$LOG_FILE")"

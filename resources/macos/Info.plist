@@ -6,8 +6,6 @@
   <string>English</string>
   <key>CFBundleDisplayName</key>
   <string>ViewSkater</string>
-  <key>CFBundleExecutable</key>
-  <string>viewskater_wrapper.sh</string>
   <key>CFBundleIconFile</key>
   <string>ViewSkater.icns</string>
   <key>CFBundleIdentifier</key>
@@ -53,22 +51,11 @@
         <string>jpg</string>
         <string>jpeg</string>
         <string>png</string>
-        <string>bmp</string>
-        <string>gif</string>
-        <string>heic</string>
-        <string>tiff</string>
-        <string>tif</string>
-        <string>webp</string>
       </array>
       <key>LSItemContentTypes</key>
       <array>
         <string>public.jpeg</string>
         <string>public.png</string>
-        <string>public.bmp</string>
-        <string>public.gif</string>
-        <string>public.heic</string>
-        <string>public.tiff</string>
-        <string>public.webp</string>
       </array>
       <key>NSPersistentStoreTypeKey</key>
       <string>XML</string>
@@ -96,22 +83,11 @@
           <string>jpg</string>
           <string>jpeg</string>
           <string>png</string>
-          <string>bmp</string>
-          <string>gif</string>
-          <string>heic</string>
-          <string>tiff</string>
-          <string>tif</string>
-          <string>webp</string>
         </array>
         <key>public.mime-type</key>
         <array>
           <string>image/jpeg</string>
           <string>image/png</string>
-          <string>image/bmp</string>
-          <string>image/gif</string>
-          <string>image/heic</string>
-          <string>image/tiff</string>
-          <string>image/webp</string>
         </array>
       </dict>
     </dict>
