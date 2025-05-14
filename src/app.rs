@@ -56,7 +56,7 @@ use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
 
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{self, Sender, Receiver};
 
 #[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
@@ -130,14 +130,16 @@ pub struct DataViewer {
     pub compression_strategy: CompressionStrategy,
     pub renderer_request_sender: Sender<RendererRequest>,
     pub is_horizontal_split: bool,
+    pub file_receiver: Receiver<String>,
 }
 
 impl DataViewer {
     pub fn new(
-        device: Arc<wgpu::Device>, 
-        queue: Arc<wgpu::Queue>, 
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
         backend: wgpu::Backend,
         renderer_request_sender: Sender<RendererRequest>,
+        file_receiver: Receiver<String>,
     ) -> Self {
         Self {
             title: String::from("ViewSkater"),
@@ -156,20 +158,19 @@ impl DataViewer {
             skate_left: false,
             update_counter: 0,
             show_about: false,
-            device,   // Store the Arc<device>
-            queue,    // Store the Arc<queue>
+            device,
+            queue,
             is_gpu_supported: true,
             background_color: Color::WHITE,
             last_slider_update: Instant::now(),
             is_slider_moving: false,
             backend,
             cache_strategy: CacheStrategy::Gpu,
-            //cache_strategy: CacheStrategy::Cpu,
             show_fps: false,
-            //compression_strategy: CompressionStrategy::Bc1,
             compression_strategy: CompressionStrategy::None,
             renderer_request_sender,
             is_horizontal_split: false,
+            file_receiver,
         }
     }
 
@@ -765,6 +766,16 @@ impl iced_winit::runtime::Program for DataViewer {
     type Renderer = Renderer;
 
     fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
+        // Check for any file paths received from the background thread
+        while let Ok(path) = self.file_receiver.try_recv() {
+            println!("Processing file path in main thread: {}", path);
+            // Reset state and initialize the directory path
+            self.reset_state(-1);
+            println!("State reset complete, initializing directory path");
+            self.initialize_dir_path(PathBuf::from(path), 0);
+            println!("Directory path initialization complete");
+        }
+
         let _update_start = Instant::now();
         match message {
             Message::BackgroundColorChanged(color) => {

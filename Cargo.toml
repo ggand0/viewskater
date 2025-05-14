@@ -27,6 +27,21 @@ rayon = "1.8"
 texpresso = { version = "2.0.1", features = ["rayon"] }
 sysinfo = "0.33.1"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5.2"
+objc2-foundation = { version = "0.2.2", default-features = false, features = [
+    "std",
+    "NSUserDefaults",
+] }
+objc2-app-kit = { version = "0.2.2", default-features = false, features = [
+    "std",
+    "NSLayoutConstraint",
+    "NSColorSpace",
+    "objc2-quartz-core",
+] }
+icrate = "0.0"
+
+
 # Use custom iced
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
     "image", "tokio", "svg", "lazy", "wgpu"
@@ -70,7 +85,8 @@ icon = ["assets/ViewSkater.icns"]
 short_description = "A fast image viewer for browsing large collections of images."
 
 [profile.release]
-lto = "fat"
+#lto = "fat"
+lto = false
 codegen-units = 1
 
 # Use an optimized dev profile for faster runtime during development.
