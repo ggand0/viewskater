@@ -28,7 +28,7 @@ use log::{Level, debug, info, warn, error};
 
 use iced::{
     clipboard, event::Event,
-    widget::{self, button},
+    widget::button,
     font::{self, Font},
 };
 use iced_core::keyboard::{self, Key, key::Named};
@@ -56,7 +56,7 @@ use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
 
-use std::sync::mpsc::{self, Sender, Receiver};
+use std::sync::mpsc::{Sender, Receiver};
 
 #[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {

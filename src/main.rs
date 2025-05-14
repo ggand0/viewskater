@@ -1042,12 +1042,12 @@ fn track_async_delivery() {
 mod macos_file_handler {
     use std::sync::mpsc::Sender;
     use objc2::rc::autoreleasepool;
-    use objc2::{msg_send, msg_send_id, sel, class};
+    use objc2::{msg_send, sel};
     use objc2::declare::ClassBuilder;
     use objc2::runtime::{AnyObject, Sel, AnyClass};
     use objc2_app_kit::NSApplication;
     use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults};
-    use objc2::rc::{Id, Retained};
+    use objc2::rc::Retained;
 
     static mut FILE_CHANNEL: Option<Sender<String>> = None;
 
@@ -1069,7 +1069,7 @@ mod macos_file_handler {
                 let path = file.as_str(pool).to_owned();
                 println!("Received file path: {}", path);
                 unsafe {
-                    if let Some(sender) = &FILE_CHANNEL {
+                    if let Some(ref sender) = *(&raw const FILE_CHANNEL) {
                         if let Err(e) = sender.send(path.clone()) {
                             println!("Failed to send file path through channel: {}", e);
                         } else {
