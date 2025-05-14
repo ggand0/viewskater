@@ -193,6 +193,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     println!("File channel created");
 
     // Register file handler BEFORE creating the runner
+    // This is required on macOS so the app can receive file paths
+    // when launched by opening a file (e.g. double-clicking in Finder)
+    // or using "Open With". Must be set up early in app lifecycle.
     #[cfg(target_os = "macos")]
     {
         println!("Setting up macOS file handler...");
@@ -1038,6 +1041,21 @@ fn track_async_delivery() {
         trace!("TIMING: Phase difference: {:?}", phase_diff);
     }
 }
+
+/// macOS integration for opening image files via Finder.
+///
+/// This module handles cases where the user launches ViewSkater by double-clicking
+/// an image file or using "Open With" in Finder. macOS sends the file path through
+/// the `application:openFiles:` message, which is delivered to the app's delegate.
+///
+/// This code:
+/// - Subclasses the existing `NSApplicationDelegate` to override `application:openFiles:`
+/// - Forwards received file paths to Rust using an MPSC channel
+/// - Disables automatic argument parsing by setting `NSTreatUnknownArgumentsAsOpen = NO`
+///
+/// The channel is set up in `main.rs` and connected to the rest of the app so that
+/// the selected image can be loaded on startup.
+
 #[cfg(target_os = "macos")]
 mod macos_file_handler {
     use std::sync::mpsc::Sender;
