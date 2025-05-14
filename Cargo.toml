@@ -85,8 +85,7 @@ icon = ["assets/ViewSkater.icns"]
 short_description = "A fast image viewer for browsing large collections of images."
 
 [profile.release]
-#lto = "fat"
-lto = false
+lto = "fat"
 codegen-units = 1
 
 # Use an optimized dev profile for faster runtime during development.
