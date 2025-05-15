@@ -179,18 +179,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     let app_name = "viewskater";
     let shared_log_buffer = file_io::setup_logger(app_name);
     file_io::setup_panic_hook(app_name, shared_log_buffer);
-    println!("Logger and panic hook set up");
 
     // Initialize winit FIRST
-    println!("Initializing winit...");
     let event_loop = EventLoop::<Action<Message>>::with_user_event()
         .build()
         .unwrap();
-    println!("Winit initialized");
 
     // Set up the file channel AFTER winit initialization
     let (file_sender, file_receiver) = mpsc::channel();
-    println!("File channel created");
 
     // Register file handler BEFORE creating the runner
     // This is required on macOS so the app can receive file paths
@@ -198,7 +194,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     // or using "Open With". Must be set up early in app lifecycle.
     #[cfg(target_os = "macos")]
     {
-        println!("Setting up macOS file handler...");
         macos_file_handler::set_file_channel(file_sender);
         macos_file_handler::register_file_handler();
         println!("macOS file handler registered");
@@ -1102,7 +1097,6 @@ mod macos_file_handler {
     }
 
     pub fn register_file_handler() {
-        println!("Registering file handler...");
         let mtm = MainThreadMarker::new().expect("Must be on main thread");
         unsafe {
             let app = NSApplication::sharedApplication(mtm);
@@ -1131,8 +1125,6 @@ mod macos_file_handler {
             let objects = vec![Retained::cast::<AnyObject>(NSString::from_str("NO"))];
             let dict = NSDictionary::from_vec(&keys, objects);
             NSUserDefaults::standardUserDefaults().registerDefaults(dict.as_ref());
-            
-            println!("File handler registration complete");
         }
     }
 }
