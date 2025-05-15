@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>English</string>
+  <key>CFBundleDisplayName</key>
+  <string>ViewSkater</string>
+  <key>CFBundleIconFile</key>
+  <string>ViewSkater.icns</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.ggando.viewskater</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>ViewSkater</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.2.3</string>
+  <key>CFBundleVersion</key>
+  <string>20250428.092347</string>
+  <key>CSResourcesFileMapped</key>
+  <true/>
+  <key>LSRequiresCarbon</key>
+  <true/>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.productivity</string>
+  <key>LSArchitecturePriority</key>
+  <array>
+    <string>arm64</string>
+  </array>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Image File</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Default</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>jpg</string>
+        <string>jpeg</string>
+        <string>png</string>
+      </array>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.jpeg</string>
+        <string>public.png</string>
+      </array>
+      <key>NSPersistentStoreTypeKey</key>
+      <string>XML</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>ViewSkater.icns</string>
+    </dict>
+  </array>
+
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.image</string>
+        <string>public.data</string>
+      </array>
+      <key>UTTypeDescription</key>
+      <string>Image File</string>
+      <key>UTTypeIdentifier</key>
+      <string>com.ggando.viewskater.image</string>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>jpg</string>
+          <string>jpeg</string>
+          <string>png</string>
+        </array>
+        <key>public.mime-type</key>
+        <array>
+          <string>image/jpeg</string>
+          <string>image/png</string>
+        </array>
+      </dict>
+    </dict>
+  </array>
+</dict>
+</plist>
