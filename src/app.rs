@@ -213,7 +213,7 @@ impl DataViewer {
         self.clear_primitive_storage();
     }
 
-    fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
+    fn initialize_dir_path(&mut self, path: &PathBuf, pane_index: usize) {
         debug!("last_opened_pane: {}", self.last_opened_pane);
 
         // Make sure we have enough panes
@@ -252,7 +252,7 @@ impl DataViewer {
             &self.pane_layout,
             &pane_file_lengths,
             pane_index,
-            &path,
+            path,
             self.is_slider_dual,
             &mut self.slider_value,
         );
@@ -260,7 +260,7 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
     }
 
-    fn handle_key_pressed_event(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+    fn handle_key_pressed_event(&mut self, key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
         
         // Helper function to check for the platform-appropriate modifier key
@@ -553,7 +553,7 @@ impl DataViewer {
         tasks
     }
 
-    fn handle_key_released_event(&mut self, key_code: keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+    fn handle_key_released_event(&mut self, key_code: &keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         #[allow(unused_mut)]
         let mut tasks = Vec::new();
 
@@ -772,7 +772,7 @@ impl iced_winit::runtime::Program for DataViewer {
             // Reset state and initialize the directory path
             self.reset_state(-1);
             println!("State reset complete, initializing directory path");
-            self.initialize_dir_path(PathBuf::from(path), 0);
+            self.initialize_dir_path(&PathBuf::from(path), 0);
             println!("Directory path initialization complete");
         }
 
@@ -827,7 +827,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 // Loads the dropped file/directory
                 debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
                 debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}", self.panes[pane_index as usize].dir_loaded, pane_index, self.last_opened_pane);
-                self.initialize_dir_path( PathBuf::from(dropped_path), pane_index as usize);
+                self.initialize_dir_path(&PathBuf::from(dropped_path), pane_index as usize);
             }
             Message::Close => {
                 self.reset_state(-1);
@@ -850,7 +850,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         if pane_index > 0 && self.pane_layout == PaneLayout::SinglePane {
                             debug!("Ignoring request to open folder in pane {} while in single-pane mode", pane_index);
                         } else {
-                            self.initialize_dir_path(PathBuf::from(dir), pane_index);
+                            self.initialize_dir_path(&PathBuf::from(dir), pane_index);
                         }
                     }
                     Err(err) => {
@@ -1104,7 +1104,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                     debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
                     debug!("modifiers.shift(): {}", modifiers.shift());
-                    let tasks = self.handle_key_pressed_event(key, modifiers);
+                    let tasks = self.handle_key_pressed_event(&key, modifiers);
 
                     if !tasks.is_empty() {
                         return Task::batch(tasks);
@@ -1112,7 +1112,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             
                 Event::Keyboard(iced_core::keyboard::Event::KeyReleased { key, modifiers, .. }) => {
-                    let tasks = self.handle_key_released_event(key, modifiers);
+                    let tasks = self.handle_key_released_event(&key, modifiers);
                     if !tasks.is_empty() {
                         return Task::batch(tasks);
                     }
@@ -1142,7 +1142,7 @@ impl iced_winit::runtime::Program for DataViewer {
                             self.reset_state(-1);
 
                             debug!("File dropped: {:?}", dropped_path);
-                            self.initialize_dir_path(dropped_path[0].clone(), 0);
+                            self.initialize_dir_path(&dropped_path[0], 0);
                         },
                         PaneLayout::DualPane => {}
                     }
