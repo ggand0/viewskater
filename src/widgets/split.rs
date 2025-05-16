@@ -1157,6 +1157,7 @@ impl Default for Axis {
 }
 
 /// The possible statuses of a [`Split`].
+#[derive(Debug, Clone, Copy)]
 pub enum Status {
     /// The [`Split`] can be dragged.
     Active,
