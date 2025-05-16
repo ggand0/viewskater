@@ -11,9 +11,9 @@ pub fn handle_load_operation_all(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_indices: &Vec<usize>,
-    target_indices: Vec<Option<isize>>,
-    image_data: Vec<Option<CachedData>>,
-    op: LoadOperation,
+    target_indices: &[Option<isize>],
+    image_data: &[Option<CachedData>],
+    op: &LoadOperation,
     operation_type: LoadOperationType,
 ) {
     info!("Handling load operation");
@@ -140,8 +140,8 @@ pub fn handle_load_pos_operation(
     panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     pane_index: usize,
-    target_indices_and_cache: Vec<Option<(isize, usize)>>,
-    image_data: Vec<Option<CachedData>>,
+    target_indices_and_cache: &[Option<(isize, usize)>],
+    image_data: &[Option<CachedData>],
 ) {
     debug!("Handling LoadPos operation");
     // Remove the current LoadPos operation from the being_loaded queue

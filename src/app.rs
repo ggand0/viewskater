@@ -912,9 +912,9 @@ impl iced_winit::runtime::Program for DataViewer {
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_indices,
-                                        target_indices.clone(),
-                                        image_data,  // Now using Vec<Option<CachedData>>
-                                        cloned_op,
+                                        target_indices,
+                                        &image_data,  // Now using Vec<Option<CachedData>>
+                                        &cloned_op,
                                         operation_type,
                                     );
                                 }
@@ -923,8 +923,8 @@ impl iced_winit::runtime::Program for DataViewer {
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_index,
-                                        target_indices_and_cache,
-                                        image_data,
+                                        &target_indices_and_cache,
+                                        &image_data,
                                     );
                                 }
                             }
