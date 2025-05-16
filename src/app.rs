@@ -238,21 +238,21 @@ impl DataViewer {
             pane.slider_scene = None;
         }
 
-        let pane_file_lengths = self.panes.iter().map(
+        let pane_file_lengths = self.panes  .iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
         let pane = &mut self.panes[pane_index];
         debug!("pane_file_lengths: {:?}", pane_file_lengths);
 
         pane.initialize_dir_path(
-            Arc::clone(&self.device),
-            Arc::clone(&self.queue),
+            &Arc::clone(&self.device),
+            &Arc::clone(&self.queue),
             self.is_gpu_supported,
             self.cache_strategy,
             self.compression_strategy,
             &self.pane_layout,
             &pane_file_lengths,
             pane_index,
-            path,
+            &path,
             self.is_slider_dual,
             &mut self.slider_value,
         );
@@ -690,15 +690,15 @@ impl DataViewer {
                     
                     // Reinitialize the pane with the current directory
                     pane.initialize_dir_path(
-                        Arc::clone(&self.device),
-                        Arc::clone(&self.queue),
+                        &Arc::clone(&self.device),
+                        &Arc::clone(&self.queue),
                         self.is_gpu_supported,
                         self.cache_strategy,
                         self.compression_strategy,
                         &self.pane_layout,
                         &pane_file_lengths,
                         i,
-                        path,
+                        &path,
                         self.is_slider_dual,
                         &mut self.slider_value,
                     );
@@ -734,15 +734,15 @@ impl DataViewer {
                             
                             // Reinitialize the pane with the current directory
                             pane.initialize_dir_path(
-                                Arc::clone(&self.device),
-                                Arc::clone(&self.queue),
+                                &Arc::clone(&self.device),
+                                &Arc::clone(&self.queue),
                                 self.is_gpu_supported,
                                 self.cache_strategy,
                                 self.compression_strategy,
                                 &self.pane_layout,
                                 &pane_file_lengths,
                                 i,
-                                path,
+                                &path,
                                 self.is_slider_dual,
                                 &mut self.slider_value,
                                 

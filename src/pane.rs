@@ -339,15 +339,15 @@ impl Pane {
     #[allow(unused_assignments)]
     pub fn initialize_dir_path(
         &mut self,
-        device: Arc<wgpu::Device>,
-        queue: Arc<wgpu::Queue>,
+        device: &Arc<wgpu::Device>,
+        queue: &Arc<wgpu::Queue>,
         _is_gpu_supported: bool,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
         pane_layout: &PaneLayout,
         pane_file_lengths: &[usize],
         _pane_index: usize,
-        path: PathBuf,
+        path: &PathBuf,
         is_slider_dual: bool,
         slider_value: &mut u16,
     ) {
@@ -357,15 +357,15 @@ impl Pane {
         let initial_index: usize;
 
         // Get directory path and image files
-        let (dir_path, paths_result) = if is_file(&path) {
+        let (dir_path, paths_result) = if is_file(path) {
             debug!("Dropped path is a file");
             let directory = path.parent().unwrap_or(Path::new(""));
             let dir = directory.to_string_lossy().to_string();
             (dir.clone(), file_io::get_image_paths(Path::new(&dir)))
-        } else if is_directory(&path) {
+        } else if is_directory(path) {
             debug!("Dropped path is a directory");
             let dir = path.to_string_lossy().to_string();
-            (dir, file_io::get_image_paths(&path))
+            (dir, file_io::get_image_paths(path))
         } else {
             error!("Dropped path does not exist or cannot be accessed");
             return;
@@ -400,8 +400,8 @@ impl Pane {
         debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
 
         // Determine initial index and update slider
-        if is_file(&path) {
-            let file_index = get_file_index(&_file_paths, &path);
+        if is_file(path) {
+            let file_index = get_file_index(&_file_paths, path);
             initial_index = match file_index {
                 Some(idx) => {
                     debug!("File index: {}", idx);
@@ -421,8 +421,8 @@ impl Pane {
         self.dir_loaded = true;
 
         // Clone device and queue before passing to ImageCache to avoid the move
-        let device_clone = Arc::clone(&device);
-        let queue_clone = Arc::clone(&queue);
+        let device_clone = Arc::clone(device);
+        let queue_clone = Arc::clone(queue);
 
         // Instantiate a new image cache based on GPU support
         let mut img_cache = ImageCache::new(
@@ -479,7 +479,7 @@ impl Pane {
                     
                     // Ensure texture is created for CPU images
                     if let Some(scene) = &mut self.scene {
-                        scene.ensure_texture(&device, &queue, self.pane_id);
+                        scene.ensure_texture(device, queue, self.pane_id);
                     }
                 }
             }
