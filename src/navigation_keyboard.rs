@@ -410,8 +410,8 @@ fn should_enqueue_loading(
     panes: &mut Vec<&mut Pane>,
 ) -> bool {
     is_image_index_within_bounds &&
-        loading_status.are_next_image_indices_in_queue(image_indices_to_load.clone()) &&
-        !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation.clone())
+        loading_status.are_next_image_indices_in_queue(&image_indices_to_load) &&
+        !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation)
 }
 
 
