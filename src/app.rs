@@ -174,7 +174,7 @@ impl DataViewer {
         }
     }
 
-    pub fn clear_primitive_storage(&mut self) {
+    pub fn clear_primitive_storage(&self) {
         if let Err(e) = self.renderer_request_sender.send(RendererRequest::ClearPrimitiveStorage) {
             error!("Failed to send ClearPrimitiveStorage request: {:?}", e);
         }

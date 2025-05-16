@@ -269,7 +269,7 @@ pub async fn _load_image_resized(
     is_slider_move: bool,
     device: &Device,
     queue: &Queue,
-    existing_texture: &mut Arc<wgpu::Texture>,
+    existing_texture: &Arc<wgpu::Texture>,
 ) -> Result<(), io::Error> {
     let img = image::open(img_path)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?;

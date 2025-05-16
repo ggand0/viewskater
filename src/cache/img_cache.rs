@@ -462,7 +462,7 @@ impl ImageCache {
         }
     }
 
-    pub fn move_next_edge(&mut self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
+    pub fn move_next_edge(&self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             Ok(false)
         } else {
@@ -470,7 +470,7 @@ impl ImageCache {
         }
     }
 
-    pub fn move_prev_edge(&mut self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
+    pub fn move_prev_edge(&self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
             Ok(false)
         } else {

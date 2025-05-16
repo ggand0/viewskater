@@ -543,7 +543,7 @@ impl Pane {
 }
 
 #[allow(dead_code)]
-pub fn get_pane_with_largest_dir_size(panes: &mut Vec<&mut Pane>) -> isize {
+pub fn get_pane_with_largest_dir_size(panes: &Vec<&mut Pane>) -> isize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = -1;
     for (i, pane) in panes.iter().enumerate() {

@@ -256,7 +256,7 @@ impl TexturePipeline {
     }
     
     pub fn update_vertices(
-        &mut self,
+        &self,
         _device: &wgpu::Device,
         _bounds_relative: (f32, f32, f32, f32),
     ) {
@@ -265,7 +265,7 @@ impl TexturePipeline {
     }
     
     pub fn update_screen_uniforms(
-        &mut self,
+        &self,
         _queue: &wgpu::Queue,
         _image_dimensions: (u32, u32),
         _shader_size: (u32, u32),
