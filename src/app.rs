@@ -1018,14 +1018,6 @@ impl iced_winit::runtime::Program for DataViewer {
                             pane.slider_scene = None;
                         }
                     }
-                    
-                    return navigation_slider::update_pos(
-                        &mut self.panes, 
-                        pane_index, 
-                        value as usize, 
-                        use_async,
-                        use_throttle,
-                    );
                 } else {
                     let pane_index_usize = pane_index as usize;
                     
@@ -1049,15 +1041,15 @@ impl iced_winit::runtime::Program for DataViewer {
                     if pane.slider_image.is_none() {
                         pane.slider_scene = None;
                     }
-                    
-                    return navigation_slider::update_pos(
-                        &mut self.panes, 
-                        pane_index, 
-                        value as usize, 
-                        use_async,
-                        use_throttle,
-                    );
                 }
+                
+                return navigation_slider::update_pos(
+                    &mut self.panes, 
+                    pane_index, 
+                    value as usize, 
+                    use_async,
+                    use_throttle,
+                );
             }
             
             Message::SliderReleased(pane_index, value) => {
