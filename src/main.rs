@@ -173,26 +173,38 @@ fn update_memory_usage() {
 }
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
+    println!("ViewSkater starting...");
+    
     // Set up panic hook to log to a file
     let app_name = "viewskater";
     let shared_log_buffer = file_io::setup_logger(app_name);
     file_io::setup_panic_hook(app_name, shared_log_buffer);
 
-    // Initialize tracing for debugging
-    //tracing_subscriber::fmt::init();
-
-    // Initialize winit
+    // Initialize winit FIRST
     let event_loop = EventLoop::<Action<Message>>::with_user_event()
         .build()
         .unwrap();
+
+    // Set up the file channel AFTER winit initialization
+    let (file_sender, file_receiver) = mpsc::channel();
+
+    // Register file handler BEFORE creating the runner
+    // This is required on macOS so the app can receive file paths
+    // when launched by opening a file (e.g. double-clicking in Finder)
+    // or using "Open With". Must be set up early in app lifecycle.
+    #[cfg(target_os = "macos")]
+    {
+        macos_file_handler::set_file_channel(file_sender);
+        macos_file_handler::register_file_handler();
+        println!("macOS file handler registered");
+    }
+
+    // Rest of the initialization...
     let proxy: EventLoopProxy<Action<Message>> = event_loop.create_proxy();
 
     // Create channels for event and control communication
-    // Use std::sync::mpsc explicitly
-    let (event_sender, _event_receiver): (StdSender<Event<Action<Message>>>, StdReceiver<Event<Action<Message>>>) = 
-        std_mpsc::channel();
-    let (_control_sender, control_receiver): (StdSender<Control>, StdReceiver<Control>) = 
-        std_mpsc::channel();
+    let (event_sender, _event_receiver) = std_mpsc::channel();
+    let (_control_sender, control_receiver) = std_mpsc::channel();
 
     #[allow(clippy::large_enum_variant)]
     enum Runner {
@@ -200,6 +212,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             proxy: EventLoopProxy<Action<Message>>,
             event_sender: StdSender<Event<Action<Message>>>,
             control_receiver: StdReceiver<Control>,
+            file_receiver: Receiver<String>,
         },
         Ready {
             window: Arc<winit::window::Window>,
@@ -673,8 +686,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     impl winit::application::ApplicationHandler<Action<Message>> for Runner {
         fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
             match self {
-                Self::Loading { proxy, event_sender, control_receiver } => {
+                Self::Loading { proxy, event_sender, control_receiver, file_receiver } => {
                     info!("resumed()...");
+                    
                     let custom_theme = Theme::custom_with_fn(
                         "Custom Theme".to_string(),
                         iced_winit::core::theme::Palette {
@@ -823,6 +837,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         Arc::clone(&queue), 
                         backend,
                         renderer_request_sender,
+                        std::mem::replace(file_receiver, mpsc::channel().1),
                     );
 
                     // Update state creation to lock renderer
@@ -954,6 +969,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         proxy,
         event_sender,
         control_receiver,
+        file_receiver,
     };
     
     event_loop.run_app(&mut runner)
@@ -1020,3 +1036,96 @@ fn track_async_delivery() {
         trace!("TIMING: Phase difference: {:?}", phase_diff);
     }
 }
+
+/// macOS integration for opening image files via Finder.
+///
+/// This module handles cases where the user launches ViewSkater by double-clicking
+/// an image file or using "Open With" in Finder. macOS sends the file path through
+/// the `application:openFiles:` message, which is delivered to the app's delegate.
+///
+/// This code:
+/// - Subclasses the existing `NSApplicationDelegate` to override `application:openFiles:`
+/// - Forwards received file paths to Rust using an MPSC channel
+/// - Disables automatic argument parsing by setting `NSTreatUnknownArgumentsAsOpen = NO`
+///
+/// The channel is set up in `main.rs` and connected to the rest of the app so that
+/// the selected image can be loaded on startup.
+
+#[cfg(target_os = "macos")]
+mod macos_file_handler {
+    use std::sync::mpsc::Sender;
+    use objc2::rc::autoreleasepool;
+    use objc2::{msg_send, sel};
+    use objc2::declare::ClassBuilder;
+    use objc2::runtime::{AnyObject, Sel, AnyClass};
+    use objc2_app_kit::NSApplication;
+    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults};
+    use objc2::rc::Retained;
+
+    static mut FILE_CHANNEL: Option<Sender<String>> = None;
+
+    pub fn set_file_channel(sender: Sender<String>) {
+        unsafe {
+            FILE_CHANNEL = Some(sender);
+        }
+    }
+
+    unsafe extern "C" fn handle_open_files(
+        _this: &mut AnyObject,
+        _sel: Sel,
+        _sender: &AnyObject,
+        files: &NSArray<NSString>,
+    ) {
+        println!("application_open_files called with {} files", files.len());
+        autoreleasepool(|pool| {
+            for file in files.iter() {
+                let path = file.as_str(pool).to_owned();
+                println!("Received file path: {}", path);
+                unsafe {
+                    if let Some(ref sender) = *(&raw const FILE_CHANNEL) {
+                        if let Err(e) = sender.send(path.clone()) {
+                            println!("Failed to send file path through channel: {}", e);
+                        } else {
+                            println!("Successfully sent file path through channel");
+                        }
+                    } else {
+                        println!("FILE_CHANNEL is None when trying to send path");
+                    }
+                }
+            }
+        });
+    }
+
+    pub fn register_file_handler() {
+        let mtm = MainThreadMarker::new().expect("Must be on main thread");
+        unsafe {
+            let app = NSApplication::sharedApplication(mtm);
+            
+            // Get the existing delegate
+            let delegate = app.delegate().unwrap();
+            
+            // Find out class of the NSApplicationDelegate
+            let class: &AnyClass = msg_send![&delegate, class];
+            
+            // Create a subclass of the existing delegate
+            let mut my_class = ClassBuilder::new("ViewSkaterApplicationDelegate", class).unwrap();
+            my_class.add_method(
+                sel!(application:openFiles:),
+                handle_open_files as unsafe extern "C" fn(_, _, _, _) -> _,
+            );
+            let class = my_class.register();
+            
+            // Cast and set the class
+            let delegate_obj = Retained::cast::<AnyObject>(delegate);
+            AnyObject::set_class(&delegate_obj, class);
+            
+            // Prevent AppKit from interpreting our command line
+            let key = NSString::from_str("NSTreatUnknownArgumentsAsOpen");
+            let keys = vec![key.as_ref()];
+            let objects = vec![Retained::cast::<AnyObject>(NSString::from_str("NO"))];
+            let dict = NSDictionary::from_vec(&keys, objects);
+            NSUserDefaults::standardUserDefaults().registerDefaults(dict.as_ref());
+        }
+    }
+}
+
