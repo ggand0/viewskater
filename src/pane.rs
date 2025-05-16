@@ -218,7 +218,7 @@ impl Pane {
                         if let Some(device) = &self.device {
                             if let Some(queue) = &self.queue {
                                 if let Some(scene) = &mut self.scene {
-                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue), self.pane_id);
+                                    scene.ensure_texture(&device, &queue, self.pane_id);
                                 }
                             }
                         }
@@ -288,7 +288,7 @@ impl Pane {
                             if let Some(device) = &self.device {
                                 if let Some(queue) = &self.queue {
                                     if let Some(scene) = &mut self.scene {
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), self.pane_id);
+                                        scene.ensure_texture(&device, &queue, self.pane_id);
                                     }
                                 }
                             }
@@ -479,7 +479,7 @@ impl Pane {
                     
                     // Ensure texture is created for CPU images
                     if let Some(scene) = &mut self.scene {
-                        scene.ensure_texture(Arc::clone(&device), Arc::clone(&queue), self.pane_id);
+                        scene.ensure_texture(&device, &queue, self.pane_id);
                     }
                 }
             }

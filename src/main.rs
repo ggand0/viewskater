@@ -146,7 +146,7 @@ fn monitor_message_queue(state: &mut program::State<DataViewer>) {
     let queue_len = state.queued_messages_len();
     LAST_QUEUE_LENGTH.store(queue_len, Ordering::SeqCst);
 
-    //trace!("Message queue size: {}", queue_len);
+    trace!("Message queue size: {}", queue_len);
     
     // Log if the queue is getting large
     if queue_len > QUEUE_LOG_THRESHOLD {

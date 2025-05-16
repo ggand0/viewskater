@@ -979,7 +979,7 @@ impl iced_winit::runtime::Program for DataViewer {
                             if let Some(device) = &pane.device {
                                 if let Some(queue) = &pane.queue {
                                     if let Some(scene) = &mut pane.slider_scene {
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                        scene.ensure_texture(&device, &queue, pane.pane_id);
                                     }
                                 }
                             }

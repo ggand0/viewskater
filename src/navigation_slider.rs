@@ -150,7 +150,7 @@ fn load_full_res_image(
                             // Ensure texture is created for the new scene if device/queue available
                             if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
                                 if let Some(scene) = &mut pane.scene {
-                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                    scene.ensure_texture(device, queue, pane.pane_id);
                                 }
                             }
                         }
@@ -559,7 +559,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
             if let Some(device) = &pane.device {
                 if let Some(queue) = &pane.queue {
                     if let Some(scene) = &mut pane.slider_scene {
-                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                        scene.ensure_texture(&device, &queue, pane.pane_id);
                     }
                 }
             }

@@ -104,7 +104,7 @@ pub fn handle_load_operation_all(
                                 if let Some(queue) = &pane.queue {
                                     if let Some(scene) = &mut pane.scene {
                                         debug!("Ensuring texture is created for loaded image");
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                        scene.ensure_texture(&device, &queue, pane.pane_id);
                                     }
                                 }
                             } else {
@@ -124,7 +124,7 @@ pub fn handle_load_operation_all(
                             // Ensure texture is created immediately to avoid black screens
                             if let Some(scene) = &mut pane.scene {
                                 if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
-                                    scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                    scene.ensure_texture(&device, &queue, pane.pane_id);
                                 }
                             }
                         }
@@ -202,7 +202,7 @@ pub fn handle_load_pos_operation(
                                         // Ensure texture is created immediately to avoid black screens
                                         if let Some(scene) = &mut pane.scene {
                                             if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
-                                                scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                                scene.ensure_texture(&device, &queue, pane.pane_id);
                                             }
                                         }
                                     }
