@@ -100,34 +100,34 @@ impl LoadingStatus {
         })
     }
 
-    pub fn are_next_image_indices_in_queue(&self, next_image_indices: Vec<Option<isize>>) -> bool {
+    pub fn are_next_image_indices_in_queue(&self, next_image_indices: &[Option<isize>]) -> bool {
         self.loading_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) 
             | LoadOperation::LoadPrevious((_c_index, img_indices))
             | LoadOperation::ShiftNext((_c_index, img_indices))
             | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
-                img_indices != &next_image_indices
+                img_indices != next_image_indices
             }
             LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
                 let extracted_indices: Vec<Option<isize>> = target_indices_and_cache
                     .iter()
                     .map(|item| item.map(|(index, _)| index))
                     .collect();
-                extracted_indices != next_image_indices
+                &extracted_indices[..] != next_image_indices
             }
         }) && self.being_loaded_queue.iter().all(|op| match op {
             LoadOperation::LoadNext((_c_index, img_indices)) 
             | LoadOperation::LoadPrevious((_c_index, img_indices))
             | LoadOperation::ShiftNext((_c_index, img_indices))
             | LoadOperation::ShiftPrevious((_c_index, img_indices)) => {
-                img_indices != &next_image_indices
+                img_indices != next_image_indices
             }
             LoadOperation::LoadPos((_c_index, target_indices_and_cache)) => {
                 let extracted_indices: Vec<Option<isize>> = target_indices_and_cache
                     .iter()
                     .map(|item| item.map(|(index, _)| index))
                     .collect();
-                extracted_indices != next_image_indices
+                &extracted_indices[..] != next_image_indices
             }
         })
     }
@@ -135,7 +135,7 @@ impl LoadingStatus {
     /// If there are certain loading operations in the queue and the new loading op would cause bugs, return true
     /// e.g. When current_offset==5 and LoadPrevious op is at the head of the queue(queue.front()),
     /// the new op is LoadNext: this would make current_offset==6 and cache would be out of bounds
-    pub fn is_blocking_loading_ops_in_queue(&self, panes: &mut Vec<&mut Pane>, loading_operation: LoadOperation) -> bool {
+    pub fn is_blocking_loading_ops_in_queue(&self, panes: &mut Vec<&mut Pane>, loading_operation: &LoadOperation) -> bool {
         for pane in panes {
             let img_cache = &pane.img_cache;
             if img_cache.is_blocking_loading_ops_in_queue(loading_operation.clone(), self) {

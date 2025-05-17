@@ -75,10 +75,10 @@ impl Scene {
         }
     }
 
-    pub fn ensure_texture(&mut self, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, pane_id: usize) {
+    pub fn ensure_texture(&mut self, device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>, pane_id: usize) {
         match self {
             Scene::CpuScene(cpu_scene) => {
-                cpu_scene.ensure_texture(&device, &queue, &format!("pane_{}", pane_id));
+                cpu_scene.ensure_texture(device, queue, &format!("pane_{}", pane_id));
             }
             _ => {
                 // Other scene types already have textures managed

@@ -174,7 +174,7 @@ impl DataViewer {
         }
     }
 
-    pub fn clear_primitive_storage(&mut self) {
+    pub fn clear_primitive_storage(&self) {
         if let Err(e) = self.renderer_request_sender.send(RendererRequest::ClearPrimitiveStorage) {
             error!("Failed to send ClearPrimitiveStorage request: {:?}", e);
         }
@@ -213,7 +213,7 @@ impl DataViewer {
         self.clear_primitive_storage();
     }
 
-    fn initialize_dir_path(&mut self, path: PathBuf, pane_index: usize) {
+    fn initialize_dir_path(&mut self, path: &PathBuf, pane_index: usize) {
         debug!("last_opened_pane: {}", self.last_opened_pane);
 
         // Make sure we have enough panes
@@ -238,14 +238,14 @@ impl DataViewer {
             pane.slider_scene = None;
         }
 
-        let pane_file_lengths = self.panes.iter().map(
+        let pane_file_lengths = self.panes  .iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
         let pane = &mut self.panes[pane_index];
         debug!("pane_file_lengths: {:?}", pane_file_lengths);
 
         pane.initialize_dir_path(
-            Arc::clone(&self.device),
-            Arc::clone(&self.queue),
+            &Arc::clone(&self.device),
+            &Arc::clone(&self.queue),
             self.is_gpu_supported,
             self.cache_strategy,
             self.compression_strategy,
@@ -260,7 +260,7 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
     }
 
-    fn handle_key_pressed_event(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+    fn handle_key_pressed_event(&mut self, key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
         
         // Helper function to check for the platform-appropriate modifier key
@@ -553,7 +553,7 @@ impl DataViewer {
         tasks
     }
 
-    fn handle_key_released_event(&mut self, key_code: keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+    fn handle_key_released_event(&mut self, key_code: &keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         #[allow(unused_mut)]
         let mut tasks = Vec::new();
 
@@ -690,15 +690,15 @@ impl DataViewer {
                     
                     // Reinitialize the pane with the current directory
                     pane.initialize_dir_path(
-                        Arc::clone(&self.device),
-                        Arc::clone(&self.queue),
+                        &Arc::clone(&self.device),
+                        &Arc::clone(&self.queue),
                         self.is_gpu_supported,
                         self.cache_strategy,
                         self.compression_strategy,
                         &self.pane_layout,
                         &pane_file_lengths,
                         i,
-                        path,
+                        &path,
                         self.is_slider_dual,
                         &mut self.slider_value,
                     );
@@ -734,15 +734,15 @@ impl DataViewer {
                             
                             // Reinitialize the pane with the current directory
                             pane.initialize_dir_path(
-                                Arc::clone(&self.device),
-                                Arc::clone(&self.queue),
+                                &Arc::clone(&self.device),
+                                &Arc::clone(&self.queue),
                                 self.is_gpu_supported,
                                 self.cache_strategy,
                                 self.compression_strategy,
                                 &self.pane_layout,
                                 &pane_file_lengths,
                                 i,
-                                path,
+                                &path,
                                 self.is_slider_dual,
                                 &mut self.slider_value,
                                 
@@ -772,7 +772,7 @@ impl iced_winit::runtime::Program for DataViewer {
             // Reset state and initialize the directory path
             self.reset_state(-1);
             println!("State reset complete, initializing directory path");
-            self.initialize_dir_path(PathBuf::from(path), 0);
+            self.initialize_dir_path(&PathBuf::from(path), 0);
             println!("Directory path initialization complete");
         }
 
@@ -827,7 +827,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 // Loads the dropped file/directory
                 debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
                 debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}", self.panes[pane_index as usize].dir_loaded, pane_index, self.last_opened_pane);
-                self.initialize_dir_path( PathBuf::from(dropped_path), pane_index as usize);
+                self.initialize_dir_path(&PathBuf::from(dropped_path), pane_index as usize);
             }
             Message::Close => {
                 self.reset_state(-1);
@@ -850,7 +850,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         if pane_index > 0 && self.pane_layout == PaneLayout::SinglePane {
                             debug!("Ignoring request to open folder in pane {} while in single-pane mode", pane_index);
                         } else {
-                            self.initialize_dir_path(PathBuf::from(dir), pane_index);
+                            self.initialize_dir_path(&PathBuf::from(dir), pane_index);
                         }
                     }
                     Err(err) => {
@@ -863,10 +863,10 @@ impl iced_winit::runtime::Program for DataViewer {
                 let img_path = self.panes[pane_index].img_cache
                     .image_paths[self.panes[pane_index].img_cache.current_index]
                     .file_name().map(|name| name.to_string_lossy().to_string());
-                if let Some(img_path) = img_path {
-                    if let Some(filename) = file_io::get_filename(&img_path) {
+                if let Some(filename) = img_path {
+                    if let Some(filename) = file_io::get_filename(&filename) {
                         debug!("Filename: {}", filename);
-                        return clipboard::write::<Message>(filename.to_string());
+                        return clipboard::write::<Message>(filename);
                     }
                 }
             }
@@ -912,9 +912,9 @@ impl iced_winit::runtime::Program for DataViewer {
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_indices,
-                                        target_indices.clone(),
-                                        image_data,  // Now using Vec<Option<CachedData>>
-                                        cloned_op,
+                                        target_indices,
+                                        &image_data,  // Now using Vec<Option<CachedData>>
+                                        &cloned_op,
                                         operation_type,
                                     );
                                 }
@@ -923,8 +923,8 @@ impl iced_winit::runtime::Program for DataViewer {
                                         &mut self.panes,
                                         &mut self.loading_status,
                                         pane_index,
-                                        target_indices_and_cache.clone(),
-                                        image_data,
+                                        &target_indices_and_cache,
+                                        &image_data,
                                     );
                                 }
                             }
@@ -979,7 +979,7 @@ impl iced_winit::runtime::Program for DataViewer {
                             if let Some(device) = &pane.device {
                                 if let Some(queue) = &pane.queue {
                                     if let Some(scene) = &mut pane.slider_scene {
-                                        scene.ensure_texture(Arc::clone(device), Arc::clone(queue), pane.pane_id);
+                                        scene.ensure_texture(&device, &queue, pane.pane_id);
                                     }
                                 }
                             }
@@ -1018,14 +1018,6 @@ impl iced_winit::runtime::Program for DataViewer {
                             pane.slider_scene = None;
                         }
                     }
-                    
-                    return navigation_slider::update_pos(
-                        &mut self.panes, 
-                        pane_index, 
-                        value as usize, 
-                        use_async,
-                        use_throttle,
-                    );
                 } else {
                     let pane_index_usize = pane_index as usize;
                     
@@ -1049,15 +1041,15 @@ impl iced_winit::runtime::Program for DataViewer {
                     if pane.slider_image.is_none() {
                         pane.slider_scene = None;
                     }
-                    
-                    return navigation_slider::update_pos(
-                        &mut self.panes, 
-                        pane_index, 
-                        value as usize, 
-                        use_async,
-                        use_throttle,
-                    );
                 }
+                
+                return navigation_slider::update_pos(
+                    &mut self.panes, 
+                    pane_index, 
+                    value as usize, 
+                    use_async,
+                    use_throttle,
+                );
             }
             
             Message::SliderReleased(pane_index, value) => {
@@ -1112,7 +1104,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                     debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
                     debug!("modifiers.shift(): {}", modifiers.shift());
-                    let tasks = self.handle_key_pressed_event(key, modifiers);
+                    let tasks = self.handle_key_pressed_event(&key, modifiers);
 
                     if !tasks.is_empty() {
                         return Task::batch(tasks);
@@ -1120,7 +1112,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             
                 Event::Keyboard(iced_core::keyboard::Event::KeyReleased { key, modifiers, .. }) => {
-                    let tasks = self.handle_key_released_event(key, modifiers);
+                    let tasks = self.handle_key_released_event(&key, modifiers);
                     if !tasks.is_empty() {
                         return Task::batch(tasks);
                     }
@@ -1134,8 +1126,8 @@ impl iced_winit::runtime::Program for DataViewer {
                             // Reset state first
                             self.reset_state(-1);
 
-                            debug!("File dropped: {:?}", dropped_paths.clone());
-                            self.initialize_dir_path(dropped_paths[0].clone(), 0);
+                            debug!("File dropped: {:?}", dropped_paths);
+                            self.initialize_dir_path(&dropped_paths[0].clone(), 0);
                         },
                         PaneLayout::DualPane => {
                         }
@@ -1150,7 +1142,7 @@ impl iced_winit::runtime::Program for DataViewer {
                             self.reset_state(-1);
 
                             debug!("File dropped: {:?}", dropped_path);
-                            self.initialize_dir_path(dropped_path[0].clone(), 0);
+                            self.initialize_dir_path(&dropped_path[0], 0);
                         },
                         PaneLayout::DualPane => {}
                     }

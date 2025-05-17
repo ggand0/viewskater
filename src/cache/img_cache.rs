@@ -76,8 +76,8 @@ pub enum CachedData {
 }
 
 impl CachedData {
-    pub fn take(self) -> Option<Self> {
-        Some(self)
+    pub fn take(self) -> Self {
+        self
     }
 
     pub fn width(&self) -> u32 {
@@ -241,14 +241,14 @@ impl Default for ImageCache {
 // Constructor, cached_data getter / setter, and type specific methods
 impl ImageCache {
     pub fn new(
-        image_paths: Vec<PathBuf>,
+        image_paths: &[PathBuf],
         cache_count: usize,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
         initial_index: usize,
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
-    ) -> Result<Self, io::Error> {
+    ) -> Self {
         let mut cached_data = Vec::new();
         for _ in 0..(cache_count * 2 + 1) {
             cached_data.push(None);
@@ -256,7 +256,7 @@ impl ImageCache {
 
         // Initialize the image cache with the basic structure
         let mut image_cache = ImageCache {
-            image_paths: image_paths.clone(),
+            image_paths: image_paths.to_owned(),
             num_files: image_paths.len(),
             current_index: initial_index,
             current_offset: 0,
@@ -292,9 +292,9 @@ impl ImageCache {
         }
 
         // Initialize the appropriate backend
-        image_cache.init_cache(device, queue, cache_strategy, compression_strategy)?;
+        image_cache.init_cache(device, queue, cache_strategy, compression_strategy);
 
-        Ok(image_cache)
+        image_cache
     }
 
     pub fn _get_cached_data(&self, index: usize) -> Option<&CachedData> {
@@ -365,7 +365,7 @@ impl ImageCache {
         queue: Option<Arc<wgpu::Queue>>,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
-    ) -> Result<(), io::Error> {
+    ) {
         let backend: Box<dyn ImageCacheBackend> = match cache_strategy {
             CacheStrategy::Cpu => Box::new(CpuImageCache::new()),
             CacheStrategy::Gpu => {
@@ -380,7 +380,6 @@ impl ImageCache {
         //self.backend = Some(backend);
         self.backend = backend;
         self.compression_strategy = compression_strategy;
-        Ok(())
     }
 
     pub fn _set_compression_strategy(&mut self, strategy: CompressionStrategy) {
@@ -463,7 +462,7 @@ impl ImageCache {
         }
     }
 
-    pub fn move_next_edge(&mut self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
+    pub fn move_next_edge(&self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
             Ok(false)
         } else {
@@ -471,7 +470,7 @@ impl ImageCache {
         }
     }
 
-    pub fn move_prev_edge(&mut self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
+    pub fn move_prev_edge(&self, _new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
             Ok(false)
         } else {
@@ -754,7 +753,7 @@ pub fn load_images_by_operation_slider(
     compression_strategy: CompressionStrategy,
     panes: &mut Vec<pane::Pane>,
     pane_index: usize,
-    target_indices_and_cache: Vec<Option<(isize, usize)>>,
+    target_indices_and_cache: &[Option<(isize, usize)>],
     operation: LoadOperation
 ) -> Task<Message> {
     let mut paths = Vec::new();
@@ -787,7 +786,7 @@ pub fn load_images_by_operation_slider(
         if !paths.is_empty() {
             let device_clone = Arc::clone(device);
             let queue_clone = Arc::clone(queue);
-            debug!("Task::perform started for {:?}", operation.clone());
+            debug!("Task::perform started for {:?}", operation);
             
 
             let images_loading_task = async move {
@@ -818,7 +817,7 @@ pub fn load_images_by_indices(
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
     panes: &mut Vec<&mut Pane>, 
-    target_indices: Vec<Option<isize>>, 
+    target_indices: &[Option<isize>], 
     operation: LoadOperation
 ) -> Task<Message> {
     let mut paths = Vec::new();
@@ -845,7 +844,7 @@ pub fn load_images_by_indices(
         let device_clone = Arc::clone(device);
         let queue_clone = Arc::clone(queue);
 
-        debug!("Task::perform started for {:?}", operation.clone());
+        debug!("Task::perform started for {:?}", operation);
         Task::perform(
             async move {
                 let result = file_io::load_images_async(
@@ -888,8 +887,8 @@ pub fn load_images_by_operation(
                         cache_strategy,
                         compression_strategy,
                         panes, 
-                        target_indicies.clone(), 
-                        operation
+                        &target_indicies,
+                        operation.clone()
                     )
                 }
                 LoadOperation::LoadPrevious((ref _pane_indices, ref target_indicies)) => {
@@ -899,8 +898,8 @@ pub fn load_images_by_operation(
                         cache_strategy,
                         compression_strategy,
                         panes, 
-                        target_indicies.clone(), 
-                        operation
+                        &target_indicies,
+                        operation.clone()
                     )
                 }
                 LoadOperation::ShiftNext((ref _pane_indices, ref _target_indicies)) => {
@@ -957,8 +956,8 @@ pub fn load_all_images_in_queue(
                     compression_strategy,
                     panes,
                     *pane_index,
-                    target_indices_and_cache.clone(),
-                    operation,
+                    &target_indices_and_cache,
+                    operation.clone(),
                 );
                 tasks.push(task);
             }

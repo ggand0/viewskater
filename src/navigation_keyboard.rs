@@ -48,7 +48,7 @@ fn init_is_prev_image_loaded(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
 
 
 // Function to check if all images are loaded for all panes
-fn are_all_next_images_loaded(panes: &mut Vec<&mut Pane>, is_slider_dual: bool, _loading_status: &mut LoadingStatus) -> bool {
+fn are_all_next_images_loaded(panes: &Vec<&mut Pane>, is_slider_dual: bool, _loading_status: &mut LoadingStatus) -> bool {
     if is_slider_dual {
         panes
         .iter()
@@ -58,7 +58,7 @@ fn are_all_next_images_loaded(panes: &mut Vec<&mut Pane>, is_slider_dual: bool, 
         panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.is_next_image_loaded))
     }
 }
-fn are_all_prev_images_loaded(panes: &mut Vec<&mut Pane>, is_slider_dual: bool, _loading_status: &mut LoadingStatus) -> bool {
+fn are_all_prev_images_loaded(panes: &Vec<&mut Pane>, is_slider_dual: bool, _loading_status: &mut LoadingStatus) -> bool {
     if is_slider_dual {
         panes
         .iter()
@@ -69,13 +69,13 @@ fn are_all_prev_images_loaded(panes: &mut Vec<&mut Pane>, is_slider_dual: bool, 
     }
 }
 
-pub fn are_panes_cached_next(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout, _is_slider_dual: bool) -> bool {
+pub fn are_panes_cached_next(panes: &Vec<&mut Pane>, _pane_layout: &PaneLayout, _is_slider_dual: bool) -> bool {
     panes
     .iter()
     .filter(|pane| pane.is_selected)  // Filter only selected panes
     .all(|pane| pane.is_pane_cached_next())
 }
-pub fn are_panes_cached_prev(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayout, _is_slider_dual: bool) -> bool {
+pub fn are_panes_cached_prev(panes: &Vec<&mut Pane>, _pane_layout: &PaneLayout, _is_slider_dual: bool) -> bool {
     panes
     .iter()
     .filter(|pane| pane.is_selected)  // Filter only selected panes
@@ -410,8 +410,8 @@ fn should_enqueue_loading(
     panes: &mut Vec<&mut Pane>,
 ) -> bool {
     is_image_index_within_bounds &&
-        loading_status.are_next_image_indices_in_queue(image_indices_to_load.clone()) &&
-        !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation.clone())
+        loading_status.are_next_image_indices_in_queue(&image_indices_to_load) &&
+        !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation)
 }
 
 
@@ -480,7 +480,7 @@ pub fn move_right_all(
 
     // 2. Rendering preparation
     // If all panes have been rendered, start rendering the next image; reset is_next_image_loaded
-    if are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
+    if are_all_next_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
         debug!("move_right_all() - all next images loaded");
         init_is_next_image_loaded(&mut panes_to_load, pane_layout, is_slider_dual);
         loading_status.is_next_image_loaded = false;
@@ -492,7 +492,7 @@ pub fn move_right_all(
     // file_io::load_image_async() loads the next images for all panes at the same time,
     // so we can assume that the rest of the panes have the same loading conditions as the representative pane.
     debug!("move_right_all() - PROCESSING");
-    if !are_panes_cached_next(&mut panes_to_load, pane_layout, is_slider_dual) {
+    if !are_panes_cached_next(&panes_to_load, pane_layout, is_slider_dual) {
         debug!("move_right_all() - not all panes cached next, skipping...");
         loading_status.print_queue();
 
@@ -524,9 +524,9 @@ pub fn move_right_all(
         }
     }
 
-    debug!("move_right_all() - are_all_next_images_loaded(): {}", are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status));
+    debug!("move_right_all() - are_all_next_images_loaded(): {}", are_all_next_images_loaded(&panes_to_load, is_slider_dual, loading_status));
     debug!("move_right_all() - panes[0].is_next_image_loaded: {}", panes_to_load[0].is_next_image_loaded);
-    if !are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
+    if !are_all_next_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
         let did_render_happen: bool = render_next_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
 
         if did_render_happen {// NOTE: I may need to edit the condition here
@@ -550,7 +550,7 @@ pub fn move_right_all(
     }
 
     
-    let did_new_render_happen = are_all_next_images_loaded(&mut panes_to_load, is_slider_dual, loading_status);
+    let did_new_render_happen = are_all_next_images_loaded(&panes_to_load, is_slider_dual, loading_status);
 
     // Update master slider when !is_slider_dual
     if did_new_render_happen && !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
@@ -602,7 +602,7 @@ pub fn move_left_all(
 
     
     // If all panes have been rendered, start rendering the next(prev) image; reset is_next_image_loaded
-    if are_all_prev_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
+    if are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
         debug!("move_left_all() - all prev images loaded");
         for pane in panes_to_load.iter_mut() {
             pane.print_state();
@@ -613,7 +613,7 @@ pub fn move_left_all(
 
     let mut tasks = Vec::new();
     debug!("move_left_all() - PROCESSING");
-    if !are_panes_cached_prev(&mut panes_to_load, pane_layout, is_slider_dual) {
+    if !are_panes_cached_prev(&panes_to_load, pane_layout, is_slider_dual) {
         debug!("move_left_all() - not all panes cached prev, skipping...");
         loading_status.print_queue();
         debug!("move_left_all() - loading_status.is_operation_in_queues(LoadOperationType::LoadPrevious): {}", loading_status.is_operation_in_queues(LoadOperationType::LoadPrevious));
@@ -644,10 +644,10 @@ pub fn move_left_all(
     }
 
 
-    debug!("move_left_all() - are_all_prev_images_loaded(): {}", are_all_prev_images_loaded(&mut panes_to_load, is_slider_dual, loading_status));
+    debug!("move_left_all() - are_all_prev_images_loaded(): {}", are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status));
     debug!("move_left_all() - loading_status.is_prev_image_loaded: {}", loading_status.is_prev_image_loaded);
     
-    if !are_all_prev_images_loaded(&mut panes_to_load, is_slider_dual, loading_status) {
+    if !are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
         debug!("move_left_all() - setting prev image...");
         let did_render_happen: bool = render_prev_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
         for pane in panes_to_load.iter_mut() {
@@ -670,7 +670,7 @@ pub fn move_left_all(
         }
     }
 
-    let did_new_render_happen = are_all_prev_images_loaded(&mut panes_to_load, is_slider_dual, loading_status);
+    let did_new_render_happen = are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status);
     // Update master slider when !is_slider_dual
     if did_new_render_happen && !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
         *slider_value = (get_master_slider_value(&mut panes_to_load, pane_layout, is_slider_dual, last_opened_pane) ) as u16;
