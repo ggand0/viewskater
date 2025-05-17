@@ -186,7 +186,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         .unwrap();
 
     // Set up the file channel AFTER winit initialization
-    let (file_sender, file_receiver) = mpsc::channel();
+    let (_file_sender, file_receiver) = mpsc::channel();
 
     // Register file handler BEFORE creating the runner
     // This is required on macOS so the app can receive file paths
