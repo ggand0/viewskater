@@ -248,7 +248,7 @@ impl ImageCache {
         initial_index: usize,
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
-    ) -> Result<Self, io::Error> {
+    ) -> Self {
         let mut cached_data = Vec::new();
         for _ in 0..(cache_count * 2 + 1) {
             cached_data.push(None);
@@ -294,7 +294,7 @@ impl ImageCache {
         // Initialize the appropriate backend
         image_cache.init_cache(device, queue, cache_strategy, compression_strategy);
 
-        Ok(image_cache)
+        image_cache
     }
 
     pub fn _get_cached_data(&self, index: usize) -> Option<&CachedData> {

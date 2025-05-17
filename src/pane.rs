@@ -433,8 +433,7 @@ impl Pane {
             initial_index,
             Some(device_clone),
             Some(queue_clone),
-        )
-        .unwrap();
+        );
 
         // Track memory before loading initial images
         mem::log_memory("Pane::initialize_dir_path: Before loading initial images");
