@@ -1126,8 +1126,8 @@ impl iced_winit::runtime::Program for DataViewer {
                             // Reset state first
                             self.reset_state(-1);
 
-                            debug!("File dropped: {:?}", dropped_paths.clone());
-                            self.initialize_dir_path(dropped_paths[0].clone(), 0);
+                            debug!("File dropped: {:?}", dropped_paths);
+                            self.initialize_dir_path(&dropped_paths[0].clone(), 0);
                         },
                         PaneLayout::DualPane => {
                         }

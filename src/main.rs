@@ -186,7 +186,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         .unwrap();
 
     // Set up the file channel AFTER winit initialization
-    let (_file_sender, file_receiver) = mpsc::channel();
+    let (file_sender, file_receiver) = mpsc::channel();
 
     // Register file handler BEFORE creating the runner
     // This is required on macOS so the app can receive file paths
@@ -198,6 +198,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         macos_file_handler::register_file_handler();
         println!("macOS file handler registered");
     }
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = file_sender;
 
     // Rest of the initialization...
     let proxy: EventLoopProxy<Action<Message>> = event_loop.create_proxy();
