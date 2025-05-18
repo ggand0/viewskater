@@ -357,7 +357,10 @@ impl StdError for ImageError {}
 
 pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageError> {
     let mut image_paths: Vec<PathBuf> = Vec::new();
-    let allowed_extensions = ["jpg", "jpeg", "png", /* Add other image extensions */];
+    let allowed_extensions = [
+        "jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
+        "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"
+    ];
 
     let dir_entries = fs::read_dir(directory_path)
         .map_err(|e| ImageError::DirectoryError(e))?;
