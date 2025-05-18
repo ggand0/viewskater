@@ -19,6 +19,9 @@ use macos::*;
 use log::{Level, trace, debug, info, warn, error};
 
 use image;
+use image::codecs::png::PngEncoder;
+use image::ImageEncoder;
+use image::ExtendedColorType;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[allow(unused_imports)]
@@ -543,10 +546,15 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
             
             // Create the CPU bytes
             let mut bytes: Vec<u8> = Vec::new();
-            if let Err(err) = img.write_to(
-                &mut std::io::Cursor::new(&mut bytes),
-                image::ImageOutputFormat::Png
-            ) {
+            if let Err(err) = {
+                let encoder = PngEncoder::new(std::io::Cursor::new(&mut bytes));
+                encoder.write_image(
+                    img.as_bytes(),
+                    img.width(),
+                    img.height(),
+                    ExtendedColorType::Rgba8
+                )
+            } {
                 debug!("Failed to encode slider image: {}", err);
                 return Err(io::Error::new(io::ErrorKind::Other, "Failed to encode image"));
             }
