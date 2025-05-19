@@ -32,10 +32,11 @@ use app_menu::button_style;
 use crate::menu::PaneLayout;
 use crate::{app::Message, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
-use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
+use crate::widgets::{split::Axis, viewer, dualslider::DualSlider};
 use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
+use crate::widgets::synced_image_split::SyncedImageSplit;
 
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -363,7 +364,8 @@ pub fn build_ui_dual_pane_slider1(
     let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split);
     
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    Split::new(
+    
+    SyncedImageSplit::new(
         false,
         first_img,
         second_img,
@@ -375,7 +377,12 @@ pub fn build_ui_dual_pane_slider1(
         Message::FileDropped,
         Message::PaneSelected,
         MENU_BAR_HEIGHT,
+        true,
     )
+    .synced_zoom(true)
+    .min_scale(0.25)
+    .max_scale(10.0)
+    .scale_step(0.10)
     .into()
 }
 
@@ -475,7 +482,8 @@ pub fn build_ui_dual_pane_slider2(
     };
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    Split::new(
+    
+    SyncedImageSplit::new(
         true,
         first_img,
         second_img,
@@ -487,6 +495,11 @@ pub fn build_ui_dual_pane_slider2(
         Message::FileDropped,
         Message::PaneSelected,
         MENU_BAR_HEIGHT,
+        true,
     )
+    .synced_zoom(true)
+    .min_scale(0.25)
+    .max_scale(10.0)
+    .scale_step(0.10)
     .into()
 }

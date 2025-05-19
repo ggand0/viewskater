@@ -194,11 +194,11 @@ impl<Message> ImageShader<Message> {
 // Expanded ImageShaderState to track zoom and pan
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ImageShaderState {
-    scale: f32,
-    starting_offset: Vector,
-    current_offset: Vector,
-    cursor_grabbed_at: Option<Point>,
-    last_click_time: Option<std::time::Instant>,
+    pub scale: f32,
+    pub starting_offset: Vector,
+    pub current_offset: Vector,
+    pub cursor_grabbed_at: Option<Point>,
+    pub last_click_time: Option<std::time::Instant>,
 }
 
 impl ImageShaderState {
