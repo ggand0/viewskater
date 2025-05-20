@@ -549,6 +549,17 @@ where
         let event_status = match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
+                // Initialize panning state if cursor is over an image pane
+                if first_layout.bounds().contains(cursor.position().unwrap_or_default()) {
+                    split_state.active_pane_for_pan = Some(0);
+                    split_state.pan_start_position = cursor.position().unwrap_or_default();
+                    debug!("Starting pan operation in first pane");
+                } else if second_layout.bounds().contains(cursor.position().unwrap_or_default()) {
+                    split_state.active_pane_for_pan = Some(1);
+                    split_state.pan_start_position = cursor.position().unwrap_or_default();
+                    debug!("Starting pan operation in second pane");
+                }
+                
                 // Detect double-click event on the divider
                 if divider_layout
                     .bounds()
@@ -608,23 +619,131 @@ where
             
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerLifted { .. }) => {
-                // Always clear dragging state on button release
+                // Always clear dragging and panning state on button release
                 split_state.dragging = false;
+                split_state.active_pane_for_pan = None;
+                debug!("Ending pan operation");
                 event::Status::Ignored
             },
-            
-            Event::Mouse(mouse::Event::CursorMoved { position })
-            | Event::Touch(touch::Event::FingerMoved { position, .. }) => {
-                if split_state.dragging {
-                    let position = match self.axis {
-                        Axis::Horizontal => position.y - self.menu_bar_height,
-                        Axis::Vertical => position.x,
+
+            Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                if self.synced_zoom && split_state.active_pane_for_pan.is_some() {
+                    let active_pane = split_state.active_pane_for_pan.unwrap();
+                    debug!("Pan sync: active_pane={}", active_pane);
+                    
+                    // Get child layouts
+                    let mut children = layout.children();
+                    let first_layout = children.next().expect("Missing Split First window");
+                    let _divider_layout = children.next().expect("Missing Split Divider");
+                    let second_layout = children.next().expect("Missing Split Second window");
+                    
+                    // Process the event on the active pane first
+                    let active_layout = if active_pane == 0 { first_layout } else { second_layout };
+                    let event_status = if active_pane == 0 {
+                        self.first.as_widget_mut().on_event(
+                            &mut state.children[0],
+                            event.clone(),
+                            active_layout,
+                            cursor.clone(),
+                            renderer,
+                            clipboard,
+                            shell,
+                            viewport,
+                        )
+                    } else {
+                        self.second.as_widget_mut().on_event(
+                            &mut state.children[1],
+                            event.clone(),
+                            active_layout,
+                            cursor.clone(),
+                            renderer,
+                            clipboard,
+                            shell,
+                            viewport,
+                        )
                     };
-                    shell.publish((self.on_resize)(position as u16));
-                    event::Status::Captured
-                } else {
-                    event::Status::Ignored
+                    
+                    if event_status == event::Status::Captured {
+                        // The active pane has processed the event, now query its state
+                        let (first_state, second_state) = state.children.split_at_mut(1);
+                        
+                        // Create a query operation to get the current state
+                        let mut query_op = ZoomStateOperation::new_query();
+                        
+                        // Query the state from the active pane
+                        if active_pane == 0 {
+                            ZoomStateOperation::operate(
+                                &mut first_state[0],
+                                Rectangle::default(),
+                                renderer,
+                                &mut query_op
+                            );
+                        } else {
+                            ZoomStateOperation::operate(
+                                &mut second_state[0],
+                                Rectangle::default(),
+                                renderer,
+                                &mut query_op
+                            );
+                        }
+                        
+                        // Update the shared state
+                        split_state.shared_scale = query_op.scale;
+                        split_state.shared_offset = query_op.offset;
+                        
+                        debug!("Syncing pan state: scale={}, offset=({},{})",
+                               query_op.scale, query_op.offset.x, query_op.offset.y);
+                        
+                        // Apply the same state to the other pane
+                        let mut apply_op = ZoomStateOperation::new_apply(
+                            query_op.scale, query_op.offset
+                        );
+                        
+                        // Apply to the other pane
+                        if active_pane == 0 {
+                            ZoomStateOperation::operate(
+                                &mut second_state[0],
+                                Rectangle::default(),
+                                renderer,
+                                &mut apply_op
+                            );
+                        } else {
+                            ZoomStateOperation::operate(
+                                &mut first_state[0],
+                                Rectangle::default(),
+                                renderer,
+                                &mut apply_op
+                            );
+                        }
+                        
+                        return event::Status::Captured;
+                    }
                 }
+                
+                // If we're not syncing or no active pane, process normally
+                let first_status = self.first.as_widget_mut().on_event(
+                    &mut state.children[0],
+                    event.clone(),
+                    first_layout,
+                    cursor.clone(),
+                    renderer,
+                    clipboard,
+                    shell,
+                    viewport,
+                );
+                
+                let second_status = self.second.as_widget_mut().on_event(
+                    &mut state.children[1],
+                    event.clone(),
+                    second_layout,
+                    cursor.clone(),
+                    renderer,
+                    clipboard,
+                    shell,
+                    viewport,
+                );
+                
+                first_status.merge(second_status)
             },
             
             // Handle file drop events - retain original functionality
@@ -975,7 +1094,7 @@ where
             let mut zoom_op = ZoomStateOperation {
                 scale: split_state.shared_scale,
                 offset: split_state.shared_offset,
-                is_setting: false,
+                query_only: false,
             };
             
             // Propagate to first child
@@ -1084,10 +1203,12 @@ pub struct State {
     last_click_time: Option<Instant>,
     panes_seleced: [bool; 2],
     
-    // Add fields for synced zooming
+    // Zoom and pan synchronization state
     synced_zoom: bool,
     shared_scale: f32,
     shared_offset: Vector,
+    active_pane_for_pan: Option<usize>,
+    pan_start_position: Point,
 }
 
 impl State {
@@ -1096,13 +1217,14 @@ impl State {
         Self {
             dragging: false,
             last_click_time: None,
-            panes_seleced: [true, true],
+            panes_seleced: [false, false],
             
-            // Initialize zoom state
-            synced_zoom: true,
+            // Initialize zoom and pan state
+            synced_zoom: false,
             shared_scale: 1.0,
             shared_offset: Vector::default(),
-            
+            active_pane_for_pan: None,
+            pan_start_position: Point::default(),
         }
     }
 }
@@ -1122,57 +1244,14 @@ where
 
 
 /// Custom operation for synchronizing zoom state between image panes
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct ZoomStateOperation {
     /// The scale factor to apply
     pub scale: f32,
     /// The offset for panning
     pub offset: Vector,
-    /// Whether we're querying (false) or setting (true) the state
-    pub is_setting: bool,
-}
-
-impl widget::Operation for ZoomStateOperation {
-    fn container(
-        &mut self,
-        _id: Option<&widget::Id>,
-        _bounds: Rectangle,
-        operate_on_children: &mut dyn FnMut(&mut dyn widget::Operation),
-    ) {
-        // Just forward the operation to children
-        operate_on_children(self);
-    }
-
-    // In the ImageShader custom method, we'll check for this type
-    fn custom(&mut self, state: &mut dyn std::any::Any, _id: Option<&widget::Id>) {
-        // Try to downcast to ImageShaderState - add more detailed logging
-        debug!("ZoomStateOperation: Attempting to downcast state type: {}", std::any::type_name_of_val(state));
-        
-        // Try multiple potential state types - we need the correct one
-        if let Some(shader_state) = state.downcast_mut::<crate::widgets::shader::image_shader::ImageShaderState>() {
-            if self.is_setting {
-                // Set zoom values
-                debug!("ZoomStateOperation: SETTING scale={} -> {}, offset=({},{}) -> ({},{})",
-                       shader_state.scale, self.scale,
-                       shader_state.current_offset.x, shader_state.current_offset.y,
-                       self.offset.x, self.offset.y);
-                
-                shader_state.scale = self.scale;
-                shader_state.current_offset = self.offset;
-            } else {
-                // Query zoom values (update our own scale/offset from the state)
-                debug!("ZoomStateOperation: QUERYING scale={}, offset=({},{})",
-                       shader_state.scale, 
-                       shader_state.current_offset.x, shader_state.current_offset.y);
-                
-                self.scale = shader_state.scale;
-                self.offset = shader_state.current_offset;
-            }
-        } else {
-            // Try alternative namespaces - the actual path might be different
-            debug!("ZoomStateOperation: Failed to downcast to ImageShaderState");
-        }
-    }
+    /// Whether we're querying (true) or setting (false) the state
+    pub query_only: bool,
 }
 
 impl ZoomStateOperation {
@@ -1180,7 +1259,53 @@ impl ZoomStateOperation {
         Self {
             scale: 1.0,
             offset: Vector::default(),
-            is_setting: false,
+            query_only: true,
+        }
+    }
+    
+    pub fn new_apply(scale: f32, offset: Vector) -> Self {
+        Self {
+            scale,
+            offset,
+            query_only: false,
+        }
+    }
+}
+
+// Implement the Operation trait
+impl<T> widget::Operation<T> for ZoomStateOperation {
+    fn container(
+        &mut self, 
+        _id: Option<&widget::Id>, 
+        _bounds: Rectangle, 
+        _operate: &mut dyn FnMut(&mut dyn widget::Operation<T>),
+    ) {
+        // Empty implementation
+    }
+}
+
+// COMPLETELY SEPARATE STATIC FUNCTION
+// This is not part of the Operation trait implementation
+impl ZoomStateOperation {
+    pub fn operate<T>(
+        tree: &mut widget::Tree,
+        _bounds: Rectangle,
+        _renderer: &T,
+        operation: &mut Self,
+    ) {
+        // Direct access without pattern matching
+        let shader_state = tree.state.downcast_mut::<crate::widgets::shader::image_shader::ImageShaderState>();
+        
+        if !operation.query_only {  // Apply mode
+            shader_state.scale = operation.scale;
+            shader_state.current_offset = operation.offset;
+            debug!("ZoomStateOperation: Applied scale={}, offset=({},{})",
+                  operation.scale, operation.offset.x, operation.offset.y);
+        } else {  // Query mode
+            operation.scale = shader_state.scale;
+            operation.offset = shader_state.current_offset;
+            debug!("ZoomStateOperation: Queried scale={}, offset=({},{})",
+                  operation.scale, operation.offset.x, operation.offset.y);
         }
     }
 }
