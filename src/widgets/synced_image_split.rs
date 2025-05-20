@@ -71,6 +71,18 @@ use iced_core::widget;
 use crate::widgets::split::Axis;
 use crate::widgets::split::{Catalog, Status, Style, StyleFn};
 
+// Add module-level debug flag - set to false to disable all debug logs
+const DEBUG_LOGS_ENABLED: bool = false;
+
+// Define a macro for conditional debug printing
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        if DEBUG_LOGS_ENABLED {
+            debug!($($arg)*);
+        }
+    };
+}
+
 /// A split can divide the available space by half to display two different elements.
 /// It can split horizontally or vertically.
 ///
@@ -200,8 +212,8 @@ where
             spacing: 5.0, // was 5.0
             width: Length::Fill,
             height: Length::Fill,
-            min_size_first: 5,
-            min_size_second: 5,
+            min_size_first: 20,
+            min_size_second: 20,
             on_resize: Box::new(on_resize),
             on_double_click: Box::new(on_double_click),
             on_drop: Box::new(on_drop),
@@ -379,7 +391,7 @@ where
         
         let is_wheel_event = matches!(event, Event::Mouse(mouse::Event::WheelScrolled { .. }));
         if is_wheel_event {
-            debug!("SyncedImageSplit: synced_zoom = {}", split_state.synced_zoom);
+            debug_log!("SyncedImageSplit: synced_zoom = {}", split_state.synced_zoom);
         }
         
         let mut children = layout.children();
@@ -398,7 +410,7 @@ where
         // Special direct handling for wheel events when synced_zoom is enabled
         if split_state.synced_zoom && is_wheel_event {
             if let Event::Mouse(mouse::Event::WheelScrolled { delta }) = event {
-                debug!("Wheel event with delta: {:?}", delta);
+                debug_log!("Wheel event with delta: {:?}", delta);
                 
                 // Find which pane the cursor is over
                 let cursor_pos = cursor.position().unwrap_or_default();
@@ -410,7 +422,7 @@ where
                 } else if second_bounds.contains(cursor_pos) {
                     (1, second_layout, first_layout)
                 } else {
-                    debug!("Cursor outside both panes - ignoring");
+                    debug_log!("Cursor outside both panes - ignoring");
                     // Outside either pane, process normally
                     let first_status = self.first.as_widget_mut().on_event(
                         &mut state.children[0], event.clone(), first_layout, cursor, 
@@ -440,7 +452,7 @@ where
                     other_bounds.y + normalized_cursor.y * other_bounds.height
                 );
                 
-                debug!("Processing wheel event in pane {}", target_pane);
+                debug_log!("Processing wheel event in pane {}", target_pane);
                 
                 // Handle target pane with actual cursor
                 let target_status = if target_pane == 0 {
@@ -492,7 +504,7 @@ where
                     )
                 };
                 
-                debug!("Processed wheel events in both panes");
+                debug_log!("Processed wheel events in both panes");
                 
                 // Verify state after wheel processing
                 let mut verify_first_op = ZoomStateOperation::new_query();
@@ -512,9 +524,9 @@ where
                     &mut verify_second_op
                 );
                 
-                debug!("VERIFICATION: First pane scale={}, offset=({}, {})", 
+                debug_log!("VERIFICATION: First pane scale={}, offset=({}, {})", 
                        verify_first_op.scale, verify_first_op.offset.x, verify_first_op.offset.y);
-                debug!("VERIFICATION: Second pane scale={}, offset=({}, {})", 
+                debug_log!("VERIFICATION: Second pane scale={}, offset=({}, {})", 
                        verify_second_op.scale, verify_second_op.offset.x, verify_second_op.offset.y);
                 
                 // Return the status from the target pane that was directly interacted with
@@ -556,7 +568,7 @@ where
                     .contains(cursor.position().unwrap_or_default())
                 {
                     split_state.dragging = true;
-                    debug!("Starting divider drag operation");
+                    debug_log!("Starting divider drag operation");
 
                     // Handle double-click for divider reset
                     if let Some(last_click_time) = split_state.last_click_time {
@@ -581,7 +593,7 @@ where
                 if first_layout.bounds().contains(cursor.position().unwrap_or_default()) {
                     split_state.active_pane_for_pan = Some(0);
                     split_state.pan_start_position = cursor.position().unwrap_or_default();
-                    debug!("Starting pan operation in first pane");
+                    debug_log!("Starting pan operation in first pane");
                     
                     // Handle double-click for reset zoom when synced_zoom is true
                     if split_state.synced_zoom {
@@ -589,7 +601,7 @@ where
                             let elapsed = last_click_time.elapsed();
                             if elapsed < Duration::from_millis(500) {
                                 // Double-click detected on pane - reset zoom for both panes
-                                debug!("Double-click detected in pane - resetting zoom");
+                                debug_log!("Double-click detected in pane - resetting zoom");
                                 split_state.last_pane_click_time = None;
                                 
                                 // Reset shared zoom state
@@ -624,7 +636,7 @@ where
                 } else if second_layout.bounds().contains(cursor.position().unwrap_or_default()) {
                     split_state.active_pane_for_pan = Some(1);
                     split_state.pan_start_position = cursor.position().unwrap_or_default();
-                    debug!("Starting pan operation in second pane");
+                    debug_log!("Starting pan operation in second pane");
                     
                     // Handle double-click for reset zoom when synced_zoom is true
                     if split_state.synced_zoom {
@@ -632,7 +644,7 @@ where
                             let elapsed = last_click_time.elapsed();
                             if elapsed < Duration::from_millis(500) {
                                 // Double-click detected on pane - reset zoom for both panes
-                                debug!("Double-click detected in pane - resetting zoom");
+                                debug_log!("Double-click detected in pane - resetting zoom");
                                 split_state.last_pane_click_time = None;
                                 
                                 // Reset shared zoom state
@@ -728,26 +740,37 @@ where
                 // Always clear dragging and panning state on button release
                 split_state.dragging = false;
                 split_state.active_pane_for_pan = None;
-                debug!("Ending drag/pan operation");
+                debug_log!("Ending drag/pan operation");
                 event::Status::Ignored
             },
 
             Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 // Handle divider dragging first
                 if split_state.dragging {
-                    let position = match self.axis {
+                    let raw_position = match self.axis {
                         Axis::Horizontal => position.y - self.menu_bar_height,
                         Axis::Vertical => position.x,
                     };
-                    debug!("Dragging divider: pos={}", position);
-                    shell.publish((self.on_resize)(position as u16));
+                    
+                    // Print debugging info
+                    let bounds = layout.bounds();
+                    let min_left = self.min_size_first as f32;
+                    let min_right = self.min_size_second as f32;
+                    let max_pos = bounds.x + bounds.width - min_right - self.spacing;
+                    let min_pos = bounds.x + min_left;
+                    
+                    debug_log!("Dragging divider - raw_position: {}, bounds: {:?}", raw_position, bounds);
+                    debug_log!("Constraints - min_pos: {}, max_pos: {}, spacing: {}", min_pos, max_pos, self.spacing);
+                    debug_log!("min_size_first: {}, min_size_second: {}", self.min_size_first, self.min_size_second);
+                    
+                    shell.publish((self.on_resize)(raw_position as u16));
                     return event::Status::Captured;
                 }
                 
                 // Then handle panning synchronization
                 if self.synced_zoom && split_state.active_pane_for_pan.is_some() {
                     let active_pane = split_state.active_pane_for_pan.unwrap();
-                    debug!("Pan sync: active_pane={}", active_pane);
+                    debug_log!("Pan sync: active_pane={}", active_pane);
                     
                     // Get child layouts
                     let mut children = layout.children();
@@ -809,7 +832,7 @@ where
                         split_state.shared_scale = query_op.scale;
                         split_state.shared_offset = query_op.offset;
                         
-                        debug!("Syncing pan state: scale={}, offset=({},{})",
+                        debug_log!("Syncing pan state: scale={}, offset=({},{})",
                                query_op.scale, query_op.offset.x, query_op.offset.y);
                         
                         // Apply the same state to the other pane
@@ -871,13 +894,13 @@ where
                 
                 // Check first pane (index 0)
                 if first_layout.bounds().contains(cursor_pos) {
-                    debug!("FileDropped - First pane");
+                    debug_log!("FileDropped - First pane");
                     shell.publish((self.on_drop)(0, path[0].to_string_lossy().to_string()));
                     event::Status::Captured
                 } 
                 // Check second pane (index 1)
                 else if second_layout.bounds().contains(cursor_pos) {
-                    debug!("FileDropped - Second pane");
+                    debug_log!("FileDropped - Second pane");
                     shell.publish((self.on_drop)(1, path[0].to_string_lossy().to_string()));
                     event::Status::Captured
                 } else {
@@ -896,11 +919,11 @@ where
                 let path = &paths[0];
                 
                 if first_layout.bounds().contains(cursor_pos) {
-                    debug!("FileDropped - First pane");
+                    debug_log!("FileDropped - First pane");
                     shell.publish((self.on_drop)(0, path.to_string_lossy().to_string()));
                     event::Status::Captured
                 } else if second_layout.bounds().contains(cursor_pos) {
-                    debug!("FileDropped - Second pane");
+                    debug_log!("FileDropped - Second pane");
                     shell.publish((self.on_drop)(1, path.to_string_lossy().to_string()));
                     event::Status::Captured
                 } else {
@@ -1419,12 +1442,12 @@ impl ZoomStateOperation {
         if !operation.query_only {  // Apply mode
             shader_state.scale = operation.scale;
             shader_state.current_offset = operation.offset;
-            debug!("ZoomStateOperation: Applied scale={}, offset=({},{})",
+            debug_log!("ZoomStateOperation: Applied scale={}, offset=({},{})",
                   operation.scale, operation.offset.x, operation.offset.y);
         } else {  // Query mode
             operation.scale = shader_state.scale;
             operation.offset = shader_state.current_offset;
-            debug!("ZoomStateOperation: Queried scale={}, offset=({},{})",
+            debug_log!("ZoomStateOperation: Queried scale={}, offset=({},{})",
                   operation.scale, operation.offset.x, operation.offset.y);
         }
     }
