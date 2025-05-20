@@ -1044,34 +1044,41 @@ where
     // Define spacing around the divider (on each side)
     let gap = config.spacing; // Gap between content and divider
     let divider_width = 1.0; // Width of the actual divider line
-    let total_spacing = 2.0 * gap + divider_width; // Total space needed for divider + gaps
+    //let total_spacing = 2.0 * gap + divider_width; // Total space needed for divider + gaps
     
-    // Calculate the divider position (position where the divider's center will be)
+    // Calculate the divider position
     let divider_position = config
         .divider_position
-        .unwrap_or_else(|| (available_width / 2.0) as u16)
-        .max((total_spacing / 2.0) as u16);
+        .unwrap_or_else(|| (available_width / 2.0) as u16);
     
-    // Ensure divider position remains within bounds
-    let divider_position = divider_position.clamp(
-        config.min_size_first,
-        (available_width - f32::from(config.min_size_second) - total_spacing) as u16,
-    );
+    // Explicitly calculate the actual minimum width constraints
+    // Left minimum constraint (distance from left edge to divider center)
+    let min_left_divider_position = config.min_size_first as f32 + gap;
     
-    if config.debug{ debug!("VERTICAL Split calculation: available_width={}, divider_position={}, spacing={}", 
-        available_width, divider_position, config.spacing); }
+    // Right minimum constraint (distance from right edge to divider center)
+    let min_right_divider_position = available_width - (config.min_size_second as f32) - gap;
     
-    // Calculate positions of elements
-    let divider_center_x = space.bounds().x + config.padding + f32::from(divider_position);
+    // Ensure divider position respects both minimum constraints
+    let divider_position_constrained = divider_position as f32;
+    let divider_position_constrained = divider_position_constrained.max(min_left_divider_position);
+    let divider_position_constrained = divider_position_constrained.min(min_right_divider_position);
+    
+    if config.debug { 
+        debug!("VERTICAL Split - min constraints: left min={}, right min={}, constrained pos={}", 
+            min_left_divider_position, min_right_divider_position, divider_position_constrained); 
+    }
+    
+    // Calculate positions of elements with original offset
+    let divider_center_x = space.bounds().x + config.padding + divider_position_constrained;
     
     // The first element should end before the left gap
-    let first_end_x = divider_center_x - gap - divider_width/2.0;
+    let first_end_x = divider_center_x - gap;
     
     // The divider should be in the center of the gap
     let divider_left_x = divider_center_x - divider_width/2.0;
     
     // The second element should start after the right gap
-    let second_start_x = divider_center_x + gap + divider_width/2.0;
+    let second_start_x = divider_center_x + gap;
 
     // Layout the first element with appropriate width
     let first_width = first_end_x - (space.bounds().x + config.padding);
@@ -1095,7 +1102,7 @@ where
     divider.move_to_mut(Point::new(divider_left_x, space.bounds().y));
 
     // Layout the second element
-    let second_width = space.bounds().width - second_start_x;
+    let second_width = space.bounds().width - second_start_x - config.padding;
     let second_limits = limits
         .clone()
         .width(second_width)
@@ -1114,14 +1121,8 @@ where
     let result = Node::with_children(space.bounds().size(), vec![first, divider, second]);
 
     if config.debug{
-        debug!("VERTICAL Spacing: {}, First right edge: {}, Divider left: {}, Divider right: {}, Second left: {}, Gap size: {}", 
-            config.spacing,
-            first_end_x,
-            divider_left_x,
-            divider_left_x + divider_width,
-            second_start_x,
-            gap
-        );
+        debug!("VERTICAL Pane sizes - min_size_first: {}, min_size_second: {}", config.min_size_first, config.min_size_second);
+        debug!("VERTICAL Final widths - first: {}, divider: {}, second: {}", first_width, divider_width, second_width);
 
         // Debug output to verify the bounds are correct
         let children = result.children();
@@ -1129,10 +1130,6 @@ where
             debug!("VERTICAL First pane bounds: {:?}", children[0].bounds());
             debug!("VERTICAL Divider bounds: {:?}", children[1].bounds());
             debug!("VERTICAL Second pane bounds: {:?}", children[2].bounds());
-            
-            // Add total width check to verify we don't exceed available space
-            let total_used_width = children[0].bounds().width + divider_width + (2.0 * gap) + children[2].bounds().width;
-            debug!("VERTICAL Total width used: {} (available: {})", total_used_width, bounds.width);
         }
     }
 
