@@ -117,40 +117,128 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
     }
 }
 
+/// Detects if a file is a RAW image format based on its extension
+pub fn is_raw_format(path: &Path) -> bool {
+    if let Some(extension) = path.extension().and_then(OsStr::to_str) {
+        let raw_extensions = [
+            "cr2", "crw", "nef", "arw", "orf", "raf", "rw2", "dng", "raw"
+        ];
+        raw_extensions.contains(&extension.to_lowercase().as_str())
+    } else {
+        false
+    }
+}
+
+/// Processes a RAW format image file and converts it to RGB data
+/// 
+/// # Arguments
+/// * `path` - The path to the RAW image file
+/// 
+/// # Returns
+/// * `Ok((Vec<u8>, u32, u32))` - RGBA data converted from the RAW image and its dimensions
+/// * `Err(io::Error)` - An error if processing fails
+pub fn process_raw_image(path: &Path) -> Result<(Vec<u8>, u32, u32), std::io::Error> {
+    use libraw::Processor;
+    
+    debug!("Processing RAW image: {}", path.display());
+    
+    // Read file into buffer
+    let raw_data = fs::read(path).map_err(|e| {
+        io::Error::new(io::ErrorKind::Other, format!("Failed to read RAW file: {}", e))
+    })?;
+    
+    // Create processor
+    let processor = Processor::new();
+    
+    // Process the RAW data into 8-bit RGB
+    let processed = processor.process_8bit(&raw_data).map_err(|e| {
+        io::Error::new(io::ErrorKind::InvalidData, format!("Failed to process RAW data: {}", e))
+    })?;
+    
+    let width = processed.width();
+    let height = processed.height();
+    debug!("RAW dimensions: {}x{}", width, height);
+    
+    // Access the actual data from ProcessedImage
+    // In libraw-rs 0.0.4, we need to convert ProcessedImage to Vec<u8>
+    let rgb_data = processed.to_vec();
+    let mut rgba_data = Vec::with_capacity(width as usize * height as usize * 4);
+    
+    // Convert RGB to RGBA by adding alpha channel
+    for i in 0..(width * height) as usize {
+        let pixel_idx = i * 3; // Each pixel is 3 bytes (RGB)
+        
+        // Add RGB components
+        rgba_data.push(rgb_data[pixel_idx]);     // R
+        rgba_data.push(rgb_data[pixel_idx + 1]); // G
+        rgba_data.push(rgb_data[pixel_idx + 2]); // B
+        rgba_data.push(255);                     // A (fully opaque)
+    }
+    
+    debug!("RAW processing complete: {}x{} image", width, height);
+    Ok((rgba_data, width, height))
+}
+
 #[allow(dead_code)]
 async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, std::io::ErrorKind> {
     // Load a single image asynchronously
-    if let Some(path) = path {
-        let file_path = Path::new(path);
+    if let Some(path_str) = path {
+        let path_string = path_str.to_string(); // Clone the string to extend lifetime
+        let file_path = Path::new(&path_string);
         let start = Instant::now();
-        debug!("load_image_cpu_async - Starting to load: {}", path);
+        debug!("load_image_cpu_async - Starting to load: {}", path_string);
         
-        match tokio::fs::File::open(file_path).await {
-            Ok(mut file) => {
-                let file_open_time = start.elapsed();
-                debug!("load_image_cpu_async - File opened in {:?}", file_open_time);
-                
-                let read_start = Instant::now();
-                let mut buffer = Vec::new();
-                if file.read_to_end(&mut buffer).await.is_ok() {
-                    let read_time = read_start.elapsed();
-                    debug!("load_image_cpu_async - Read {} bytes in {:?}", buffer.len(), read_time);
-                    
-                    let total_time = start.elapsed();
-                    debug!("load_image_cpu_async - Total load time: {:?}", total_time);
-                    
-                    Ok(Some(CachedData::Cpu(buffer)))
-                } else {
-                    Err(std::io::ErrorKind::InvalidData)
+        // Check if this is a RAW format
+        if is_raw_format(file_path) {
+            // Process RAW image in a blocking task to avoid blocking the async runtime
+            let path_clone = path_string.clone(); // Clone for move into closure
+            match tokio::task::spawn_blocking(move || {
+                process_raw_image(Path::new(&path_clone))
+            }).await {
+                Ok(result) => match result {
+                    Ok((buffer, _width, _height)) => {
+                        let total_time = start.elapsed();
+                        debug!("load_image_cpu_async - RAW image processed in {:?}", total_time);
+                        Ok(Some(CachedData::Cpu(buffer)))
+                    },
+                    Err(e) => {
+                        error!("Failed to process RAW image: {}", e);
+                        Err(std::io::ErrorKind::InvalidData)
+                    }
+                },
+                Err(e) => {
+                    error!("Task for RAW processing failed: {}", e);
+                    Err(std::io::ErrorKind::Other)
                 }
             }
-            Err(e) => Err(e.kind()),
+        } else {
+            // Regular image processing (existing code)
+            match tokio::fs::File::open(file_path).await {
+                Ok(mut file) => {
+                    let file_open_time = start.elapsed();
+                    debug!("load_image_cpu_async - File opened in {:?}", file_open_time);
+                    
+                    let read_start = Instant::now();
+                    let mut buffer = Vec::new();
+                    if file.read_to_end(&mut buffer).await.is_ok() {
+                        let read_time = read_start.elapsed();
+                        debug!("load_image_cpu_async - Read {} bytes in {:?}", buffer.len(), read_time);
+                        
+                        let total_time = start.elapsed();
+                        debug!("load_image_cpu_async - Total load time: {:?}", total_time);
+                        
+                        Ok(Some(CachedData::Cpu(buffer)))
+                    } else {
+                        Err(std::io::ErrorKind::InvalidData)
+                    }
+                }
+                Err(e) => Err(e.kind()),
+            }
         }
     } else {
         Ok(None)
     }
 }
-
 
 #[allow(dead_code)]
 async fn load_image_gpu_async(
@@ -160,61 +248,129 @@ async fn load_image_gpu_async(
     compression_strategy: CompressionStrategy
 ) -> Result<Option<CachedData>, std::io::ErrorKind> {
     if let Some(path_str) = path {
+        let path_string = path_str.to_string(); // Clone the string to extend lifetime
         let start = Instant::now();
-
-        match image::open(path_str) {
-            Ok(img) => {
-                let (width, height) = img.dimensions();
-                let rgba = img.to_rgba8();
-                let rgba_data = rgba.as_raw();
-                
-                let duration = start.elapsed();
-                IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
-                
-                let upload_start = Instant::now();
-
-                // Use our utility to check if compression is applicable
-                let use_compression = crate::cache::cache_utils::should_use_compression(
-                    width, height, compression_strategy
-                );
-                
-                // Create texture with the appropriate format
-                let texture = crate::cache::cache_utils::create_gpu_texture(
-                    device, width, height, compression_strategy
-                );
-                
-                if use_compression {
-                    // Use utility to compress and upload
-                    let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
-                        &rgba_data, width, height
-                    );
-                    
-                    // Upload using the utility
-                    crate::cache::cache_utils::upload_compressed_texture(
-                        queue, &texture, &compressed_data, width, height, row_bytes
-                    );
-                    
-                    let upload_duration = upload_start.elapsed();
-                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
-                    
-                    return Ok(Some(CachedData::BC1(Arc::new(texture))));
-                } else {
-                    // Upload uncompressed
-                    crate::cache::cache_utils::upload_uncompressed_texture(
-                        queue, &texture, &rgba_data, width, height
-                    );
-                    
-                    let upload_duration = upload_start.elapsed();
-                    GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
-                    
-                    return Ok(Some(CachedData::Gpu(Arc::new(texture))));
+        let path = Path::new(&path_string);
+        
+        // Process image based on whether it's RAW or regular format
+        let result = if is_raw_format(path) {
+            // Process RAW image in a blocking task
+            let path_clone = path_string.clone(); // Clone for move into closure
+            match tokio::task::spawn_blocking(move || {
+                process_raw_image(Path::new(&path_clone))
+            }).await {
+                Ok(result) => match result {
+                    Ok((rgba_data, width, height)) => {
+                        let duration = start.elapsed();
+                        IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
+                        
+                        let upload_start = Instant::now();
+                        
+                        // Use our utility to check if compression is applicable
+                        let use_compression = crate::cache::cache_utils::should_use_compression(
+                            width, height, compression_strategy
+                        );
+                        
+                        // Create texture with the appropriate format
+                        let texture = crate::cache::cache_utils::create_gpu_texture(
+                            device, width, height, compression_strategy
+                        );
+                        
+                        if use_compression {
+                            // Use utility to compress and upload
+                            let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
+                                &rgba_data, width, height
+                            );
+                            
+                            // Upload using the utility
+                            crate::cache::cache_utils::upload_compressed_texture(
+                                queue, &texture, &compressed_data, width, height, row_bytes
+                            );
+                            
+                            let upload_duration = upload_start.elapsed();
+                            GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                            
+                            Ok(Some(CachedData::BC1(Arc::new(texture))))
+                        } else {
+                            // Upload uncompressed
+                            crate::cache::cache_utils::upload_uncompressed_texture(
+                                queue, &texture, &rgba_data, width, height
+                            );
+                            
+                            let upload_duration = upload_start.elapsed();
+                            GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                            
+                            Ok(Some(CachedData::Gpu(Arc::new(texture))))
+                        }
+                    },
+                    Err(e) => {
+                        error!("Failed to process RAW image: {}", e);
+                        Err(std::io::ErrorKind::InvalidData)
+                    }
+                },
+                Err(e) => {
+                    error!("Task for RAW processing failed: {}", e);
+                    Err(std::io::ErrorKind::Other)
                 }
             }
-            Err(e) => {
-                error!("Error opening image: {:?}", e);
-                return Err(std::io::ErrorKind::InvalidData);
+        } else {
+            // Regular image loading
+            match image::open(&path_string) {
+                Ok(img) => {
+                    let (width, height) = img.dimensions();
+                    let rgba = img.to_rgba8();
+                    let rgba_data = rgba.as_raw();
+                    
+                    let duration = start.elapsed();
+                    IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
+                    
+                    let upload_start = Instant::now();
+
+                    // Use our utility to check if compression is applicable
+                    let use_compression = crate::cache::cache_utils::should_use_compression(
+                        width, height, compression_strategy
+                    );
+                    
+                    // Create texture with the appropriate format
+                    let texture = crate::cache::cache_utils::create_gpu_texture(
+                        device, width, height, compression_strategy
+                    );
+                    
+                    if use_compression {
+                        // Use utility to compress and upload
+                        let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
+                            &rgba_data, width, height
+                        );
+                        
+                        // Upload using the utility
+                        crate::cache::cache_utils::upload_compressed_texture(
+                            queue, &texture, &compressed_data, width, height, row_bytes
+                        );
+                        
+                        let upload_duration = upload_start.elapsed();
+                        GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                        
+                        Ok(Some(CachedData::BC1(Arc::new(texture))))
+                    } else {
+                        // Upload uncompressed
+                        crate::cache::cache_utils::upload_uncompressed_texture(
+                            queue, &texture, &rgba_data, width, height
+                        );
+                        
+                        let upload_duration = upload_start.elapsed();
+                        GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
+                        
+                        Ok(Some(CachedData::Gpu(Arc::new(texture))))
+                    }
+                }
+                Err(e) => {
+                    error!("Error opening image: {:?}", e);
+                    Err(std::io::ErrorKind::InvalidData)
+                }
             }
-        }
+        };
+
+        return result;
     }
 
     Ok(None)
@@ -359,7 +515,8 @@ pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageErro
     let mut image_paths: Vec<PathBuf> = Vec::new();
     let allowed_extensions = [
         "jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
-        "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"
+        "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga",
+        "cr2", "crw", "nef", "arw", "orf", "raf", "rw2", "dng", "raw"
     ];
 
     let dir_entries = fs::read_dir(directory_path)

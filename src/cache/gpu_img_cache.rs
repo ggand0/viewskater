@@ -8,6 +8,7 @@ use image::GenericImageView;
 use iced_wgpu::wgpu;
 use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 use iced_wgpu::engine::CompressionStrategy;
+use crate::file_io;
 
 
 pub struct GpuImageCache {
@@ -29,43 +30,81 @@ impl ImageCacheBackend for GpuImageCache {
         compression_strategy: CompressionStrategy
     ) -> Result<CachedData, io::Error> {
         if let Some(image_path) = image_paths.get(index) {
-            let img = image::open(image_path).map_err(|e| {
-                io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e))
-            })?;
-
-            let rgba_image = img.to_rgba8();
-            let (width, height) = img.dimensions();
-            let rgba_data = rgba_image.into_raw();
-
-            // Use our utility function to determine if compression should be used
-            let use_compression = crate::cache::cache_utils::should_use_compression(
-                width, height, compression_strategy
-            );
-
-            // Create the texture with the appropriate format
-            let texture = crate::cache::cache_utils::create_gpu_texture(
-                &self.device, width, height, compression_strategy
-            );
-
-            if use_compression {
-                // Use the utility to compress and upload
-                let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
-                    &rgba_data, width, height
-                );
+            // Check if this is a RAW format
+            if file_io::is_raw_format(image_path) {
+                // Process RAW image and get RGBA data with dimensions
+                let (rgba_data, width, height) = file_io::process_raw_image(image_path)?;
                 
-                // Upload using the utility function
-                crate::cache::cache_utils::upload_compressed_texture(
-                    &self.queue, &texture, &compressed_data, width, height, row_bytes
+                // Use our utility function to determine if compression should be used
+                let use_compression = crate::cache::cache_utils::should_use_compression(
+                    width, height, compression_strategy
                 );
-                
-                Ok(CachedData::BC1(texture.into()))
+
+                // Create the texture with the appropriate format
+                let texture = crate::cache::cache_utils::create_gpu_texture(
+                    &self.device, width, height, compression_strategy
+                );
+
+                if use_compression {
+                    // Use the utility to compress and upload
+                    let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
+                        &rgba_data, width, height
+                    );
+                    
+                    // Upload using the utility function
+                    crate::cache::cache_utils::upload_compressed_texture(
+                        &self.queue, &texture, &compressed_data, width, height, row_bytes
+                    );
+                    
+                    Ok(CachedData::BC1(texture.into()))
+                } else {
+                    // Upload uncompressed using the utility function
+                    crate::cache::cache_utils::upload_uncompressed_texture(
+                        &self.queue, &texture, &rgba_data, width, height
+                    );
+                    
+                    Ok(CachedData::Gpu(texture.into()))
+                }
             } else {
-                // Upload uncompressed using the utility function
-                crate::cache::cache_utils::upload_uncompressed_texture(
-                    &self.queue, &texture, &rgba_data, width, height
+                // Regular image loading (existing code)
+                let img = image::open(image_path).map_err(|e| {
+                    io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e))
+                })?;
+
+                let rgba_image = img.to_rgba8();
+                let (width, height) = img.dimensions();
+                let rgba_data = rgba_image.into_raw();
+
+                // Use our utility function to determine if compression should be used
+                let use_compression = crate::cache::cache_utils::should_use_compression(
+                    width, height, compression_strategy
                 );
-                
-                Ok(CachedData::Gpu(texture.into()))
+
+                // Create the texture with the appropriate format
+                let texture = crate::cache::cache_utils::create_gpu_texture(
+                    &self.device, width, height, compression_strategy
+                );
+
+                if use_compression {
+                    // Use the utility to compress and upload
+                    let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
+                        &rgba_data, width, height
+                    );
+                    
+                    // Upload using the utility function
+                    crate::cache::cache_utils::upload_compressed_texture(
+                        &self.queue, &texture, &compressed_data, width, height, row_bytes
+                    );
+                    
+                    Ok(CachedData::BC1(texture.into()))
+                } else {
+                    // Upload uncompressed using the utility function
+                    crate::cache::cache_utils::upload_uncompressed_texture(
+                        &self.queue, &texture, &rgba_data, width, height
+                    );
+                    
+                    Ok(CachedData::Gpu(texture.into()))
+                }
             }
         } else {
             Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid image index"))
