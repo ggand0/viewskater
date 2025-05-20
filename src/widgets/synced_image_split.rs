@@ -549,6 +549,34 @@ where
         let event_status = match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
+                // Check if click is on the divider first
+                if divider_layout
+                    .bounds()
+                    .expand(10.0)
+                    .contains(cursor.position().unwrap_or_default())
+                {
+                    split_state.dragging = true;
+                    debug!("Starting divider drag operation");
+
+                    // Handle double-click for divider reset
+                    if let Some(last_click_time) = split_state.last_click_time {
+                        let elapsed = last_click_time.elapsed();
+                        if elapsed < Duration::from_millis(500) {
+                            // Double-click detected
+                            split_state.last_click_time = None;
+                            split_state.dragging = false;
+                            shell.publish((self.on_double_click)(0));
+                            return event::Status::Captured;
+                        } else {
+                            split_state.last_click_time = Some(Instant::now());
+                        }
+                    } else {
+                        split_state.last_click_time = Some(Instant::now());
+                    }
+                    
+                    return event::Status::Captured;
+                }
+                
                 // Initialize panning state if cursor is over an image pane
                 if first_layout.bounds().contains(cursor.position().unwrap_or_default()) {
                     split_state.active_pane_for_pan = Some(0);
@@ -700,11 +728,23 @@ where
                 // Always clear dragging and panning state on button release
                 split_state.dragging = false;
                 split_state.active_pane_for_pan = None;
-                debug!("Ending pan operation");
+                debug!("Ending drag/pan operation");
                 event::Status::Ignored
             },
 
             Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                // Handle divider dragging first
+                if split_state.dragging {
+                    let position = match self.axis {
+                        Axis::Horizontal => position.y - self.menu_bar_height,
+                        Axis::Vertical => position.x,
+                    };
+                    debug!("Dragging divider: pos={}", position);
+                    shell.publish((self.on_resize)(position as u16));
+                    return event::Status::Captured;
+                }
+                
+                // Then handle panning synchronization
                 if self.synced_zoom && split_state.active_pane_for_pan.is_some() {
                     let active_pane = split_state.active_pane_for_pan.unwrap();
                     debug!("Pan sync: active_pane={}", active_pane);
