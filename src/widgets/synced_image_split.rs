@@ -554,10 +554,88 @@ where
                     split_state.active_pane_for_pan = Some(0);
                     split_state.pan_start_position = cursor.position().unwrap_or_default();
                     debug!("Starting pan operation in first pane");
+                    
+                    // Handle double-click for reset zoom when synced_zoom is true
+                    if split_state.synced_zoom {
+                        if let Some(last_click_time) = split_state.last_pane_click_time {
+                            let elapsed = last_click_time.elapsed();
+                            if elapsed < Duration::from_millis(500) {
+                                // Double-click detected on pane - reset zoom for both panes
+                                debug!("Double-click detected in pane - resetting zoom");
+                                split_state.last_pane_click_time = None;
+                                
+                                // Reset shared zoom state
+                                split_state.shared_scale = 1.0;
+                                split_state.shared_offset = Vector::default();
+                                
+                                // Apply reset to both panes
+                                let mut reset_op = ZoomStateOperation::new_apply(1.0, Vector::default());
+                                
+                                ZoomStateOperation::operate(
+                                    &mut state.children[0],
+                                    Rectangle::default(),
+                                    renderer,
+                                    &mut reset_op
+                                );
+                                
+                                ZoomStateOperation::operate(
+                                    &mut state.children[1],
+                                    Rectangle::default(),
+                                    renderer,
+                                    &mut reset_op
+                                );
+                                
+                                return event::Status::Captured;
+                            } else {
+                                split_state.last_pane_click_time = Some(Instant::now());
+                            }
+                        } else {
+                            split_state.last_pane_click_time = Some(Instant::now());
+                        }
+                    }
                 } else if second_layout.bounds().contains(cursor.position().unwrap_or_default()) {
                     split_state.active_pane_for_pan = Some(1);
                     split_state.pan_start_position = cursor.position().unwrap_or_default();
                     debug!("Starting pan operation in second pane");
+                    
+                    // Handle double-click for reset zoom when synced_zoom is true
+                    if split_state.synced_zoom {
+                        if let Some(last_click_time) = split_state.last_pane_click_time {
+                            let elapsed = last_click_time.elapsed();
+                            if elapsed < Duration::from_millis(500) {
+                                // Double-click detected on pane - reset zoom for both panes
+                                debug!("Double-click detected in pane - resetting zoom");
+                                split_state.last_pane_click_time = None;
+                                
+                                // Reset shared zoom state
+                                split_state.shared_scale = 1.0;
+                                split_state.shared_offset = Vector::default();
+                                
+                                // Apply reset to both panes
+                                let mut reset_op = ZoomStateOperation::new_apply(1.0, Vector::default());
+                                
+                                ZoomStateOperation::operate(
+                                    &mut state.children[0],
+                                    Rectangle::default(),
+                                    renderer,
+                                    &mut reset_op
+                                );
+                                
+                                ZoomStateOperation::operate(
+                                    &mut state.children[1],
+                                    Rectangle::default(),
+                                    renderer,
+                                    &mut reset_op
+                                );
+                                
+                                return event::Status::Captured;
+                            } else {
+                                split_state.last_pane_click_time = Some(Instant::now());
+                            }
+                        } else {
+                            split_state.last_pane_click_time = Some(Instant::now());
+                        }
+                    }
                 }
                 
                 // Detect double-click event on the divider
@@ -1201,6 +1279,7 @@ pub struct State {
     /// If the divider is dragged by the user.
     dragging: bool,
     last_click_time: Option<Instant>,
+    last_pane_click_time: Option<Instant>,
     panes_seleced: [bool; 2],
     
     // Zoom and pan synchronization state
@@ -1217,6 +1296,7 @@ impl State {
         Self {
             dragging: false,
             last_click_time: None,
+            last_pane_click_time: None,
             panes_seleced: [false, false],
             
             // Initialize zoom and pan state
