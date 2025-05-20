@@ -306,14 +306,21 @@ where
             .width(Length::Fill)
             .height(Length::Fill)
             .layout(tree, renderer, limits);
+        
+        let config = SplitLayoutConfig {
+            first: &self.first,
+            second: &self.second,
+            divider_position: self.divider_position,
+            spacing: self.spacing,
+            padding: self.padding,
+            min_size_first: self.min_size_first,
+            min_size_second: self.min_size_second,
+            debug: self.debug,
+        };
 
         match self.axis {
-            Axis::Horizontal => {
-                horizontal_split(tree, self, renderer, limits, &space)
-            },
-            Axis::Vertical => {
-                vertical_split(tree, self, renderer, limits, &space)
-            },
+            Axis::Horizontal => horizontal_split(tree, &config, renderer, limits, &space),
+            Axis::Vertical => vertical_split(tree, &config, renderer, limits, &space),
         }
     }
 
@@ -894,28 +901,28 @@ impl State {
 }
 
 /// Do a horizontal split.
-fn horizontal_split<'a, Message, Theme, Renderer>(
+pub fn horizontal_split<'a, Message, Theme, Renderer>(
     tree: &mut Tree,
-    split: &Split<'a, Message, Theme, Renderer>,
+    config: &SplitLayoutConfig<'a, Message, Theme, Renderer>,
     renderer: &Renderer,
     limits: &Limits,
     space: &Node,
 ) -> Node
 where
-    Renderer: 'a + renderer::Renderer,
+    Renderer: renderer::Renderer,
     Theme: Catalog,
 {
     let total_height = space.bounds().height;
 
-    if total_height < split.spacing + f32::from(split.min_size_first + split.min_size_second) {
+    if total_height < config.spacing + f32::from(config.min_size_first + config.min_size_second) {
         return Node::with_children(space.bounds().size(), vec![
-            split.first.as_widget().layout(
+            config.first.as_widget().layout(
                 &mut tree.children[0],
                 renderer,
                 &limits.clone().shrink(Size::new(0.0, total_height)),
             ),
-            Node::new(Size::new(space.bounds().width, split.spacing)),
-            split.second.as_widget().layout(
+            Node::new(Size::new(space.bounds().width, config.spacing)),
+            config.second.as_widget().layout(
                 &mut tree.children[1],
                 renderer,
                 &limits.clone().shrink(Size::new(0.0, total_height)),
@@ -924,67 +931,69 @@ where
     }
 
     // Calculate available content height (total minus spacing)
-    let available_content_height = total_height - split.spacing;
+    let available_content_height = total_height - config.spacing;
     
     // Calculate equal height for both panes
     let equal_pane_height = available_content_height / 2.0;
     
     // Default divider position is set to create equal panes
-    let divider_position = split.divider_position.unwrap_or_else(|| equal_pane_height as u16);
+    let divider_position = config.divider_position.unwrap_or_else(|| equal_pane_height as u16);
     
     // divider_position is always positive: measure from start (top)
-    let effective_position = divider_position.max(((split.spacing / 2.0) as i16).try_into().unwrap()) as f32;
+    let effective_position = divider_position.max(((config.spacing / 2.0) as i16).try_into().unwrap()) as f32;
 
     // Clamp the effective position to respect minimum sizes
     let clamped_position = effective_position.clamp(
-        split.min_size_first as f32,
-        total_height - split.min_size_second as f32 - split.spacing,
+        config.min_size_first as f32,
+        total_height - config.min_size_second as f32 - config.spacing,
     );
 
-    let padding = Padding::from(split.padding as u16);
+    let padding = Padding::from(config.padding as u16);
 
     // Layout first element
     let first_limits = limits
         .clone()
         .shrink(Size::new(0.0, total_height - clamped_position))
         .shrink(padding);
-    let mut first = split
-        .first
-        .as_widget()
-        .layout(&mut tree.children[0], renderer, &first_limits);
+    let mut first = config.first.as_widget().layout(
+        &mut tree.children[0],
+        renderer,
+        &first_limits
+    );
     first.move_to_mut(Point::new(
-        space.bounds().x + split.padding,
-        space.bounds().y + split.padding,
+        space.bounds().x + config.padding,
+        space.bounds().y + config.padding,
     ));
 
     // Keep the divider code mostly unchanged, but make the node as tall as split.spacing
     // The actual divider line will be drawn centered within this space
-    let mut divider = Node::new(Size::new(space.bounds().width, split.spacing));
+    let mut divider = Node::new(Size::new(space.bounds().width, config.spacing));
     divider.move_to_mut(Point::new(space.bounds().x, clamped_position));
 
     // Layout second element
     let second_limits = limits
         .clone()
-        .shrink(Size::new(0.0, clamped_position + split.spacing))
+        .shrink(Size::new(0.0, clamped_position + config.spacing))
         .shrink(padding);
-    let mut second = split
-        .second
-        .as_widget()
-        .layout(&mut tree.children[1], renderer, &second_limits);
+    let mut second = config.second.as_widget().layout(
+        &mut tree.children[1],
+        renderer,
+        &second_limits
+    );
     second.move_to_mut(Point::new(
-        space.bounds().x + split.padding,
-        space.bounds().y + clamped_position + split.spacing + split.padding,
+        space.bounds().x + config.padding,
+        space.bounds().y + clamped_position + config.spacing + config.padding,
     ));
 
     // Debug logs to verify positions and heights
-    if split.debug{
+    if config.debug{
         debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}", 
             equal_pane_height,
-            space.bounds().y + split.padding,
+            space.bounds().y + config.padding,
             clamped_position,
-            space.bounds().y + clamped_position + split.spacing + split.padding,
-            clamped_position - (space.bounds().y + split.padding),
-            total_height - (clamped_position + split.spacing + split.padding*2.0));
+            space.bounds().y + clamped_position + config.spacing + config.padding,
+            clamped_position - (space.bounds().y + config.padding),
+            total_height - (clamped_position + config.spacing + config.padding*2.0));
     }
 
     // Maintain the original 3-node structure expected by other methods
@@ -993,34 +1002,34 @@ where
 
 
 /// Do a vertical split.
-fn vertical_split<'a, Message, Theme, Renderer>(
+pub fn vertical_split<'a, Message, Theme, Renderer>(
     tree: &mut Tree,
-    split: &Split<'a, Message, Theme, Renderer>,
+    config: &SplitLayoutConfig<'a, Message, Theme, Renderer>,
     renderer: &Renderer,
     limits: &Limits,
     space: &Node,
 ) -> Node
 where
-    Renderer: 'a + renderer::Renderer,
+    Renderer: renderer::Renderer,
     Theme: Catalog,
 {
     let bounds = space.bounds();
-    if split.debug{ debug!("VERTICAL Split calculation - bounds: {:?}", bounds); }
+    if config.debug{ debug!("VERTICAL Split calculation - bounds: {:?}", bounds); }
     
     if space.bounds().width
-        < split.spacing + f32::from(split.min_size_first + split.min_size_second)
+        < config.spacing + f32::from(config.min_size_first + config.min_size_second)
     {
         debug!("VERTICAL Split - insufficient width for proper split, using fallback layout");
         return Node::with_children(
             space.bounds().size(),
             vec![
-                split.first.as_widget().layout(
+                config.first.as_widget().layout(
                     &mut tree.children[0],
                     renderer,
                     &limits.clone().shrink(Size::new(space.bounds().width, 0.0)),
                 ),
-                Node::new(Size::new(split.spacing, space.bounds().height)),
-                split.second.as_widget().layout(
+                Node::new(Size::new(config.spacing, space.bounds().height)),
+                config.second.as_widget().layout(
                     &mut tree.children[1],
                     renderer,
                     &limits.clone().shrink(Size::new(space.bounds().width, 0.0)),
@@ -1030,30 +1039,30 @@ where
     }
 
     // Calculate the actual size available for content (excluding padding)
-    let available_width = space.bounds().width - (2.0 * split.padding);
+    let available_width = space.bounds().width - (2.0 * config.padding);
     
     // Define spacing around the divider (on each side)
-    let gap = split.spacing; // Gap between content and divider
+    let gap = config.spacing; // Gap between content and divider
     let divider_width = 1.0; // Width of the actual divider line
     let total_spacing = 2.0 * gap + divider_width; // Total space needed for divider + gaps
     
     // Calculate the divider position (position where the divider's center will be)
-    let divider_position = split
+    let divider_position = config
         .divider_position
         .unwrap_or_else(|| (available_width / 2.0) as u16)
         .max((total_spacing / 2.0) as u16);
     
     // Ensure divider position remains within bounds
     let divider_position = divider_position.clamp(
-        split.min_size_first,
-        (available_width - f32::from(split.min_size_second) - total_spacing) as u16,
+        config.min_size_first,
+        (available_width - f32::from(config.min_size_second) - total_spacing) as u16,
     );
     
-    if split.debug{ debug!("VERTICAL Split calculation: available_width={}, divider_position={}, spacing={}", 
-        available_width, divider_position, split.spacing); }
+    if config.debug{ debug!("VERTICAL Split calculation: available_width={}, divider_position={}, spacing={}", 
+        available_width, divider_position, config.spacing); }
     
     // Calculate positions of elements
-    let divider_center_x = space.bounds().x + split.padding + f32::from(divider_position);
+    let divider_center_x = space.bounds().x + config.padding + f32::from(divider_position);
     
     // The first element should end before the left gap
     let first_end_x = divider_center_x - gap - divider_width/2.0;
@@ -1065,19 +1074,20 @@ where
     let second_start_x = divider_center_x + gap + divider_width/2.0;
 
     // Layout the first element with appropriate width
-    let first_width = first_end_x - (space.bounds().x + split.padding);
+    let first_width = first_end_x - (space.bounds().x + config.padding);
     let first_limits = limits
         .clone()
         .width(first_width)
-        .shrink(Padding::from(split.padding as u16));
+        .shrink(Padding::from(config.padding as u16));
     
-    let mut first = split
-        .first
-        .as_widget()
-        .layout(&mut tree.children[0], renderer, &first_limits);
+    let mut first = config.first.as_widget().layout(
+        &mut tree.children[0],
+        renderer,
+        &first_limits
+    );
     first.move_to_mut(Point::new(
-        space.bounds().x + split.padding,
-        space.bounds().y + split.padding,
+        space.bounds().x + config.padding,
+        space.bounds().y + config.padding,
     ));
 
     // Create the divider node (thin line in center)
@@ -1089,23 +1099,23 @@ where
     let second_limits = limits
         .clone()
         .width(second_width)
-        .shrink(Padding::from(split.padding as u16));
+        .shrink(Padding::from(config.padding as u16));
     
     let mut second =
-        split
+        config
             .second
             .as_widget()
             .layout(&mut tree.children[1], renderer, &second_limits);
     second.move_to_mut(Point::new(
         second_start_x,
-        space.bounds().y + split.padding,
+        space.bounds().y + config.padding,
     ));
 
     let result = Node::with_children(space.bounds().size(), vec![first, divider, second]);
 
-    if split.debug{
+    if config.debug{
         debug!("VERTICAL Spacing: {}, First right edge: {}, Divider left: {}, Divider right: {}, Second left: {}, Gap size: {}", 
-            split.spacing,
+            config.spacing,
             first_end_x,
             divider_left_x,
             divider_left_x + divider_width,
@@ -1282,4 +1292,15 @@ fn disabled(style: Style) -> Style {
             .map(|background| background.scale_alpha(0.5)),
         ..style
     }
+}
+
+pub struct SplitLayoutConfig<'a, Message, Theme, Renderer> {
+    pub first: &'a Element<'a, Message, Theme, Renderer>,
+    pub second: &'a Element<'a, Message, Theme, Renderer>,
+    pub divider_position: Option<u16>,
+    pub spacing: f32,
+    pub padding: f32,
+    pub min_size_first: u16,
+    pub min_size_second: u16,
+    pub debug: bool,
 }

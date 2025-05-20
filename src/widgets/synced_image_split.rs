@@ -55,14 +55,13 @@ use iced::{
         widget::{tree, Operation, Tree},
         Clipboard, Layout, Shell, Widget,
     },
-    theme::palette,
     event, mouse::{self, Cursor}, touch,
     widget::Row,
-    Background, Border, Color, Element, Event, Length, Padding, Point,
-    Rectangle, Shadow, Size, Theme, Vector
+    Background, Border, Color, Element, Event, Length, Point,
+    Rectangle, Shadow, Size, Vector
 };
 use iced::border::Radius;
-
+use crate::widgets::split::{horizontal_split, vertical_split, SplitLayoutConfig};
 
 use std::time::{Duration, Instant};
 #[allow(unused_imports)]
@@ -70,6 +69,7 @@ use log::{Level, debug, info, warn, error};
 
 use iced_core::widget;
 use crate::widgets::split::Axis;
+use crate::widgets::split::{Catalog, Status, Style, StyleFn};
 
 /// A split can divide the available space by half to display two different elements.
 /// It can split horizontally or vertically.
@@ -342,14 +342,21 @@ where
             .width(Length::Fill)
             .height(Length::Fill)
             .layout(tree, renderer, limits);
+        
+        let config = SplitLayoutConfig {
+            first: &self.first,
+            second: &self.second,
+            divider_position: self.divider_position,
+            spacing: self.spacing,
+            padding: self.padding,
+            min_size_first: self.min_size_first,
+            min_size_second: self.min_size_second,
+            debug: false,
+        };
 
         match self.axis {
-            Axis::Horizontal => {
-                horizontal_split(tree, self, renderer, limits, &space)
-            },
-            Axis::Vertical => {
-                vertical_split(tree, self, renderer, limits, &space)
-            },
+            Axis::Horizontal => horizontal_split(tree, &config, renderer, limits, &space),
+            Axis::Vertical => vertical_split(tree, &config, renderer, limits, &space),
         }
     }
 
@@ -1100,377 +1107,19 @@ impl State {
     }
 }
 
-/// Do a horizontal split.
-fn horizontal_split<'a, Message, Theme, Renderer>(
-    tree: &mut Tree,
-    split: &SyncedImageSplit<'a, Message, Theme, Renderer>,
-    renderer: &Renderer,
-    limits: &Limits,
-    space: &Node,
-) -> Node
-where
-    Renderer: 'a + renderer::Renderer,
-    Theme: Catalog,
-{
-    let total_height = space.bounds().height;
-
-    if total_height < split.spacing + f32::from(split.min_size_first + split.min_size_second) {
-        return Node::with_children(space.bounds().size(), vec![
-            split.first.as_widget().layout(
-                &mut tree.children[0],
-                renderer,
-                &limits.clone().shrink(Size::new(0.0, total_height)),
-            ),
-            Node::new(Size::new(space.bounds().width, split.spacing)),
-            split.second.as_widget().layout(
-                &mut tree.children[1],
-                renderer,
-                &limits.clone().shrink(Size::new(0.0, total_height)),
-            ),
-        ]);
-    }
-
-    // Calculate available content height (total minus spacing)
-    let available_content_height = total_height - split.spacing;
-    
-    // Calculate equal height for both panes
-    let equal_pane_height = available_content_height / 2.0;
-    
-    // Default divider position is set to create equal panes
-    let divider_position = split.divider_position.unwrap_or_else(|| equal_pane_height as u16);
-    
-    // divider_position is always positive: measure from start (top)
-    let effective_position = divider_position.max(((split.spacing / 2.0) as i16).try_into().unwrap()) as f32;
-
-    // Clamp the effective position to respect minimum sizes
-    let clamped_position = effective_position.clamp(
-        split.min_size_first as f32,
-        total_height - split.min_size_second as f32 - split.spacing,
-    );
-
-    let padding = Padding::from(split.padding as u16);
-
-    // Layout first element
-    let first_limits = limits
-        .clone()
-        .shrink(Size::new(0.0, total_height - clamped_position))
-        .shrink(padding);
-    let mut first = split
-        .first
-        .as_widget()
-        .layout(&mut tree.children[0], renderer, &first_limits);
-    first.move_to_mut(Point::new(
-        space.bounds().x + split.padding,
-        space.bounds().y + split.padding,
-    ));
-
-    // Keep the divider code mostly unchanged, but make the node as tall as split.spacing
-    // The actual divider line will be drawn centered within this space
-    let mut divider = Node::new(Size::new(space.bounds().width, split.spacing));
-    divider.move_to_mut(Point::new(space.bounds().x, clamped_position));
-
-    // Layout second element
-    let second_limits = limits
-        .clone()
-        .shrink(Size::new(0.0, clamped_position + split.spacing))
-        .shrink(padding);
-    let mut second = split
-        .second
-        .as_widget()
-        .layout(&mut tree.children[1], renderer, &second_limits);
-    second.move_to_mut(Point::new(
-        space.bounds().x + split.padding,
-        space.bounds().y + clamped_position + split.spacing + split.padding,
-    ));
-
-    // Debug logs to verify positions and heights
-    //debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}", 
-    //       equal_pane_height,
-    //       space.bounds().y + split.padding,
-    //       clamped_position,
-    //       space.bounds().y + clamped_position + split.spacing + split.padding,
-    //       clamped_position - (space.bounds().y + split.padding),
-    //       total_height - (clamped_position + split.spacing + split.padding*2.0));
-
-    // Maintain the original 3-node structure expected by other methods
-    Node::with_children(space.bounds().size(), vec![first, divider, second])
-}
-
-
-/// Do a vertical split.
-fn vertical_split<'a, Message, Theme, Renderer>(
-    tree: &mut Tree,
-    split: &SyncedImageSplit<'a, Message, Theme, Renderer>,
-    renderer: &Renderer,
-    limits: &Limits,
-    space: &Node,
-) -> Node
-where
-    Renderer: 'a + renderer::Renderer,
-    Theme: Catalog,
-{
-    let _bounds = space.bounds();
-    //debug!("VERTICAL Split calculation - bounds: {:?}", bounds);
-    
-    if space.bounds().width
-        < split.spacing + f32::from(split.min_size_first + split.min_size_second)
-    {
-        //debug!("VERTICAL Split - insufficient width for proper split, using fallback layout");
-        return Node::with_children(
-            space.bounds().size(),
-            vec![
-                split.first.as_widget().layout(
-                    &mut tree.children[0],
-                    renderer,
-                    &limits.clone().shrink(Size::new(space.bounds().width, 0.0)),
-                ),
-                Node::new(Size::new(split.spacing, space.bounds().height)),
-                split.second.as_widget().layout(
-                    &mut tree.children[1],
-                    renderer,
-                    &limits.clone().shrink(Size::new(space.bounds().width, 0.0)),
-                ),
-            ],
-        );
-    }
-
-    // Calculate the actual size available for content (excluding padding)
-    let available_width = space.bounds().width - (2.0 * split.padding);
-    
-    // Define spacing around the divider (on each side)
-    let gap = split.spacing; // Gap between content and divider
-    let divider_width = 1.0; // Width of the actual divider line
-    let total_spacing = 2.0 * gap + divider_width; // Total space needed for divider + gaps
-    
-    // Calculate the divider position (position where the divider's center will be)
-    let divider_position = split
-        .divider_position
-        .unwrap_or_else(|| (available_width / 2.0) as u16)
-        .max((total_spacing / 2.0) as u16);
-    
-    // Ensure divider position remains within bounds
-    let divider_position = divider_position.clamp(
-        split.min_size_first,
-        (available_width - f32::from(split.min_size_second) - total_spacing) as u16,
-    );
-    
-    //debug!("VERTICAL Split calculation: available_width={}, divider_position={}, spacing={}", 
-    //       available_width, divider_position, split.spacing);
-    
-    // Calculate positions of elements
-    let divider_center_x = space.bounds().x + split.padding + f32::from(divider_position);
-    
-    // The first element should end before the left gap
-    let first_end_x = divider_center_x - gap - divider_width/2.0;
-    
-    // The divider should be in the center of the gap
-    let divider_left_x = divider_center_x - divider_width/2.0;
-    
-    // The second element should start after the right gap
-    let second_start_x = divider_center_x + gap + divider_width/2.0;
-
-    // Layout the first element with appropriate width
-    let first_width = first_end_x - (space.bounds().x + split.padding);
-    let first_limits = limits
-        .clone()
-        .width(first_width)
-        .shrink(Padding::from(split.padding as u16));
-    
-    let mut first = split
-        .first
-        .as_widget()
-        .layout(&mut tree.children[0], renderer, &first_limits);
-    first.move_to_mut(Point::new(
-        space.bounds().x + split.padding,
-        space.bounds().y + split.padding,
-    ));
-
-    // Create the divider node (thin line in center)
-    let mut divider = Node::new(Size::new(divider_width, space.bounds().height));
-    divider.move_to_mut(Point::new(divider_left_x, space.bounds().y));
-
-    // Layout the second element
-    let second_width = space.bounds().width - second_start_x;
-    let second_limits = limits
-        .clone()
-        .width(second_width)
-        .shrink(Padding::from(split.padding as u16));
-    
-    let mut second =
-        split
-            .second
-            .as_widget()
-            .layout(&mut tree.children[1], renderer, &second_limits);
-    second.move_to_mut(Point::new(
-        second_start_x,
-        space.bounds().y + split.padding,
-    ));
-
-    //debug!("VERTICAL Spacing: {}, First right edge: {}, Divider left: {}, Divider right: {}, Second left: {}, Gap size: {}", 
-    //    split.spacing,
-    //    first_end_x,
-    //    divider_left_x,
-    //    divider_left_x + divider_width,
-    //    second_start_x,
-    //    gap
-    //);
-
-    let result = Node::with_children(space.bounds().size(), vec![first, divider, second]);
-    
-    // Debug output to verify the bounds are correct
-    let children = result.children();
-    if children.len() >= 3 {
-        //debug!("VERTICAL First pane bounds: {:?}", children[0].bounds());
-        //debug!("VERTICAL Divider bounds: {:?}", children[1].bounds());
-        //debug!("VERTICAL Second pane bounds: {:?}", children[2].bounds());
-        
-        // Add total width check to verify we don't exceed available space
-        //let total_used_width = children[0].bounds().width + divider_width + (2.0 * gap) + children[2].bounds().width;
-        //debug!("VERTICAL Total width used: {} (available: {})", total_used_width, bounds.width);
-    }
-    
-    result
-}
 
 impl<'a, Message, Theme, Renderer> From<SyncedImageSplit<'a, Message, Theme, Renderer>>
     for Element<'a, Message, Theme, Renderer>
 where
-    Message: Clone + 'a,
-    Renderer: renderer::Renderer + 'a,
-    Theme: Catalog + 'a,
+    Message: 'a + Clone,
+    Renderer: 'a + renderer::Renderer,
+    Theme: 'a + Catalog,
 {
     fn from(split_pane: SyncedImageSplit<'a, Message, Theme, Renderer>) -> Self {
         Element::new(split_pane)
     }
 }
 
-
-/// The possible statuses of a [`Split`].
-pub enum Status {
-    /// The [`Split`] can be dragged.
-    Active,
-    /// The [`Split`] can be dragged and it is being hovered.
-    Hovered,
-    /// The [`Split`] is being dragged.
-    Dragging,
-    /// The [`Split`] cannot be dragged.
-    Disabled,
-}
-
-/// The style of a [`Split`].
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Style {
-    /// The optional background of the [`Split`].
-    pub background: Option<Background>,
-    /// The optional background of the first element of the [`Split`].
-    pub first_background: Option<Background>,
-    /// The optional background of the second element of the [`Split`].
-    pub second_background: Option<Background>,
-    /// The [`Border`] of the [`Split`].
-    pub border: Border,
-    /// The [`Border`] of the [`Split`].
-    pub first_border: Border,
-    /// The [`Border`] of the [`Split`].
-    pub second_border: Border,
-    /// The background of the divider of the [`Split`].
-    pub divider_background: Background,
-    /// The [`Border`] of the divider of the [`Split`].
-    pub divider_border: Border,
-    /// The primary color of the [`Split`].
-    pub primary: palette::Primary,
-}
-
-impl Style {
-    /// Updates the [`Style`] with the given [`Background`].
-    pub fn with_background(self, background: impl Into<Background>) -> Self {
-        Self {
-            background: Some(background.into()),
-            ..self
-        }
-    }
-}
-
-impl Default for Style {
-    fn default() -> Self {
-        Self {
-            background: None,
-            first_background: None,
-            second_background: None,
-            border: Border::default(),
-            first_border: Border::default(),
-            second_border: Border::default(),
-            divider_background: Background::Color(Color::TRANSPARENT),
-            divider_border: Border::default(),
-            primary: palette::Primary::generate(
-                Color::TRANSPARENT,
-                Color::TRANSPARENT,
-                Color::TRANSPARENT,
-            ),
-        }
-    }
-}
-
-
-/// The theme catalog of a [`Split`].
-pub trait Catalog {
-    /// The item class of the [`Split`].
-    type Class<'a>;
-
-    /// The default class produced by the [`Split`].
-    fn default<'a>() -> Self::Class<'a>;
-
-    /// The [`Style`] of a class with the given status.
-    fn style(&self, class: &Self::Class<'_>, status: Status) -> Style;
-}
-
-/// A styling function for a [`Split`].
-pub type StyleFn<'a, Theme> = Box<dyn Fn(&Theme, Status) -> Style + 'a>;
-
-impl Catalog for Theme {
-    type Class<'a> = StyleFn<'a, Self>;
-
-    fn default<'a>() -> Self::Class<'a> {
-        Box::new(default)
-    }
-
-    fn style(&self, class: &Self::Class<'_>, status: Status) -> Style {
-        class(self, status)
-    }
-}
-
-pub fn default(theme: &Theme, status: Status) -> Style {
-    let palette = theme.extended_palette();
-    let base = base(*palette);
-
-    match status {
-        Status::Active => base,
-        Status::Hovered => base,
-        Status::Dragging => base,
-        Status::Disabled => disabled(base),
-    }
-}
-
-fn base(palette: palette::Extended) -> Style {
-    Style {
-        background: Some(Background::Color(palette.background.base.color)),
-        border: Border::rounded(Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: Radius::new(0.0),
-        }, 2.0),
-        primary: palette.primary,
-        ..Style::default()
-    }
-}
-
-fn disabled(style: Style) -> Style {
-    Style {
-        background: style
-            .background
-            .map(|background| background.scale_alpha(0.5)),
-        ..style
-    }
-}
 
 /// Custom operation for synchronizing zoom state between image panes
 #[derive(Debug, Clone, Copy)]
