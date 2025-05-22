@@ -920,17 +920,20 @@ where
             
             // Handle file drop events - retain original functionality
             #[cfg(any(target_os = "macos", target_os = "windows"))]
-            Event::Window(iced::window::Event::FileDropped(path, _)) => {
-                let cursor_pos = cursor.position().unwrap_or_default();
+            Event::Window(iced::window::Event::FileDropped(path, position)) => {
+                // Use the position from the event directly instead of cursor position
+                let drop_position = Point::new(position.x as f32, position.y as f32);
+                
+                debug_log!("FileDropped at position: {:?}", drop_position);
                 
                 // Check first pane (index 0)
-                if first_layout.bounds().contains(cursor_pos) {
+                if first_layout.bounds().contains(drop_position) {
                     debug_log!("FileDropped - First pane");
                     shell.publish((self.on_drop)(0, path[0].to_string_lossy().to_string()));
                     event::Status::Captured
                 } 
                 // Check second pane (index 1)
-                else if second_layout.bounds().contains(cursor_pos) {
+                else if second_layout.bounds().contains(drop_position) {
                     debug_log!("FileDropped - Second pane");
                     shell.publish((self.on_drop)(1, path[0].to_string_lossy().to_string()));
                     event::Status::Captured
