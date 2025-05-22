@@ -237,6 +237,16 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
             text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
             ..container::Style::default()
         }))
+        (container(
+            toggler::Toggler::new(
+                Some("  Sync Zoom/Pan".into()),
+                app.synced_zoom,
+                Message::ToggleSyncedZoom,
+            ).width(Length::Fill)
+        ).style(|_theme: &WinitTheme| container::Style {
+            text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+            ..container::Style::default()
+        }))
     ))
     .max_width(200.0)
     .spacing(0.0);

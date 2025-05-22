@@ -99,6 +99,7 @@ pub enum Message {
     SetCompressionStrategy(CompressionStrategy),
     ToggleFpsDisplay(bool),
     ToggleSplitOrientation(bool),
+    ToggleSyncedZoom(bool),
 }
 
 pub struct DataViewer {
@@ -131,6 +132,7 @@ pub struct DataViewer {
     pub renderer_request_sender: Sender<RendererRequest>,
     pub is_horizontal_split: bool,
     pub file_receiver: Receiver<String>,
+    pub synced_zoom: bool,
 }
 
 impl DataViewer {
@@ -171,6 +173,7 @@ impl DataViewer {
             renderer_request_sender,
             is_horizontal_split: false,
             file_receiver,
+            synced_zoom: true,
         }
     }
 
@@ -888,6 +891,9 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ToggleSliderType(_bool) => { self.toggle_slider_type(); },
             Message::TogglePaneLayout(pane_layout) => { self.toggle_pane_layout(pane_layout); },
             Message::ToggleFooter(_bool) => { self.toggle_footer(); },
+            Message::ToggleSyncedZoom(enabled) => {
+                self.synced_zoom = enabled;
+            }
             Message::PaneSelected(pane_index, is_selected) => {
                 self.panes[pane_index].is_selected = is_selected;
                 for (index, pane) in self.panes.iter_mut().enumerate() {

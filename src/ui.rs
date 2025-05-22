@@ -32,10 +32,11 @@ use app_menu::button_style;
 use crate::menu::PaneLayout;
 use crate::{app::Message, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
-use crate::widgets::{split::{Axis, Split}, viewer, dualslider::DualSlider};
+use crate::widgets::{split::Axis, viewer, dualslider::DualSlider};
 use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
+use crate::widgets::synced_image_split::SyncedImageSplit;
 
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -268,13 +269,14 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         },
         PaneLayout::DualPane => {
             if app.is_slider_dual {
-                // Use individual sliders for each pane (build_ui_dual_pane_slider2)
+                // Pass synced_zoom parameter
                 let panes = build_ui_dual_pane_slider2(
                     &app.panes, 
                     app.divider_position,
                     app.show_footer,
                     app.is_slider_moving,
-                    app.is_horizontal_split
+                    app.is_horizontal_split,
+                    app.synced_zoom
                 );
                 
                 container(
@@ -291,13 +293,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 .height(Length::Fill)
                 .into()
             } else {
-                // Use master slider for both panes (build_ui_dual_pane_slider1)
-                // Build panes using the split component
+                // Pass synced_zoom parameter
                 let panes = build_ui_dual_pane_slider1(
                     &app.panes, 
                     app.divider_position,
                     app.is_slider_moving,
-                    app.is_horizontal_split
+                    app.is_horizontal_split,
+                    app.synced_zoom
                 );
 
                 let footer_texts = vec![
@@ -357,13 +359,15 @@ pub fn build_ui_dual_pane_slider1(
     panes: &[Pane],
     divider_position: Option<u16>,
     is_slider_moving: bool,
-    is_horizontal_split: bool
+    is_horizontal_split: bool,
+    synced_zoom: bool
 ) -> Element<Message, WinitTheme, Renderer> {
     let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split);
     let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split);
     
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    Split::new(
+    
+    SyncedImageSplit::new(
         false,
         first_img,
         second_img,
@@ -375,7 +379,12 @@ pub fn build_ui_dual_pane_slider1(
         Message::FileDropped,
         Message::PaneSelected,
         MENU_BAR_HEIGHT,
+        true,
     )
+    .synced_zoom(synced_zoom)
+    .min_scale(0.25)
+    .max_scale(10.0)
+    .scale_step(0.10)
     .into()
 }
 
@@ -385,7 +394,8 @@ pub fn build_ui_dual_pane_slider2(
     divider_position: Option<u16>,
     show_footer: bool,
     is_slider_moving: bool,
-    is_horizontal_split: bool
+    is_horizontal_split: bool,
+    _synced_zoom: bool
 ) -> Element<Message, WinitTheme, Renderer> {
     let footer_texts = vec![
         format!(
@@ -475,7 +485,8 @@ pub fn build_ui_dual_pane_slider2(
     };
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    Split::new(
+    
+    SyncedImageSplit::new(
         true,
         first_img,
         second_img,
@@ -487,6 +498,11 @@ pub fn build_ui_dual_pane_slider2(
         Message::FileDropped,
         Message::PaneSelected,
         MENU_BAR_HEIGHT,
+        true,
     )
+    .synced_zoom(false)
+    .min_scale(0.25)
+    .max_scale(10.0)
+    .scale_step(0.10)
     .into()
 }
