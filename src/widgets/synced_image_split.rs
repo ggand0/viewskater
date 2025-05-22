@@ -841,20 +841,24 @@ where
                         );
                         
                         // Apply to the other pane
-                        if active_pane == 0 {
+                        let success = if active_pane == 0 {
                             ZoomStateOperation::operate(
                                 &mut second_state[0],
                                 Rectangle::default(),
                                 renderer,
                                 &mut apply_op
-                            );
+                            )
                         } else {
                             ZoomStateOperation::operate(
                                 &mut first_state[0],
                                 Rectangle::default(),
                                 renderer,
                                 &mut apply_op
-                            );
+                            )
+                        };
+                        
+                        if !success {
+                            debug_log!("SyncedImageSplit: Could not sync zoom state - target pane doesn't support it");
                         }
                         
                         return event::Status::Captured;
@@ -1218,7 +1222,7 @@ where
         renderer: &Renderer,
         operation: &mut dyn Operation,
     ) {
-        let split_state = state.state.downcast_ref::<State>();
+        let split_state = state.state.downcast_mut::<State>();
         
         // Check if synced zoom is enabled before injecting state
         if self.synced_zoom {
@@ -1435,20 +1439,28 @@ impl ZoomStateOperation {
         _bounds: Rectangle,
         _renderer: &T,
         operation: &mut Self,
-    ) {
-        // Direct access without pattern matching
-        let shader_state = tree.state.downcast_mut::<crate::widgets::shader::image_shader::ImageShaderState>();
-        
-        if !operation.query_only {  // Apply mode
-            shader_state.scale = operation.scale;
-            shader_state.current_offset = operation.offset;
-            debug_log!("ZoomStateOperation: Applied scale={}, offset=({},{})",
-                  operation.scale, operation.offset.x, operation.offset.y);
-        } else {  // Query mode
-            operation.scale = shader_state.scale;
-            operation.offset = shader_state.current_offset;
-            debug_log!("ZoomStateOperation: Queried scale={}, offset=({},{})",
-                  operation.scale, operation.offset.x, operation.offset.y);
+    ) -> bool {
+        // Check if the tree's tag matches ImageShaderState's type before attempting downcast
+        if tree.tag == tree::Tag::of::<crate::widgets::shader::image_shader::ImageShaderState>() {
+            // Now it's safe to downcast
+            let shader_state = tree.state.downcast_mut::<crate::widgets::shader::image_shader::ImageShaderState>();
+            
+            if !operation.query_only {  // Apply mode
+                shader_state.scale = operation.scale;
+                shader_state.current_offset = operation.offset;
+                debug_log!("ZoomStateOperation: Applied scale={}, offset=({},{})",
+                      operation.scale, operation.offset.x, operation.offset.y);
+            } else {  // Query mode
+                operation.scale = shader_state.scale;
+                operation.offset = shader_state.current_offset;
+                debug_log!("ZoomStateOperation: Queried scale={}, offset=({},{})",
+                      operation.scale, operation.offset.x, operation.offset.y);
+            }
+            true
+        } else {
+            // This tree doesn't contain an ImageShaderState
+            debug_log!("ZoomStateOperation: Tree doesn't contain ImageShaderState, skipping");
+            false
         }
     }
 }
