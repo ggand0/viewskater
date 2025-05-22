@@ -395,7 +395,7 @@ pub fn build_ui_dual_pane_slider2(
     show_footer: bool,
     is_slider_moving: bool,
     is_horizontal_split: bool,
-    synced_zoom: bool
+    _synced_zoom: bool
 ) -> Element<Message, WinitTheme, Renderer> {
     let footer_texts = vec![
         format!(
