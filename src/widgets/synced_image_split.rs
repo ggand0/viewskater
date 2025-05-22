@@ -506,28 +506,55 @@ where
                 
                 debug_log!("Processed wheel events in both panes");
                 
-                // Verify state after wheel processing
-                let mut verify_first_op = ZoomStateOperation::new_query();
-                let mut verify_second_op = ZoomStateOperation::new_query();
-                
-                self.first.as_widget().operate(
-                    &mut state.children[0],
-                    first_layout,
-                    renderer,
-                    &mut verify_first_op
-                );
-                
-                self.second.as_widget().operate(
-                    &mut state.children[1],
-                    second_layout,
-                    renderer,
-                    &mut verify_second_op
-                );
-                
-                debug_log!("VERIFICATION: First pane scale={}, offset=({}, {})", 
-                       verify_first_op.scale, verify_first_op.offset.x, verify_first_op.offset.y);
-                debug_log!("VERIFICATION: Second pane scale={}, offset=({}, {})", 
-                       verify_second_op.scale, verify_second_op.offset.x, verify_second_op.offset.y);
+                // After processing wheel events in both panes, ensure full state synchronization
+                if target_status == event::Status::Captured || other_status == event::Status::Captured {
+                    // First, query the state from the target pane
+                    let (first_state, second_state) = state.children.split_at_mut(1);
+                    let mut query_op = ZoomStateOperation::new_query();
+                    
+                    if target_pane == 0 {
+                        ZoomStateOperation::operate(
+                            &mut first_state[0],
+                            Rectangle::default(),
+                            renderer,
+                            &mut query_op
+                        );
+                    } else {
+                        ZoomStateOperation::operate(
+                            &mut second_state[0],
+                            Rectangle::default(),
+                            renderer,
+                            &mut query_op
+                        );
+                    }
+                    
+                    // Apply the same state to the other pane to ensure complete synchronization
+                    let mut apply_op = ZoomStateOperation::new_apply(
+                        query_op.scale, query_op.offset
+                    );
+                    
+                    let success = if target_pane == 0 {
+                        ZoomStateOperation::operate(
+                            &mut second_state[0],
+                            Rectangle::default(),
+                            renderer,
+                            &mut apply_op
+                        )
+                    } else {
+                        ZoomStateOperation::operate(
+                            &mut first_state[0],
+                            Rectangle::default(),
+                            renderer,
+                            &mut apply_op
+                        )
+                    };
+                    
+                    if !success {
+                        debug_log!("SyncedImageSplit: Could not fully sync state after wheel event");
+                    } else {
+                        debug_log!("SyncedImageSplit: Fully synchronized state after wheel event");
+                    }
+                }
                 
                 // Return the status from the target pane that was directly interacted with
                 return target_status.merge(other_status);
