@@ -500,7 +500,7 @@ pub fn build_ui_dual_pane_slider2(
         MENU_BAR_HEIGHT,
         true,
     )
-    .synced_zoom(synced_zoom)
+    .synced_zoom(false)
     .min_scale(0.25)
     .max_scale(10.0)
     .scale_step(0.10)
