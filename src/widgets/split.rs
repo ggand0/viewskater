@@ -67,6 +67,7 @@ use iced::border::Radius;
 use std::time::{Duration, Instant};
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
+use crate::CONFIG;
 
 /// Amount to expand the divider hitbox by on each side in pixels
 pub const DIVIDER_HITBOX_EXPANSION: f32 = 10.0;
@@ -381,7 +382,7 @@ where
                     // Save the current time
                     if let Some(last_click_time) = split_state.last_click_time {
                         let elapsed = last_click_time.elapsed();
-                        if elapsed < Duration::from_millis(500) {
+                        if elapsed < Duration::from_millis(CONFIG.double_click_threshold_ms as u64) {
                             // Double-click detected
                             split_state.last_click_time = None;
     

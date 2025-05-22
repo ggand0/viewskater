@@ -16,7 +16,7 @@ use crate::Scene;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use crate::widgets::split::DIVIDER_HITBOX_EXPANSION;
-
+use crate::CONFIG;
 
 /// A specialized shader widget for displaying images with proper aspect ratio.
 pub struct ImageShader<Message> {
@@ -602,7 +602,7 @@ where
                 // Check for double-click
                 if let Some(last_click_time) = state.last_click_time {
                     let elapsed = last_click_time.elapsed();
-                    if elapsed < std::time::Duration::from_millis(500) {
+                    if elapsed < std::time::Duration::from_millis(CONFIG.double_click_threshold_ms as u64) {
                         // Double-click detected - reset zoom and pan
                         state.scale = 1.0;
                         state.current_offset = Vector::default();

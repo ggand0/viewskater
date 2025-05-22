@@ -70,6 +70,7 @@ use log::{Level, debug, info, warn, error};
 use iced_core::widget;
 use crate::widgets::split::Axis;
 use crate::widgets::split::{Catalog, Status, Style, StyleFn};
+use crate::CONFIG;
 
 // Add module-level debug flag - set to false to disable all debug logs
 const DEBUG_LOGS_ENABLED: bool = false;
@@ -600,7 +601,7 @@ where
                     // Handle double-click for divider reset
                     if let Some(last_click_time) = split_state.last_click_time {
                         let elapsed = last_click_time.elapsed();
-                        if elapsed < Duration::from_millis(500) {
+                        if elapsed < Duration::from_millis(CONFIG.double_click_threshold_ms as u64) {
                             // Double-click detected
                             split_state.last_click_time = None;
                             split_state.dragging = false;
