@@ -9,7 +9,8 @@ It aims to alleviate the challenges of exploring and comparing numerous images. 
 - Dynamic image caching on CPU or GPU memory
 - Continuous image rendering via key presses and the slider UI
 - Dual pane view for side-by-side image comparison
-- Supports JPG and PNG images up to 8192×8192 px
+- Supports image formats supported by the `image` crate up to 8192×8192 px  
+  (JPG, PNG, GIF, BMP, TIFF, WebP, QOI, TGA, etc.)
 
 ## Installation
 Download the pre-built binaries from the [releases page](https://github.com/ggand0/viewskater/releases), or build it locally:
