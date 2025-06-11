@@ -199,8 +199,27 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         println!("macOS file handler registered");
     }
 
+    // Handle command line arguments for Linux (and Windows)
+    // This supports double-click and "Open With" functionality via .desktop files on Linux
     #[cfg(not(target_os = "macos"))]
-    let _ = file_sender;
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if args.len() > 1 {
+            let file_path = &args[1];
+            println!("File path from command line: {}", file_path);
+            
+            // Validate that the path exists and is a file or directory
+            if std::path::Path::new(file_path).exists() {
+                if let Err(e) = file_sender.send(file_path.clone()) {
+                    println!("Failed to send file path through channel: {}", e);
+                } else {
+                    println!("Successfully queued file path for loading: {}", file_path);
+                }
+            } else {
+                println!("Warning: Specified file path does not exist: {}", file_path);
+            }
+        }
+    }
 
     // Rest of the initialization...
     let proxy: EventLoopProxy<Action<Message>> = event_loop.create_proxy();
