@@ -27,8 +27,8 @@ fn main() -> io::Result<()> {
 }
 
 fn capture_build_info() {
-    // Get version from Cargo.toml
-    println!("cargo:rustc-env=CARGO_PKG_VERSION={}", env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string()));
+    // Uncomment to override version string if needed:
+    //println!("cargo:rustc-env=CARGO_PKG_VERSION={}", env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string()));
     
     // Generate build timestamp
     let build_timestamp = chrono::Utc::now().format("%Y%m%d.%H%M%S").to_string();
