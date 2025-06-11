@@ -59,10 +59,14 @@ fn capture_build_info() {
     let build_string = format!("{}.{}", env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_string()), build_timestamp);
     println!("cargo:rustc-env=BUILD_STRING={}", build_string);
     
-    // Always update Info.plist with the build timestamp if it exists
-    // This ensures consistent versioning across all builds
-    update_info_plist(&build_timestamp);
-    println!("cargo:rustc-env=BUNDLE_VERSION={}", build_timestamp);
+    // For macOS, automatically update Info.plist with the build timestamp
+    if target_os == "macos" {
+        update_info_plist(&build_timestamp);
+        println!("cargo:rustc-env=BUNDLE_VERSION={}", build_timestamp);
+    } else {
+        // For non-macOS, still set the bundle version but don't update plist
+        println!("cargo:rustc-env=BUNDLE_VERSION={}", build_timestamp);
+    }
     
     // Tell cargo to rerun this if git changes or Info.plist changes
     println!("cargo:rerun-if-changed=.git/HEAD");

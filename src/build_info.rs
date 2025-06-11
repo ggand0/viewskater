@@ -13,6 +13,7 @@ impl BuildInfo {
     }
     
     /// Get the full git commit hash
+    #[allow(dead_code)]
     pub fn git_hash() -> &'static str {
         env!("GIT_HASH")
     }
@@ -49,7 +50,7 @@ impl BuildInfo {
     }
     
     /// Get detailed build information for about dialogs
-    #[allow(unused_mut)]
+    #[allow(dead_code, unused_mut)]
     pub fn detailed_info() -> String {
         let mut info = format!(
             "Version: {}\nBuild: {}\nCommit: {}\nPlatform: {}\nProfile: {}",
