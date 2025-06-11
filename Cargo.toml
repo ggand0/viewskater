@@ -71,6 +71,7 @@ cargo-bundle = "0.6.0"
 
 [build-dependencies]
 winres = "0.1.12"
+chrono = { version = "0.4", features = ["clock"] }
 
 [package.metadata.winres]
 OriginalFilename = "view_skater.exe"

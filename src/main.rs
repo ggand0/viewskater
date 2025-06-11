@@ -13,6 +13,7 @@ mod loading_handler;
 mod config;
 mod app;
 mod utils;
+mod build_info;
 
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};

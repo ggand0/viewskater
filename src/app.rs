@@ -55,6 +55,7 @@ use crate::utils::timing::TimingStats;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
+use crate::build_info::BuildInfo;
 
 use std::sync::mpsc::{Sender, Receiver};
 
@@ -1219,6 +1220,81 @@ impl iced_winit::runtime::Program for DataViewer {
         let content = ui::build_ui(&self);
 
         if self.show_about {
+            // Build the info column dynamically to avoid empty text widgets
+            let mut info_column = column![
+                text(format!("Version {}", BuildInfo::display_version())).size(15),
+                text(format!("Build: {} ({})", BuildInfo::build_string(), BuildInfo::build_profile())).size(12)
+                .style(|theme: &WinitTheme| {
+                    iced_widget::text::Style {
+                        color: Some(theme.extended_palette().background.weak.color),
+                        ..Default::default()
+                    }
+                }),
+                text(format!("Commit: {}", BuildInfo::git_hash_short())).size(12)
+                .style(|theme: &WinitTheme| {
+                    iced_widget::text::Style {
+                        color: Some(theme.extended_palette().background.weak.color),
+                        ..Default::default()
+                    }
+                }),
+                text(format!("Platform: {}", BuildInfo::target_platform())).size(12)
+                .style(|theme: &WinitTheme| {
+                    iced_widget::text::Style {
+                        color: Some(theme.extended_palette().background.weak.color),
+                        ..Default::default()
+                    }
+                }),
+            ];
+
+            // Add bundle version only on macOS to avoid empty widgets
+            let bundle_info = BuildInfo::bundle_version_display();
+            if !bundle_info.is_empty() {
+                info_column = info_column.push(
+                    text(format!("Bundle: {}", bundle_info)).size(12)
+                    .style(|theme: &WinitTheme| {
+                        iced_widget::text::Style {
+                            color: Some(theme.extended_palette().background.weak.color),
+                            ..Default::default()
+                        }
+                    })
+                );
+            }
+
+            info_column = info_column.push(row![
+                text("Author:  ").size(15),
+                text("Gota Gando").size(15)
+                .style(|theme: &WinitTheme| {
+                    iced_widget::text::Style {
+                        color: Some(theme.extended_palette().primary.strong.color),
+                        ..Default::default()
+                    }
+                })
+            ]);
+
+            info_column = info_column.push(text("Learn more at:").size(15));
+
+            info_column = info_column.push(button(
+                text("https://github.com/ggand0/viewskater")
+                    .size(18)
+            )
+            .style(|theme: &WinitTheme, _status| {
+                iced_widget::button::Style {
+                    background: Some(iced_winit::core::Color::TRANSPARENT.into()),
+                    text_color: theme.extended_palette().primary.strong.color,
+                    border: iced_winit::core::Border {
+                        color: iced_winit::core::Color::TRANSPARENT,
+                        width: 1.0,
+                        radius: iced_winit::core::border::Radius::new(0.0),
+                    },
+                    ..Default::default()
+                }
+            })
+            .on_press(Message::OpenWebLink(
+                "https://github.com/ggand0/viewskater".to_string(),
+            )));
+
+            info_column = info_column.spacing(4);
+
             let about_content = container(
                 column![
                     text("ViewSkater").size(25)
@@ -1228,39 +1304,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         stretch: iced_winit::core::font::Stretch::Normal,
                         style: iced_winit::core::font::Style::Normal,
                     }),
-                    column![
-                        text("Version 0.2.3").size(15),
-                        row![
-                            text("Author:  ").size(15),
-                            text("Gota Gando").size(15)
-                            .style(|theme: &WinitTheme| {
-                                iced_widget::text::Style {
-                                    color: Some(theme.extended_palette().primary.strong.color),
-                                    ..Default::default()
-                                }
-                            })
-                        ],
-                        text("Learn more at:").size(15),
-                        button(
-                            text("https://github.com/ggand0/viewskater")
-                                .size(18)
-                        )
-                        .style(|theme: &WinitTheme, _status| {
-                            iced_widget::button::Style {
-                                background: Some(iced_winit::core::Color::TRANSPARENT.into()),
-                                text_color: theme.extended_palette().primary.strong.color,
-                                border: iced_winit::core::Border {
-                                    color: iced_winit::core::Color::TRANSPARENT,
-                                    width: 1.0,
-                                    radius: iced_winit::core::border::Radius::new(0.0),
-                                },
-                                ..Default::default()
-                            }
-                        })
-                        .on_press(Message::OpenWebLink(
-                            "https://github.com/ggand0/viewskater".to_string(),
-                        )),
-                    ].spacing(4)
+                    info_column
                 ]
                 .spacing(15)
                 .align_x(iced_winit::core::alignment::Horizontal::Center),
