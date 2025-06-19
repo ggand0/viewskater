@@ -72,6 +72,8 @@ pub enum Message {
     ShowAbout,
     HideAbout,
     ShowLogs,
+    ExportDebugLogs,
+    ExportAllLogs,
     OpenWebLink(String),
     FontLoaded(Result<(), font::Error>),
     OpenFolder(usize),
@@ -749,7 +751,6 @@ impl DataViewer {
                                 &path,
                                 self.is_slider_dual,
                                 &mut self.slider_value,
-                                
                             );
                         }
                     }
@@ -794,6 +795,44 @@ impl iced_winit::runtime::Program for DataViewer {
                 let log_dir_path = file_io::get_log_directory(app_name);
                 let _ = std::fs::create_dir_all(log_dir_path.clone());
                 file_io::open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
+            }
+            Message::ExportDebugLogs => {
+                let app_name = "viewskater";
+                if let Some(log_buffer) = crate::get_shared_log_buffer() {
+                    file_io::export_and_open_debug_logs(app_name, log_buffer);
+                } else {
+                    warn!("Log buffer not available for export");
+                }
+            }
+            Message::ExportAllLogs => {
+                println!("DEBUG: ExportAllLogs message received");
+                let app_name = "viewskater";
+                if let Some(log_buffer) = crate::get_shared_log_buffer() {
+                    println!("DEBUG: Got log buffer, starting export...");
+                    if let Some(stdout_buffer) = crate::get_shared_stdout_buffer() {
+                        println!("DEBUG: Got stdout buffer, calling export_and_open_all_logs...");
+                        file_io::export_and_open_all_logs(app_name, log_buffer, stdout_buffer);
+                        println!("DEBUG: export_and_open_all_logs completed");
+                    } else {
+                        println!("DEBUG: Stdout buffer not available, exporting debug logs only");
+                        match file_io::export_debug_logs(app_name, log_buffer) {
+                            Ok(debug_log_path) => {
+                                println!("DEBUG: Export successful to: {}", debug_log_path.display());
+                                info!("Debug logs successfully exported to: {}", debug_log_path.display());
+                            }
+                            Err(e) => {
+                                println!("DEBUG: Export failed: {}", e);
+                                error!("Failed to export debug logs: {}", e);
+                                eprintln!("Failed to export debug logs: {}", e);
+                            }
+                        }
+                    }
+                    println!("DEBUG: Export operation completed");
+                } else {
+                    println!("DEBUG: Log buffer not available");
+                    warn!("Log buffer not available for export");
+                }
+                println!("DEBUG: ExportAllLogs handler finished");
             }
             Message::ShowAbout => {
                 self.show_about = true;
@@ -1330,3 +1369,4 @@ impl iced_winit::runtime::Program for DataViewer {
         }
     }
 }
+

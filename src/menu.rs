@@ -364,6 +364,8 @@ pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Rendere
         menu_items!(
             (labeled_button("About", MENU_ITEM_FONT_SIZE, Message::ShowAbout))
             (labeled_button("Show logs", MENU_ITEM_FONT_SIZE, Message::ShowLogs))
+            (labeled_button("Export debug logs", MENU_ITEM_FONT_SIZE, Message::ExportDebugLogs))
+            (labeled_button("Export all logs", MENU_ITEM_FONT_SIZE, Message::ExportAllLogs))
         )
     )
 }

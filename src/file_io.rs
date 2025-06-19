@@ -37,6 +37,11 @@ static GPU_UPLOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("GPU Upload"))
 });
 
+// Stdout capture buffer - separate from log buffer
+static STDOUT_BUFFER: Lazy<Arc<Mutex<VecDeque<String>>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(VecDeque::with_capacity(1000)))
+});
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -398,7 +403,7 @@ impl BufferLogger {
     }
 
     fn log_to_buffer(&self, message: &str, target: &str, line: Option<u32>, _module_path: Option<&str>) {
-        if target.starts_with("view_skater") {
+        if target.starts_with("viewskater") {
             let mut buffer = self.log_buffer.lock().unwrap();
             if buffer.len() == MAX_LOG_LINES {
                 buffer.pop_front();
@@ -430,7 +435,7 @@ impl BufferLogger {
 
 impl log::Log for BufferLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.target().starts_with("view_skater") && metadata.level() <= LevelFilter::Debug
+        metadata.target().starts_with("viewskater") && metadata.level() <= LevelFilter::Debug
     }
 
     fn log(&self, record: &Record) {
@@ -491,10 +496,10 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
         // If RUST_LOG is not set, use different defaults for debug/release builds
         if cfg!(debug_assertions) {
             // In debug mode, show debug logs and above
-            builder.filter(Some("view_skater"), LevelFilter::Debug);
+            builder.filter(Some("viewskater"), LevelFilter::Debug);
         } else {
             // In release mode, only show errors by default
-            builder.filter(Some("view_skater"), LevelFilter::Error);
+            builder.filter(Some("viewskater"), LevelFilter::Error);
         }
     }
 
@@ -569,6 +574,153 @@ pub fn get_log_directory(app_name: &str) -> PathBuf {
     dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
 }
 
+/// Exports the current log buffer to a debug log file.
+/// 
+/// This function writes the last 1,000 lines of logs (captured via the log macros like debug!, info!, etc.)
+/// to a separate debug log file. This is useful for troubleshooting issues without waiting for a crash.
+/// 
+/// NOTE: This currently captures logs from the Rust `log` crate macros (debug!, info!, warn!, error!)
+/// but does NOT capture raw `println!` statements. To capture println! statements, stdout redirection
+/// would be needed, which is more complex and may interfere with normal console output.
+/// 
+/// # Arguments
+/// * `app_name` - The application name used for the log directory  
+/// * `log_buffer` - The shared log buffer containing the recent log messages
+/// 
+/// # Returns
+/// * `Ok(PathBuf)` - The path to the created debug log file
+/// * `Err(std::io::Error)` - An error if the export fails
+pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) -> Result<PathBuf, std::io::Error> {
+    println!("DEBUG: export_debug_logs called");
+    
+    let log_dir_path = get_log_directory(app_name);
+    println!("DEBUG: Log directory path: {}", log_dir_path.display());
+    
+    std::fs::create_dir_all(&log_dir_path)?;
+    println!("DEBUG: Created log directory");
+    
+    let debug_log_path = log_dir_path.join("debug.log");
+    println!("DEBUG: Debug log path: {}", debug_log_path.display());
+    
+    println!("DEBUG: About to open file for writing");
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&debug_log_path)?;
+    println!("DEBUG: File opened successfully");
+
+    // Write formatted timestamp
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
+    println!("DEBUG: About to write header");
+    
+    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] ViewSkater Debug Log Export", timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] Export timestamp: {}", timestamp, timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] ", timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] IMPORTANT: This log captures output from Rust log macros", timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] (debug!, info!, warn!, error!) but NOT raw println! statements.", timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] Maximum captured entries: {}", timestamp, MAX_LOG_LINES)?;
+    writeln!(file)?; // Empty line for readability
+    println!("DEBUG: Header written");
+
+    // Export all log entries from the buffer
+    println!("DEBUG: About to lock log buffer");
+    let buffer_size;
+    let buffer_empty;
+    let log_entries: Vec<String>;
+    
+    {
+        let buffer = log_buffer.lock().unwrap();
+        println!("DEBUG: Log buffer locked, size: {}", buffer.len());
+        buffer_size = buffer.len();
+        buffer_empty = buffer.is_empty();
+        log_entries = buffer.iter().cloned().collect();
+        println!("DEBUG: Copied {} entries, releasing lock", buffer_size);
+    } // Lock is dropped here
+    
+    println!("DEBUG: Buffer lock released");
+    
+    if buffer_empty {
+        println!("DEBUG: Buffer is empty, writing empty message");
+        writeln!(file, "{} [DEBUG EXPORT] No log entries found in buffer", timestamp)?;
+        writeln!(file, "{} [DEBUG EXPORT] This may indicate that:", timestamp)?;
+        writeln!(file, "{} [DEBUG EXPORT] 1. No log macros have been called yet", timestamp)?;
+        writeln!(file, "{} [DEBUG EXPORT] 2. All logs were filtered out by log level settings", timestamp)?;
+        writeln!(file, "{} [DEBUG EXPORT] 3. The app just started and no logs have been generated", timestamp)?;
+    } else {
+        println!("DEBUG: Writing {} log entries", buffer_size);
+        writeln!(file, "{} [DEBUG EXPORT] Found {} log entries (showing last {} max):", timestamp, buffer_size, MAX_LOG_LINES)?;
+        writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
+        writeln!(file)?; // Empty line for readability
+        
+        for (i, log_entry) in log_entries.iter().enumerate() {
+            if i % 10 == 0 {
+                println!("DEBUG: Writing entry {}/{}", i, buffer_size);
+            }
+            writeln!(file, "{} {}", timestamp, log_entry)?;
+        }
+        println!("DEBUG: All entries written");
+    }
+    
+    println!("DEBUG: Writing footer");
+    writeln!(file)?; // Final empty line
+    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] Export completed successfully", timestamp)?;
+    writeln!(file, "{} [DEBUG EXPORT] Total entries exported: {}", timestamp, buffer_size)?;
+    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
+    
+    println!("DEBUG: About to flush file");
+    file.flush()?;
+    println!("DEBUG: File flushed");
+    
+    println!("DEBUG: About to call info! macro");
+    info!("Debug logs exported to: {}", debug_log_path.display());
+    println!("DEBUG: info! macro completed");
+    
+    println!("DEBUG: export_debug_logs completed successfully");
+    
+    Ok(debug_log_path)
+}
+
+/// Exports debug logs and opens the log directory in the file explorer.
+/// 
+/// This is a convenience function that combines exporting debug logs and opening
+/// the log directory for easy access to the exported files.
+/// 
+/// # Arguments
+/// * `app_name` - The application name used for the log directory
+/// * `log_buffer` - The shared log buffer containing the recent log messages
+pub fn export_and_open_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) {
+    // Debug: Check if this is the same buffer that should be receiving logs
+    println!("DEBUG: About to export debug logs...");
+    if let Ok(buffer) = log_buffer.lock() {
+        println!("DEBUG: Buffer size at export time: {}", buffer.len());
+        if buffer.len() > 0 {
+            println!("DEBUG: First few entries:");
+            for (i, entry) in buffer.iter().take(3).enumerate() {
+                println!("DEBUG: Entry {}: {}", i, entry);
+            }
+        }
+    }
+    
+    match export_debug_logs(app_name, log_buffer) {
+        Ok(debug_log_path) => {
+            info!("Debug logs successfully exported to: {}", debug_log_path.display());
+            println!("Debug logs exported to: {}", debug_log_path.display());
+            
+            // Temporarily disable automatic directory opening to prevent hangs
+            // let log_dir = debug_log_path.parent().unwrap_or_else(|| Path::new("."));
+            // open_in_file_explorer(&log_dir.to_string_lossy().to_string());
+        }
+        Err(e) => {
+            error!("Failed to export debug logs: {}", e);
+            eprintln!("Failed to export debug logs: {}", e);
+        }
+    }
+}
+
 pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) {
     let log_file_path = get_log_directory(app_name).join("panic.log");
     std::fs::create_dir_all(log_file_path.parent().unwrap()).expect("Failed to create log directory");
@@ -639,23 +791,196 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
 pub fn open_in_file_explorer(path: &str) {
     if cfg!(target_os = "windows") {
         // Windows: Use "explorer" to open the directory
-        Command::new("explorer")
+        match Command::new("explorer")
             .arg(path)
-            .spawn()
-            .expect("Failed to open directory in File Explorer");
+            .spawn() {
+                Ok(_) => println!("Opened directory in File Explorer: {}", path),
+                Err(e) => eprintln!("Failed to open directory in File Explorer: {}", e),
+            }
     } else if cfg!(target_os = "macos") {
         // macOS: Use "open" to open the directory
-        Command::new("open")
+        match Command::new("open")
             .arg(path)
-            .spawn()
-            .expect("Failed to open directory in Finder");
+            .spawn() {
+                Ok(_) => println!("Opened directory in Finder: {}", path),
+                Err(e) => eprintln!("Failed to open directory in Finder: {}", e),
+            }
     } else if cfg!(target_os = "linux") {
         // Linux: Use "xdg-open" to open the directory (works with most desktop environments)
-        Command::new("xdg-open")
+        match Command::new("xdg-open")
             .arg(path)
-            .spawn()
-            .expect("Failed to open directory in File Explorer");
+            .spawn() {
+                Ok(_) => println!("Opened directory in File Explorer: {}", path),
+                Err(e) => eprintln!("Failed to open directory in File Explorer: {}", e),
+            }
     } else {
         error!("Opening directories is not supported on this OS.");
+    }
+}
+
+/// Sets up stdout capture to intercept println! and other stdout output.
+/// 
+/// This function sets up a simple manual capture system for important stdout messages.
+/// Call capture_stdout() manually for messages you want to capture.
+/// 
+/// # Returns
+/// * `Arc<Mutex<VecDeque<String>>>` - The shared stdout buffer
+pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
+    println!("Note: Using manual stdout capture - call capture_stdout() for important messages");
+    
+    // Capture this startup message
+    capture_stdout("ViewSkater stdout capture initialized");
+    
+    Arc::clone(&STDOUT_BUFFER)
+}
+
+/// Exports stdout logs to a separate file.
+/// 
+/// This function writes the captured stdout output (from println! and other stdout writes)
+/// to a separate stdout log file. This complements the debug log export.
+/// 
+/// # Arguments
+/// * `app_name` - The application name used for the log directory
+/// * `stdout_buffer` - The shared stdout buffer containing captured output
+/// 
+/// # Returns
+/// * `Ok(PathBuf)` - The path to the created stdout log file
+/// * `Err(std::io::Error)` - An error if the export fails
+pub fn export_stdout_logs(app_name: &str, stdout_buffer: Arc<Mutex<VecDeque<String>>>) -> Result<PathBuf, std::io::Error> {
+    let log_dir_path = get_log_directory(app_name);
+    std::fs::create_dir_all(&log_dir_path)?;
+    
+    let stdout_log_path = log_dir_path.join("stdout.log");
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&stdout_log_path)?;
+
+    // Write formatted timestamp
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
+    
+    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
+    writeln!(file, "{} [STDOUT EXPORT] ViewSkater Stdout Log Export", timestamp)?;
+    writeln!(file, "{} [STDOUT EXPORT] Export timestamp: {}", timestamp, timestamp)?;
+    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
+    writeln!(file, "{} [STDOUT EXPORT] ", timestamp)?;
+    writeln!(file, "{} [STDOUT EXPORT] This log captures stdout output including println! statements", timestamp)?;
+    writeln!(file, "{} [STDOUT EXPORT] Maximum captured entries: 1000", timestamp)?;
+    writeln!(file)?; // Empty line for readability
+
+    // Export all stdout entries from the buffer
+    let buffer = stdout_buffer.lock().unwrap();
+    if buffer.is_empty() {
+        writeln!(file, "{} [STDOUT EXPORT] No stdout entries found in buffer", timestamp)?;
+        writeln!(file, "{} [STDOUT EXPORT] Note: Automatic stdout capture is disabled", timestamp)?;
+        writeln!(file, "{} [STDOUT EXPORT] Use debug logs (debug!, info!, etc.) for logging instead", timestamp)?;
+    } else {
+        writeln!(file, "{} [STDOUT EXPORT] Found {} stdout entries:", timestamp, buffer.len())?;
+        writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
+        writeln!(file)?; // Empty line for readability
+        
+        for stdout_entry in buffer.iter() {
+            writeln!(file, "{}", stdout_entry)?;
+        }
+    }
+    
+    writeln!(file)?; // Final empty line
+    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
+    writeln!(file, "{} [STDOUT EXPORT] Export completed successfully", timestamp)?;
+    writeln!(file, "{} [STDOUT EXPORT] Total entries exported: {}", timestamp, buffer.len())?;
+    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
+    
+    file.flush()?;
+    
+    info!("Stdout logs exported to: {}", stdout_log_path.display());
+    println!("Stdout logs exported to: {}", stdout_log_path.display());
+    
+    Ok(stdout_log_path)
+}
+
+/// Exports both debug logs and stdout logs, then opens the log directory.
+/// 
+/// This is a convenience function that exports both types of logs and opens
+/// the log directory for easy access to all exported files.
+/// 
+/// # Arguments
+/// * `app_name` - The application name used for the log directory
+/// * `log_buffer` - The shared log buffer containing recent log messages
+/// * `stdout_buffer` - The shared stdout buffer containing captured output
+pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>, stdout_buffer: Arc<Mutex<VecDeque<String>>>) {
+    // Debug: Check both buffers
+    println!("DEBUG: About to export all logs...");
+    if let Ok(log_buf) = log_buffer.lock() {
+        println!("DEBUG: Log buffer size: {}", log_buf.len());
+    }
+    if let Ok(stdout_buf) = stdout_buffer.lock() {
+        println!("DEBUG: Stdout buffer size: {}", stdout_buf.len());
+    }
+    
+    // Export debug logs
+    match export_debug_logs(app_name, log_buffer) {
+        Ok(debug_log_path) => {
+            info!("Debug logs successfully exported to: {}", debug_log_path.display());
+            
+            // Open the log directory in file explorer (using debug log path)
+            let log_dir = debug_log_path.parent().unwrap_or_else(|| Path::new("."));
+            open_in_file_explorer(&log_dir.to_string_lossy().to_string());
+        }
+        Err(e) => {
+            error!("Failed to export debug logs: {}", e);
+            eprintln!("Failed to export debug logs: {}", e);
+        }
+    }
+    
+    // Only export stdout logs if there's actually something in the buffer
+    let should_export_stdout = {
+        if let Ok(stdout_buf) = stdout_buffer.lock() {
+            !stdout_buf.is_empty()
+        } else {
+            false
+        }
+    };
+    
+    if should_export_stdout {
+        match export_stdout_logs(app_name, stdout_buffer) {
+            Ok(stdout_log_path) => {
+                info!("Stdout logs successfully exported to: {}", stdout_log_path.display());
+            }
+            Err(e) => {
+                error!("Failed to export stdout logs: {}", e);
+                eprintln!("Failed to export stdout logs: {}", e);
+            }
+        }
+    } else {
+        println!("Skipping stdout.log export - buffer is empty (stdout capture disabled)");
+    }
+}
+
+/// Manually adds a message to the stdout buffer.
+/// 
+/// This function can be used to manually log important messages that should
+/// be captured even when automatic stdout capture is disabled (e.g., on macOS).
+/// 
+/// # Arguments
+/// * `message` - The message to add to the stdout buffer
+pub fn log_to_stdout_buffer(message: &str) {
+    if let Ok(mut buffer) = STDOUT_BUFFER.lock() {
+        if buffer.len() >= 1000 {
+            buffer.pop_front();
+        }
+        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
+        buffer.push_back(format!("{} [MANUAL] {}", timestamp, message));
+    }
+}
+
+// Simple function to manually capture important stdout messages
+pub fn capture_stdout(message: &str) {
+    if let Ok(mut buffer) = STDOUT_BUFFER.lock() {
+        if buffer.len() >= 1000 {
+            buffer.pop_front();
+        }
+        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
+        buffer.push_back(format!("{} [STDOUT] {}", timestamp, message));
     }
 }

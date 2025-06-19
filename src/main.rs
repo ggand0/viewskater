@@ -27,6 +27,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::VecDeque;
 
 use winit::{
     event::WindowEvent,
@@ -97,6 +98,32 @@ static LAST_ASYNC_DELIVERY_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
 static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
 const QUEUE_LOG_THRESHOLD: usize = 20;
 const QUEUE_RESET_THRESHOLD: usize = 50;
+
+// Store the actual shared log buffer from the file_io module
+static SHARED_LOG_BUFFER: Lazy<Arc<Mutex<Option<Arc<Mutex<VecDeque<String>>>>>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(None))
+});
+
+// Store the stdout buffer for global access
+static SHARED_STDOUT_BUFFER: Lazy<Arc<Mutex<Option<Arc<Mutex<VecDeque<String>>>>>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(None))
+});
+
+pub fn get_shared_log_buffer() -> Option<Arc<Mutex<VecDeque<String>>>> {
+    SHARED_LOG_BUFFER.lock().unwrap().clone()
+}
+
+pub fn set_shared_log_buffer(buffer: Arc<Mutex<VecDeque<String>>>) {
+    *SHARED_LOG_BUFFER.lock().unwrap() = Some(buffer);
+}
+
+pub fn get_shared_stdout_buffer() -> Option<Arc<Mutex<VecDeque<String>>>> {
+    SHARED_STDOUT_BUFFER.lock().unwrap().clone()
+}
+
+pub fn set_shared_stdout_buffer(buffer: Arc<Mutex<VecDeque<String>>>) {
+    *SHARED_STDOUT_BUFFER.lock().unwrap() = Some(buffer);
+}
 
 fn load_icon() -> Option<winit::window::Icon> {
     let image = image::load_from_memory(ICON).ok()?.into_rgba8();
@@ -174,11 +201,20 @@ fn update_memory_usage() {
 }
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
+    // Set up stdout capture FIRST, before any println! statements
+    let shared_stdout_buffer = file_io::setup_stdout_capture();
+    set_shared_stdout_buffer(Arc::clone(&shared_stdout_buffer));
+    
     println!("ViewSkater starting...");
+    file_io::capture_stdout("ViewSkater starting...");
     
     // Set up panic hook to log to a file
     let app_name = "viewskater";
     let shared_log_buffer = file_io::setup_logger(app_name);
+    
+    // Store the log buffer reference for global access
+    set_shared_log_buffer(Arc::clone(&shared_log_buffer));
+    
     file_io::setup_panic_hook(app_name, shared_log_buffer);
 
     // Initialize winit FIRST
@@ -198,6 +234,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         macos_file_handler::set_file_channel(file_sender);
         macos_file_handler::register_file_handler();
         println!("macOS file handler registered");
+        file_io::capture_stdout("macOS file handler registered");
     }
 
     // Handle command line arguments for Linux (and Windows)
