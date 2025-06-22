@@ -29,6 +29,10 @@ use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
 use crate::cache::img_cache::CacheStrategy;
 use iced_wgpu::engine::CompressionStrategy;
+use std::thread;
+
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
@@ -37,10 +41,13 @@ static GPU_UPLOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("GPU Upload"))
 });
 
-// Stdout capture buffer - separate from log buffer
+// Global buffer for stdout capture
 static STDOUT_BUFFER: Lazy<Arc<Mutex<VecDeque<String>>>> = Lazy::new(|| {
     Arc::new(Mutex::new(VecDeque::with_capacity(1000)))
 });
+
+// Global flag to control stdout capture
+static STDOUT_CAPTURE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -818,20 +825,139 @@ pub fn open_in_file_explorer(path: &str) {
     }
 }
 
-/// Sets up stdout capture to intercept println! and other stdout output.
+/// Sets up stdout capture using Unix pipes to intercept println! and other stdout output.
 /// 
-/// This function sets up a simple manual capture system for important stdout messages.
-/// Call capture_stdout() manually for messages you want to capture.
+/// This function creates a pipe, redirects stdout to the write end of the pipe,
+/// and spawns a thread to read from the read end and capture the output.
 /// 
 /// # Returns
 /// * `Arc<Mutex<VecDeque<String>>>` - The shared stdout buffer
+#[cfg(unix)]
 pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
-    println!("Note: Using manual stdout capture - call capture_stdout() for important messages");
+    use std::os::unix::io::{AsRawFd, FromRawFd};
+    use std::fs::File;
+    use std::io::{BufReader, BufRead};
     
-    // Capture this startup message
-    capture_stdout("ViewSkater stdout capture initialized");
+    // Create a pipe
+    let mut pipe_fds = [0i32; 2];
+    unsafe {
+        if libc::pipe(pipe_fds.as_mut_ptr()) != 0 {
+            eprintln!("Failed to create pipe for stdout capture");
+            return Arc::clone(&STDOUT_BUFFER);
+        }
+    }
+    
+    let read_fd = pipe_fds[0];
+    let write_fd = pipe_fds[1];
+    
+    // Duplicate the original stdout so we can restore it later
+    let original_stdout_fd = unsafe { libc::dup(libc::STDOUT_FILENO) };
+    if original_stdout_fd == -1 {
+        eprintln!("Failed to duplicate original stdout");
+        unsafe {
+            libc::close(read_fd);
+            libc::close(write_fd);
+        }
+        return Arc::clone(&STDOUT_BUFFER);
+    }
+    
+    // Redirect stdout to the write end of the pipe
+    unsafe {
+        if libc::dup2(write_fd, libc::STDOUT_FILENO) == -1 {
+            eprintln!("Failed to redirect stdout to pipe");
+            libc::close(read_fd);
+            libc::close(write_fd);
+            libc::close(original_stdout_fd);
+            return Arc::clone(&STDOUT_BUFFER);
+        }
+    }
+    
+    // Create a file from the read end of the pipe
+    let pipe_reader = unsafe { File::from_raw_fd(read_fd) };
+    let mut buf_reader = BufReader::new(pipe_reader);
+    
+    // Create a writer for the original stdout
+    let original_stdout = unsafe { File::from_raw_fd(original_stdout_fd) };
+    
+    // Enable stdout capture
+    STDOUT_CAPTURE_ENABLED.store(true, std::sync::atomic::Ordering::SeqCst);
+    
+    // Clone the buffer for the thread
+    let buffer = Arc::clone(&STDOUT_BUFFER);
+    
+    // Spawn a thread to read from the pipe and capture output
+    thread::spawn(move || {
+        let mut line = String::new();
+        let mut original_stdout = original_stdout;
+        
+        while STDOUT_CAPTURE_ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
+            line.clear();
+            match buf_reader.read_line(&mut line) {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        // Write to original stdout (console)
+                        let _ = writeln!(original_stdout, "{}", trimmed);
+                        let _ = original_stdout.flush();
+                        
+                        // Capture to buffer
+                        if let Ok(mut buffer) = buffer.lock() {
+                            if buffer.len() >= 1000 {
+                                buffer.pop_front();
+                            }
+                            let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
+                            buffer.push_back(format!("{} [STDOUT] {}", timestamp, trimmed));
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    
+    // Close the write end of the pipe in this process (the duplicated stdout will handle writing)
+    unsafe {
+        libc::close(write_fd);
+    }
+    
+    // Add initialization message to buffer
+    if let Ok(mut buf) = STDOUT_BUFFER.lock() {
+        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
+        buf.push_back(format!("{} [STDOUT] ViewSkater stdout capture initialized", timestamp));
+    }
+    
+    // This println! should now be captured
+    println!("Stdout capture initialized - all println! statements will be captured");
     
     Arc::clone(&STDOUT_BUFFER)
+}
+
+/// Sets up stdout capture (Windows/non-Unix fallback - manual capture only)
+/// 
+/// This function provides a fallback for non-Unix systems where stdout redirection
+/// is more complex. It uses manual capture only.
+/// 
+/// # Returns
+/// * `Arc<Mutex<VecDeque<String>>>` - The shared stdout buffer
+#[cfg(not(unix))]
+pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
+    // Add initialization message to buffer
+    if let Ok(mut buf) = STDOUT_BUFFER.lock() {
+        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
+        buf.push_back(format!("{} [STDOUT] ViewSkater stdout capture initialized", timestamp));
+    }
+    
+    println!("Stdout capture initialized (manual mode) - use capture_stdout() for important messages");
+    
+    Arc::clone(&STDOUT_BUFFER)
+}
+
+/// Disables stdout capture and restores normal stdout
+/// 
+/// This function should be called when shutting down to restore normal stdout behavior.
+pub fn disable_stdout_capture() {
+    STDOUT_CAPTURE_ENABLED.store(false, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Exports stdout logs to a separate file.
@@ -954,33 +1080,5 @@ pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<S
         }
     } else {
         println!("Skipping stdout.log export - buffer is empty (stdout capture disabled)");
-    }
-}
-
-/// Manually adds a message to the stdout buffer.
-/// 
-/// This function can be used to manually log important messages that should
-/// be captured even when automatic stdout capture is disabled (e.g., on macOS).
-/// 
-/// # Arguments
-/// * `message` - The message to add to the stdout buffer
-pub fn log_to_stdout_buffer(message: &str) {
-    if let Ok(mut buffer) = STDOUT_BUFFER.lock() {
-        if buffer.len() >= 1000 {
-            buffer.pop_front();
-        }
-        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-        buffer.push_back(format!("{} [MANUAL] {}", timestamp, message));
-    }
-}
-
-// Simple function to manually capture important stdout messages
-pub fn capture_stdout(message: &str) {
-    if let Ok(mut buffer) = STDOUT_BUFFER.lock() {
-        if buffer.len() >= 1000 {
-            buffer.pop_front();
-        }
-        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-        buffer.push_back(format!("{} [STDOUT] {}", timestamp, message));
     }
 }
