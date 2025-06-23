@@ -31,9 +31,6 @@ use crate::cache::img_cache::CacheStrategy;
 use iced_wgpu::engine::CompressionStrategy;
 use std::thread;
 
-#[cfg(unix)]
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
 });
@@ -662,10 +659,7 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
         writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
         writeln!(file)?; // Empty line for readability
         
-        for (i, log_entry) in log_entries.iter().enumerate() {
-            if i % 10 == 0 {
-                println!("DEBUG: Writing entry {}/{}", i, buffer_size);
-            }
+        for (_i, log_entry) in log_entries.iter().enumerate() {
             writeln!(file, "{} {}", timestamp, log_entry)?;
         }
         println!("DEBUG: All entries written");
@@ -834,7 +828,7 @@ pub fn open_in_file_explorer(path: &str) {
 /// * `Arc<Mutex<VecDeque<String>>>` - The shared stdout buffer
 #[cfg(unix)]
 pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
-    use std::os::unix::io::{AsRawFd, FromRawFd};
+    use std::os::unix::io::FromRawFd;
     use std::fs::File;
     use std::io::{BufReader, BufRead};
     
@@ -951,13 +945,6 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
     println!("Stdout capture initialized (manual mode) - use capture_stdout() for important messages");
     
     Arc::clone(&STDOUT_BUFFER)
-}
-
-/// Disables stdout capture and restores normal stdout
-/// 
-/// This function should be called when shutting down to restore normal stdout behavior.
-pub fn disable_stdout_capture() {
-    STDOUT_CAPTURE_ENABLED.store(false, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Exports stdout logs to a separate file.

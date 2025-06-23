@@ -206,7 +206,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     set_shared_stdout_buffer(Arc::clone(&shared_stdout_buffer));
     
     println!("ViewSkater starting...");
-    file_io::capture_stdout("ViewSkater starting...");
     
     // Set up panic hook to log to a file
     let app_name = "viewskater";
@@ -234,7 +233,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         macos_file_handler::set_file_channel(file_sender);
         macos_file_handler::register_file_handler();
         println!("macOS file handler registered");
-        file_io::capture_stdout("macOS file handler registered");
     }
 
     // Handle command line arguments for Linux (and Windows)
