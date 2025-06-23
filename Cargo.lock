@@ -5445,6 +5445,7 @@ dependencies = [
  "iced_widget",
  "iced_winit",
  "image 0.25.6",
+ "libc",
  "log",
  "memmap2",
  "num-traits 0.2.19",

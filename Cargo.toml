@@ -28,6 +28,7 @@ memmap2 = "0.9.5"
 rayon = "1.8"
 texpresso = { version = "2.0.1", features = ["rayon"] }
 sysinfo = "0.33.1"
+libc = "0.2"
 
 # Use custom iced
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
