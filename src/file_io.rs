@@ -595,6 +595,8 @@ pub fn get_log_directory(app_name: &str) -> PathBuf {
 /// * `Ok(PathBuf)` - The path to the created debug log file
 /// * `Err(std::io::Error)` - An error if the export fails
 pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) -> Result<PathBuf, std::io::Error> {
+    // NOTE: Use println! instead of debug! to avoid circular logging
+    // (debug! calls would be added to the same buffer we're trying to export)
     println!("DEBUG: export_debug_logs called");
     
     let log_dir_path = get_log_directory(app_name);
@@ -694,7 +696,7 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
 /// * `app_name` - The application name used for the log directory
 /// * `log_buffer` - The shared log buffer containing the recent log messages
 pub fn export_and_open_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) {
-    // Debug: Check if this is the same buffer that should be receiving logs
+    // NOTE: Use println! to avoid circular logging during export operations
     println!("DEBUG: About to export debug logs...");
     if let Ok(buffer) = log_buffer.lock() {
         println!("DEBUG: Buffer size at export time: {}", buffer.len());
@@ -1022,7 +1024,7 @@ pub fn export_stdout_logs(app_name: &str, stdout_buffer: Arc<Mutex<VecDeque<Stri
 /// * `log_buffer` - The shared log buffer containing recent log messages
 /// * `stdout_buffer` - The shared stdout buffer containing captured output
 pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>, stdout_buffer: Arc<Mutex<VecDeque<String>>>) {
-    // Debug: Check both buffers
+    // NOTE: Use println! to avoid circular logging during export operations
     println!("DEBUG: About to export all logs...");
     if let Ok(log_buf) = log_buffer.lock() {
         println!("DEBUG: Log buffer size: {}", log_buf.len());
