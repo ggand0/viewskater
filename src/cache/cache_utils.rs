@@ -13,19 +13,50 @@ use texpresso::{Format, Params, Algorithm, COLOUR_WEIGHTS_PERCEPTUAL};
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-fn load_and_resize_image(img_path: &Path, is_slider_move: bool) -> Result<DynamicImage, io::Error> {
+// Maximum texture size supported - matches the 8192x8192 limit mentioned in README
+const MAX_TEXTURE_SIZE: u32 = 8192;
+
+/// Checks if image exceeds MAX_TEXTURE_SIZE and resizes if needed while preserving aspect ratio
+fn check_and_resize_if_oversized(img: DynamicImage) -> DynamicImage {
+    let (width, height) = img.dimensions();
+    
+    if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+        // Calculate scaling factor to fit within MAX_TEXTURE_SIZE while preserving aspect ratio
+        let scale_factor = (MAX_TEXTURE_SIZE as f32 / width.max(height) as f32).min(1.0);
+        let new_width = (width as f32 * scale_factor) as u32;
+        let new_height = (height as f32 * scale_factor) as u32;
+        
+        warn!("Image {}x{} exceeds maximum texture size {}x{}. Resizing to {}x{} to prevent crashes.", 
+              width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE, new_width, new_height);
+        
+        img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3)
+    } else {
+        debug!("Image {}x{} is within size limits, no resizing needed", width, height);
+        img
+    }
+}
+
+/// Loads an image with safety resizing for oversized images (>8192px)
+pub fn load_original_image(img_path: &Path) -> Result<DynamicImage, io::Error> {
     let img = image::open(img_path)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?;
 
-    let resized_img = if is_slider_move {
-        const TARGET_WIDTH: u32 = 1280;
-        const TARGET_HEIGHT: u32 = 720;
-        img.resize_exact(TARGET_WIDTH, TARGET_HEIGHT, image::imageops::FilterType::Triangle)
-    } else {
-        img
-    };
+    Ok(check_and_resize_if_oversized(img))
+}
 
-    Ok(resized_img)
+/// Loads and resizes an image to target dimensions, then applies safety size check
+pub fn load_and_resize_image(img_path: &Path, target_width: u32, target_height: u32) -> Result<DynamicImage, io::Error> {
+    let img = image::open(img_path)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?;
+
+    let (original_width, original_height) = img.dimensions();
+    info!("Resizing image: {}x{} -> {}x{}", original_width, original_height, target_width, target_height);
+    
+    // First resize to target dimensions
+    let resized_img = img.resize_exact(target_width, target_height, image::imageops::FilterType::Triangle);
+    
+    // Then apply safety check for oversized images
+    Ok(check_and_resize_if_oversized(resized_img))
 }
 fn convert_image_to_rgba(img: &DynamicImage) -> (Vec<u8>, u32, u32) {
     let rgba_image = img.to_rgba8();
@@ -249,7 +280,11 @@ pub fn load_image_resized_sync(
     existing_texture: &mut Arc<wgpu::Texture>,
     compression_strategy: CompressionStrategy,
 ) -> Result<(), io::Error> {
-    let img = load_and_resize_image(img_path, is_slider_move)?;
+    let img = if is_slider_move {
+        load_and_resize_image(img_path, 1280, 720)?
+    } else {
+        load_original_image(img_path)?
+    };
     let (image_bytes, width, height) = convert_image_to_rgba(&img);
 
     // Use our new utility function to create and upload the texture
@@ -271,24 +306,15 @@ pub async fn _load_image_resized(
     queue: &Queue,
     existing_texture: &Arc<wgpu::Texture>,
 ) -> Result<(), io::Error> {
-    let img = image::open(img_path)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?;
-
-    let resized_img = if is_slider_move {
-        const TARGET_WIDTH: u32 = 1280;
-        const TARGET_HEIGHT: u32 = 720;
-
-        img.resize_exact(TARGET_WIDTH, TARGET_HEIGHT, image::imageops::FilterType::Triangle)
+    // Use the appropriate loading function based on whether it's for slider or full-res
+    let img = if is_slider_move {
+        load_and_resize_image(img_path, 1280, 720)
     } else {
-        img
-    };
+        load_original_image(img_path)
+    }.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?;
 
-    let rgba_image = resized_img.to_rgba8();
+    let rgba_image = img.to_rgba8();
     let (width, height) = rgba_image.dimensions();
-
-    // 🔹 Ensure resized image is exactly 1280×720
-    assert_eq!(width, 1280, "Resized image width must be 1280");
-    assert_eq!(height, 720, "Resized image height must be 720");
 
     let rgba_bytes = rgba_image.as_raw();
 

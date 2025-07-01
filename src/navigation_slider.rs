@@ -535,7 +535,8 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
     };
     
     // Always load from file directly for best slider performance
-    match image::open(img_path) {
+    // Use the safe load_original_image function to prevent crashes with oversized images  
+    match crate::cache::cache_utils::load_original_image(img_path) {
         Ok(img) => {
             // Resize the image to smaller dimensions for slider
             /*let resized = img.resize(
