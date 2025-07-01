@@ -171,7 +171,8 @@ async fn load_image_gpu_async(
     if let Some(path_str) = path {
         let start = Instant::now();
 
-        match image::open(path_str) {
+        // Use the safe load_original_image function from cache_utils to prevent crashes with oversized images
+        match crate::cache::cache_utils::load_original_image(std::path::Path::new(path_str)) {
             Ok(img) => {
                 let (width, height) = img.dimensions();
                 let rgba = img.to_rgba8();

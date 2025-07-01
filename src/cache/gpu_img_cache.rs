@@ -29,7 +29,8 @@ impl ImageCacheBackend for GpuImageCache {
         compression_strategy: CompressionStrategy
     ) -> Result<CachedData, io::Error> {
         if let Some(image_path) = image_paths.get(index) {
-            let img = image::open(image_path).map_err(|e| {
+            // Use the safe load_original_image function to prevent crashes with oversized images
+            let img = crate::cache::cache_utils::load_original_image(image_path).map_err(|e| {
                 io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e))
             })?;
 
