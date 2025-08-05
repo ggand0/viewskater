@@ -94,6 +94,21 @@ static LAST_RENDER_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
 static LAST_ASYNC_DELIVERY_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
     Mutex::new(Instant::now())
 });
+// flag to toggle window state
+static TOGGLE_WINDOW: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(false))
+});
+static IS_FULLSCREEN: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(false))
+});
+// flag to show menu on fullscreen
+static CURSOR_ON_TOP: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(false))
+});
+// flag to show footer on fullscreen
+static CURSOR_ON_BOTTOM: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(false))
+});
 
 static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
 const QUEUE_LOG_THRESHOLD: usize = 20;
@@ -175,12 +190,12 @@ fn monitor_message_queue(state: &mut program::State<DataViewer>) {
     LAST_QUEUE_LENGTH.store(queue_len, Ordering::SeqCst);
 
     trace!("Message queue size: {}", queue_len);
-    
+
     // Log if the queue is getting large
     if queue_len > QUEUE_LOG_THRESHOLD {
         debug!("Message queue size: {}", queue_len);
     }
-    
+
     // Reset queue if it exceeds our threshold
     if queue_len > QUEUE_RESET_THRESHOLD {
         warn!("MESSAGE QUEUE OVERLOAD: {} messages pending - clearing queue", queue_len);
@@ -204,16 +219,16 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     // Set up stdout capture FIRST, before any println! statements
     let shared_stdout_buffer = file_io::setup_stdout_capture();
     set_shared_stdout_buffer(Arc::clone(&shared_stdout_buffer));
-    
+
     println!("ViewSkater starting...");
-    
+
     // Set up panic hook to log to a file
     let app_name = "viewskater";
     let shared_log_buffer = file_io::setup_logger(app_name);
-    
+
     // Store the log buffer reference for global access
     set_shared_log_buffer(Arc::clone(&shared_log_buffer));
-    
+
     file_io::setup_panic_hook(app_name, shared_log_buffer);
 
     // Initialize winit FIRST
@@ -243,7 +258,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         if args.len() > 1 {
             let file_path = &args[1];
             println!("File path from command line: {}", file_path);
-            
+
             // Validate that the path exists and is a file or directory
             if std::path::Path::new(file_path).exists() {
                 if let Err(e) = file_sender.send(file_path.clone()) {
@@ -357,10 +372,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             event: window_event,
                         }) => {
                             let _window_event_start = Instant::now();
-                            
+
                             // Monitor the message queue and clear it if it's getting large
                             monitor_message_queue(state);
-                            
+
                             match window_event {
                                 WindowEvent::Focused(true) => {
                                     event_loop.set_control_flow(ControlFlow::Poll);
@@ -384,6 +399,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     event_loop.exit();
                                 }
                                 WindowEvent::CursorMoved { position, .. } => {
+                                    if *IS_FULLSCREEN.lock().unwrap() {
+                                        *CURSOR_ON_TOP.lock().unwrap() =
+                                            if position.y < 170.into() { true } else { false };
+                                        *CURSOR_ON_BOTTOM.lock().unwrap() =
+                                            if position.y > (window.inner_size().height - 100).into() { true } else { false };
+                                    }
                                     *cursor_position = Some(position);
                                 }
                                 WindowEvent::MouseInput { state, .. } => {
@@ -487,27 +508,27 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 match request {
                                     RendererRequest::UpdateCompressionStrategy(strategy) => {
                                         debug!("Main thread handling compression strategy update to {:?}", strategy);
-                                        
+
                                         let config = ImageConfig {
                                             atlas_size: CONFIG.atlas_size,
                                             compression_strategy: strategy,
                                         };
-                                        
+
                                         // We already have locks for renderer and engine in the rendering code
                                         let mut engine_guard = engine.lock().unwrap();
                                         let mut renderer_guard = renderer.lock().unwrap();
-                                        
+
                                         // Update the config safely from the main render thread
                                         renderer_guard.update_image_config(&device, &mut *engine_guard, config);
-                                        
+
                                         debug!("Compression strategy updated successfully in main thread");
                                     }
                                     RendererRequest::ClearPrimitiveStorage => {
                                         debug!("Main thread handling primitive storage clear request");
-                                        
+
                                         // Get engine lock
                                         let mut engine_guard = engine.lock().unwrap();
-                                        
+
                                         // Access the primitive storage directly
                                         engine_guard.clear_primitive_storage();
                                         debug!("Primitive storage cleared successfully");
@@ -518,7 +539,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             // Render if needed
                             if *redraw {
                                 *redraw = false;
-                                
+
                                 let frame_start = Instant::now();
 
                                 // Update window title dynamically based on the current image
@@ -538,7 +559,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         {
                                             let mut engine_guard = engine.lock().unwrap();
                                             let mut renderer_guard = renderer.lock().unwrap();
-                                            
+
                                             renderer_guard.present(
                                                 &mut *engine_guard,
                                                 &device,
@@ -550,16 +571,16 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                                 viewport,
                                                 &debug_tool.overlay(),
                                             );
-                                            
+
                                             // Submit commands while still holding the lock
                                             engine_guard.submit(&queue, encoder);
                                         }
                                         let present_time = present_start.elapsed();
-                                        
+
                                         // Submit the commands to the queue
                                         let submit_start = Instant::now();
                                         let submit_time = submit_start.elapsed();
-                                        
+
                                         let present_frame_start = Instant::now();
                                         frame.present();
                                         let present_frame_time = present_frame_start.elapsed();
@@ -573,11 +594,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         if present_time.as_millis() > 50 {
                                             warn!("BOTTLENECK: Renderer present took {:?}", present_time);
                                         }
-                                        
+
                                         if submit_time.as_millis() > 50 {
                                             warn!("BOTTLENECK: Command submission took {:?}", submit_time);
                                         }
-                                        
+
                                         if present_frame_time.as_millis() > 50 {
                                             warn!("BOTTLENECK: Frame presentation took {:?}", present_frame_time);
                                         }
@@ -595,10 +616,33 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                                 state.mouse_interaction(),
                                             ),
                                         );
-                                        
+
                                         if *debug {
                                             let total_frame_time = frame_start.elapsed();
                                             trace!("Total frame time: {:?}", total_frame_time);
+                                        }
+
+                                        if let Ok(mut state) = TOGGLE_WINDOW.lock() {
+                                            if *state {
+                                                *state = false;
+                                                let fullscreen = if window.fullscreen().is_some() {
+                                                    *IS_FULLSCREEN.lock().unwrap() = false;
+                                                    None
+                                                } else {
+                                                    *IS_FULLSCREEN.lock().unwrap() = true;
+                                                    Some(winit::window::Fullscreen::Borderless(None))
+                                                };
+                                                #[cfg(not(target_os = "macos"))] {
+                                                    // TODO: switch from fullscreen to window will cause title not update, focus off and on will fix it
+                                                    window.set_fullscreen(fullscreen);
+                                                }
+                                                #[cfg(target_os = "macos")] {
+                                                    // https://github.com/rust-windowing/winit/issues/4162
+                                                    // no screen when using rustdesk remote control mac mini
+                                                    use iced_winit::winit::platform::macos::WindowExtMacOS;
+                                                    window.set_simple_fullscreen(*IS_FULLSCREEN.lock().unwrap());
+                                                }
+                                            }
                                         }
                                     }
                                     Err(error) => match error {
@@ -616,7 +660,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 if let Ok(mut frame_times) = FRAME_TIMES.lock() {
                                     let now = Instant::now();
                                     frame_times.push(now);
-                                    
+
                                     // Only update stats once per second
                                     let should_update_stats = {
                                         if let Ok(last_update) = LAST_STATS_UPDATE.lock() {
@@ -625,26 +669,26 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             false
                                         }
                                     };
-                                    
+
                                     if should_update_stats {
                                         // Update the timestamp
                                         if let Ok(mut last_update) = LAST_STATS_UPDATE.lock() {
                                             *last_update = now;
                                         }
-                                        
+
                                         // Clean up old frames
                                         let cutoff = now - Duration::from_secs(1);
                                         frame_times.retain(|&t| t > cutoff);
-                                        
+
                                         // Calculate FPS
                                         let fps = frame_times.len() as f32;
                                         trace!("Current FPS: {:.1}", fps);
-                                        
+
                                         // Store the current FPS value
                                         if let Ok(mut current_fps) = CURRENT_FPS.lock() {
                                             *current_fps = fps;
                                         }
-                                        
+
                                         // Update memory usage (which has its own throttling as a backup)
                                         update_memory_usage();
                                     }
@@ -674,17 +718,17 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     match action {
                                         iced_runtime::clipboard::Action::Write { target, contents } => {
                                             debug!("Main thread received clipboard write request: {:?}, {:?}", target, contents);
-                                            
+
                                             // Write to the clipboard using the Clipboard instance
                                             clipboard.write(target, contents);
                                             debug!("Successfully wrote to clipboard");
                                         }
                                         iced_runtime::clipboard::Action::Read { target, channel } => {
                                             debug!("Main thread received clipboard read request: {:?}", target);
-                                            
+
                                             // Read from clipboard and send result back through the channel
                                             let content = clipboard.read(target);
-                                            
+
                                             if let Err(err) = channel.send(content) {
                                                 error!("Failed to send clipboard content through channel: {:?}", err);
                                             }
@@ -746,7 +790,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             match self {
                 Self::Loading { proxy, event_sender, control_receiver, file_receiver } => {
                     info!("resumed()...");
-                    
+
                     let custom_theme = Theme::custom_with_fn(
                         "Custom Theme".to_string(),
                         iced_winit::core::theme::Palette {
@@ -757,21 +801,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         |palette| {
                             // Generate the extended palette from the base palette
                             let mut extended: iced_core::theme::palette::Extended = iced_core::theme::palette::Extended::generate(palette);
-                            
+
                             // Customize specific parts of the extended palette
                             extended.primary.weak.text = iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0);
-                            
+
                             // Return the modified extended palette
                             extended
                         }
                     );
-                    
+
                     let window = Arc::new(
                         event_loop
                         .create_window(
                             winit::window::WindowAttributes::default()
                                 .with_inner_size(winit::dpi::PhysicalSize::new(
-                                    CONFIG.window_width, 
+                                    CONFIG.window_width,
                                     CONFIG.window_height
                                 ))
                                 .with_title("ViewSkater")
@@ -811,7 +855,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .expect("Create adapter");
 
                                 let capabilities = surface.get_capabilities(&adapter);
-                                
+
                                 let (device, queue) = adapter
                                     .request_device(
                                         &wgpu::DeviceDescriptor {
@@ -823,7 +867,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     )
                                     .await
                                     .expect("Request device");
-                                
+
                                 (
                                     capabilities
                                         .formats
@@ -877,7 +921,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
                     register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
                     register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
-                    
+
                     // Create renderer with Arc<Mutex>
                     let renderer = Arc::new(Mutex::new(Renderer::new(
                         &device,
@@ -891,8 +935,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     // Pass a cloned Arc reference to DataViewer
                     let shader_widget = DataViewer::new(
-                        Arc::clone(&device), 
-                        Arc::clone(&queue), 
+                        Arc::clone(&device),
+                        Arc::clone(&queue),
                         backend,
                         renderer_request_sender,
                         std::mem::replace(file_receiver, mpsc::channel().1),
@@ -921,12 +965,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     let waker = {
                         // Create a waker that does nothing
                         struct NoopWaker;
-                        
+
                         impl Wake for NoopWaker {
                             fn wake(self: Arc<Self>) {}
                             fn wake_by_ref(self: &Arc<Self>) {}
                         }
-                        
+
                         // Create a waker and leak it to make it 'static
                         let waker_arc = Arc::new(NoopWaker);
                         let waker = Waker::from(waker_arc);
@@ -938,7 +982,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     // Create a new Ready state with the event_sender and control_receiver
                     // Note: We don't clone the receiver as it's not clonable
                     let event_sender = event_sender.clone();
-                    
+
                     // Move the control_receiver into the Ready state
                     // We need to take ownership of it from the Loading state
                     let control_receiver = std::mem::replace(control_receiver, std_mpsc::channel().1);
@@ -1029,7 +1073,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         control_receiver,
         file_receiver,
     };
-    
+
     event_loop.run_app(&mut runner)
 }
 
@@ -1039,38 +1083,38 @@ fn track_render_cycle() {
         let now = Instant::now();
         let elapsed = now.duration_since(*time);
         *time = now;
-        
+
         // Use the new diagnostics APIs
-        let (fps, upload_secs, render_secs, min_render, max_render, frame_count) = 
+        let (fps, upload_secs, render_secs, min_render, max_render, frame_count) =
             get_image_rendering_diagnostics();
-        
+
         // Check for bottlenecks
         if elapsed.as_millis() > 50 {
             warn!("LONG FRAME DETECTED: Render time: {:?}", elapsed);
             warn!("Image stats: FPS={:.1}, Upload={:.2}ms, Render={:.2}ms, Min={:.2}ms, Max={:.2}ms",
-                 fps, upload_secs * 1000.0, render_secs * 1000.0, 
+                 fps, upload_secs * 1000.0, render_secs * 1000.0,
                  min_render * 1000.0, max_render * 1000.0);
-            
+
             // Log detailed stats to console
             log_image_rendering_stats();
-            
+
             // Check if upload or render is the bottleneck
             if upload_secs > 0.050 {  // 50ms threshold
                 warn!("BOTTLENECK: GPU texture upload is slow: {:.2}ms avg", upload_secs * 1000.0);
             }
-            
+
             if render_secs > 0.050 {  // 50ms threshold
                 warn!("BOTTLENECK: GPU render time is slow: {:.2}ms avg", render_secs * 1000.0);
             }
         }
-        
+
         // Display diagnostics in UI during development
         if frame_count % 60 == 0 {
             // Periodic stats logging
-            trace!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms", 
+            trace!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms",
                   fps, upload_secs * 1000.0, render_secs * 1000.0);
         }
-        
+
         //trace!("TIMING: Render frame time: {:?}", elapsed);
     }
 }
@@ -1087,11 +1131,19 @@ fn track_async_delivery() {
     // Check image rendering FPS from custom iced_wgpu
     let image_fps = iced_wgpu::get_image_fps();
     trace!("TIMING: Image FPS: {}", image_fps);
-    
+
     // Also check phase alignment
     if let (Ok(render_time), Ok(async_time)) = (LAST_RENDER_TIME.lock(), LAST_ASYNC_DELIVERY_TIME.lock()) {
         let phase_diff = async_time.duration_since(*render_time);
         trace!("TIMING: Phase difference: {:?}", phase_diff);
+    }
+}
+
+fn change_window_state() {
+    if let Ok(mut state) = TOGGLE_WINDOW.lock() {
+        if *state == false {
+            *state = true;
+        }
     }
 }
 
@@ -1158,13 +1210,13 @@ mod macos_file_handler {
         let mtm = MainThreadMarker::new().expect("Must be on main thread");
         unsafe {
             let app = NSApplication::sharedApplication(mtm);
-            
+
             // Get the existing delegate
             let delegate = app.delegate().unwrap();
-            
+
             // Find out class of the NSApplicationDelegate
             let class: &AnyClass = msg_send![&delegate, class];
-            
+
             // Create a subclass of the existing delegate
             let mut my_class = ClassBuilder::new("ViewSkaterApplicationDelegate", class).unwrap();
             my_class.add_method(
@@ -1172,11 +1224,11 @@ mod macos_file_handler {
                 handle_open_files as unsafe extern "C" fn(_, _, _, _) -> _,
             );
             let class = my_class.register();
-            
+
             // Cast and set the class
             let delegate_obj = Retained::cast::<AnyObject>(delegate);
             AnyObject::set_class(&delegate_obj, class);
-            
+
             // Prevent AppKit from interpreting our command line
             let key = NSString::from_str("NSTreatUnknownArgumentsAsOpen");
             let keys = vec![key.as_ref()];

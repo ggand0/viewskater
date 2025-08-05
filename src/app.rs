@@ -553,6 +553,10 @@ impl DataViewer {
                 debug!("Toggled debug FPS display: {}", self.show_fps);
             }
 
+            Key::Named(Named::F11) => {
+                crate::change_window_state();
+            }
+
             _ => {}
         }
 

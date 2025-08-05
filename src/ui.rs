@@ -27,7 +27,7 @@ use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::Renderer;
 
 use crate::pane::Pane;
-use crate::menu as app_menu;
+use crate::{menu as app_menu, CURSOR_ON_BOTTOM, CURSOR_ON_TOP, IS_FULLSCREEN};
 use app_menu::button_style;
 use crate::menu::PaneLayout;
 use crate::{app::Message, DataViewer};
@@ -130,7 +130,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             0.0
         }
     };
-    
+
     // Get image render FPS (image content refresh rate)
     // During slider movement use iced_wgpu::get_image_fps()
     // Otherwise use IMAGE_RENDER_FPS
@@ -160,9 +160,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         } else {
             format!("Mem: {:.1} MB", memory_mb)
         };
-        
+
         container(
-            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | {}", 
+            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | {}",
                          ui_fps, image_fps, memory_text))
                 .size(14)
                 .style(|_theme| iced::widget::text::Style {
@@ -176,7 +176,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     };
 
     let mb = app_menu::build_menu(app);
-    
+
     let top_bar = container(
         row![
             mb,
@@ -195,7 +195,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 if app.is_slider_moving && app.panes[0].slider_image.is_some() {
                     // Use regular Image widget during slider movement (much faster)
                     let image_handle = app.panes[0].slider_image.clone().unwrap();
-                    
+
                     container(
                         center(
                             viewer::Viewer::new(image_handle)
@@ -212,7 +212,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false);
-            
+
                     container(center(shader))
                         .width(Length::Fill)
                         .height(Length::Fill)
@@ -248,15 +248,22 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 .height(Length::Shrink)
                 .align_x(Horizontal::Center);
 
+            let is_fullscreen = *IS_FULLSCREEN.lock().unwrap();
             // Create the column WITHOUT converting to Element first
             center(
                 container(
-                    column![
+                    if is_fullscreen && *CURSOR_ON_TOP.lock().unwrap() {
+                        column![top_bar, first_img]
+                    } else if is_fullscreen && *CURSOR_ON_BOTTOM.lock().unwrap() {
+                        column![first_img, slider_controls, footer]
+                    } else if is_fullscreen {
+                        column![first_img]
+                    } else {column![
                         top_bar,
                         first_img,
                         slider_controls,
                         footer
-                    ]
+                    ]}
                 )
                 .style(|theme| container::Style {
                     background: Some(theme.extended_palette().background.base.color.into()),
@@ -271,14 +278,14 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             if app.is_slider_dual {
                 // Pass synced_zoom parameter
                 let panes = build_ui_dual_pane_slider2(
-                    &app.panes, 
+                    &app.panes,
                     app.divider_position,
                     app.show_footer,
                     app.is_slider_moving,
                     app.is_horizontal_split,
                     app.synced_zoom
                 );
-                
+
                 container(
                     column![
                         top_bar,
@@ -295,7 +302,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             } else {
                 // Pass synced_zoom parameter
                 let panes = build_ui_dual_pane_slider1(
-                    &app.panes, 
+                    &app.panes,
                     app.divider_position,
                     app.is_slider_moving,
                     app.is_horizontal_split,
@@ -317,7 +324,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 };
 
                 let max_num_files = app.panes.iter().map(|p| p.img_cache.num_files).max().unwrap_or(0);
-                
+
                 let slider = if app.panes.iter().any(|p| p.dir_loaded) && max_num_files > 1 {
                     container(
                         DualSlider::new(
@@ -334,13 +341,22 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     container(text("")).height(0)
                 };
 
+                let is_fullscreen = *IS_FULLSCREEN.lock().unwrap();
                 container(
-                    column![
-                        top_bar,
-                        panes,
-                        slider,
-                        footer
-                    ]
+                    if is_fullscreen && *CURSOR_ON_TOP.lock().unwrap() {
+                        column![top_bar, panes]
+                    } else if is_fullscreen && *CURSOR_ON_BOTTOM.lock().unwrap() {
+                        column![panes, slider, footer]
+                    } else if is_fullscreen  {
+                        column![panes]
+                    } else {
+                        column![
+                            top_bar,
+                            panes,
+                            slider,
+                            footer
+                        ]
+                    }
                 ).style(|theme| container::Style {
                     background: Some(theme.extended_palette().background.base.color.into()),
                     ..container::Style::default()
@@ -364,9 +380,9 @@ pub fn build_ui_dual_pane_slider1(
 ) -> Element<Message, WinitTheme, Renderer> {
     let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split);
     let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split);
-    
+
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    
+
     SyncedImageSplit::new(
         false,
         first_img,
@@ -412,7 +428,7 @@ pub fn build_ui_dual_pane_slider2(
 
     let first_img = if panes[0].dir_loaded {
         container(
-            if show_footer { 
+            if show_footer {
                 column![
                     panes[0].build_ui_container(is_slider_moving, is_horizontal_split),
                     DualSlider::new(
@@ -425,7 +441,7 @@ pub fn build_ui_dual_pane_slider2(
                     .width(Length::Fill),
                     get_footer(footer_texts[0].clone(), 0)
                 ]
-            } else { 
+            } else {
                 column![
                     panes[0].build_ui_container(is_slider_moving, is_horizontal_split),
                     DualSlider::new(
@@ -449,7 +465,7 @@ pub fn build_ui_dual_pane_slider2(
 
     let second_img = if panes[1].dir_loaded {
         container(
-            if show_footer { 
+            if show_footer {
                 column![
                     panes[1].build_ui_container(is_slider_moving, is_horizontal_split),
                     DualSlider::new(
@@ -462,7 +478,7 @@ pub fn build_ui_dual_pane_slider2(
                     .width(Length::Fill),
                     get_footer(footer_texts[1].clone(), 1)
                 ]
-            } else { 
+            } else {
                 column![
                     panes[1].build_ui_container(is_slider_moving, is_horizontal_split),
                     DualSlider::new(
@@ -485,7 +501,7 @@ pub fn build_ui_dual_pane_slider2(
     };
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
-    
+
     SyncedImageSplit::new(
         true,
         first_img,
