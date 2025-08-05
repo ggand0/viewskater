@@ -3,7 +3,7 @@ use log::{debug, info, warn, error};
 
 use std::io;
 use std::fs;
-use std::path::PathBuf;
+use crate::cache::img_cache::PathType;
 use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 use iced_wgpu::engine::CompressionStrategy;
 
@@ -18,14 +18,22 @@ impl CpuImageCache {
 
 impl ImageCacheBackend for CpuImageCache {
     fn load_image(
-        &self, 
-        index: usize, 
-        image_paths: &[PathBuf],
+        &self,
+        index: usize,
+        image_paths: &[PathType],
         #[allow(unused_variables)] compression_strategy: CompressionStrategy
     ) -> Result<CachedData, io::Error> {
         if let Some(path) = image_paths.get(index) {
-            debug!("CpuCache: Loading image from {:?}", path);
-            Ok(CachedData::Cpu(fs::read(path)?))
+            debug!("CpuCache: Loading image from {:?}", path.file_name());
+            match path {
+                PathType::PathBuf(path) => {
+                    Ok(CachedData::Cpu(fs::read(path)?))
+                },
+                PathType::FileByte(_, bytes) => {
+                    Ok(CachedData::Cpu(bytes.to_vec()))
+                }
+            }
+
         } else {
             Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid image index"))
         }
@@ -33,7 +41,7 @@ impl ImageCacheBackend for CpuImageCache {
 
     fn load_initial_images(
         &mut self,
-        image_paths: &[PathBuf],
+        image_paths: &[PathType],
         cache_count: usize,
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,

@@ -6,7 +6,7 @@ use std::io;
 use std::sync::Arc;
 use image::GenericImageView;
 use iced_wgpu::wgpu;
-use crate::cache::img_cache::{CachedData, ImageCacheBackend};
+use crate::cache::img_cache::{CachedData, ImageCacheBackend, PathType};
 use iced_wgpu::engine::CompressionStrategy;
 
 
@@ -23,9 +23,9 @@ impl GpuImageCache {
 
 impl ImageCacheBackend for GpuImageCache {
     fn load_image(
-        &self, 
-        index: usize, 
-        image_paths: &[PathBuf], 
+        &self,
+        index: usize,
+        image_paths: &[PathType],
         compression_strategy: CompressionStrategy
     ) -> Result<CachedData, io::Error> {
         if let Some(image_path) = image_paths.get(index) {
@@ -53,19 +53,19 @@ impl ImageCacheBackend for GpuImageCache {
                 let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
                     &rgba_data, width, height
                 );
-                
+
                 // Upload using the utility function
                 crate::cache::cache_utils::upload_compressed_texture(
                     &self.queue, &texture, &compressed_data, width, height, row_bytes
                 );
-                
+
                 Ok(CachedData::BC1(texture.into()))
             } else {
                 // Upload uncompressed using the utility function
                 crate::cache::cache_utils::upload_uncompressed_texture(
                     &self.queue, &texture, &rgba_data, width, height
                 );
-                
+
                 Ok(CachedData::Gpu(texture.into()))
             }
         } else {
@@ -75,7 +75,7 @@ impl ImageCacheBackend for GpuImageCache {
 
     fn load_initial_images(
         &mut self,
-        image_paths: &[PathBuf],
+        image_paths: &[PathType],
         cache_count: usize,
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,
@@ -145,22 +145,22 @@ impl ImageCacheBackend for GpuImageCache {
         _compression_strategy: CompressionStrategy,
     ) -> Result<bool, io::Error> {
         println!("GpuCache: Setting image at position {}", pos);
-    
+
         if pos >= cached_data.len() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Position out of bounds"));
         }
-    
+
         // Store the new GPU texture in the cache
         cached_data[pos] = new_image;
         cached_image_indices[pos] = image_index;
-    
+
         // Debugging output
         println!("Updated GPU cache at position {} with image index {}", pos, image_index);
-    
+
         // If the position corresponds to the center of the cache, return true to trigger a reload
         let should_reload = pos == cache_count;
         Ok(should_reload)
     }
-    
+
 
 }

@@ -14,7 +14,7 @@ use iced_wgpu::wgpu;
 use crate::file_io::empty_async_block_vec;
 use crate::loading_status::LoadingStatus;
 use crate::app::Message;
-use crate::pane::Pane;   
+use crate::pane::Pane;
 use crate::pane;
 use crate::cache::cpu_img_cache::CpuImageCache;
 use crate::cache::gpu_img_cache::GpuImageCache;
@@ -94,7 +94,7 @@ impl CachedData {
             CachedData::BC1(texture) => texture.width(),
         }
     }
-    
+
     pub fn height(&self) -> u32 {
         match self {
             CachedData::Cpu(data) => {
@@ -134,11 +134,11 @@ impl CachedData {
                 // BC1 uses 8 bytes per 4x4 block, which is 0.5 bytes per pixel
                 let width = texture.width();
                 let height = texture.height();
-                
+
                 // Round up to nearest multiple of 4 if needed
                 let block_width = (width + 3) / 4;
                 let block_height = (height + 3) / 4;
-                
+
                 // Each 4x4 block is 8 bytes in BC1
                 (block_width * block_height * 8) as usize
             }
@@ -159,7 +159,7 @@ impl CachedData {
     pub fn is_compressed(&self) -> bool {
         matches!(self, CachedData::BC1(_))
     }
-    
+
     pub fn compression_format(&self) -> Option<&'static str> {
         match self {
             CachedData::BC1(_) => Some("BC1"),
@@ -167,18 +167,32 @@ impl CachedData {
         }
     }
 }
+#[derive(Clone)]
+pub enum PathType {
+    PathBuf(PathBuf),
+    FileByte(String, Vec<u8>)
+}
+
+impl PathType {
+    pub fn file_name(&self) -> String {
+        match self {
+            PathType::FileByte(file_name, _) => file_name.clone(),
+            PathType::PathBuf(pb) => pb.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| String::from("Unknown")),
+        }
+    }
+}
 
 pub trait ImageCacheBackend {
     fn load_image(
-        &self, 
-        index: usize, 
-        image_paths: &[PathBuf],
+        &self,
+        index: usize,
+        image_paths: &[PathType],
         compression_strategy: CompressionStrategy
     ) -> Result<CachedData, io::Error>;
-    
+
     fn load_initial_images(
         &mut self,
-        image_paths: &[PathBuf],
+        image_paths: &[PathType],
         cache_count: usize,
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,
@@ -186,7 +200,7 @@ pub trait ImageCacheBackend {
         current_offset: &mut isize,
         compression_strategy: CompressionStrategy,
     ) -> Result<(), io::Error>;
-    
+
     #[allow(dead_code)]
     fn load_pos(
         &mut self,
@@ -202,7 +216,7 @@ pub trait ImageCacheBackend {
 
 
 pub struct ImageCache {
-    pub image_paths: Vec<PathBuf>,
+    pub image_paths: Vec<PathType>,
     pub num_files: usize,
     pub current_index: usize,
     pub current_offset: isize,
@@ -210,7 +224,7 @@ pub struct ImageCache {
     pub cached_image_indices: Vec<isize>,    // Indices of cached images
     pub cache_states: Vec<bool>,            // States of cache validity
     pub loading_queue: VecDeque<LoadOperation>,
-    pub being_loaded_queue: VecDeque<LoadOperation>,    // Queue of image indices being loaded  
+    pub being_loaded_queue: VecDeque<LoadOperation>,    // Queue of image indices being loaded
 
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
@@ -241,7 +255,7 @@ impl Default for ImageCache {
 // Constructor, cached_data getter / setter, and type specific methods
 impl ImageCache {
     pub fn new(
-        image_paths: &[PathBuf],
+        image_paths: &[PathType],
         cache_count: usize,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
@@ -442,7 +456,7 @@ impl ImageCache {
 
     pub fn move_next(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
-            
+
             //shift_cache_left(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
             self.shift_cache_left(new_image);
             Ok(false)
@@ -453,7 +467,7 @@ impl ImageCache {
 
     pub fn move_prev(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
-            
+
             //shift_cache_right(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
             self.shift_cache_right(new_image);
             Ok(false)
@@ -496,7 +510,7 @@ impl ImageCache {
 
     pub fn get_initial_image(&self) -> Result<&CachedData, io::Error> {
         let cache_index = (self.cache_count as isize + self.current_offset) as usize;
-        
+
         if let Some(image_data_option) = self.cached_data.get(cache_index) {
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
@@ -527,17 +541,25 @@ impl ImageCache {
                         // If it's GPU data, we need to load from file instead
                         let cache_index = (self.cache_count as isize + self.current_offset) as usize;
                         let image_index = self.cached_image_indices[cache_index];
-                        
+
                         if image_index >= 0 && (image_index as usize) < self.image_paths.len() {
                             // Load directly from file
                             let img_path = &self.image_paths[image_index as usize];
-                            match std::fs::read(img_path) {
-                                Ok(bytes) => Ok(bytes),
-                                Err(err) => Err(io::Error::new(
-                                    io::ErrorKind::Other,
-                                    format!("Failed to read image file: {}", err),
-                                ))
+                            match img_path {
+                                PathType::PathBuf(img_path) => {
+                                    match std::fs::read(img_path) {
+                                        Ok(bytes) => Ok(bytes),
+                                        Err(err) => Err(io::Error::new(
+                                            io::ErrorKind::Other,
+                                            format!("Failed to read image file: {}", err),
+                                        ))
+                                    }
+                                },
+                                PathType::FileByte(_, bytes) => {
+                                    Ok(bytes.to_vec())
+                                }
                             }
+
                         } else {
                             Err(io::Error::new(
                                 io::ErrorKind::Other,
@@ -550,7 +572,7 @@ impl ImageCache {
             Err(err) => Err(err)
         }
     }
-    
+
 
     #[allow(dead_code)]
     pub fn get_current_image(&self) -> Result<&CachedData, io::Error> {
@@ -766,12 +788,7 @@ pub fn load_images_by_operation_slider(
         for target in target_indices_and_cache.iter() {
             if let Some((target_index, cache_pos)) = target {
                 if let Some(path) = img_cache.image_paths.get(*target_index as usize) {
-                    if let Some(s) = path.to_str() {
-                        paths.push(Some(s.to_string()));
-                    } else {
-                        paths.push(None);
-                    }
-
+                    paths.push(Some(path.clone()));
                     // Store the target image at the specified cache position
                     img_cache.cached_image_indices[*cache_pos] = *target_index;
                 } else {
@@ -787,13 +804,13 @@ pub fn load_images_by_operation_slider(
             let device_clone = Arc::clone(device);
             let queue_clone = Arc::clone(queue);
             debug!("Task::perform started for {:?}", operation);
-            
+
 
             let images_loading_task = async move {
                 file_io::load_images_async(
-                    paths, 
-                    cache_strategy, 
-                    &device_clone, 
+                    paths,
+                    cache_strategy,
+                    &device_clone,
                     &queue_clone,
                     compression_strategy,
                     operation
@@ -816,8 +833,8 @@ pub fn load_images_by_indices(
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<&mut Pane>, 
-    target_indices: &[Option<isize>], 
+    panes: &mut Vec<&mut Pane>,
+    target_indices: &[Option<isize>],
     operation: LoadOperation
 ) -> Task<Message> {
     let mut paths = Vec::new();
@@ -827,11 +844,7 @@ pub fn load_images_by_indices(
 
         if let Some(target_index) = target_indices[pane_index] {
             if let Some(path) = img_cache.image_paths.get(target_index as usize) {
-                if let Some(s) = path.to_str() {
-                    paths.push(Some(s.to_string()));
-                } else {
-                    paths.push(None);
-                }
+                paths.push(Some(path.clone()));
             } else {
                 paths.push(None);
             }
@@ -848,18 +861,18 @@ pub fn load_images_by_indices(
         Task::perform(
             async move {
                 let result = file_io::load_images_async(
-                    paths, 
-                    cache_strategy, 
-                    &device_clone, 
-                    &queue_clone, 
-                    compression_strategy, 
+                    paths,
+                    cache_strategy,
+                    &device_clone,
+                    &queue_clone,
+                    compression_strategy,
                     operation
                 ).await;
                 result
             },
             Message::ImagesLoaded,
         )
-        
+
     } else {
         Task::none()
     }
@@ -871,7 +884,7 @@ pub fn load_images_by_operation(
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<&mut Pane>, 
+    panes: &mut Vec<&mut Pane>,
     loading_status: &mut LoadingStatus
 ) -> Task<Message> {
     if !loading_status.loading_queue.is_empty() {
@@ -882,22 +895,22 @@ pub fn load_images_by_operation(
             match operation {
                 LoadOperation::LoadNext((ref _pane_indices, ref target_indicies)) => {
                     load_images_by_indices(
-                        device, 
-                        queue, 
+                        device,
+                        queue,
                         cache_strategy,
                         compression_strategy,
-                        panes, 
+                        panes,
                         &target_indicies,
                         operation.clone()
                     )
                 }
                 LoadOperation::LoadPrevious((ref _pane_indices, ref target_indicies)) => {
                     load_images_by_indices(
-                        device, 
-                        queue, 
+                        device,
+                        queue,
                         cache_strategy,
                         compression_strategy,
-                        panes, 
+                        panes,
                         &target_indicies,
                         operation.clone()
                     )
@@ -932,7 +945,7 @@ pub fn load_all_images_in_queue(
 ) -> Task<Message> {
     let mut tasks = Vec::new();
     let mut pane_refs: Vec<&mut pane::Pane> = vec![];
-    
+
     // Collect references to panes
     for pane in panes.iter_mut() {
         pane_refs.push(pane);

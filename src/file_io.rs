@@ -6,6 +6,7 @@ use std::ffi::OsStr;
 use rfd;
 use futures::future::join_all;
 use crate::cache::img_cache::LoadOperation;
+use crate::cache::img_cache::PathType;
 use tokio::time::Instant;
 
 #[allow(unused_imports)]
@@ -31,6 +32,9 @@ use crate::cache::img_cache::CacheStrategy;
 use iced_wgpu::engine::CompressionStrategy;
 use std::thread;
 
+pub const ALLOWED_EXTENSIONS: [&str; 15] = ["jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
+        "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"];
+
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
 });
@@ -45,6 +49,7 @@ static STDOUT_BUFFER: Lazy<Arc<Mutex<VecDeque<String>>>> = Lazy::new(|| {
 
 // Global flag to control stdout capture
 static STDOUT_CAPTURE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -63,49 +68,56 @@ pub fn get_filename(path: &str) -> Option<String> {
 }
 
 /// Reads an image file into a byte vector.
-/// 
+///
 /// This function reads raw bytes from a file using memory mapping for
 /// improved performance with large files.
-/// 
+///
 /// # Arguments
 /// * `path` - The path to the image file
-/// 
+///
 /// # Returns
 /// * `Ok(Vec<u8>)` - The raw bytes of the image file
 /// * `Err(io::Error)` - An error if reading fails
-pub fn read_image_bytes(path: &PathBuf) -> Result<Vec<u8>, std::io::Error> {
+pub fn read_image_bytes(path: &PathType) -> Result<Vec<u8>, std::io::Error> {
     use std::fs::File;
     use std::io::{self, Read};
     use memmap2::Mmap;
-    
-    // Verify the file exists before attempting to read
-    if !path.exists() {
-        return Err(io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("File not found: {}", path.display())
-        ));
-    }
-    
-    // Use memory mapping for efficient file reading
-    let file = File::open(path)?;
-    let metadata = file.metadata()?;
-    let file_size = metadata.len() as usize;
-    
-    // Only use mmap for files over a certain size (e.g., 1MB)
-    // For smaller files, regular reading is often faster
-    if file_size > 1_048_576 {
-        // Memory map the file for faster access
-        let mmap = unsafe { Mmap::map(&file)? };
-        let bytes = mmap.to_vec();
-        debug!("Read {} bytes from {} using mmap", bytes.len(), path.display());
-        Ok(bytes)
-    } else {
-        // For smaller files, regular reading is fine
-        let mut buffer = Vec::with_capacity(file_size);
-        let mut file = File::open(path)?;
-        file.read_to_end(&mut buffer)?;
-        debug!("Read {} bytes from {}", buffer.len(), path.display());
-        Ok(buffer)
+
+    match path {
+        PathType::PathBuf(path) => {
+            // Verify the file exists before attempting to read
+            if !path.exists() {
+                return Err(io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("File not found: {}", path.display())
+                ));
+            }
+
+            // Use memory mapping for efficient file reading
+            let file = File::open(path)?;
+            let metadata = file.metadata()?;
+            let file_size = metadata.len() as usize;
+
+            // Only use mmap for files over a certain size (e.g., 1MB)
+            // For smaller files, regular reading is often faster
+            if file_size > 1_048_576 {
+                // Memory map the file for faster access
+                let mmap = unsafe { Mmap::map(&file)? };
+                let bytes = mmap.to_vec();
+                debug!("Read {} bytes from {} using mmap", bytes.len(), path.display());
+                Ok(bytes)
+            } else {
+                // For smaller files, regular reading is fine
+                let mut buffer = Vec::with_capacity(file_size);
+                let mut file = File::open(path)?;
+                file.read_to_end(&mut buffer)?;
+                debug!("Read {} bytes from {}", buffer.len(), path.display());
+                Ok(buffer)
+            }
+        },
+        PathType::FileByte(_, bytes) => {
+            Ok(bytes.to_vec())
+        }
     }
 }
 
@@ -127,34 +139,43 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
 }
 
 #[allow(dead_code)]
-async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, std::io::ErrorKind> {
+async fn load_image_cpu_async(path: Option<PathType>) -> Result<Option<CachedData>, std::io::ErrorKind> {
     // Load a single image asynchronously
     if let Some(path) = path {
-        let file_path = Path::new(path);
-        let start = Instant::now();
-        debug!("load_image_cpu_async - Starting to load: {}", path);
-        
-        match tokio::fs::File::open(file_path).await {
-            Ok(mut file) => {
-                let file_open_time = start.elapsed();
-                debug!("load_image_cpu_async - File opened in {:?}", file_open_time);
-                
-                let read_start = Instant::now();
-                let mut buffer = Vec::new();
-                if file.read_to_end(&mut buffer).await.is_ok() {
-                    let read_time = read_start.elapsed();
-                    debug!("load_image_cpu_async - Read {} bytes in {:?}", buffer.len(), read_time);
-                    
-                    let total_time = start.elapsed();
-                    debug!("load_image_cpu_async - Total load time: {:?}", total_time);
-                    
-                    Ok(Some(CachedData::Cpu(buffer)))
-                } else {
-                    Err(std::io::ErrorKind::InvalidData)
+        match path {
+            PathType::PathBuf(pb) => {
+                let path = pb.to_path_buf();
+                let file_path = Path::new(&path);
+                let start = Instant::now();
+                debug!("load_image_cpu_async - Starting to load: {:?}", path.file_name());
+
+                match tokio::fs::File::open(file_path).await {
+                    Ok(mut file) => {
+                        let file_open_time = start.elapsed();
+                        debug!("load_image_cpu_async - File opened in {:?}", file_open_time);
+
+                        let read_start = Instant::now();
+                        let mut buffer = Vec::new();
+                        if file.read_to_end(&mut buffer).await.is_ok() {
+                            let read_time = read_start.elapsed();
+                            debug!("load_image_cpu_async - Read {} bytes in {:?}", buffer.len(), read_time);
+
+                            let total_time = start.elapsed();
+                            debug!("load_image_cpu_async - Total load time: {:?}", total_time);
+
+                            Ok(Some(CachedData::Cpu(buffer)))
+                        } else {
+                            Err(std::io::ErrorKind::InvalidData)
+                        }
+                    }
+                    Err(e) => Err(e.kind()),
                 }
+            },
+            PathType::FileByte(_, bytes) => {
+                Ok(Some(CachedData::Cpu(bytes.to_vec())))
             }
-            Err(e) => Err(e.kind()),
         }
+
     } else {
         Ok(None)
     }
@@ -163,60 +184,60 @@ async fn load_image_cpu_async(path: Option<&str>) -> Result<Option<CachedData>, 
 
 #[allow(dead_code)]
 async fn load_image_gpu_async(
-    path: Option<&str>, 
-    device: &Arc<wgpu::Device>, 
+    path: Option<PathType>,
+    device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     compression_strategy: CompressionStrategy
 ) -> Result<Option<CachedData>, std::io::ErrorKind> {
-    if let Some(path_str) = path {
+    if let Some(_) = path {
         let start = Instant::now();
 
         // Use the safe load_original_image function from cache_utils to prevent crashes with oversized images
-        match crate::cache::cache_utils::load_original_image(std::path::Path::new(path_str)) {
+        match crate::cache::cache_utils::load_original_image(&path.unwrap()) {
             Ok(img) => {
                 let (width, height) = img.dimensions();
                 let rgba = img.to_rgba8();
                 let rgba_data = rgba.as_raw();
-                
+
                 let duration = start.elapsed();
                 IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
-                
+
                 let upload_start = Instant::now();
 
                 // Use our utility to check if compression is applicable
                 let use_compression = crate::cache::cache_utils::should_use_compression(
                     width, height, compression_strategy
                 );
-                
+
                 // Create texture with the appropriate format
                 let texture = crate::cache::cache_utils::create_gpu_texture(
                     device, width, height, compression_strategy
                 );
-                
+
                 if use_compression {
                     // Use utility to compress and upload
                     let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
                         &rgba_data, width, height
                     );
-                    
+
                     // Upload using the utility
                     crate::cache::cache_utils::upload_compressed_texture(
                         queue, &texture, &compressed_data, width, height, row_bytes
                     );
-                    
+
                     let upload_duration = upload_start.elapsed();
                     GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
-                    
+
                     return Ok(Some(CachedData::BC1(Arc::new(texture))));
                 } else {
                     // Upload uncompressed
                     crate::cache::cache_utils::upload_uncompressed_texture(
                         queue, &texture, &rgba_data, width, height
                     );
-                    
+
                     let upload_duration = upload_start.elapsed();
                     GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
-                    
+
                     return Ok(Some(CachedData::Gpu(Arc::new(texture))));
                 }
             }
@@ -232,7 +253,7 @@ async fn load_image_gpu_async(
 
 
 pub async fn load_images_async(
-    paths: Vec<Option<String>>, 
+    paths: Vec<Option<PathType>>,
     cache_strategy: CacheStrategy,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -245,17 +266,16 @@ pub async fn load_images_async(
     let futures = paths.into_iter().map(|path| {
         let device = Arc::clone(device);
         let queue = Arc::clone(queue);
-        
+
         async move {
-            let path_str = path.as_deref();
             match cache_strategy {
                 CacheStrategy::Cpu => {
                     debug!("load_images_async - loading image with CPU strategy");
-                    load_image_cpu_async(path_str).await
+                    load_image_cpu_async(path).await
                 },
                 CacheStrategy::Gpu => {
                     debug!("load_images_async - loading image with GPU strategy and compression: {:?}", compression_strategy);
-                    load_image_gpu_async(path_str, &device, &queue, compression_strategy).await
+                    load_image_gpu_async(path, &device, &queue, compression_strategy).await
                 },
             }
         }
@@ -367,17 +387,13 @@ impl StdError for ImageError {}
 
 pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageError> {
     let mut image_paths: Vec<PathBuf> = Vec::new();
-    let allowed_extensions = [
-        "jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
-        "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"
-    ];
 
     let dir_entries = fs::read_dir(directory_path)
         .map_err(|e| ImageError::DirectoryError(e))?;
 
     for entry in dir_entries.flatten() {
         if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
-            if allowed_extensions.contains(&extension.to_lowercase().as_str()) {
+            if ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
                 image_paths.push(entry.path());
             }
         }
@@ -413,7 +429,7 @@ impl BufferLogger {
             if buffer.len() == MAX_LOG_LINES {
                 buffer.pop_front();
             }
-            
+
             // Format the log message to include only line number to avoid duplication
             // The module is already in the target in most cases
             let formatted_message = if let Some(line_num) = line {
@@ -421,7 +437,7 @@ impl BufferLogger {
             } else {
                 format!("{} {}", target, message)
             };
-            
+
             buffer.push_back(formatted_message);
         }
     }
@@ -447,9 +463,9 @@ impl log::Log for BufferLogger {
         if self.enabled(record.metadata()) {
             let message = format!("{:<5} {}", record.level(), record.args());
             self.log_to_buffer(
-                &message, 
-                record.target(), 
-                record.line(), 
+                &message,
+                record.target(),
+                record.line(),
                 record.module_path()
             );
         }
@@ -493,7 +509,7 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     let shared_buffer = buffer_logger.get_shared_buffer();
 
     let mut builder = env_logger::Builder::new();
-    
+
     // First check if RUST_LOG is set - if so, use that configuration
     if std::env::var("RUST_LOG").is_ok() {
         builder.parse_env("RUST_LOG");
@@ -513,7 +529,7 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
 
     builder.format(|buf: &mut Formatter, record: &Record| {
         let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-        
+
         // Create the module:line part
         let module_info = if let (Some(module), Some(line)) = (record.module_path(), record.line()) {
             format!("{}:{}", module, line)
@@ -524,10 +540,10 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
         } else {
             "unknown".to_string()
         };
-        
+
         let mut level_style = buf.style();
         let mut meta_style = buf.style();
-        
+
         // Set level colors
         match record.level() {
             Level::Error => level_style.set_color(Color::Red).set_bold(true),
@@ -536,20 +552,20 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
             Level::Debug => level_style.set_color(Color::Blue).set_bold(true),
             Level::Trace => level_style.set_color(Color::White),
         };
-        
+
         // Set meta style color based on platform
         #[cfg(target_os = "macos")]
         {
             // Color::Rgb does not work on macOS, so we use Color::Blue as a workaround
             meta_style.set_color(Color::Blue);
         }
-        
+
         #[cfg(not(target_os = "macos"))]
         {
             // Color formatting with Color::Rgb works fine on Windows/Linux
             meta_style.set_color(Color::Rgb(120, 120, 120));
         }
-        
+
         writeln!(
             buf,
             "{} {} {} {}",
@@ -559,7 +575,7 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
             record.args()
         )
     });
-    
+
     let console_logger = builder.build();
 
     let composite_logger = CompositeLogger {
@@ -568,7 +584,7 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
     };
 
     log::set_boxed_logger(Box::new(composite_logger)).expect("Failed to set logger");
-    
+
     // Always set the maximum level to Trace so that filtering works correctly
     log::set_max_level(LevelFilter::Trace);
 
@@ -580,18 +596,18 @@ pub fn get_log_directory(app_name: &str) -> PathBuf {
 }
 
 /// Exports the current log buffer to a debug log file.
-/// 
+///
 /// This function writes the last 1,000 lines of logs (captured via the log macros like debug!, info!, etc.)
 /// to a separate debug log file. This is useful for troubleshooting issues without waiting for a crash.
-/// 
+///
 /// NOTE: This currently captures logs from the Rust `log` crate macros (debug!, info!, warn!, error!)
 /// but does NOT capture raw `println!` statements. To capture println! statements, stdout redirection
 /// would be needed, which is more complex and may interfere with normal console output.
-/// 
+///
 /// # Arguments
-/// * `app_name` - The application name used for the log directory  
+/// * `app_name` - The application name used for the log directory
 /// * `log_buffer` - The shared log buffer containing the recent log messages
-/// 
+///
 /// # Returns
 /// * `Ok(PathBuf)` - The path to the created debug log file
 /// * `Err(std::io::Error)` - An error if the export fails
@@ -599,16 +615,16 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
     // NOTE: Use println! instead of debug! to avoid circular logging
     // (debug! calls would be added to the same buffer we're trying to export)
     println!("DEBUG: export_debug_logs called");
-    
+
     let log_dir_path = get_log_directory(app_name);
     println!("DEBUG: Log directory path: {}", log_dir_path.display());
-    
+
     std::fs::create_dir_all(&log_dir_path)?;
     println!("DEBUG: Created log directory");
-    
+
     let debug_log_path = log_dir_path.join("debug.log");
     println!("DEBUG: Debug log path: {}", debug_log_path.display());
-    
+
     println!("DEBUG: About to open file for writing");
     let mut file = OpenOptions::new()
         .create(true)
@@ -620,7 +636,7 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
     // Write formatted timestamp
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
     println!("DEBUG: About to write header");
-    
+
     writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
     writeln!(file, "{} [DEBUG EXPORT] ViewSkater Debug Log Export", timestamp)?;
     writeln!(file, "{} [DEBUG EXPORT] Export timestamp: {}", timestamp, timestamp)?;
@@ -637,7 +653,7 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
     let buffer_size;
     let buffer_empty;
     let log_entries: Vec<String>;
-    
+
     {
         let buffer = log_buffer.lock().unwrap();
         println!("DEBUG: Log buffer locked, size: {}", buffer.len());
@@ -646,9 +662,9 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
         log_entries = buffer.iter().cloned().collect();
         println!("DEBUG: Copied {} entries, releasing lock", buffer_size);
     } // Lock is dropped here
-    
+
     println!("DEBUG: Buffer lock released");
-    
+
     if buffer_empty {
         println!("DEBUG: Buffer is empty, writing empty message");
         writeln!(file, "{} [DEBUG EXPORT] No log entries found in buffer", timestamp)?;
@@ -661,38 +677,38 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
         writeln!(file, "{} [DEBUG EXPORT] Found {} log entries (showing last {} max):", timestamp, buffer_size, MAX_LOG_LINES)?;
         writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
         writeln!(file)?; // Empty line for readability
-        
+
         for (_i, log_entry) in log_entries.iter().enumerate() {
             writeln!(file, "{} {}", timestamp, log_entry)?;
         }
         println!("DEBUG: All entries written");
     }
-    
+
     println!("DEBUG: Writing footer");
     writeln!(file)?; // Final empty line
     writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
     writeln!(file, "{} [DEBUG EXPORT] Export completed successfully", timestamp)?;
     writeln!(file, "{} [DEBUG EXPORT] Total entries exported: {}", timestamp, buffer_size)?;
     writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-    
+
     println!("DEBUG: About to flush file");
     file.flush()?;
     println!("DEBUG: File flushed");
-    
+
     println!("DEBUG: About to call info! macro");
     info!("Debug logs exported to: {}", debug_log_path.display());
     println!("DEBUG: info! macro completed");
-    
+
     println!("DEBUG: export_debug_logs completed successfully");
-    
+
     Ok(debug_log_path)
 }
 
 /// Exports debug logs and opens the log directory in the file explorer.
-/// 
+///
 /// This is a convenience function that combines exporting debug logs and opening
 /// the log directory for easy access to the exported files.
-/// 
+///
 /// # Arguments
 /// * `app_name` - The application name used for the log directory
 /// * `log_buffer` - The shared log buffer containing the recent log messages
@@ -708,12 +724,12 @@ pub fn export_and_open_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque
             }
         }
     }
-    
+
     match export_debug_logs(app_name, log_buffer) {
         Ok(debug_log_path) => {
             info!("Debug logs successfully exported to: {}", debug_log_path.display());
             println!("Debug logs exported to: {}", debug_log_path.display());
-            
+
             // Temporarily disable automatic directory opening to prevent hangs
             // let log_dir = debug_log_path.parent().unwrap_or_else(|| Path::new("."));
             // open_in_file_explorer(&log_dir.to_string_lossy().to_string());
@@ -751,22 +767,22 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
         // Create formatted messages that we'll use for both console and file
         let header_msg = format!("[PANIC] at {} - {}", location, info);
         let backtrace_header = "[PANIC] Backtrace:";
-        
+
         // Format backtrace lines
         let mut backtrace_lines = Vec::new();
         for line in format!("{:?}", backtrace).lines() {
             backtrace_lines.push(format!("[BACKTRACE] {}", line.trim()));
         }
-        
+
         // Log header to file
         writeln!(file, "{} {}", timestamp, header_msg).expect("Failed to write panic info");
         writeln!(file, "{} {}", timestamp, backtrace_header).expect("Failed to write backtrace header");
-        
+
         // Log backtrace to file
         for line in &backtrace_lines {
             writeln!(file, "{} {}", timestamp, line).expect("Failed to write backtrace line");
         }
-        
+
         // Add double linebreak between backtrace and log entries
         writeln!(file).expect("Failed to write newline");
         writeln!(file).expect("Failed to write second newline");
@@ -779,7 +795,7 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
         for log in buffer.iter() {
             writeln!(file, "{} {}", timestamp, log).expect("Failed to write log entry");
         }
-        
+
         // ALSO PRINT TO CONSOLE (this is the new part)
         // Use eprintln! to print to stderr
         eprintln!("\n\n{}", header_msg);
@@ -823,10 +839,10 @@ pub fn open_in_file_explorer(path: &str) {
 }
 
 /// Sets up stdout capture using Unix pipes to intercept println! and other stdout output.
-/// 
+///
 /// This function creates a pipe, redirects stdout to the write end of the pipe,
 /// and spawns a thread to read from the read end and capture the output.
-/// 
+///
 /// # Returns
 /// * `Arc<Mutex<VecDeque<String>>>` - The shared stdout buffer
 #[cfg(unix)]
@@ -834,7 +850,7 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
     use std::os::unix::io::FromRawFd;
     use std::fs::File;
     use std::io::{BufReader, BufRead};
-    
+
     // Create a pipe
     let mut pipe_fds = [0i32; 2];
     unsafe {
@@ -843,10 +859,10 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
             return Arc::clone(&STDOUT_BUFFER);
         }
     }
-    
+
     let read_fd = pipe_fds[0];
     let write_fd = pipe_fds[1];
-    
+
     // Duplicate the original stdout so we can restore it later
     let original_stdout_fd = unsafe { libc::dup(libc::STDOUT_FILENO) };
     if original_stdout_fd == -1 {
@@ -857,7 +873,7 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
         }
         return Arc::clone(&STDOUT_BUFFER);
     }
-    
+
     // Redirect stdout to the write end of the pipe
     unsafe {
         if libc::dup2(write_fd, libc::STDOUT_FILENO) == -1 {
@@ -868,25 +884,25 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
             return Arc::clone(&STDOUT_BUFFER);
         }
     }
-    
+
     // Create a file from the read end of the pipe
     let pipe_reader = unsafe { File::from_raw_fd(read_fd) };
     let mut buf_reader = BufReader::new(pipe_reader);
-    
+
     // Create a writer for the original stdout
     let original_stdout = unsafe { File::from_raw_fd(original_stdout_fd) };
-    
+
     // Enable stdout capture
     STDOUT_CAPTURE_ENABLED.store(true, std::sync::atomic::Ordering::SeqCst);
-    
+
     // Clone the buffer for the thread
     let buffer = Arc::clone(&STDOUT_BUFFER);
-    
+
     // Spawn a thread to read from the pipe and capture output
     thread::spawn(move || {
         let mut line = String::new();
         let mut original_stdout = original_stdout;
-        
+
         while STDOUT_CAPTURE_ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
             line.clear();
             match buf_reader.read_line(&mut line) {
@@ -897,7 +913,7 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
                         // Write to original stdout (console)
                         let _ = writeln!(original_stdout, "{}", trimmed);
                         let _ = original_stdout.flush();
-                        
+
                         // Capture to buffer
                         if let Ok(mut buffer) = buffer.lock() {
                             if buffer.len() >= 1000 {
@@ -912,29 +928,29 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
             }
         }
     });
-    
+
     // Close the write end of the pipe in this process (the duplicated stdout will handle writing)
     unsafe {
         libc::close(write_fd);
     }
-    
+
     // Add initialization message to buffer
     if let Ok(mut buf) = STDOUT_BUFFER.lock() {
         let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
         buf.push_back(format!("{} [STDOUT] ViewSkater stdout capture initialized", timestamp));
     }
-    
+
     // This println! should now be captured
     println!("Stdout capture initialized - all println! statements will be captured");
-    
+
     Arc::clone(&STDOUT_BUFFER)
 }
 
 /// Sets up stdout capture (Windows/non-Unix fallback - manual capture only)
-/// 
+///
 /// This function provides a fallback for non-Unix systems where stdout redirection
 /// is more complex. It uses manual capture only.
-/// 
+///
 /// # Returns
 /// * `Arc<Mutex<VecDeque<String>>>` - The shared stdout buffer
 #[cfg(not(unix))]
@@ -944,28 +960,28 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
         let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
         buf.push_back(format!("{} [STDOUT] ViewSkater stdout capture initialized", timestamp));
     }
-    
+
     println!("Stdout capture initialized (manual mode) - use capture_stdout() for important messages");
-    
+
     Arc::clone(&STDOUT_BUFFER)
 }
 
 /// Exports stdout logs to a separate file.
-/// 
+///
 /// This function writes the captured stdout output (from println! and other stdout writes)
 /// to a separate stdout log file. This complements the debug log export.
-/// 
+///
 /// # Arguments
 /// * `app_name` - The application name used for the log directory
 /// * `stdout_buffer` - The shared stdout buffer containing captured output
-/// 
+///
 /// # Returns
 /// * `Ok(PathBuf)` - The path to the created stdout log file
 /// * `Err(std::io::Error)` - An error if the export fails
 pub fn export_stdout_logs(app_name: &str, stdout_buffer: Arc<Mutex<VecDeque<String>>>) -> Result<PathBuf, std::io::Error> {
     let log_dir_path = get_log_directory(app_name);
     std::fs::create_dir_all(&log_dir_path)?;
-    
+
     let stdout_log_path = log_dir_path.join("stdout.log");
     let mut file = OpenOptions::new()
         .create(true)
@@ -975,7 +991,7 @@ pub fn export_stdout_logs(app_name: &str, stdout_buffer: Arc<Mutex<VecDeque<Stri
 
     // Write formatted timestamp
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-    
+
     writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
     writeln!(file, "{} [STDOUT EXPORT] ViewSkater Stdout Log Export", timestamp)?;
     writeln!(file, "{} [STDOUT EXPORT] Export timestamp: {}", timestamp, timestamp)?;
@@ -995,31 +1011,31 @@ pub fn export_stdout_logs(app_name: &str, stdout_buffer: Arc<Mutex<VecDeque<Stri
         writeln!(file, "{} [STDOUT EXPORT] Found {} stdout entries:", timestamp, buffer.len())?;
         writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
         writeln!(file)?; // Empty line for readability
-        
+
         for stdout_entry in buffer.iter() {
             writeln!(file, "{}", stdout_entry)?;
         }
     }
-    
+
     writeln!(file)?; // Final empty line
     writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
     writeln!(file, "{} [STDOUT EXPORT] Export completed successfully", timestamp)?;
     writeln!(file, "{} [STDOUT EXPORT] Total entries exported: {}", timestamp, buffer.len())?;
     writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-    
+
     file.flush()?;
-    
+
     info!("Stdout logs exported to: {}", stdout_log_path.display());
     println!("Stdout logs exported to: {}", stdout_log_path.display());
-    
+
     Ok(stdout_log_path)
 }
 
 /// Exports both debug logs and stdout logs, then opens the log directory.
-/// 
+///
 /// This is a convenience function that exports both types of logs and opens
 /// the log directory for easy access to all exported files.
-/// 
+///
 /// # Arguments
 /// * `app_name` - The application name used for the log directory
 /// * `log_buffer` - The shared log buffer containing recent log messages
@@ -1033,12 +1049,12 @@ pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<S
     if let Ok(stdout_buf) = stdout_buffer.lock() {
         println!("DEBUG: Stdout buffer size: {}", stdout_buf.len());
     }
-    
+
     // Export debug logs
     match export_debug_logs(app_name, log_buffer) {
         Ok(debug_log_path) => {
             info!("Debug logs successfully exported to: {}", debug_log_path.display());
-            
+
             // Open the log directory in file explorer (using debug log path)
             let log_dir = debug_log_path.parent().unwrap_or_else(|| Path::new("."));
             open_in_file_explorer(&log_dir.to_string_lossy().to_string());
@@ -1048,7 +1064,7 @@ pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<S
             eprintln!("Failed to export debug logs: {}", e);
         }
     }
-    
+
     // Only export stdout logs if there's actually something in the buffer
     let should_export_stdout = {
         if let Ok(stdout_buf) = stdout_buffer.lock() {
@@ -1057,7 +1073,7 @@ pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<S
             false
         }
     };
-    
+
     if should_export_stdout {
         match export_stdout_logs(app_name, stdout_buffer) {
             Ok(stdout_log_path) => {

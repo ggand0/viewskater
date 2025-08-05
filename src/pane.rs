@@ -13,6 +13,7 @@ use iced_wgpu::wgpu;
 use iced_core::image::Handle;
 use iced_widget::{center, Container};
 
+use crate::cache::img_cache::PathType;
 use crate::config::CONFIG;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
@@ -122,18 +123,18 @@ impl Pane {
     pub fn reset_state(&mut self) {
         // Clear the scene which holds texture references
         self.scene = None;
-        
+
         // Clear the slider scene holding texture references
         self.slider_scene = None;
-        
+
         // Drop the current images
         self.current_image = CachedData::Cpu(vec![]);
         self.slider_image = None;
-        
+
         // Explicitly reset the image cache
         self.img_cache.clear_cache();
         self.img_cache = ImageCache::default();
-        
+
         // Reset other state
         self.directory_path = None;
         self.dir_loaded = false;
@@ -151,8 +152,8 @@ impl Pane {
                 if let Some(first_pane) = panes.first() {
                     if let (Some(device), Some(queue)) = (&first_pane.device, &first_pane.queue) {
                         panes.push(Pane::new(
-                            Arc::clone(device), 
-                            Arc::clone(queue), 
+                            Arc::clone(device),
+                            Arc::clone(queue),
                             first_pane.backend,
                             i, // Use the index as the pane_id
                             first_pane.compression_strategy
@@ -202,7 +203,7 @@ impl Pane {
         // Safely compute target index as isize
         let target_index_isize = img_cache.cache_count as isize + img_cache.current_offset + 1;
         if target_index_isize >= 0 {
-            let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1; 
+            let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
                 next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
 
@@ -213,7 +214,7 @@ impl Pane {
                         debug!("Setting CPU image as current_image");
                         self.current_image = CachedData::Cpu(image_bytes.clone());
                         self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
-                    
+
                         // Ensure texture is created for CPU images
                         if let Some(device) = &self.device {
                             if let Some(queue) = &self.queue {
@@ -223,18 +224,18 @@ impl Pane {
                             }
                         }
 
-                        
+
                     }
                     CachedData::Gpu(texture) => {
                         debug!("Setting GPU texture as current_image");
                         self.current_image = CachedData::Gpu(Arc::clone(&texture));
-                        self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                        self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }
                     CachedData::BC1(texture) => {
                         debug!("Setting BC1 compressed texture as current_image");
                         self.current_image = CachedData::BC1(Arc::clone(&texture));
-                        self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture))))); 
+                        self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }
                 }
@@ -253,7 +254,7 @@ impl Pane {
             if img_cache.current_index < img_cache.image_paths.len() - 1 {
                 img_cache.current_index += 1;
             }
-            
+
             if *pane_layout == PaneLayout::DualPane && is_slider_dual {
                 self.slider_value = img_cache.current_index as u16;
             }
@@ -296,7 +297,7 @@ impl Pane {
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
                             self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
-                            self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                            self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                         }
                         CachedData::BC1(texture) => {
@@ -352,45 +353,94 @@ impl Pane {
         slider_value: &mut u16,
     ) {
         mem::log_memory("Before pane initialization");
-        
-        let mut _file_paths: Vec<PathBuf> = Vec::new();
-        let initial_index: usize;
 
-        // Get directory path and image files
-        let (dir_path, paths_result) = if is_file(path) {
-            debug!("Dropped path is a file");
-            let directory = path.parent().unwrap_or(Path::new(""));
-            let dir = directory.to_string_lossy().to_string();
-            (dir.clone(), file_io::get_image_paths(Path::new(&dir)))
-        } else if is_directory(path) {
-            debug!("Dropped path is a directory");
-            let dir = path.to_string_lossy().to_string();
-            (dir, file_io::get_image_paths(path))
-        } else {
-            error!("Dropped path does not exist or cannot be accessed");
-            return;
-        };
+        let mut _file_paths: Vec<PathType> = Vec::new();
+        let mut initial_index: usize = 0;
 
-        // Handle the result from get_image_paths
-        _file_paths = match paths_result {
-            Ok(paths) => paths,
-            Err(ImageError::NoImagesFound) => {
-                error!("No supported images found in directory");
-                // TODO: Show a message to the user that no images were found
-                return;
-            }
-            Err(e) => {
-                error!("Error reading directory: {}", e);
-                // TODO: Show error message to user
-                return;
-            }
-        };
-
-        self.directory_path = Some(dir_path);
-        
-        // Calculate if directory size is bigger than other panes
+        let is_dir_size_bigger: bool;
         let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
-        let is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
+
+
+        if path.extension().is_some_and(|ex| ex.to_ascii_lowercase() == "zip") {
+            let mut archive = zip::ZipArchive::new(std::io::BufReader::new(std::fs::File::open(path).unwrap())).unwrap();
+            for i in 0..archive.len() {
+                let mut file = archive.by_index(i).unwrap();
+                if file.is_file() && crate::file_io::ALLOWED_EXTENSIONS.contains(&file.name().split('.').last().unwrap_or("")) {
+                    debug!("{}", file.name());
+                    let mut buffer = Vec::new();
+                    let res = std::io::Read::read_to_end(&mut file, &mut buffer);
+                    match res {
+                        Ok(_) => (),
+                        Err(e) => {
+                            error!("Error reading zip file: {}", e);
+                            return;
+                        }
+                    }
+                    _file_paths.push(PathType::FileByte(file.name().to_string(), buffer));
+                }
+            }
+            _file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(a.file_name(), b.file_name()));
+        } else {
+            // Get directory path and image files
+            let (dir_path, paths_result) = if is_file(path) {
+                debug!("Dropped path is a file");
+                let directory = path.parent().unwrap_or(Path::new(""));
+                let dir = directory.to_string_lossy().to_string();
+                (dir.clone(), file_io::get_image_paths(Path::new(&dir)))
+            } else if is_directory(path) {
+                debug!("Dropped path is a directory");
+                let dir = path.to_string_lossy().to_string();
+                (dir, file_io::get_image_paths(path))
+            } else {
+                error!("Dropped path does not exist or cannot be accessed");
+                return;
+            };
+
+            // Handle the result from get_image_paths
+            _file_paths = match paths_result {
+                Ok(paths) => paths.iter().filter_map(|item| {
+                    Some(PathType::PathBuf(item.to_path_buf()))
+                }).collect::<Vec<_>>(),
+                Err(ImageError::NoImagesFound) => {
+                    error!("No supported images found in directory");
+                    // TODO: Show a message to the user that no images were found
+                    return;
+                }
+                Err(e) => {
+                    error!("Error reading directory: {}", e);
+                    // TODO: Show error message to user
+                    return;
+                }
+            };
+            self.directory_path = Some(dir_path);
+
+
+            // Determine initial index and update slider
+            if is_file(path) {
+                let file_index = get_file_index(&_file_paths.iter().filter_map(|item| {
+                    if let PathType::PathBuf(pb) = item {
+                        Some(pb.to_path_buf())
+                    } else {
+                        None
+                    }
+                }).collect::<Vec<_>>(), path);
+                initial_index = match file_index {
+                    Some(idx) => {
+                        debug!("File index: {}", idx);
+                        idx
+                    }
+                    None => {
+                        debug!("File index not found");
+                        return;
+                    }
+                };
+            } else {
+                initial_index = 0;
+            }
+        };
+
+        // Calculate if directory size is bigger than other panes
+        is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
             true
         } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
             true
@@ -398,23 +448,6 @@ impl Pane {
             _file_paths.len() >= *longest_file_length
         };
         debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
-
-        // Determine initial index and update slider
-        if is_file(path) {
-            let file_index = get_file_index(&_file_paths, path);
-            initial_index = match file_index {
-                Some(idx) => {
-                    debug!("File index: {}", idx);
-                    idx
-                }
-                None => {
-                    debug!("File index not found");
-                    return;
-                }
-            };
-        } else {
-            initial_index = 0;
-        }
 
         // Sort
         debug!("File paths: {}", _file_paths.len());
@@ -437,12 +470,12 @@ impl Pane {
 
         // Track memory before loading initial images
         mem::log_memory("Pane::initialize_dir_path: Before loading initial images");
-        
+
         // Load initial images into the cache
         img_cache.load_initial_images().unwrap();
-        
+
         mem::log_memory("Pane::initialize_dir_path: After loading initial images");
-        
+
         for (index, image_option) in img_cache.cached_data.iter().enumerate() {
             match image_option {
                 Some(image_bytes) => {
@@ -462,20 +495,20 @@ impl Pane {
                 CachedData::Gpu(texture) => {
                     debug!("Using GPU texture for initial image");
                     self.current_image = CachedData::Gpu(Arc::clone(texture));
-                    self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture))))); 
+                    self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
                     self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                 }
                 CachedData::BC1(texture) => {
                     debug!("Using BC1 compressed texture for initial image");
                     self.current_image = CachedData::BC1(Arc::clone(texture));
-                    self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture))))); 
+                    self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
                     self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                 }
                 CachedData::Cpu(image_bytes) => {
                     debug!("Using CPU image for initial image");
                     self.current_image = CachedData::Cpu(image_bytes.clone());
                     self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
-                    
+
                     // Ensure texture is created for CPU images
                     if let Some(scene) = &mut self.scene {
                         scene.ensure_texture(device, queue, self.pane_id);
@@ -499,7 +532,7 @@ impl Pane {
 
         let file_paths = img_cache.image_paths.clone();
         debug!("file_paths.len() {:?}", file_paths.len());
-        
+
         self.img_cache = img_cache;
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
@@ -509,7 +542,7 @@ impl Pane {
             if is_slider_moving && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
                 let image_handle = self.slider_image.clone().unwrap();
-                
+
                 container(
                     center(
                         viewer::Viewer::new(image_handle)
@@ -524,7 +557,7 @@ impl Pane {
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(is_horizontal_split);
-                
+
                 container(center(shader_widget))
                     .width(Length::Fill)
                     .height(Length::Fill)
@@ -556,7 +589,7 @@ pub fn get_pane_with_largest_dir_size(panes: &Vec<&mut Pane>) -> isize {
     max_dir_size_index
 }
 
-pub fn get_master_slider_value(panes: &[&mut Pane], 
+pub fn get_master_slider_value(panes: &[&mut Pane],
     _pane_layout: &PaneLayout, _is_slider_dual: bool, _last_opened_pane: usize) -> usize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = 0;
