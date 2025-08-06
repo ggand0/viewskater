@@ -34,6 +34,7 @@ use std::thread;
 
 pub const ALLOWED_EXTENSIONS: [&str; 15] = ["jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
         "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"];
+pub const ALLOWED_COMPRESSED_FILES: [&str; 1] = ["zip"];
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
@@ -315,9 +316,11 @@ pub async fn pick_folder() -> Result<String, Error> {
 }
 
 pub async fn pick_file() -> Result<String, Error> {
+    // https://stackoverflow.com/a/71194526
+    let extensions = [&ALLOWED_COMPRESSED_FILES[..], &ALLOWED_EXTENSIONS[..]].concat();
     let handle = rfd::FileDialog::new()
         .set_title("Open File")
-        .add_filter("JPEG and PNG Images", &["jpg", "jpeg", "png"])
+        .add_filter("Supported Files", extensions.as_slice())
         .pick_file();
 
     match handle {
@@ -325,9 +328,10 @@ pub async fn pick_file() -> Result<String, Error> {
             let path = file_info.as_path();
             // Convert the extension to lowercase for case-insensitive comparison
             if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
-                match extension.to_lowercase().as_str() {
-                    "jpg" | "jpeg" | "png" => Ok(path.to_string_lossy().to_string()),
-                    _ => Err(Error::InvalidExtension),
+                if extensions.contains(&extension.to_lowercase().as_str()) {
+                    Ok(path.to_string_lossy().to_string())
+                } else {
+                    Err(Error::InvalidExtension)
                 }
             } else {
                 Err(Error::InvalidExtension)

@@ -401,9 +401,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 WindowEvent::CursorMoved { position, .. } => {
                                     if *IS_FULLSCREEN.lock().unwrap() {
                                         *CURSOR_ON_TOP.lock().unwrap() =
-                                            if position.y < 170.into() { true } else { false };
+                                            position.y < 170.into();
                                         *CURSOR_ON_BOTTOM.lock().unwrap() =
-                                            if position.y > (window.inner_size().height - 100).into() { true } else { false };
+                                            position.y > (window.inner_size().height - 100).into();
                                     }
                                     *cursor_position = Some(position);
                                 }
@@ -1141,7 +1141,7 @@ fn track_async_delivery() {
 
 fn change_window_state() {
     if let Ok(mut state) = TOGGLE_WINDOW.lock() {
-        if *state == false {
+        if !(*state) {
             *state = true;
         }
     }

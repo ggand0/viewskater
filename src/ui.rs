@@ -122,71 +122,35 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
 
 
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
-    // Get UI event loop FPS
-    let ui_fps = {
-        if let Ok(fps) = CURRENT_FPS.lock() {
-            *fps
-        } else {
-            0.0
-        }
-    };
-
-    // Get image render FPS (image content refresh rate)
-    // During slider movement use iced_wgpu::get_image_fps()
-    // Otherwise use IMAGE_RENDER_FPS
-    let image_fps = if app.is_slider_moving {
-        iced_wgpu::get_image_fps()
-    } else {
-        IMAGE_RENDER_FPS.lock().map(|fps| *fps as f64).unwrap_or(0.0)
-    };
-
-    // Get memory usage in MB
-    let memory_mb = {
-        if let Ok(mem) = CURRENT_MEMORY_USAGE.lock() {
-            if *mem == u64::MAX {
-                // Special value indicating memory info is unavailable
-                -1.0 // Use negative value as a marker
-            } else {
-                *mem as f64 / 1024.0 / 1024.0
-            }
-        } else {
-            0.0
-        }
-    };
-
-    let fps_display = if app.show_fps {
-        let memory_text = if memory_mb < 0.0 {
-            "Mem: N/A".to_string()
-        } else {
-            format!("Mem: {:.1} MB", memory_mb)
-        };
-
-        container(
-            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | {}",
-                         ui_fps, image_fps, memory_text))
-                .size(14)
-                .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([1.0, 1.0, 1.0])),
-                    ..Default::default()
-                })
-        )
-        .padding(5)
-    } else {
-        container(text("")).width(0).height(0)
-    };
-
     let mb = app_menu::build_menu(app);
+
+    let is_fullscreen = *IS_FULLSCREEN.lock().unwrap();
+    let cursor_on_top = *CURSOR_ON_TOP.lock().unwrap();
+    let cursor_on_bottom = *CURSOR_ON_BOTTOM.lock().unwrap();
 
     let top_bar = container(
         row![
             mb,
             horizontal_space(),
-            fps_display
+            if !is_fullscreen {
+                get_fps_container(app)
+            } else {
+                container(text("")).width(0).height(0)
+            }
         ]
             .align_y(alignment::Vertical::Center)
     )
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
+
+    let fps_bar = if is_fullscreen {
+        container (
+            row![get_fps_container(app)]
+        ).align_x(alignment::Horizontal::Right)
+        .width(Length::Fill)
+    } else {
+        container(text("")).width(0).height(0)
+    };
 
     match app.pane_layout {
         PaneLayout::SinglePane => {
@@ -248,16 +212,15 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 .height(Length::Shrink)
                 .align_x(Horizontal::Center);
 
-            let is_fullscreen = *IS_FULLSCREEN.lock().unwrap();
             // Create the column WITHOUT converting to Element first
             center(
                 container(
-                    if is_fullscreen && *CURSOR_ON_TOP.lock().unwrap() {
-                        column![top_bar, first_img]
-                    } else if is_fullscreen && *CURSOR_ON_BOTTOM.lock().unwrap() {
-                        column![first_img, slider_controls, footer]
+                    if is_fullscreen && cursor_on_top {
+                        column![top_bar, fps_bar, first_img]
+                    } else if is_fullscreen && cursor_on_bottom {
+                        column![fps_bar, first_img, slider_controls, footer]
                     } else if is_fullscreen {
-                        column![first_img]
+                        column![fps_bar, first_img]
                     } else {column![
                         top_bar,
                         first_img,
@@ -272,7 +235,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 .width(Length::Fill)
                 .height(Length::Fill)
             ).align_x(Horizontal::Center)
-            .into()
         },
         PaneLayout::DualPane => {
             if app.is_slider_dual {
@@ -298,7 +260,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 })
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .into()
             } else {
                 // Pass synced_zoom parameter
                 let panes = build_ui_dual_pane_slider1(
@@ -341,14 +302,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     container(text("")).height(0)
                 };
 
-                let is_fullscreen = *IS_FULLSCREEN.lock().unwrap();
                 container(
-                    if is_fullscreen && *CURSOR_ON_TOP.lock().unwrap() {
-                        column![top_bar, panes]
-                    } else if is_fullscreen && *CURSOR_ON_BOTTOM.lock().unwrap() {
-                        column![panes, slider, footer]
+                    if is_fullscreen && cursor_on_top {
+                        column![top_bar, fps_bar, panes]
+                    } else if is_fullscreen && cursor_on_bottom {
+                        column![fps_bar, panes, slider, footer]
                     } else if is_fullscreen  {
-                        column![panes]
+                        column![fps_bar, panes]
                     } else {
                         column![
                             top_bar,
@@ -363,7 +323,6 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 })
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .into()
             }
         }
     }
@@ -521,4 +480,59 @@ pub fn build_ui_dual_pane_slider2(
     .max_scale(10.0)
     .scale_step(0.10)
     .into()
+}
+
+fn get_fps_container(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
+    // Get UI event loop FPS
+    let ui_fps = {
+        if let Ok(fps) = CURRENT_FPS.lock() {
+            *fps
+        } else {
+            0.0
+        }
+    };
+
+    // Get image render FPS (image content refresh rate)
+    // During slider movement use iced_wgpu::get_image_fps()
+    // Otherwise use IMAGE_RENDER_FPS
+    let image_fps = if app.is_slider_moving {
+        iced_wgpu::get_image_fps()
+    } else {
+        IMAGE_RENDER_FPS.lock().map(|fps| *fps as f64).unwrap_or(0.0)
+    };
+
+    // Get memory usage in MB
+    let memory_mb = {
+        if let Ok(mem) = CURRENT_MEMORY_USAGE.lock() {
+            if *mem == u64::MAX {
+                // Special value indicating memory info is unavailable
+                -1.0 // Use negative value as a marker
+            } else {
+                *mem as f64 / 1024.0 / 1024.0
+            }
+        } else {
+            0.0
+        }
+    };
+
+    if app.show_fps {
+        let memory_text = if memory_mb < 0.0 {
+            "Mem: N/A".to_string()
+        } else {
+            format!("Mem: {:.1} MB", memory_mb)
+        };
+
+        container(
+            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | {}",
+                         ui_fps, image_fps, memory_text))
+                .size(14)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([1.0, 1.0, 1.0])),
+                    ..Default::default()
+                })
+        )
+        .padding(5)
+    } else {
+        container(text("")).width(0).height(0)
+    }
 }

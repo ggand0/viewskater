@@ -42,11 +42,11 @@ pub fn load_original_image(img_path: &PathType) -> Result<DynamicImage, io::Erro
     let img = match img_path {
         PathType::PathBuf(img_path) => {
             image::open(img_path)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {e}")))?
         },
         PathType::FileByte(_, bytes) => {
             ImageReader::new(Cursor::new(bytes)).with_guessed_format()?.decode()
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from compressed file: {}", e)))?
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from compressed file: {e}")))?
         }
     };
     Ok(check_and_resize_if_oversized(img))
@@ -57,11 +57,11 @@ pub fn load_and_resize_image(img_path: &PathType, target_width: u32, target_heig
     let img = match img_path {
         PathType::PathBuf(img_path) => {
             image::open(img_path)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {e}")))?
         },
         PathType::FileByte(_, bytes) => {
             ImageReader::new(Cursor::new(bytes)).with_guessed_format()?.decode()
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from compressed file: {}", e)))?
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from compressed file: {e}")))?
         }
     };
     let (original_width, original_height) = img.dimensions();

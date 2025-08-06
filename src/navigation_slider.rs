@@ -118,7 +118,7 @@ fn load_full_res_image(
 
                 // Load the full-resolution image synchronously
                 if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy) {
-                    debug!("Failed to load full-res image {} for pane {}: {}", img_path.file_name(), idx, err);
+                    debug!("Failed to load full-res image {} for pane {idx}: {err}", img_path.file_name());
                     continue;
                 }
 

@@ -17,6 +17,8 @@ use crate::cache::img_cache::PathType;
 use crate::config::CONFIG;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
+use crate::file_io::ALLOWED_COMPRESSED_FILES;
+use crate::file_io::ALLOWED_EXTENSIONS;
 use crate::menu::PaneLayout;
 use crate::widgets::viewer;
 use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
@@ -360,26 +362,52 @@ impl Pane {
         let is_dir_size_bigger: bool;
         let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
 
-
-        if path.extension().is_some_and(|ex| ex.to_ascii_lowercase() == "zip") {
-            let mut archive = zip::ZipArchive::new(std::io::BufReader::new(std::fs::File::open(path).unwrap())).unwrap();
-            for i in 0..archive.len() {
-                let mut file = archive.by_index(i).unwrap();
-                if file.is_file() && crate::file_io::ALLOWED_EXTENSIONS.contains(&file.name().split('.').last().unwrap_or("")) {
-                    debug!("{}", file.name());
-                    let mut buffer = Vec::new();
-                    let res = std::io::Read::read_to_end(&mut file, &mut buffer);
-                    match res {
-                        Ok(_) => (),
+        // compressed file
+        if path.extension().is_some_and(|ex| ALLOWED_COMPRESSED_FILES.contains(&ex.to_ascii_lowercase().to_str().unwrap_or(""))) {
+            match path.extension().unwrap().to_ascii_lowercase().to_str() {
+                Some("zip") => {
+                    let mut archive = match zip::ZipArchive::new(std::io::BufReader::new(
+                        match std::fs::File::open(path) {
+                            Ok(f) => f,
+                            Err(e) => {
+                                error!("Failed to open zip file: {e}");
+                                return;
+                            }
+                        },
+                    )) {
+                        Ok(z) => z,
                         Err(e) => {
-                            error!("Error reading zip file: {}", e);
+                            error!("Failed to open zip archive: {e}");
                             return;
                         }
+                    };
+                    for i in 0..archive.len() {
+                        let mut file = match archive.by_index(i) {
+                            Ok(f) => f,
+                            Err(e) => {
+                                error!("Failed to get index {i} from zip file: {e}");
+                                return;
+                            }
+                        };
+                        if file.is_file() && ALLOWED_EXTENSIONS.contains(&file.name().split('.').next_back().unwrap_or("")) {
+                            debug!("reading {} in {:?}", file.name(), path.file_name());
+                            let mut buffer = Vec::new();
+                            match std::io::Read::read_to_end(&mut file, &mut buffer) {
+                                Ok(_) => _file_paths.push(PathType::FileByte(file.name().to_string(), buffer)),
+                                Err(e) => {
+                                    error!("Failed to read zip file: {e}");
+                                    return;
+                                }
+                            }
+                        }
                     }
-                    _file_paths.push(PathType::FileByte(file.name().to_string(), buffer));
+                    _file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(a.file_name(), b.file_name()));
+                },
+                _ => {
+                    error!("File extension not supported");
+                    return;
                 }
             }
-            _file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(a.file_name(), b.file_name()));
         } else {
             // Get directory path and image files
             let (dir_path, paths_result) = if is_file(path) {
@@ -398,8 +426,8 @@ impl Pane {
 
             // Handle the result from get_image_paths
             _file_paths = match paths_result {
-                Ok(paths) => paths.iter().filter_map(|item| {
-                    Some(PathType::PathBuf(item.to_path_buf()))
+                Ok(paths) => paths.iter().map(|item| {
+                    PathType::PathBuf(item.to_path_buf())
                 }).collect::<Vec<_>>(),
                 Err(ImageError::NoImagesFound) => {
                     error!("No supported images found in directory");
@@ -407,7 +435,7 @@ impl Pane {
                     return;
                 }
                 Err(e) => {
-                    error!("Error reading directory: {}", e);
+                    error!("Error reading directory: {e}");
                     // TODO: Show error message to user
                     return;
                 }
@@ -434,8 +462,6 @@ impl Pane {
                         return;
                     }
                 };
-            } else {
-                initial_index = 0;
             }
         };
 
