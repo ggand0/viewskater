@@ -64,6 +64,14 @@ use std::sync::mpsc::{Sender, Receiver};
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("App Update"))
 });
+// flag to change mouse scroll wheel behavior
+pub static VIEWER_MODE: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(true))
+});
+// flag to check ctrl/cmd(mac) is pressed
+pub static CTRL_PRESSED: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(false))
+});
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -104,6 +112,7 @@ pub enum Message {
     ToggleFpsDisplay(bool),
     ToggleSplitOrientation(bool),
     ToggleSyncedZoom(bool),
+    ToggleViewerMode(bool),
 }
 
 pub struct DataViewer {
@@ -558,7 +567,18 @@ impl DataViewer {
                 crate::change_window_state();
             }
 
-            _ => {}
+            _ => {
+                #[cfg(target_os = "macos")] {
+                    if key.as_ref() == Key::Named(Named::Super) {
+                        *CTRL_PRESSED.lock().unwrap() = true;
+                    }
+                }
+                #[cfg(not(target_os = "macos"))] {
+                    if key.as_ref() == Key::Named(Named::Control) {
+                        *CTRL_PRESSED.lock().unwrap() = true;
+                    }
+                }
+            }
         }
 
         tasks
@@ -588,7 +608,18 @@ impl DataViewer {
                 debug!("Right key or 'D' key released!");
                 self.skate_right = false;
             }
-            _ => {},
+            _ => {
+                #[cfg(target_os = "macos")] {
+                    if key_code.as_ref() == Key::Named(Named::Super) {
+                        *CTRL_PRESSED.lock().unwrap() = false;
+                    }
+                }
+                #[cfg(not(target_os = "macos"))] {
+                    if key_code.as_ref() == Key::Named(Named::Control) {
+                        *CTRL_PRESSED.lock().unwrap() = false;
+                    }
+                }
+            },
         }
 
         tasks
@@ -968,6 +999,9 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ToggleSyncedZoom(enabled) => {
                 self.synced_zoom = enabled;
             }
+            Message::ToggleViewerMode(enabled) => {
+                *VIEWER_MODE.lock().unwrap() = enabled;
+            }
             Message::PaneSelected(pane_index, is_selected) => {
                 self.panes[pane_index].is_selected = is_selected;
                 for (index, pane) in self.panes.iter_mut().enumerate() {
@@ -1181,6 +1215,43 @@ impl iced_winit::runtime::Program for DataViewer {
             }
 
             Message::Event(event) => match event {
+                Event::Mouse(iced_core::mouse::Event::WheelScrolled { delta }) => {
+                    // debug!("mouse scrolled in app {:?}", delta);
+                    if !*CTRL_PRESSED.lock().unwrap() && *VIEWER_MODE.lock().unwrap() {
+                        match delta {
+                            iced_core::mouse::ScrollDelta::Lines { y, .. }
+                            | iced_core::mouse::ScrollDelta::Pixels { y, .. } => {
+                                if y > 0.0 {
+                                    return move_left_all(
+                                        &self.device,
+                                        &self.queue,
+                                        self.cache_strategy,
+                                        self.compression_strategy,
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        &mut self.slider_value,
+                                        &self.pane_layout,
+                                        self.is_slider_dual,
+                                        self.last_opened_pane as usize);
+                                } else if y < 0.0 {
+                                    return move_right_all(
+                                        &self.device,
+                                        &self.queue,
+                                        self.cache_strategy,
+                                        self.compression_strategy,
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        &mut self.slider_value,
+                                        &self.pane_layout,
+                                        self.is_slider_dual,
+                                        self.last_opened_pane as usize
+                                    );
+                                }
+                            }
+                        };
+                    }
+                }
+
                 Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                     debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
                     debug!("modifiers.shift(): {}", modifiers.shift());
@@ -1403,4 +1474,3 @@ impl iced_winit::runtime::Program for DataViewer {
         }
     }
 }
-
