@@ -27,7 +27,7 @@ use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::Renderer;
 
 use crate::pane::Pane;
-use crate::{menu as app_menu, CURSOR_ON_BOTTOM, CURSOR_ON_TOP, IS_FULLSCREEN};
+use crate::{menu as app_menu, CURSOR_ON_BOTTOM, CURSOR_ON_MENU, CURSOR_ON_TOP, IS_FULLSCREEN};
 use app_menu::button_style;
 use crate::menu::PaneLayout;
 use crate::{app::Message, DataViewer};
@@ -126,6 +126,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
     let is_fullscreen = *IS_FULLSCREEN.lock().unwrap();
     let cursor_on_top = *CURSOR_ON_TOP.lock().unwrap();
+    let cursor_on_menu = *CURSOR_ON_MENU.lock().unwrap();
     let cursor_on_bottom = *CURSOR_ON_BOTTOM.lock().unwrap();
 
     let top_bar = container(
@@ -215,7 +216,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             // Create the column WITHOUT converting to Element first
             center(
                 container(
-                    if is_fullscreen && cursor_on_top {
+                    if is_fullscreen && (cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, first_img]
                     } else if is_fullscreen && cursor_on_bottom {
                         column![fps_bar, first_img, slider_controls, footer]
@@ -303,7 +304,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 };
 
                 container(
-                    if is_fullscreen && cursor_on_top {
+                    if is_fullscreen && (cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, panes]
                     } else if is_fullscreen && cursor_on_bottom {
                         column![fps_bar, panes, slider, footer]

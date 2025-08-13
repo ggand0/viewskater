@@ -109,6 +109,10 @@ static CURSOR_ON_TOP: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
 static CURSOR_ON_BOTTOM: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
     Arc::new(Mutex::new(false))
 });
+// flag to check cursor on menu
+static CURSOR_ON_MENU: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(false))
+});
 
 static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
 const QUEUE_LOG_THRESHOLD: usize = 20;
@@ -401,7 +405,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 WindowEvent::CursorMoved { position, .. } => {
                                     if *IS_FULLSCREEN.lock().unwrap() {
                                         *CURSOR_ON_TOP.lock().unwrap() =
-                                            position.y < 170.into();
+                                            position.y < 50.into();
                                         *CURSOR_ON_BOTTOM.lock().unwrap() =
                                             position.y > (window.inner_size().height - 100).into();
                                     }
@@ -616,6 +620,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                                 state.mouse_interaction(),
                                             ),
                                         );
+
+                                        // TODO: better way to track mouse on menu
+                                        *CURSOR_ON_MENU.lock().unwrap() = state.mouse_interaction() == mouse::Interaction::Pointer;
 
                                         if *debug {
                                             let total_frame_time = frame_start.elapsed();
