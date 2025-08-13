@@ -358,16 +358,42 @@ impl Pane {
 
         // Get directory path and image files
         let (dir_path, paths_result) = if is_file(path) {
-            debug!("Dropped path is a file");
+            debug!("Dropped path is a file: {}", path.display());
             let directory = path.parent().unwrap_or(Path::new(""));
             let dir = directory.to_string_lossy().to_string();
-            (dir.clone(), file_io::get_image_paths(Path::new(&dir)))
+            debug!("Parent directory path: {}", dir);
+            
+            // First try to read the parent directory
+            let parent_result = file_io::get_image_paths(Path::new(&dir));
+            match parent_result {
+                Ok(paths) => {
+                    // Parent directory access succeeded
+                    debug!("✅ SUCCESS: Parent directory access succeeded, found {} images", paths.len());
+                    (dir.clone(), Ok(paths))
+                }
+                Err(ImageError::DirectoryError(e)) => {
+                    // Parent directory access failed (likely sandboxed), create a single-file list
+                    debug!("❌ Parent directory access denied (error: {}), creating single-file cache", e);
+                    debug!("This is likely due to App Store sandboxing - only the selected file is accessible");
+                    let file_path = path.to_string_lossy().to_string();
+                    let single_file_list = vec![path.clone()];
+                    debug!("Single-file cache created with 1 image: {}", file_path);
+                    (file_path.clone(), Ok(single_file_list))
+                }
+                Err(e) => {
+                    // Other error, try single file as fallback
+                    debug!("❌ Other error reading directory: {}, falling back to single file", e);
+                    let file_path = path.to_string_lossy().to_string();
+                    let single_file_list = vec![path.clone()];
+                    (file_path.clone(), Ok(single_file_list))
+                }
+            }
         } else if is_directory(path) {
-            debug!("Dropped path is a directory");
+            debug!("Dropped path is a directory: {}", path.display());
             let dir = path.to_string_lossy().to_string();
             (dir, file_io::get_image_paths(path))
         } else {
-            error!("Dropped path does not exist or cannot be accessed");
+            error!("❌ Dropped path does not exist or cannot be accessed: {}", path.display());
             return;
         };
 

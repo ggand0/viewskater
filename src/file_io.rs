@@ -365,6 +365,59 @@ impl std::fmt::Display for ImageError {
 
 impl StdError for ImageError {}
 
+// Helper function to handle fallback when directory reading fails
+fn handle_fallback_for_single_file(directory_path: &Path, allowed_extensions: &[&str], original_error: io::Error) -> Result<Vec<PathBuf>, ImageError> {
+    debug!("🔄 FALLBACK: Handling fallback for single file due to directory access failure");
+    debug!("Directory path: {}", directory_path.display());
+    debug!("Original error: {}", original_error);
+    
+    // If we can't read the directory (common in sandboxed apps),
+    // check if the path itself is a valid image file
+    if directory_path.is_file() {
+        debug!("✅ Path is a file, checking if it's a valid image");
+        if let Some(extension) = directory_path.extension().and_then(std::ffi::OsStr::to_str) {
+            debug!("File extension: {}", extension);
+            if allowed_extensions.contains(&extension.to_lowercase().as_str()) {
+                debug!("✅ Valid image file found: {}", directory_path.display());
+                debug!("Returning single-file list for sandboxed app compatibility");
+                // Return just this single file
+                return Ok(vec![directory_path.to_path_buf()]);
+            } else {
+                debug!("❌ File has unsupported extension: {}", extension);
+            }
+        } else {
+            debug!("❌ File has no extension");
+        }
+    } else {
+        debug!("❌ Path is not a file (is_file() returned false)");
+        
+        // Additional debugging for macOS sandboxing
+        #[cfg(target_os = "macos")]
+        {
+            debug!("🔍 macOS-specific debugging:");
+            debug!("  - This may be due to App Store sandboxing restrictions");
+            debug!("  - The app may have individual file access but not directory access");
+            debug!("  - Security-scoped bookmarks may be needed for directory access");
+            
+            if crate::macos_file_handler::has_security_scoped_access(&directory_path.to_string_lossy()) {
+                debug!("  - Has security-scoped access for this path");
+            } else {
+                debug!("  - No security-scoped access for this path");
+            }
+            
+            if crate::macos_file_handler::has_full_disk_access() {
+                debug!("  - Has full disk access");
+            } else {
+                debug!("  - No full disk access");
+            }
+        }
+    }
+    
+    debug!("❌ FALLBACK FAILED: Cannot process as single file, returning original error");
+    // If it's not a valid image file, return the original error
+    Err(ImageError::DirectoryError(original_error))
+}
+
 pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageError> {
     let mut image_paths: Vec<PathBuf> = Vec::new();
     let allowed_extensions = [
@@ -372,8 +425,161 @@ pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageErro
         "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"
     ];
 
-    let dir_entries = fs::read_dir(directory_path)
-        .map_err(|e| ImageError::DirectoryError(e))?;
+    let dir_entries = match fs::read_dir(directory_path) {
+        Ok(entries) => {
+            debug!("Successfully read directory normally (drag-and-drop or non-sandboxed): {}", directory_path.display());
+            entries
+        }
+        Err(e) => {
+            debug!("Failed to read directory normally: {} (error: {})", directory_path.display(), e);
+            
+            // On macOS, ONLY try security-scoped access for confirmed "Open With" scenarios
+            #[cfg(target_os = "macos")]
+            {
+                let path_str = directory_path.to_string_lossy();
+                
+                // ONLY proceed with security logic if we have individual file access (confirmed "Open With")
+                // This ensures drag & drop NEVER hits this logic
+                let accessible_paths = crate::macos_file_handler::get_accessible_paths();
+                let has_individual_file_access = accessible_paths
+                    .iter()
+                    .any(|key| {
+                        let key_path = std::path::Path::new(key);
+                        if key_path.is_file() {
+                            if let Some(file_parent) = key_path.parent() {
+                                return file_parent.to_string_lossy() == path_str;
+                            }
+                        }
+                        false
+                    });
+                
+                if has_individual_file_access {
+                    debug!("Confirmed 'Open With' scenario - has individual file access for files in this directory");
+                    debug!("Accessible paths: {:?}", accessible_paths);
+                    
+                    // Try existing security-scoped access first
+                    if let Some(read_result) = crate::macos_file_handler::read_directory_with_security_scoped_access(&path_str) {
+                        match read_result {
+                            Ok(entries) => {
+                                debug!("Successfully read directory using existing security-scoped access");
+                                entries
+                            }
+                            Err(e2) => {
+                                debug!("Failed to read directory with existing security-scoped access: {}", e2);
+                                
+                                // NEW APPROACH: Try simple permission dialog first
+                                debug!("Trying simple permission dialog for parent directory access");
+                                if let Some(file_path) = accessible_paths.first() {
+                                    if crate::macos_file_handler::request_parent_directory_permission_dialog(file_path) {
+                                        debug!("Permission dialog succeeded, retrying directory read");
+                                        match std::fs::read_dir(directory_path) {
+                                            Ok(entries) => {
+                                                debug!("Successfully read directory with permission dialog access");
+                                                entries
+                                            }
+                                            Err(e3) => {
+                                                debug!("Still failed after permission dialog, falling back to folder picker: {}", e3);
+                                                
+                                                // Fallback to folder picker if simple dialog doesn't work
+                                                debug!("Requesting full disk access as fallback for confirmed 'Open With' scenario");
+                                                if crate::macos_file_handler::request_full_disk_access_once() {
+                                                    debug!("Full disk access granted, retrying directory read");
+                                                    match std::fs::read_dir(directory_path) {
+                                                        Ok(entries) => {
+                                                            debug!("Successfully read directory with full disk access");
+                                                            entries
+                                                        }
+                                                        Err(e4) => {
+                                                            debug!("Still failed to read directory even with full disk access: {}", e4);
+                                                            return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                                                        }
+                                                    }
+                                                } else {
+                                                    debug!("User declined full disk access in 'Open With' scenario");
+                                                    return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        debug!("User declined permission dialog, falling back to folder picker");
+                                        
+                                        // Fallback to folder picker
+                                        if crate::macos_file_handler::request_full_disk_access_once() {
+                                            debug!("Full disk access granted, retrying directory read");
+                                            match std::fs::read_dir(directory_path) {
+                                                Ok(entries) => {
+                                                    debug!("Successfully read directory with full disk access");
+                                                    entries
+                                                }
+                                                Err(e3) => {
+                                                    debug!("Still failed to read directory even with full disk access: {}", e3);
+                                                    return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                                                }
+                                            }
+                                        } else {
+                                            debug!("User declined full disk access");
+                                            return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                                        }
+                                    }
+                                } else {
+                                    debug!("No accessible file paths found for permission dialog");
+                                    return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                                }
+                            }
+                        }
+                    } else {
+                        debug!("No existing security-scoped access, requesting permission");
+                        if let Some(file_path) = accessible_paths.first() {
+                            if crate::macos_file_handler::request_parent_directory_permission_dialog(file_path) {
+                                debug!("Permission granted, retrying directory read");
+                                match std::fs::read_dir(directory_path) {
+                                    Ok(entries) => {
+                                        debug!("Successfully read directory with granted permission");
+                                        entries
+                                    }
+                                    Err(e3) => {
+                                        debug!("Still failed after permission grant: {}", e3);
+                                        return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                                    }
+                                }
+                            } else {
+                                debug!("User declined permission, trying folder picker as final fallback");
+                                if crate::macos_file_handler::request_full_disk_access_once() {
+                                    debug!("Folder picker succeeded, retrying directory read");
+                                    match std::fs::read_dir(directory_path) {
+                                        Ok(entries) => {
+                                            debug!("Successfully read directory with folder picker access");
+                                            entries
+                                        }
+                                        Err(e3) => {
+                                            debug!("Still failed even with folder picker: {}", e3);
+                                            return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                                        }
+                                    }
+                                } else {
+                                    debug!("User declined folder picker access");
+                                    return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                                }
+                            }
+                        } else {
+                            debug!("No accessible file paths found for permission dialog");
+                            return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                        }
+                    }
+                } else {
+                    debug!("NO individual file access detected - this is drag & drop or other normal access");
+                    debug!("Skipping ALL security-scoped logic to preserve normal drag & drop behavior");
+                    return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+                }
+            }
+            
+            // For non-macOS platforms, proceed with fallback
+            #[cfg(not(target_os = "macos"))]
+            {
+                return handle_fallback_for_single_file(directory_path, &allowed_extensions, e);
+            }
+        }
+    };
 
     for entry in dir_entries.flatten() {
         if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
@@ -386,8 +592,10 @@ pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageErro
     // Sort paths like Nautilus file viewer. (`image_paths.sort()` won't achieve this)
     if !image_paths.is_empty() {
         alphanumeric_sort::sort_path_slice(&mut image_paths);
+        debug!("Found {} image files in directory", image_paths.len());
         Ok(image_paths)
     } else {
+        debug!("No supported images found in directory");
         Err(ImageError::NoImagesFound)
     }
 }

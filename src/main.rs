@@ -232,6 +232,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     {
         macos_file_handler::set_file_channel(file_sender);
         macos_file_handler::register_file_handler();
+        
+        // Try to restore full disk access from previous session
+        debug!("🔍 Attempting to restore full disk access on startup");
+        let restore_result = macos_file_handler::restore_full_disk_access();
+        debug!("🔍 Restore full disk access result: {}", restore_result);
+        
         println!("macOS file handler registered");
     }
 
@@ -1112,20 +1118,407 @@ fn track_async_delivery() {
 #[cfg(target_os = "macos")]
 mod macos_file_handler {
     use std::sync::mpsc::Sender;
+    use std::sync::Mutex;
+    use std::collections::HashMap;
     use objc2::rc::autoreleasepool;
     use objc2::{msg_send, sel};
     use objc2::declare::ClassBuilder;
     use objc2::runtime::{AnyObject, Sel, AnyClass};
-    use objc2_app_kit::NSApplication;
-    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults};
+    use objc2_app_kit::{NSApplication, NSOpenPanel, NSModalResponse, NSModalResponseOK};
+    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults, NSURL};
     use objc2::rc::Retained;
+    use once_cell::sync::Lazy;
+    
+    #[allow(unused_imports)]
+    use log::{debug, info, warn, error};
 
     static mut FILE_CHANNEL: Option<Sender<String>> = None;
+    
+    // Security bookmark constants (from Apple's NSURLBookmarkCreationOptions)
+    const NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE: usize = 0x800; // 1UL << 11
+    const NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE: usize = 0x100; // 1UL << 8
+
+    // Store security-scoped URLs globally to maintain access throughout app lifetime
+    static SECURITY_SCOPED_URLS: Lazy<Mutex<HashMap<String, Retained<NSURL>>>> = 
+        Lazy::new(|| Mutex::new(HashMap::new()));
+
+    // Store user preferences for directory access decisions
+    static DIRECTORY_PERMISSIONS: Lazy<Mutex<HashMap<String, bool>>> = 
+        Lazy::new(|| Mutex::new(HashMap::new()));
+
+    // Store the full disk access bookmark persistently
+    static FULL_DISK_ACCESS_GRANTED: Lazy<Mutex<bool>> = 
+        Lazy::new(|| Mutex::new(false));
 
     pub fn set_file_channel(sender: Sender<String>) {
         unsafe {
             FILE_CHANNEL = Some(sender);
         }
+    }
+
+    // Function to store a security-scoped URL
+    fn store_security_scoped_url(path: &str, url: Retained<NSURL>) {
+        if let Ok(mut urls) = SECURITY_SCOPED_URLS.lock() {
+            urls.insert(path.to_string(), url);
+            println!("Stored security-scoped URL for path: {}", path);
+        }
+    }
+
+    // Public function to check if we have access to a path
+    pub fn has_security_scoped_access(path: &str) -> bool {
+        if let Ok(urls) = SECURITY_SCOPED_URLS.lock() {
+            urls.contains_key(path)
+        } else {
+            false
+        }
+    }
+
+    // Public function to get all accessible paths (for debugging)
+    pub fn get_accessible_paths() -> Vec<String> {
+        if let Ok(urls) = SECURITY_SCOPED_URLS.lock() {
+            urls.keys().cloned().collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    // Public function to check if we have access (simplified)
+    pub fn ensure_security_scoped_access(path: &str) -> bool {
+        has_security_scoped_access(path)
+    }
+
+    // Function to perform directory operations while ensuring security-scoped access is maintained
+    pub fn read_directory_with_security_scoped_access(path: &str) -> Option<Result<std::fs::ReadDir, std::io::Error>> {
+        if let Ok(urls) = SECURITY_SCOPED_URLS.lock() {
+            // Try exact path first
+            if let Some(url) = urls.get(path) {
+                println!("Using security-scoped access for exact path: {}", path);
+                debug!("Starting security-scoped resource access for exact path");
+                
+                // CRITICAL FIX: Test if the security-scoped URL is working
+                if test_security_scoped_url_access(url, path) {
+                    let result = std::fs::read_dir(path);
+                    return Some(result);
+                } else {
+                    debug!("Failed to start security-scoped resource access for exact path");
+                    // If we can't access it, the bookmark might be stale - remove just this one
+                    println!("❌ Security-scoped access failed for stored URL, removing stale entry");
+                    drop(urls); // Release the lock before calling remove function
+                    remove_failed_security_scoped_url(path);
+                    return None;
+                }
+            }
+            
+            // Try parent directory access if we have it
+            if let Ok(path_obj) = std::path::Path::new(path).canonicalize() {
+                if let Some(parent) = path_obj.parent() {
+                    let parent_str = parent.to_string_lossy();
+                    if let Some(parent_url) = urls.get(parent_str.as_ref()) {
+                        println!("Using security-scoped access for parent directory: {}", parent_str);
+                        debug!("Starting security-scoped resource access for parent directory");
+                        
+                        if test_security_scoped_url_access(parent_url, &parent_str) {
+                            let result = std::fs::read_dir(path);
+                            return Some(result);
+                        } else {
+                            debug!("Failed to start security-scoped resource access for parent");
+                            return None;
+                        }
+                    }
+                }
+            }
+            
+            // Try variations with/without trailing slashes
+            let path_variations = if path.ends_with('/') {
+                vec![path.trim_end_matches('/').to_string()]
+            } else {
+                vec![format!("{}/", path)]
+            };
+            
+            for variation in path_variations {
+                if let Some(url) = urls.get(&variation) {
+                    println!("Using security-scoped access for path variation: {}", variation);
+                    debug!("Starting security-scoped resource access for path variation");
+                    
+                    if test_security_scoped_url_access(url, &variation) {
+                        let result = std::fs::read_dir(path);
+                        return Some(result);
+                    } else {
+                        debug!("Failed to start security-scoped resource access for variation");
+                    }
+                }
+            }
+            
+            // CRITICAL FIX: Check if we have individual file access but no directory access
+            // This is the key case when user double-clicks an image file - we get file access but not directory access
+            let has_individual_file_access = urls.keys().any(|key| {
+                let key_path = std::path::Path::new(key);
+                // Check if any stored URL is a file within the directory we're trying to access
+                if key_path.is_file() {
+                    if let Some(file_parent) = key_path.parent() {
+                        return file_parent.to_string_lossy() == path;
+                    }
+                }
+                false
+            });
+            
+            if has_individual_file_access {
+                println!("DETECTED: Individual file access within directory {} but no directory access - this is the 'Open With' case", path);
+                println!("Available security-scoped URLs: {:?}", urls.keys().collect::<Vec<_>>());
+                
+                // Check if we already have full disk access
+                if has_full_disk_access() {
+                    println!("Full disk access already granted - this should work");
+                    debug!("Attempting directory read with existing full disk access");
+                    return Some(std::fs::read_dir(path));
+                } else {
+                    println!("Individual file access detected but no full disk access - need to request directory access");
+                    // Trigger NSOpenPanel request
+                    drop(urls); // Release lock before calling request function
+                    if request_directory_access_with_nsopenpanel(path) {
+                        // Retry after getting access
+                        return Some(std::fs::read_dir(path));
+                    } else {
+                        return None;
+                    }
+                }
+            }
+            
+            // If we have no security-scoped access at all, request it
+            if urls.is_empty() {
+                println!("No security-scoped URLs stored - requesting directory access");
+                drop(urls); // Release lock before calling request function
+                if request_directory_access_with_nsopenpanel(path) {
+                    // Retry after getting access
+                    return Some(std::fs::read_dir(path));
+                } else {
+                    return None;
+                }
+            }
+        }
+        
+        println!("No security-scoped access available for path: {}", path);
+        None
+    }
+
+    // Function to check if user has already decided about directory access
+    fn has_directory_permission_decision(dir_path: &str) -> Option<bool> {
+        if let Ok(perms) = DIRECTORY_PERMISSIONS.lock() {
+            perms.get(dir_path).copied()
+        } else {
+            None
+        }
+    }
+
+    // Function to store user's directory access decision
+    fn store_directory_permission_decision(dir_path: &str, granted: bool) {
+        if let Ok(mut perms) = DIRECTORY_PERMISSIONS.lock() {
+            perms.insert(dir_path.to_string(), granted);
+        }
+    }
+
+    // Function to check if full disk access has been granted
+    pub fn has_full_disk_access() -> bool {
+        let access_granted = if let Ok(access) = FULL_DISK_ACCESS_GRANTED.lock() {
+            *access
+        } else {
+            false
+        };
+        debug!("has_full_disk_access() returning: {}", access_granted);
+        access_granted
+    }
+
+    // NEW: NSOpenPanel-based directory access request
+    fn request_directory_access_with_nsopenpanel(requested_path: &str) -> bool {
+        debug!("🔍 Requesting directory access via NSOpenPanel for: {}", requested_path);
+        
+        autoreleasepool(|pool| {
+            unsafe {
+                let mtm = MainThreadMarker::new().expect("Must be on main thread");
+                
+                // Create NSOpenPanel
+                let panel = NSOpenPanel::openPanel(mtm);
+                
+                // Configure panel for directory selection
+                panel.setCanChooseDirectories(true);
+                panel.setCanChooseFiles(false);
+                panel.setAllowsMultipleSelection(false);
+                panel.setCanCreateDirectories(false);
+                
+                // Set the directory to the requested path's parent if possible
+                if let Some(parent_dir) = std::path::Path::new(requested_path).parent() {
+                    let parent_str = parent_dir.to_string_lossy();
+                    let parent_nsstring = NSString::from_str(&parent_str);
+                    let parent_url = NSURL::fileURLWithPath(&parent_nsstring);
+                    panel.setDirectoryURL(Some(&parent_url));
+                }
+                
+                // Set title and prompt
+                let title = NSString::from_str("Grant Directory Access");
+                panel.setTitle(Some(&title));
+                
+                let message = NSString::from_str(&format!(
+                    "ViewSkater needs access to browse images in this directory:\n\n{}\n\nPlease select the directory to grant access.",
+                    requested_path
+                ));
+                panel.setMessage(Some(&message));
+                
+                // Show the panel
+                debug!("Showing NSOpenPanel...");
+                let response: NSModalResponse = panel.runModal();
+                
+                if response == NSModalResponseOK {
+                    debug!("User selected directory in NSOpenPanel");
+                    
+                    // Get the selected URLs (security-scoped)
+                    let urls = panel.URLs();
+                    
+                    if urls.len() > 0 {
+                        let selected_url = &urls[0];
+                        
+                        // Get the path from the selected URL
+                        if let Some(selected_path_nsstring) = selected_url.path() {
+                            let selected_path = selected_path_nsstring.as_str(pool);
+                            debug!("Selected directory: {}", selected_path);
+                            
+                            // CRITICAL: Create security-scoped bookmark from the selected URL
+                            use objc2_foundation::{NSURLBookmarkCreationOptions, NSURLBookmarkResolutionOptions};
+                            let bookmark_options = NSURLBookmarkCreationOptions(NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE);
+                            
+                            match selected_url.bookmarkDataWithOptions_includingResourceValuesForKeys_relativeToURL_error(
+                                bookmark_options,
+                                None,
+                                None,
+                            ) {
+                                Ok(bookmark_data) => {
+                                    debug!("Created security-scoped bookmark successfully");
+                                    
+                                    // Resolve the bookmark to get a security-scoped URL
+                                    let resolution_options = NSURLBookmarkResolutionOptions(NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE);
+                                    let mut is_stale = objc2::runtime::Bool::new(false);
+                                    
+                                    match NSURL::URLByResolvingBookmarkData_options_relativeToURL_bookmarkDataIsStale_error(
+                                        &bookmark_data,
+                                        resolution_options,
+                                        None,
+                                        &mut is_stale,
+                                    ) {
+                                        Ok(resolved_url) => {
+                                            debug!("Resolved security-scoped bookmark successfully");
+                                            
+                                            // Start accessing the security-scoped resource
+                                            let access_granted = resolved_url.startAccessingSecurityScopedResource();
+                                            debug!("Security-scoped resource access result: {}", access_granted);
+                                            
+                                            if access_granted {
+                                                // Store the resolved URL for future use
+                                                store_security_scoped_url(selected_path, resolved_url.clone());
+                                                
+                                                // Also store bookmark data in UserDefaults for persistence
+                                                let defaults = NSUserDefaults::standardUserDefaults();
+                                                let key = NSString::from_str("ViewSkaterSecurityBookmark");
+                                                defaults.setObject_forKey(Some(&*bookmark_data), &key);
+                                                
+                                                debug!("✅ Successfully granted and stored directory access for: {}", selected_path);
+                                                println!("✅ Directory access granted for: {}", selected_path);
+                                                
+                                                return true;
+                                            } else {
+                                                debug!("❌ Failed to start accessing security-scoped resource");
+                                                println!("❌ Failed to activate directory access");
+                                            }
+                                        }
+                                        Err(e) => {
+                                            debug!("❌ Failed to resolve security-scoped bookmark: {:?}", e);
+                                            println!("❌ Failed to resolve security bookmark");
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    debug!("❌ Failed to create security-scoped bookmark: {:?}", e);
+                                    println!("❌ Failed to create security bookmark");
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    debug!("User cancelled NSOpenPanel");
+                    println!("Directory access cancelled by user");
+                }
+            }
+            
+            false
+        })
+    }
+
+    // Better UX approach: Guide user to grant Full Disk Access in System Preferences
+    pub fn request_parent_directory_permission_dialog(file_path: &str) -> bool {
+        debug!("🔍 request_parent_directory_permission_dialog() called for: {}", file_path);
+        
+        let file_path_obj = std::path::Path::new(file_path);
+        if let Some(parent_dir) = file_path_obj.parent() {
+            let parent_dir_str = parent_dir.to_string_lossy();
+            
+            // Use NSOpenPanel instead of AppleScript
+            return request_directory_access_with_nsopenpanel(&parent_dir_str);
+        } else {
+            debug!("Could not determine parent directory");
+            false
+        }
+    }
+
+    // Simplified full disk access request - just check if we have it
+    pub fn request_full_disk_access_once() -> bool {
+        debug!("🔍 request_full_disk_access_once() called");
+        
+        // First check if we actually have Full Disk Access by testing a protected directory
+        if test_full_disk_access() {
+            debug!("Full Disk Access already granted");
+            if let Ok(mut access) = FULL_DISK_ACCESS_GRANTED.lock() {
+                *access = true;
+            }
+            return true;
+        }
+        
+        debug!("No Full Disk Access detected, using NSOpenPanel for directory access");
+        
+        // Instead of showing Full Disk Access guidance, use NSOpenPanel
+        // This is more user-friendly and works within the sandbox
+        return request_directory_access_with_nsopenpanel("/Users");
+    }
+
+    // Helper function to test if we actually have Full Disk Access
+    fn test_full_disk_access() -> bool {
+        // Try to read a protected directory that requires Full Disk Access
+        // We'll try to read the user's Desktop directory which is typically protected
+        if let Some(home_dir) = dirs::home_dir() {
+            let desktop_dir = home_dir.join("Desktop");
+            match std::fs::read_dir(&desktop_dir) {
+                Ok(_) => {
+                    debug!("✅ Full Disk Access confirmed - can read Desktop directory");
+                    return true;
+                }
+                Err(e) => {
+                    debug!("❌ No Full Disk Access - cannot read Desktop directory: {}", e);
+                }
+            }
+        }
+        
+        // Also try reading the user's Documents directory
+        if let Some(home_dir) = dirs::home_dir() {
+            let documents_dir = home_dir.join("Documents");
+            match std::fs::read_dir(&documents_dir) {
+                Ok(_) => {
+                    debug!("✅ Full Disk Access confirmed - can read Documents directory");
+                    return true;
+                }
+                Err(e) => {
+                    debug!("❌ No Full Disk Access - cannot read Documents directory: {}", e);
+                }
+            }
+        }
+        
+        false
     }
 
     unsafe extern "C" fn handle_open_files(
@@ -1139,12 +1532,63 @@ mod macos_file_handler {
             for file in files.iter() {
                 let path = file.as_str(pool).to_owned();
                 println!("Received file path: {}", path);
+                
+                // Create NSURL from the path
+                let url = NSURL::fileURLWithPath(&file);
+                println!("Created NSURL for path: {}", path);
+                
+                // Try to start accessing security-scoped resource for the file
+                let file_accessed: bool = unsafe { msg_send![&url, startAccessingSecurityScopedResource] };
+                println!("File security-scoped resource access result: {}", file_accessed);
+                
+                // Store the file URL if access was granted
+                if file_accessed {
+                    store_security_scoped_url(&path, url.clone());
+                    println!("Stored security-scoped access for file: {}", path);
+                    
+                    // IMPORTANT: Try to get parent directory access using the file's security scope
+                    if let Some(parent_url) = url.URLByDeletingLastPathComponent() {
+                        if let Some(parent_path) = parent_url.path() {
+                            let parent_path_str = parent_path.as_str(pool).to_owned();
+                            println!("Attempting to gain parent directory access: {}", parent_path_str);
+                            
+                            // Test if we can read the parent directory using the file's security scope
+                            match std::fs::read_dir(std::path::Path::new(&parent_path_str)) {
+                                Ok(_) => {
+                                    println!("SUCCESS: Can read parent directory using file's security scope");
+                                    // Store the parent directory access too
+                                    store_security_scoped_url(&parent_path_str, url.clone());
+                                    println!("Stored parent directory access using file's security scope");
+                                }
+                                Err(e) => {
+                                    println!("FAILED: Cannot read parent directory using file's security scope: {}", e);
+                                    println!("This means we have individual file access but not directory access");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Send the file path through the channel
+                    unsafe {
+                        if let Some(ref sender) = *(&raw const FILE_CHANNEL) {
+                            if let Err(e) = sender.send(path.clone()) {
+                                println!("Failed to send file path through channel: {}", e);
+                            } else {
+                                println!("Successfully sent file path through channel");
+                            }
+                        }
+                    }
+                    continue;
+                }
+                
+                // If individual file access failed, try as fallback
+                println!("Individual file access failed, sending path anyway as fallback");
                 unsafe {
                     if let Some(ref sender) = *(&raw const FILE_CHANNEL) {
                         if let Err(e) = sender.send(path.clone()) {
                             println!("Failed to send file path through channel: {}", e);
                         } else {
-                            println!("Successfully sent file path through channel");
+                            println!("Successfully sent file path through channel (fallback)");
                         }
                     } else {
                         println!("FILE_CHANNEL is None when trying to send path");
@@ -1185,5 +1629,107 @@ mod macos_file_handler {
             NSUserDefaults::standardUserDefaults().registerDefaults(dict.as_ref());
         }
     }
+
+    // Helper function to test if a security-scoped URL is working
+    fn test_security_scoped_url_access(url: &Retained<NSURL>, path: &str) -> bool {
+        debug!("Testing security-scoped access for: {}", path);
+        
+        let accessed = unsafe { url.startAccessingSecurityScopedResource() };
+        debug!("startAccessingSecurityScopedResource result for {}: {}", path, accessed);
+        
+        if accessed {
+            // Test actual file system access
+            match std::fs::metadata(path) {
+                Ok(_) => {
+                    debug!("✅ Security-scoped access verified for: {}", path);
+                    // Keep the access active - don't stop it
+                    return true;
+                }
+                Err(e) => {
+                    debug!("❌ File system access failed despite security scope for {}: {}", path, e);
+                    unsafe { url.stopAccessingSecurityScopedResource() };
+                    return false;
+                }
+            }
+        } else {
+            debug!("❌ Could not start security-scoped resource access for: {}", path);
+            return false;
+        }
+    }
+
+    // Function to remove a specific failed security-scoped URL
+    fn remove_failed_security_scoped_url(failed_path: &str) {
+        if let Ok(mut urls) = SECURITY_SCOPED_URLS.lock() {
+            if urls.remove(failed_path).is_some() {
+                debug!("Removed failed security-scoped URL for: {}", failed_path);
+                println!("🗑️ Removed failed security-scoped URL for: {}", failed_path);
+            }
+        }
+    }
+
+    // Function to restore directory access from stored bookmarks
+    pub fn restore_full_disk_access() -> bool {        
+        debug!("🔍 Attempting to restore directory access from stored bookmarks");
+        
+        autoreleasepool(|_pool| {
+            unsafe {
+                let defaults = NSUserDefaults::standardUserDefaults();
+                let key = NSString::from_str("ViewSkaterSecurityBookmark");
+                
+                if let Some(bookmark_data) = defaults.objectForKey(&key) {
+                    debug!("Found stored security bookmark");
+                    
+                    // Cast the object to NSData
+                    let bookmark_data: Retained<objc2_foundation::NSData> = 
+                        Retained::cast(bookmark_data.clone());
+                    
+                    // Resolve the bookmark
+                    use objc2_foundation::NSURLBookmarkResolutionOptions;
+                    let resolution_options = NSURLBookmarkResolutionOptions(NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE);
+                    let mut is_stale = objc2::runtime::Bool::new(false);
+                    
+                    match NSURL::URLByResolvingBookmarkData_options_relativeToURL_bookmarkDataIsStale_error(
+                        &bookmark_data,
+                        resolution_options,
+                        None,
+                        &mut is_stale,
+                    ) {
+                        Ok(resolved_url) => {
+                            debug!("Successfully resolved stored bookmark");
+                            
+                            // Start accessing the security-scoped resource
+                            let access_granted = resolved_url.startAccessingSecurityScopedResource();
+                            debug!("Security-scoped resource access result: {}", access_granted);
+                            
+                            if access_granted {
+                                // Get the path from the resolved URL
+                                if let Some(path_nsstring) = resolved_url.path() {
+                                    let path = path_nsstring.as_str(_pool);
+                                    
+                                    // Store the resolved URL for future use
+                                    store_security_scoped_url(path, resolved_url);
+                                    
+                                    debug!("✅ Successfully restored directory access for: {}", path);
+                                    println!("✅ Restored directory access for: {}", path);
+                                    
+                                    return true;
+                                }
+                            } else {
+                                debug!("❌ Failed to start accessing restored security-scoped resource");
+                            }
+                        }
+                        Err(e) => {
+                            debug!("❌ Failed to resolve stored bookmark: {:?}", e);
+                        }
+                    }
+                } else {
+                    debug!("No stored security bookmark found");
+                }
+            }
+            
+            false
+        })
+    }
 }
+
 
