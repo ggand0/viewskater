@@ -403,6 +403,15 @@ impl Pane {
                     }
                     _file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(a.file_name(), b.file_name()));
                 },
+                Some("rar") => {
+                    match read_rar(path, &mut _file_paths) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            error!("Faield to read rar file: {e}");
+                            return;
+                        },
+                    }
+                }
                 _ => {
                     error!("File extension not supported");
                     return;
@@ -630,4 +639,28 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
 
     let pane = &panes[max_dir_size_index];
     pane.img_cache.current_index as usize
+}
+
+fn read_rar(path: &PathBuf, files: &mut Vec<PathType>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut archive =
+        unrar::Archive::new(path)
+            .open_for_processing()?;
+    while let Some(header) = archive.read_header()? {
+        let filename = header.entry().filename.to_string_lossy().to_string();
+        archive = if header.entry().is_file() {
+            if ALLOWED_EXTENSIONS.contains(&filename.split('.').next_back().unwrap_or("")) {
+                let (data, rest) = header.read()?;
+                files.push(PathType::FileByte(filename, data));
+                rest
+            } else {
+                debug!("Unsupported file {filename} in {}", path.to_string_lossy().to_string());
+                header.skip()?
+            }
+        } else {
+            debug!("Skipping directory {filename}");
+            header.skip()?
+        };
+    }
+
+    Ok(())
 }

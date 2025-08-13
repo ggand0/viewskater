@@ -34,7 +34,7 @@ use std::thread;
 
 pub const ALLOWED_EXTENSIONS: [&str; 15] = ["jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
         "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"];
-pub const ALLOWED_COMPRESSED_FILES: [&str; 1] = ["zip"];
+pub const ALLOWED_COMPRESSED_FILES: [&str; 2] = ["zip", "rar"];
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
