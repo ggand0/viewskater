@@ -30,7 +30,6 @@ use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
 use crate::cache::img_cache::CacheStrategy;
 use iced_wgpu::engine::CompressionStrategy;
-use std::thread;
 
 pub const ALLOWED_EXTENSIONS: [&str; 15] = ["jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
         "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"];
@@ -51,7 +50,16 @@ static STDOUT_BUFFER: Lazy<Arc<Mutex<VecDeque<String>>>> = Lazy::new(|| {
 // Global flag to control stdout capture
 static STDOUT_CAPTURE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-
+// Global ref for compressed file
+pub static COMPRESSED_FILE: Lazy<Arc<Mutex<(PathBuf, ArchiveType)>>> = Lazy::new(|| {
+    Arc::new(Mutex::new((PathBuf::new(), ArchiveType::None)))
+});
+#[derive(Debug, Clone)]
+pub enum ArchiveType {
+    None,
+    Zip,
+    Rar,
+}
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -116,8 +124,8 @@ pub fn read_image_bytes(path: &PathType) -> Result<Vec<u8>, std::io::Error> {
                 Ok(buffer)
             }
         },
-        PathType::FileByte(_, bytes) => {
-            Ok(bytes.to_vec())
+        PathType::FileByte(_, _) => {
+            Ok(path.bytes().to_vec())
         }
     }
 }
@@ -172,8 +180,8 @@ async fn load_image_cpu_async(path: Option<PathType>) -> Result<Option<CachedDat
                     Err(e) => Err(e.kind()),
                 }
             },
-            PathType::FileByte(_, bytes) => {
-                Ok(Some(CachedData::Cpu(bytes.to_vec())))
+            PathType::FileByte(_, _) => {
+                Ok(Some(CachedData::Cpu(path.bytes().to_vec())))
             }
         }
 
@@ -903,7 +911,7 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
     let buffer = Arc::clone(&STDOUT_BUFFER);
 
     // Spawn a thread to read from the pipe and capture output
-    thread::spawn(move || {
+    std::thread::spawn(move || {
         let mut line = String::new();
         let mut original_stdout = original_stdout;
 

@@ -29,8 +29,8 @@ impl ImageCacheBackend for CpuImageCache {
                 PathType::PathBuf(path) => {
                     Ok(CachedData::Cpu(fs::read(path)?))
                 },
-                PathType::FileByte(_, bytes) => {
-                    Ok(CachedData::Cpu(bytes.to_vec()))
+                PathType::FileByte(_, _) => {
+                    Ok(CachedData::Cpu(path.bytes().to_vec()))
                 }
             }
 

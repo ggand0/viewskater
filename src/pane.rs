@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Instant;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
@@ -17,8 +18,10 @@ use crate::cache::img_cache::PathType;
 use crate::config::CONFIG;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
+use crate::file_io::ArchiveType;
 use crate::file_io::ALLOWED_COMPRESSED_FILES;
 use crate::file_io::ALLOWED_EXTENSIONS;
+use crate::file_io::COMPRESSED_FILE;
 use crate::menu::PaneLayout;
 use crate::widgets::viewer;
 use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
@@ -356,7 +359,7 @@ impl Pane {
     ) {
         mem::log_memory("Before pane initialization");
 
-        let mut _file_paths: Vec<PathType> = Vec::new();
+        let mut file_paths: Vec<PathType> = Vec::new();
         let mut initial_index: usize = 0;
 
         let is_dir_size_bigger: bool;
@@ -364,50 +367,26 @@ impl Pane {
 
         // compressed file
         if path.extension().is_some_and(|ex| ALLOWED_COMPRESSED_FILES.contains(&ex.to_ascii_lowercase().to_str().unwrap_or(""))) {
+            let archive;
             match path.extension().unwrap().to_ascii_lowercase().to_str() {
                 Some("zip") => {
-                    let mut archive = match zip::ZipArchive::new(std::io::BufReader::new(
-                        match std::fs::File::open(path) {
-                            Ok(f) => f,
-                            Err(e) => {
-                                error!("Failed to open zip file: {e}");
-                                return;
-                            }
+                    match read_zip_path(path, &mut file_paths) {
+                        Ok(_) => {
+                            archive = ArchiveType::Zip;
                         },
-                    )) {
-                        Ok(z) => z,
                         Err(e) => {
-                            error!("Failed to open zip archive: {e}");
+                            error!("Failed to read zip file: {e}");
                             return;
-                        }
-                    };
-                    for i in 0..archive.len() {
-                        let mut file = match archive.by_index(i) {
-                            Ok(f) => f,
-                            Err(e) => {
-                                error!("Failed to get index {i} from zip file: {e}");
-                                return;
-                            }
-                        };
-                        if file.is_file() && ALLOWED_EXTENSIONS.contains(&file.name().split('.').next_back().unwrap_or("")) {
-                            debug!("reading {} in {:?}", file.name(), path.file_name());
-                            let mut buffer = Vec::new();
-                            match std::io::Read::read_to_end(&mut file, &mut buffer) {
-                                Ok(_) => _file_paths.push(PathType::FileByte(file.name().to_string(), buffer)),
-                                Err(e) => {
-                                    error!("Failed to read zip file: {e}");
-                                    return;
-                                }
-                            }
-                        }
+                        },
                     }
-                    _file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(a.file_name(), b.file_name()));
                 },
                 Some("rar") => {
-                    match read_rar(path, &mut _file_paths) {
-                        Ok(_) => {},
+                    match read_rar_path(path, &mut file_paths) {
+                        Ok(_) => {
+                            archive = ArchiveType::Rar;
+                        },
                         Err(e) => {
-                            error!("Faield to read rar file: {e}");
+                            error!("Failed to read rar file: {e}");
                             return;
                         },
                     }
@@ -417,6 +396,8 @@ impl Pane {
                     return;
                 }
             }
+            file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(a.file_name(), b.file_name()));
+            *COMPRESSED_FILE.lock().unwrap() = (path.to_path_buf(), archive);
         } else {
             // Get directory path and image files
             let (dir_path, paths_result) = if is_file(path) {
@@ -434,7 +415,7 @@ impl Pane {
             };
 
             // Handle the result from get_image_paths
-            _file_paths = match paths_result {
+            file_paths = match paths_result {
                 Ok(paths) => paths.iter().map(|item| {
                     PathType::PathBuf(item.to_path_buf())
                 }).collect::<Vec<_>>(),
@@ -454,7 +435,7 @@ impl Pane {
 
             // Determine initial index and update slider
             if is_file(path) {
-                let file_index = get_file_index(&_file_paths.iter().filter_map(|item| {
+                let file_index = get_file_index(&file_paths.iter().filter_map(|item| {
                     if let PathType::PathBuf(pb) = item {
                         Some(pb.to_path_buf())
                     } else {
@@ -480,12 +461,12 @@ impl Pane {
         } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
             true
         } else {
-            _file_paths.len() >= *longest_file_length
+            file_paths.len() >= *longest_file_length
         };
         debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
 
         // Sort
-        debug!("File paths: {}", _file_paths.len());
+        debug!("File paths: {}", file_paths.len());
         self.dir_loaded = true;
 
         // Clone device and queue before passing to ImageCache to avoid the move
@@ -494,7 +475,7 @@ impl Pane {
 
         // Instantiate a new image cache based on GPU support
         let mut img_cache = ImageCache::new(
-            &_file_paths,
+            &file_paths,
             CONFIG.cache_size,
             cache_strategy,
             compression_strategy,
@@ -641,7 +622,19 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     pane.img_cache.current_index as usize
 }
 
-fn read_rar(path: &PathBuf, files: &mut Vec<PathType>) -> Result<(), Box<dyn std::error::Error>> {
+fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut archive = zip::ZipArchive::new(std::io::BufReader::new(
+        std::fs::File::open(path)?))?;
+    for i in 0..archive.len() {
+        let file = archive.by_index(i)?;
+        if file.is_file() && ALLOWED_EXTENSIONS.contains(&file.name().split('.').next_back().unwrap_or("")) {
+            file_paths.push(PathType::FileByte(file.name().to_string(), OnceLock::new()));
+        }
+    }
+    Ok(())
+}
+
+fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn std::error::Error>> {
     let mut archive =
         unrar::Archive::new(path)
             .open_for_processing()?;
@@ -649,9 +642,13 @@ fn read_rar(path: &PathBuf, files: &mut Vec<PathType>) -> Result<(), Box<dyn std
         let filename = header.entry().filename.to_string_lossy().to_string();
         archive = if header.entry().is_file() {
             if ALLOWED_EXTENSIONS.contains(&filename.split('.').next_back().unwrap_or("")) {
-                let (data, rest) = header.read()?;
-                files.push(PathType::FileByte(filename, data));
-                rest
+                // let (data, rest) = header.read()?;
+                // let ol = OnceLock::new();
+                // let _ = ol.set(data);
+                // files.push(PathType::FileByte(filename, ol));
+                // rest
+                file_paths.push(PathType::FileByte(filename, OnceLock::new()));
+                header.skip()?
             } else {
                 debug!("Unsupported file {filename} in {}", path.to_string_lossy().to_string());
                 header.skip()?
