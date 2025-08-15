@@ -460,20 +460,29 @@ fn request_directory_access_and_retry(
         crate::write_crash_debug_log("STEP 0 (retry): Attempting bookmark restoration before prompting user");
         if crate::security_bookmarks::macos_file_handler::restore_directory_access_for_path(&path_str) {
             crate::write_crash_debug_log("STEP 0 (retry): ✅ Restored directory access from bookmark, retrying read");
-            let effective_path = if let Some(resolved_path) = crate::security_bookmarks::macos_file_handler::get_security_scoped_path(&path_str) {
-                crate::write_crash_debug_log(&format!("STEP 0 (retry): Using resolved security-scoped path: {}", resolved_path));
-                std::path::PathBuf::from(resolved_path)
+            
+            // Use the same NSURL-based approach as the main function for consistency
+            crate::write_crash_debug_log("STEP 0 (retry): Attempting to read directory using resolved NSURL directly");
+            if let Some(file_paths) = crate::security_bookmarks::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
+                crate::write_crash_debug_log(&format!("STEP 0 (retry): ✅ Successfully read directory using NSURL, found {} files", file_paths.len()));
+                
+                // Convert to DirEntry-like structure for compatibility with existing code
+                let mut image_paths = Vec::new();
+                for file_path in file_paths {
+                    let path = std::path::Path::new(&file_path);
+                    if let Some(extension) = path.extension() {
+                        if let Some(ext_str) = extension.to_str() {
+                            if allowed_extensions.contains(&ext_str.to_lowercase().as_str()) {
+                                image_paths.push(path.to_path_buf());
+                            }
+                        }
+                    }
+                }
+                
+                crate::write_crash_debug_log(&format!("STEP 0 (retry): ✅ Found {} image files", image_paths.len()));
+                return Ok(image_paths);
             } else {
-                directory_path.to_path_buf()
-            };
-            match std::fs::read_dir(&effective_path) {
-                Ok(entries) => {
-                    crate::write_crash_debug_log("STEP 0 (retry): ✅ Directory read successful after bookmark restoration");
-                    return process_directory_entries(entries, directory_path, allowed_extensions);
-                }
-                Err(e2) => {
-                    crate::write_crash_debug_log(&format!("STEP 0 (retry): ❌ Directory read still failed after bookmark restoration: {}", e2));
-                }
+                crate::write_crash_debug_log("STEP 0 (retry): ❌ Failed to read directory using resolved NSURL");
             }
         } else {
             crate::write_crash_debug_log("STEP 0 (retry): ❌ No stored bookmark or restoration failed");
@@ -603,7 +612,8 @@ pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageErro
                 // STEP 0: Try to restore directory access from stored bookmarks UNCONDITIONALLY
                 // This handles fresh app launches where no in-memory session URLs exist yet
                 crate::write_crash_debug_log("STEP 0: About to call restore_directory_access_for_path (unconditional)");
-                if crate::security_bookmarks::macos_file_handler::restore_directory_access_for_path(&path_str) {
+                let bookmark_restoration_successful = crate::security_bookmarks::macos_file_handler::restore_directory_access_for_path(&path_str);
+                if bookmark_restoration_successful {
                     crate::write_crash_debug_log("STEP 0: ✅ Successfully restored directory access from bookmark");
                     debug!("Successfully restored directory access from bookmark (unconditional), retrying read");
                     
@@ -661,44 +671,19 @@ pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageErro
                 crate::write_crash_debug_log(&format!("Has individual file access in this directory: {}", has_individual_file_access));
                 
                 if has_individual_file_access {
-                    crate::write_crash_debug_log("Confirmed 'Open With' scenario - attempting bookmark restoration first");
-                    debug!("Confirmed 'Open With' scenario - attempting bookmark restoration first");
+                    crate::write_crash_debug_log("Confirmed 'Open With' scenario");
+                    debug!("Confirmed 'Open With' scenario");
                     
-                    // STEP 1: Try to restore directory access from stored bookmarks
-                    crate::write_crash_debug_log("STEP 1: About to call restore_directory_access_for_path");
-                    if crate::security_bookmarks::macos_file_handler::restore_directory_access_for_path(&path_str) {
-                        crate::write_crash_debug_log("STEP 1: ✅ Successfully restored directory access from bookmark");
-                        debug!("Successfully restored directory access from bookmark, retrying read");
-                        
-                        crate::write_crash_debug_log("STEP 1: Retrying std::fs::read_dir after bookmark restoration");
-                        
-                        // CRITICAL FIX: Use the resolved NSURL directly for file operations, don't convert to path string
-                        crate::write_crash_debug_log("STEP 1: Attempting to read directory using resolved NSURL directly");
-                        if let Some(file_paths) = crate::security_bookmarks::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
-                            crate::write_crash_debug_log(&format!("STEP 1: ✅ Successfully read directory using NSURL, found {} files", file_paths.len()));
-                            
-                            // Convert to DirEntry-like structure for compatibility with existing code
-                            let mut image_paths = Vec::new();
-                            for file_path in file_paths {
-                                let path = std::path::Path::new(&file_path);
-                                if let Some(extension) = path.extension() {
-                                    if let Some(ext_str) = extension.to_str() {
-                                        if allowed_extensions.contains(&ext_str.to_lowercase().as_str()) {
-                                            image_paths.push(path.to_path_buf());
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            crate::write_crash_debug_log(&format!("STEP 1: ✅ Found {} image files", image_paths.len()));
-                            return Ok(image_paths);
-                        } else {
-                            crate::write_crash_debug_log("STEP 1: ❌ Failed to read directory using resolved NSURL");
-                        }
+                    // STEP 1: Check if STEP 0 bookmark restoration was successful
+                    if bookmark_restoration_successful {
+                        crate::write_crash_debug_log("STEP 1: STEP 0 bookmark restoration was successful, but NSURL read failed");
+                        debug!("STEP 0 bookmark restoration was successful, but NSURL read failed");
+                        // Don't retry the same operation - fall back to permission dialog
+                        crate::write_crash_debug_log("STEP 1: Falling back to request_directory_access_and_retry (bookmark exists but NSURL read failed)");
+                        return request_directory_access_and_retry(directory_path, &allowed_extensions, e);
                     } else {
-                        crate::write_crash_debug_log("STEP 1: ❌ No stored bookmark or bookmark restoration failed");
-                        debug!("No stored bookmark or bookmark restoration failed, requesting new access");
-                        crate::write_crash_debug_log("STEP 1: Falling back to request_directory_access_and_retry");
+                        crate::write_crash_debug_log("STEP 1: STEP 0 bookmark restoration failed, falling back to request_directory_access_and_retry");
+                        debug!("STEP 0 bookmark restoration failed, requesting new access");
                         return request_directory_access_and_retry(directory_path, &allowed_extensions, e);
                     }
                 } else {

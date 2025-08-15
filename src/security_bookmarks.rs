@@ -3,16 +3,15 @@ pub mod macos_file_handler {
     use std::sync::mpsc::Sender;
     use std::sync::Mutex;
     use std::collections::HashMap;
-    use std::time::Instant;
+    use std::path::Path;
     use objc2::rc::autoreleasepool;
     use objc2::{msg_send, sel};
     use objc2::declare::ClassBuilder;
     use objc2::runtime::{AnyObject, Sel, AnyClass};
     use objc2_app_kit::{NSApplication, NSModalResponse, NSModalResponseOK};
-    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults, NSURL, NSData};
+    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults, NSURL};
     use objc2::rc::Retained;
     use once_cell::sync::Lazy;
-    use std::io::Write;
     
     #[allow(unused_imports)]
     use log::{debug, info, warn, error};
@@ -37,7 +36,7 @@ pub mod macos_file_handler {
     
     // Constants for security-scoped bookmarks
     const NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE: u64 = 1 << 11;  // 0x800
-    const NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE: u64 = 1 << 8;  // 0x100
+    const NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE: u64 = 1 << 10;  // 0x400
     
     // ENABLED: Re-enable bookmark restoration after cleanup
     const DISABLE_BOOKMARK_RESTORATION: bool = false;
@@ -90,6 +89,23 @@ pub mod macos_file_handler {
     /// FIXED: Store URL info with active scope status
     fn store_security_scoped_url(path: &str, url: Retained<NSURL>) {
         store_security_scoped_url_with_info(path, url, false);
+    }
+
+    /// Stores a security-scoped URL with additional metadata
+    fn store_security_scoped_url_with_info(path: &str, url: Retained<NSURL>, from_bookmark: bool) {
+        debug!("Storing security-scoped URL for path: {}", path);
+        
+        let info = SecurityScopedURLInfo {
+            url: url.clone(),
+            has_active_scope: true,  // Assume it has active scope when stored
+        };
+        
+        if let Ok(mut urls) = SECURITY_SCOPED_URLS.lock() {
+            urls.insert(path.to_string(), info);
+            debug!("Stored security-scoped URL (total count: {})", urls.len());
+        } else {
+            error!("Failed to lock security-scoped URLs mutex");
+        }
     }
 
 
@@ -225,6 +241,39 @@ pub mod macos_file_handler {
             if !is_nsdata {
                 write_crash_debug_log("BOOKMARK_CREATE_FIXED: ERROR - bookmark data is not NSData");
                 return false;
+            }
+            
+            // DIAGNOSTIC: Check the size and verify bookmark was created with security scope
+            let bookmark_size: usize = msg_send![bookmark_data, length];
+            write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: Created bookmark size: {} bytes", bookmark_size));
+            
+            // Test if we can immediately resolve this bookmark to verify it's valid
+            let mut test_is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
+            let mut test_error: *mut AnyObject = std::ptr::null_mut();
+            let test_resolved: *mut AnyObject = msg_send![
+                objc2::runtime::AnyClass::get("NSURL").unwrap(),
+                URLByResolvingBookmarkData: bookmark_data
+                options: NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE
+                relativeToURL: std::ptr::null::<AnyObject>()
+                bookmarkDataIsStale: &mut test_is_stale
+                error: &mut test_error
+            ];
+            
+            if !test_error.is_null() || test_resolved.is_null() {
+                write_crash_debug_log("BOOKMARK_CREATE_FIXED: ERROR - freshly created bookmark cannot be resolved");
+                return false;
+            } else {
+                write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: ✅ Bookmark resolves immediately, is_stale={}", test_is_stale.as_bool()));
+                
+                // Test if the resolved URL can activate security scope
+                let test_access: bool = msg_send![test_resolved, startAccessingSecurityScopedResource];
+                write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: Test startAccessingSecurityScopedResource={}", test_access));
+                if test_access {
+                    let _: () = msg_send![test_resolved, stopAccessingSecurityScopedResource];
+                    write_crash_debug_log("BOOKMARK_CREATE_FIXED: ✅ Test security scope works - bookmark is valid");
+                } else {
+                    write_crash_debug_log("BOOKMARK_CREATE_FIXED: ❌ Test security scope FAILED - bookmark creation problem");
+                }
             }
             
             write_crash_debug_log("BOOKMARK_CREATE_FIXED: Bookmark data created successfully");
@@ -877,8 +926,60 @@ pub mod macos_file_handler {
             
             // CRITICAL: Call startAccessingSecurityScopedResource on the EXACT SAME instance
             crate::write_immediate_crash_log("SESSION_RESOLVE: About to call startAccessingSecurityScopedResource on resolved URL instance");
-            let access_granted: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
-            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: startAccessingSecurityScopedResource={}", access_granted));
+            // COMPREHENSIVE DIAGNOSTIC: Test multiple approaches to understand what works
+            crate::write_immediate_crash_log("SESSION_RESOLVE: DIAGNOSTIC - Testing multiple security scope approaches");
+            
+            let mut access_granted = false;
+            let mut diagnostic_info = String::new();
+            
+            if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
+                let resolved_path = path_nsstring.as_str(pool);
+                crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Testing access to path: {}", resolved_path));
+                
+                // TEST 1: Can we read the directory without any security scope calls?
+                let can_read_directly = std::fs::read_dir(resolved_path).is_ok();
+                crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 1 - Direct read (no security scope): {}", can_read_directly));
+                diagnostic_info.push_str(&format!("DirectRead={}, ", can_read_directly));
+                
+                if can_read_directly {
+                    access_granted = true;
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: ✅ SUCCESS - URL has implicit security scope (no explicit call needed)");
+                } else {
+                    // TEST 2: Try explicit startAccessingSecurityScopedResource
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: TEST 2 - Trying explicit startAccessingSecurityScopedResource");
+                    let explicit_access: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
+                    crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 2 - startAccessingSecurityScopedResource={}", explicit_access));
+                    diagnostic_info.push_str(&format!("ExplicitStart={}, ", explicit_access));
+                    
+                    if explicit_access {
+                        // TEST 3: Can we read after explicit call?
+                        let can_read_after_explicit = std::fs::read_dir(resolved_path).is_ok();
+                        crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 3 - Read after explicit start: {}", can_read_after_explicit));
+                        diagnostic_info.push_str(&format!("ReadAfterExplicit={}, ", can_read_after_explicit));
+                        
+                        if can_read_after_explicit {
+                            access_granted = true;
+                            crate::write_immediate_crash_log("SESSION_RESOLVE: ✅ SUCCESS - Explicit startAccessingSecurityScopedResource worked");
+                        } else {
+                            crate::write_immediate_crash_log("SESSION_RESOLVE: ❌ FAILURE - Even explicit startAccessingSecurityScopedResource didn't grant access");
+                        }
+                    } else {
+                        crate::write_immediate_crash_log("SESSION_RESOLVE: ❌ FAILURE - startAccessingSecurityScopedResource returned false");
+                    }
+                }
+                
+                // Additional diagnostics
+                let path_exists = std::path::Path::new(resolved_path).exists();
+                let path_is_dir = std::path::Path::new(resolved_path).is_dir();
+                diagnostic_info.push_str(&format!("PathExists={}, IsDir={}", path_exists, path_is_dir));
+                
+            } else {
+                crate::write_immediate_crash_log("SESSION_RESOLVE: ERROR - resolved URL has no path");
+                diagnostic_info.push_str("NoPath=true");
+            }
+            
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: DIAGNOSTIC SUMMARY - {}", diagnostic_info));
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: FINAL RESULT - access_granted={}", access_granted));
             
             if access_granted {
                 crate::write_immediate_crash_log("SESSION_RESOLVE: Security scope activated successfully");
