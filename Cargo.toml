@@ -31,6 +31,7 @@ sysinfo = "0.33.1"
 libc = "0.2"
 zip = "4"
 unrar = "0.5"
+sevenz-rust2 = "0.17"
 
 # Use custom iced
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [

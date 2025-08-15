@@ -30,7 +30,7 @@ impl ImageCacheBackend for CpuImageCache {
                     Ok(CachedData::Cpu(fs::read(path)?))
                 },
                 PathType::FileByte(_, _) => {
-                    Ok(CachedData::Cpu(path.bytes().to_vec()))
+                    Ok(CachedData::Cpu(path.bytes()?.to_vec()))
                 }
             }
 

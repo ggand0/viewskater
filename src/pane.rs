@@ -1,9 +1,11 @@
+use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Instant;
 use std::sync::Mutex;
+use std::fs::File;
 use once_cell::sync::Lazy;
 
 use iced_widget::{container, text};
@@ -18,9 +20,9 @@ use crate::cache::img_cache::PathType;
 use crate::config::CONFIG;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
+use crate::file_io::supported_image;
 use crate::file_io::ArchiveType;
 use crate::file_io::ALLOWED_COMPRESSED_FILES;
-use crate::file_io::ALLOWED_EXTENSIONS;
 use crate::file_io::COMPRESSED_FILE;
 use crate::menu::PaneLayout;
 use crate::widgets::viewer;
@@ -391,11 +393,27 @@ impl Pane {
                         },
                     }
                 }
+                Some("7z") => {
+                    match read_7z_path(path, &mut file_paths) {
+                        Ok(_) => {
+                            archive = ArchiveType::SevenZ;
+                        },
+                        Err(e) => {
+                            error!("Failed to read 7z file: {e}");
+                            return;
+                        },
+                    }
+                }
                 _ => {
                     error!("File extension not supported");
                     return;
                 }
             }
+            if file_paths.len() == 0 {
+                error!("No supported images found in {path:?}");
+                return;
+            }
+            self.directory_path = Some(path.display().to_string());
             file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(a.file_name(), b.file_name()));
             *COMPRESSED_FILE.lock().unwrap() = (path.to_path_buf(), archive);
         } else {
@@ -622,26 +640,25 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     pane.img_cache.current_index as usize
 }
 
-fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn std::error::Error>> {
+fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn Error>> {
     let mut archive = zip::ZipArchive::new(std::io::BufReader::new(
-        std::fs::File::open(path)?))?;
+        File::open(path)?))?;
     for i in 0..archive.len() {
         let file = archive.by_index(i)?;
-        if file.is_file() && ALLOWED_EXTENSIONS.contains(&file.name().split('.').next_back().unwrap_or("")) {
+        if file.is_file() && supported_image(file.name()) {
             file_paths.push(PathType::FileByte(file.name().to_string(), OnceLock::new()));
         }
     }
     Ok(())
 }
 
-fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut archive =
-        unrar::Archive::new(path)
+fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn Error>> {
+    let mut archive = unrar::Archive::new(path)
             .open_for_processing()?;
     while let Some(header) = archive.read_header()? {
         let filename = header.entry().filename.to_string_lossy().to_string();
         archive = if header.entry().is_file() {
-            if ALLOWED_EXTENSIONS.contains(&filename.split('.').next_back().unwrap_or("")) {
+            if supported_image(&filename) {
                 // let (data, rest) = header.read()?;
                 // let ol = OnceLock::new();
                 // let _ = ol.set(data);
@@ -657,6 +674,58 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), B
             debug!("Skipping directory {filename}");
             header.skip()?
         };
+    }
+
+    Ok(())
+}
+
+// TODO: https://github.com/hasenbanck/sevenz-rust2/blob/main/examples/mt_decompress.rs
+fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn Error>> {
+    use std::thread;
+    let password = sevenz_rust2::Password::empty();
+    let mut file = File::open(path)?;
+    let archive = sevenz_rust2::Archive::read(&mut file, &password)?;
+    let is_solid = archive.is_solid;
+    // solid file is too slow for lazy loading
+    if is_solid {
+        let block_count = archive.blocks.len();
+        debug!("{path:?} block_count: {block_count}");
+        let cpu_threads = if thread::available_parallelism().is_ok() {
+            thread::available_parallelism()?.get() as u32
+        } else { 4 };
+
+        debug!("Using {cpu_threads} threads to read {path:?}");
+        let sevenz_list = Mutex::new(Vec::new());
+        for block_index in 0..block_count {
+            thread::scope(|s| {
+                s.spawn(||{
+                    let mut source = File::open(path).unwrap();
+                    // 2. For decoders that supports it, we can set the thread_count on the block decoder
+                    //    so that it uses multiple threads to decode the block. Currently only LZMA2 is
+                    //    supporting this. We try to use all threads report from std::thread.
+                    let block_decoder = sevenz_rust2::BlockDecoder::new(cpu_threads, block_index, &archive, &password, &mut source);
+                    block_decoder.for_each_entries(&mut |entry, reader| {
+                        if !entry.is_directory && supported_image(entry.name()) {
+                            let ol = OnceLock::new();
+                            let mut buffer = Vec::new();
+                            reader.read_to_end(&mut buffer)?;
+                            let _ = ol.set(buffer);
+                            sevenz_list.lock().unwrap().push(PathType::FileByte(entry.name().to_string(), ol));
+                        }
+                        Ok(true)
+                    })
+                    .expect("Failed block reading 7z file");
+                });
+            });
+        }
+        file_paths.append(&mut sevenz_list.into_inner().unwrap());
+    } else {
+        sevenz_rust2::ArchiveReader::open(path, password)?.for_each_entries(|entry, _|{
+            if !entry.is_directory && supported_image(entry.name()) {
+                file_paths.push(PathType::FileByte(entry.name().to_string(), OnceLock::new()));
+            }
+            Ok(true)
+        })?;
     }
 
     Ok(())

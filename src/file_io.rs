@@ -31,9 +31,13 @@ use crate::utils::timing::TimingStats;
 use crate::cache::img_cache::CacheStrategy;
 use iced_wgpu::engine::CompressionStrategy;
 
-pub const ALLOWED_EXTENSIONS: [&str; 15] = ["jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
+const ALLOWED_EXTENSIONS: [&str; 15] = ["jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
         "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"];
-pub const ALLOWED_COMPRESSED_FILES: [&str; 2] = ["zip", "rar"];
+pub const ALLOWED_COMPRESSED_FILES: [&str; 3] = ["zip", "rar", "7z"];
+
+pub fn supported_image(name: &str) -> bool {
+    ALLOWED_EXTENSIONS.contains(&name.split('.').next_back().unwrap_or("").to_lowercase().as_str())
+}
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("Image Load"))
@@ -59,6 +63,7 @@ pub enum ArchiveType {
     None,
     Zip,
     Rar,
+    SevenZ,
 }
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -125,7 +130,7 @@ pub fn read_image_bytes(path: &PathType) -> Result<Vec<u8>, std::io::Error> {
             }
         },
         PathType::FileByte(_, _) => {
-            Ok(path.bytes().to_vec())
+            Ok(path.bytes()?.to_vec())
         }
     }
 }
@@ -181,7 +186,10 @@ async fn load_image_cpu_async(path: Option<PathType>) -> Result<Option<CachedDat
                 }
             },
             PathType::FileByte(_, _) => {
-                Ok(Some(CachedData::Cpu(path.bytes().to_vec())))
+                match path.bytes() {
+                    Ok(bytes) => Ok(Some(CachedData::Cpu(bytes.to_vec()))),
+                    Err(e) => Err(e.kind()),
+                }
             }
         }
 

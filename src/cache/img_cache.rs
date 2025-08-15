@@ -177,15 +177,18 @@ impl PathType {
     pub fn file_name(&self) -> String {
         match self {
             PathType::FileByte(file_name, _) => file_name.clone(),
-            PathType::PathBuf(pb) => pb.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| String::from("Unknown")),
+            PathType::PathBuf(pb) => pb.file_name().map(
+                |name| name.to_string_lossy().to_string()).unwrap_or_else(
+                    || String::from("Unknown")),
         }
     }
     /// only use in compressed file
-    pub fn bytes(&self) -> &[u8] {
+    pub fn bytes(&self) -> Result<&[u8], io::Error> {
         match self {
             PathType::PathBuf(_) => todo!(),
             PathType::FileByte(name, lock) => {
-                lock.get_or_init(|| {
+                let vec = lock.get_or_init(|| {
+                    debug!("init loading {name}");
                     match read_compressed_bytes_by_name(name) {
                         Ok(v) => v,
                         Err(e) => {
@@ -193,7 +196,13 @@ impl PathType {
                             Vec::new()
                         },
                     }
-                })
+                });
+                if vec.is_empty() {
+                    Err(io::Error::new(io::ErrorKind::InvalidData,
+                        format!("Failed to read {name} from compressed file"),))
+                } else {
+                    Ok(vec)
+                }
             },
         }
     }
@@ -573,7 +582,7 @@ impl ImageCache {
                                     }
                                 },
                                 PathType::FileByte(_, _) => {
-                                    Ok(img_path.bytes().to_vec())
+                                    Ok(img_path.bytes()?.to_vec())
                                 }
                             }
 
@@ -1005,22 +1014,22 @@ pub fn load_all_images_in_queue(
 }
 
 fn read_compressed_bytes_by_name(name: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let arch = COMPRESSED_FILE.lock().unwrap();
-    match arch.1 {
+    let archive = COMPRESSED_FILE.lock().unwrap();
+    let mut buffer = Vec::new();
+    match archive.1 {
         file_io::ArchiveType::Zip => {
             use std::io::Read;
-            debug!("read {name} from {arch:?}");
-            let mut buf = Vec::new();
+            debug!("read {name} from {archive:?}");
             let file = std::io::BufReader::new(std::fs::File::open(
-                arch.0.to_path_buf())?);
+                &archive.0)?);
 
             let mut archive = zip::ZipArchive::new(file)?;
-            let _ = archive.by_name(name)?.read_to_end(&mut buf);
-            Ok(buf)
+            let _ = archive.by_name(name)?.read_to_end(&mut buffer);
+            Ok(buffer)
         },
         file_io::ArchiveType::Rar => {
             let mut archive =
-                unrar::Archive::new(&arch.0).open_for_processing()?;
+                unrar::Archive::new(&archive.0).open_for_processing()?;
             while let Some(header) = archive.read_header()? {
                 let filename = header.entry().filename.as_os_str();
                 debug!("reading rar {name} ?= {filename:?}");
@@ -1032,8 +1041,13 @@ fn read_compressed_bytes_by_name(name: &str) -> Result<Vec<u8>, Box<dyn std::err
                     header.skip()?
                 };
             }
-            Ok(Vec::new())
+            Ok(buffer)
         },
-        file_io::ArchiveType::None => Ok(Vec::new()),
+        file_io::ArchiveType::SevenZ => {
+            let mut archive = sevenz_rust2::ArchiveReader::open(
+                &archive.0, sevenz_rust2::Password::empty())?;
+            Ok(archive.read_file(name)?)
+        }
+        file_io::ArchiveType::None => Ok(buffer),
     }
 }
