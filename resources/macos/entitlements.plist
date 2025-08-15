@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- CRITICAL: App Sandbox must be enabled for App Store apps -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    
+    <!-- App identifier -->
+    <key>com.apple.application-identifier</key>
+    <string>YOUR_TEAM_ID.YOUR_BUNDLE_ID</string>
+    
+    <!-- Essential file access entitlements for document-based apps -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    
+    <!-- Security-scoped bookmark support (essential for App Store document apps) -->
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.document-scope</key>
+    <true/>
+    
+    <!-- Additional entitlements for better file access handling -->
+    <!-- Allow reading files opened via system integration (Open With, double-click) -->
+    <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+</dict>
+</plist>
+
