@@ -14,6 +14,7 @@ mod config;
 mod app;
 mod utils;
 mod build_info;
+mod logging;
 
 #[cfg(target_os = "macos")]
 mod macos_file_access;
@@ -30,12 +31,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::collections::{VecDeque, HashSet};
+use std::collections::VecDeque;
 use chrono;
-use std::io::Write;
 
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
 
 use winit::{
     event::WindowEvent,
@@ -208,92 +206,38 @@ fn update_memory_usage() {
     utils::mem::update_memory_usage();
 }
 
-/// Sets up a signal handler to catch low-level crashes that bypass Rust panic hooks
-/// This is critical for Objective-C interop crashes that might cause segfaults
-#[cfg(unix)]
-fn setup_signal_crash_handler() {
-    extern "C" fn signal_handler(signal: libc::c_int) {
-        let signal_name = match signal {
-            libc::SIGSEGV => "SIGSEGV (segmentation fault)",
-            libc::SIGBUS => "SIGBUS (bus error)",
-            libc::SIGILL => "SIGILL (illegal instruction)",
-            libc::SIGFPE => "SIGFPE (floating point exception)",
-            libc::SIGABRT => "SIGABRT (abort)",
-            _ => "UNKNOWN SIGNAL",
-        };
-        
-        // Use the most basic logging possible since we're in a signal handler
-        let _ = std::panic::catch_unwind(|| {
-            eprintln!("CRASH_DEBUG: SIGNAL CAUGHT: {} ({})", signal_name, signal);
-            println!("CRASH_DEBUG: SIGNAL CAUGHT: {} ({})", signal_name, signal);
-        });
-        
-        // Try to write to NSUserDefaults if possible
-        #[cfg(target_os = "macos")]
-        {
-            unsafe {
-                use objc2_foundation::{NSUserDefaults, NSString};
-                use objc2::{msg_send};
-                
-                let message = format!("SIGNAL_CRASH: {} ({})", signal_name, signal);
-                let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-                let formatted_message = format!("{} CRASH_DEBUG: {}", timestamp, message);
-                
-                let defaults = NSUserDefaults::standardUserDefaults();
-                let key = NSString::from_str("ViewSkaterLastCrashLog");
-                let value = NSString::from_str(&formatted_message);
-                let _: () = msg_send![&*defaults, setObject: &*value forKey: &*key];
-            }
-        }
-        
-        // Exit after logging
-        std::process::exit(128 + signal);
-    }
-    
-    unsafe {
-        libc::signal(libc::SIGSEGV, signal_handler as libc::sighandler_t);
-        libc::signal(libc::SIGBUS, signal_handler as libc::sighandler_t);
-        libc::signal(libc::SIGILL, signal_handler as libc::sighandler_t);
-        libc::signal(libc::SIGFPE, signal_handler as libc::sighandler_t);
-        libc::signal(libc::SIGABRT, signal_handler as libc::sighandler_t);
-    }
-}
 
-#[cfg(not(unix))]
-fn setup_signal_crash_handler() {
-    // Signal handling not implemented for non-Unix platforms
-}
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
     // CRITICAL: Write to crash log IMMEDIATELY - before any other operations
-    write_immediate_crash_log("MAIN: App startup initiated");
+    crate::logging::write_crash_debug_log("MAIN: App startup initiated");
     
     // Set up signal handler FIRST to catch low-level crashes
-    write_immediate_crash_log("MAIN: About to setup signal handler");
-    setup_signal_crash_handler();
-    write_immediate_crash_log("MAIN: Signal handler setup completed");
+    crate::logging::write_crash_debug_log("MAIN: About to setup signal handler");
+    crate::logging::setup_signal_crash_handler();
+    crate::logging::write_crash_debug_log("MAIN: Signal handler setup completed");
     
     // Set up stdout capture FIRST, before any println! statements
-    write_immediate_crash_log("MAIN: About to setup stdout capture");
-    let shared_stdout_buffer = file_io::setup_stdout_capture();
+    crate::logging::write_crash_debug_log("MAIN: About to setup stdout capture");
+    let shared_stdout_buffer = crate::logging::setup_stdout_capture();
     set_shared_stdout_buffer(Arc::clone(&shared_stdout_buffer));
-    write_immediate_crash_log("MAIN: Stdout capture setup completed");
+    crate::logging::write_crash_debug_log("MAIN: Stdout capture setup completed");
     
     println!("ViewSkater starting...");
-    write_immediate_crash_log("MAIN: ViewSkater starting message printed");
+    crate::logging::write_crash_debug_log("MAIN: ViewSkater starting message printed");
     
     // Set up panic hook to log to a file
-    write_immediate_crash_log("MAIN: About to setup logger");
+    crate::logging::write_crash_debug_log("MAIN: About to setup logger");
     let app_name = "viewskater";
-    let shared_log_buffer = file_io::setup_logger(app_name);
+    let shared_log_buffer = crate::logging::setup_logger(app_name);
     
     // Store the log buffer reference for global access
     set_shared_log_buffer(Arc::clone(&shared_log_buffer));
-    write_immediate_crash_log("MAIN: Logger setup completed");
+    crate::logging::write_crash_debug_log("MAIN: Logger setup completed");
     
-    write_immediate_crash_log("MAIN: About to setup panic hook");
-    file_io::setup_panic_hook(app_name, shared_log_buffer);
-    write_immediate_crash_log("MAIN: Panic hook setup completed");
+    crate::logging::write_crash_debug_log("MAIN: About to setup panic hook");
+    crate::logging::setup_panic_hook(app_name, shared_log_buffer);
+    crate::logging::write_crash_debug_log("MAIN: Panic hook setup completed");
     
     // Initialize winit FIRST
     let event_loop = EventLoop::<Action<Message>>::with_user_event()
@@ -304,12 +248,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     let (file_sender, file_receiver) = mpsc::channel();
 
     // Test crash debug logging immediately at startup
-    write_crash_debug_log("========== VIEWSKATER STARTUP ==========");
-    write_crash_debug_log("Testing crash debug logging system at startup");
-    write_crash_debug_log(&format!("App version: {}", env!("CARGO_PKG_VERSION")));
-    write_crash_debug_log(&format!("Timestamp: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
-    write_crash_debug_log("If you can see this message, crash debug logging is working");
-    write_crash_debug_log("=========================================");
+    crate::logging::write_crash_debug_log("========== VIEWSKATER STARTUP ==========");
+    crate::logging::write_crash_debug_log("Testing crash debug logging system at startup");
+    crate::logging::write_crash_debug_log(&format!("App version: {}", env!("CARGO_PKG_VERSION")));
+    crate::logging::write_crash_debug_log(&format!("Timestamp: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+    crate::logging::write_crash_debug_log("If you can see this message, crash debug logging is working");
+    crate::logging::write_crash_debug_log("=========================================");
     
     // Test all logging methods comprehensively
     macos_file_access::test_crash_logging_methods();
@@ -320,27 +264,27 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     // or using "Open With". Must be set up early in app lifecycle.
     #[cfg(target_os = "macos")]
     {
-        write_immediate_crash_log("MAIN: About to set file channel");
+        crate::logging::write_crash_debug_log("MAIN: About to set file channel");
         macos_file_access::macos_file_handler::set_file_channel(file_sender);
-        write_immediate_crash_log("MAIN: File channel set");
+        crate::logging::write_crash_debug_log("MAIN: File channel set");
         
         // NOTE: Automatic bookmark cleanup is DISABLED in production builds to avoid
         // wiping valid stored access. Use a special maintenance build or developer
         // tooling to invoke cleanup if ever needed.
         
-        write_immediate_crash_log("MAIN: About to register file handler");
+        crate::logging::write_crash_debug_log("MAIN: About to register file handler");
         macos_file_access::macos_file_handler::register_file_handler();
-        write_immediate_crash_log("MAIN: File handler registered");
+        crate::logging::write_crash_debug_log("MAIN: File handler registered");
         
         // Try to restore full disk access from previous session
-        write_immediate_crash_log("MAIN: About to restore full disk access");
+        crate::logging::write_crash_debug_log("MAIN: About to restore full disk access");
         debug!("🔍 Attempting to restore full disk access on startup");
         let restore_result = macos_file_access::macos_file_handler::restore_full_disk_access();
         debug!("🔍 Restore full disk access result: {}", restore_result);
-        write_immediate_crash_log(&format!("MAIN: Restore full disk access result: {}", restore_result));
+        crate::logging::write_crash_debug_log(&format!("MAIN: Restore full disk access result: {}", restore_result));
         
         println!("macOS file handler registered");
-        write_immediate_crash_log("MAIN: macOS file handler registration completed");
+        crate::logging::write_crash_debug_log("MAIN: macOS file handler registration completed");
     }
 
     // Handle command line arguments for Linux (and Windows)
@@ -1212,166 +1156,3 @@ fn track_async_delivery() {
         trace!("TIMING: Phase difference: {:?}", phase_diff);
     }
 }
-
-/// macOS integration for opening image files via Finder.
-///
-/// This module handles cases where the user launches ViewSkater by double-clicking
-/// an image file or using "Open With" in Finder. macOS sends the file path through
-/// the `application:openFiles:` message, which is delivered to the app's delegate.
-///
-/// This code:
-/// - Subclasses the existing `NSApplicationDelegate` to override `application:openFiles:`
-/// - Forwards received file paths to Rust using an MPSC channel
-/// - Disables automatic argument parsing by setting `NSTreatUnknownArgumentsAsOpen = NO`
-///
-/// The channel is set up in `main.rs` and connected to the rest of the app so that
-/// the selected image can be loaded on startup.
-
-// ==================== CRASH DEBUG LOGGING ====================
-
-/// Writes a crash debug log entry using multiple bulletproof methods for App Store sandbox
-/// This ensures we can see what happened even if all file writing is blocked
-pub fn write_crash_debug_log(message: &str) {
-    // Simple immediate stderr logging
-    let _ = std::panic::catch_unwind(|| {
-        eprintln!("CRASH_DEBUG: {}", message);
-    });
-    
-    // Simple immediate stdout logging  
-    let _ = std::panic::catch_unwind(|| {
-        println!("CRASH_DEBUG: {}", message);
-    });
-    
-    // Simple NSUserDefaults logging
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_foundation::{NSUserDefaults, NSString};
-        use objc2::{msg_send};
-        
-        unsafe {
-            let defaults = NSUserDefaults::standardUserDefaults();
-            let key = NSString::from_str("ViewSkaterLastCrashLog");
-            let value = NSString::from_str(message);
-            let _: () = msg_send![&*defaults, setObject: &*value forKey: &*key];
-        }
-    }
-}
-
-/// Writes crash debug info immediately to disk (synchronous, unbuffered)
-/// This is specifically for crashes during "Open With" startup where console isn't available
-pub fn write_immediate_crash_log(message: &str) {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    
-    let formatted = format!("{} CRASH: {}\n", timestamp, message);
-    
-    // Use the same directory approach as file_io module
-    let mut paths = Vec::new();
-    
-    // Primary location: Use dirs crate like file_io does
-    let app_log_dir = dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("viewskater")
-        .join("logs");
-    
-    if std::fs::create_dir_all(&app_log_dir).is_ok() {
-        paths.push(app_log_dir.join("crash.log"));
-    }
-    
-    // Backup: Use cache directory  
-    if let Some(cache_dir) = dirs::cache_dir() {
-        let cache_log_dir = cache_dir.join("viewskater");
-        if std::fs::create_dir_all(&cache_log_dir).is_ok() {
-            paths.push(cache_log_dir.join("crash.log"));
-        }
-    }
-    
-    // Fallback: home directory
-    if let Some(home) = dirs::home_dir() {
-        paths.push(home.join("viewskater_crash.log"));
-    }
-    
-    // Emergency fallback: /tmp
-    paths.push("/tmp/viewskater_crash.log".into());
-    
-    // Write to all available locations with MAXIMUM reliability
-    for path in &paths {
-        // Create options with immediate disk writes on Unix systems
-        let mut options = std::fs::OpenOptions::new();
-        options.create(true).append(true);
-        
-        #[cfg(unix)]
-        {
-            options.custom_flags(0x80); // O_SYNC on Unix - immediate disk writes
-        }
-        
-        if let Ok(mut file) = options.open(path) {
-            let _ = file.write_all(formatted.as_bytes());
-            let _ = file.sync_all(); // Force filesystem sync
-            let _ = file.sync_data(); // Force data sync (faster than sync_all)
-            // Don't close - let it drop naturally to avoid blocking
-        }
-    }
-    
-    // ALSO write to NSUserDefaults immediately as backup
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::panic::catch_unwind(|| {
-            use objc2_foundation::{NSUserDefaults, NSString};
-            use objc2::{msg_send};
-            
-            unsafe {
-                let defaults = NSUserDefaults::standardUserDefaults();
-                let key = NSString::from_str("ViewSkaterImmediateCrashLog");
-                let value = NSString::from_str(&formatted);
-                let _: () = msg_send![&*defaults, setObject: &*value forKey: &*key];
-                let _: bool = msg_send![&*defaults, synchronize];
-            }
-        });
-    }
-}
-
-// ==================== END CRASH DEBUG LOGGING ====================
-
-/// Retrieves crash debug logs from NSUserDefaults (bulletproof storage) - SIMPLIFIED VERSION
-/// This allows accessing logs even if file writing was blocked by App Store sandbox
-#[cfg(target_os = "macos")]
-pub fn get_crash_debug_logs_from_userdefaults() -> Vec<String> {
-    use objc2_foundation::{NSUserDefaults, NSString};
-    use objc2::{msg_send};
-    use objc2::rc::autoreleasepool;
-    
-    autoreleasepool(|pool| unsafe {
-        let mut results = Vec::new();
-        
-        let defaults = NSUserDefaults::standardUserDefaults();
-        
-        // Get the crash counter
-        let counter_key = NSString::from_str("ViewSkaterCrashCounter");
-        let crash_count: i64 = msg_send![&*defaults, integerForKey: &*counter_key];
-        results.push(format!("CRASH_COUNTER: {} crashes detected", crash_count));
-        
-        // Get the last crash log
-        let log_key = NSString::from_str("ViewSkaterLastCrashLog");
-        let last_log: *mut objc2::runtime::AnyObject = msg_send![&*defaults, objectForKey: &*log_key];
-        
-        if !last_log.is_null() {
-            let log_nsstring = &*(last_log as *const NSString);
-            let log_str = log_nsstring.as_str(pool).to_owned();
-            results.push(format!("LAST_CRASH_LOG: {}", log_str));
-        } else {
-            results.push("LAST_CRASH_LOG: No crash log found".to_string());
-        }
-        
-        results
-    })
-}
-
-/// Export crash debug logs from NSUserDefaults to a file (non-macOS fallback)
-#[cfg(not(target_os = "macos"))]
-pub fn get_crash_debug_logs_from_userdefaults() -> Vec<String> {
-    Vec::new() // Not supported on non-macOS
-}
-
