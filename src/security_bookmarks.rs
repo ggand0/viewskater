@@ -25,23 +25,15 @@ pub mod macos_file_handler {
     struct SecurityScopedURLInfo {
         url: Retained<NSURL>,
         has_active_scope: bool,
-        original_path: String,
-        // NEW: Track if this URL was resolved from a bookmark vs. directly granted
-        from_bookmark: bool,
-        // NEW: Track when this was resolved to avoid re-resolving
-        resolved_at: std::time::Instant,
     }
     
     static SECURITY_SCOPED_URLS: Lazy<Mutex<HashMap<String, SecurityScopedURLInfo>>> = 
         Lazy::new(|| Mutex::new(HashMap::new()));
     
-    // NEW: Cache resolved bookmark URLs to avoid re-resolving the same bookmark
-    static RESOLVED_BOOKMARK_CACHE: Lazy<Mutex<HashMap<String, Retained<NSURL>>>> = 
+    // NEW: Session-level cache for resolved bookmark URLs to implement "resolve once per session"
+    // This prevents multiple URLByResolvingBookmarkData calls for the same directory within a session
+    static SESSION_RESOLVED_URLS: Lazy<Mutex<HashMap<String, Retained<NSURL>>>> = 
         Lazy::new(|| Mutex::new(HashMap::new()));
-    
-    // NEW: Track failed bookmark resolution attempts to avoid repeated failures
-    static FAILED_BOOKMARK_PATHS: Lazy<Mutex<std::collections::HashSet<String>>> = 
-        Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
     
     // Constants for security-scoped bookmarks
     const NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE: u64 = 1 << 11;  // 0x800
@@ -99,26 +91,7 @@ pub mod macos_file_handler {
     fn store_security_scoped_url(path: &str, url: Retained<NSURL>) {
         store_security_scoped_url_with_info(path, url, false);
     }
-    
-    /// Stores a security-scoped URL with additional metadata
-    fn store_security_scoped_url_with_info(path: &str, url: Retained<NSURL>, from_bookmark: bool) {
-        debug!("Storing security-scoped URL for path: {}", path);
-        
-        let info = SecurityScopedURLInfo {
-            url: url.clone(),
-            has_active_scope: true,  // Assume it has active scope when stored
-            original_path: path.to_string(),
-            from_bookmark,
-            resolved_at: std::time::Instant::now(),
-        };
-        
-        if let Ok(mut urls) = SECURITY_SCOPED_URLS.lock() {
-            urls.insert(path.to_string(), info);
-            debug!("Stored security-scoped URL (total count: {})", urls.len());
-        } else {
-            error!("Failed to lock security-scoped URLs mutex");
-        }
-    }
+
 
     /// FIXED: Get the actual resolved path from the security-scoped URL
     pub fn get_security_scoped_path(original_path: &str) -> Option<String> {
@@ -163,21 +136,6 @@ pub mod macos_file_handler {
         }
     }
 
-    /// FIXED: Stop security-scoped access for a path
-    pub fn stop_security_scoped_access(path: &str) {
-        if let Ok(mut urls) = SECURITY_SCOPED_URLS.lock() {
-            if let Some(mut info) = urls.get_mut(path) {
-                if info.has_active_scope {
-                    unsafe {
-                        let _: () = msg_send![&*info.url, stopAccessingSecurityScopedResource];
-                        info.has_active_scope = false;
-                        debug!("Stopped security-scoped access for: {}", path);
-                    }
-                }
-            }
-        }
-    }
-
     /// Gets all accessible paths for debugging
     pub fn get_accessible_paths() -> Vec<String> {
         if let Ok(urls) = SECURITY_SCOPED_URLS.lock() {
@@ -188,9 +146,9 @@ pub mod macos_file_handler {
     }
     
     /// Clean up all active security-scoped access (call on app shutdown)
-    /// ADDED: Proper lifecycle management
+    /// ADDED: Proper lifecycle management and session cache cleanup
     pub fn cleanup_all_security_scoped_access() {
-        debug!("Cleaning up all active security-scoped access");
+        debug!("Cleaning up all active security-scoped access and session caches");
         
         if let Ok(mut urls) = SECURITY_SCOPED_URLS.lock() {
             let mut stopped_count = 0;
@@ -207,6 +165,13 @@ pub mod macos_file_handler {
             debug!("Cleaned up {} active security-scoped URLs", stopped_count);
         } else {
             error!("Failed to lock security-scoped URLs mutex during cleanup");
+        }
+        
+        // Clear session cache to ensure fresh resolution on next app launch
+        if let Ok(mut session_cache) = SESSION_RESOLVED_URLS.lock() {
+            let cache_size = session_cache.len();
+            session_cache.clear();
+            debug!("Cleared session cache with {} resolved URLs", cache_size);
         }
     }
 
@@ -305,739 +270,6 @@ pub mod macos_file_handler {
         result
     }
     
-    /// FIXED: Proper implementation following Apple's documented pattern with lifecycle management
-    fn resolve_security_scoped_bookmark(directory_path: &str) -> Option<Retained<NSURL>> {
-        if DISABLE_BOOKMARK_RESTORATION {
-            eprintln!("RESOLVE_FIXED: disabled - skipping");
-            return None;
-        }
-        
-        eprintln!("RESOLVE_FIXED: Starting for path: {}", directory_path);
-        debug!("Resolving security-scoped bookmark for: {}", directory_path);
-        crate::write_immediate_crash_log(&format!("RESOLVE: begin path={}", directory_path));
-        
-        let result = autoreleasepool(|pool| unsafe {
-            eprintln!("RESOLVE_FIXED: Entered autoreleasepool");
-            
-            // Validate input
-            if directory_path.is_empty() || directory_path.len() > 500 {
-                eprintln!("RESOLVE_FIXED: ERROR - invalid path");
-                crate::write_immediate_crash_log("RESOLVE: invalid path");
-                return None;
-            }
-            
-            // Log standardized form (best-effort via NSString)
-            let orig_ns = NSString::from_str(directory_path);
-            let std_ns: *mut AnyObject = msg_send![&*orig_ns, stringByStandardizingPath];
-            if !std_ns.is_null() {
-                let std_str = (&*(std_ns as *const NSString)).as_str(pool).to_owned();
-                crate::write_immediate_crash_log(&format!("RESOLVE: standardized='{}'", std_str));
-            }
-            
-            // Also try canonicalize via std (may fail in sandbox)
-            if let Ok(canon) = std::fs::canonicalize(directory_path) {
-                if let Some(s) = canon.to_str() {
-                    crate::write_immediate_crash_log(&format!("RESOLVE: canonicalize='{}'", s));
-                }
-            }
-            
-            let defaults = NSUserDefaults::standardUserDefaults();
-            
-            // STEP 1: Try direct lookup first
-            let (modern_key, legacy_key) = make_bookmark_keys(directory_path);
-            eprintln!("RESOLVE_FIXED: Looking for modern key");
-            let mut bookmark_data: *mut AnyObject = msg_send![&*defaults, objectForKey: &*modern_key];
-            if !bookmark_data.is_null() {
-                let len: usize = msg_send![bookmark_data, length];
-                crate::write_immediate_crash_log(&format!("RESOLVE: found modern key len={} bytes", len));
-            }
-            if bookmark_data.is_null() {
-                eprintln!("RESOLVE_FIXED: Modern key not found, trying legacy");
-                crate::write_immediate_crash_log("RESOLVE: modern key not found, trying legacy");
-                bookmark_data = msg_send![&*defaults, objectForKey: &*legacy_key];
-                if !bookmark_data.is_null() {
-                    let len: usize = msg_send![bookmark_data, length];
-                    crate::write_immediate_crash_log(&format!("RESOLVE: found legacy key len={} bytes", len));
-                }
-            }
-            
-            // STEP 2: If direct lookup failed, try tolerant restore (enumerate all VSBookmark keys)
-            if bookmark_data.is_null() {
-                crate::write_immediate_crash_log("RESOLVE: direct lookup failed, attempting tolerant restore");
-                eprintln!("RESOLVE_FIXED: Direct lookup failed, attempting tolerant restore");
-                
-                let dict: *mut AnyObject = msg_send![&*defaults, dictionaryRepresentation];
-                if !dict.is_null() {
-                    let nsdict = &*(dict as *const NSDictionary<NSString, AnyObject>);
-                    let keys = nsdict.allKeys();
-                    let mut total = 0usize;
-                    let mut vs_count = 0usize;
-                    let mut tested_count = 0usize;
-                    
-                    // Normalize target path for comparison
-                    let target_path_normalized = std::fs::canonicalize(directory_path)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| directory_path.to_string());
-                    
-                    crate::write_immediate_crash_log(&format!("RESOLVE: tolerant restore target_normalized='{}'", target_path_normalized));
-                    
-                    for i in 0..keys.len() {
-                        total += 1;
-                        let k = &keys[i];
-                        let ks = k.as_str(pool).to_owned();
-                        
-                        if ks.starts_with("VSBookmark") {
-                            vs_count += 1;
-                            tested_count += 1;
-                            
-                            crate::write_immediate_crash_log(&format!("RESOLVE: testing key '{}'", ks));
-                            
-                            let test_bookmark: *mut AnyObject = msg_send![&*defaults, objectForKey: k];
-                            if !test_bookmark.is_null() {
-                                // Try to resolve this bookmark
-                                let mut is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
-                                let mut error: *mut AnyObject = std::ptr::null_mut();
-                                
-                                let test_resolved: *mut AnyObject = msg_send![
-                                    objc2::runtime::AnyClass::get("NSURL").unwrap(),
-                                    URLByResolvingBookmarkData: test_bookmark
-                                    options: NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE
-                                    relativeToURL: std::ptr::null::<AnyObject>()
-                                    bookmarkDataIsStale: &mut is_stale
-                                    error: &mut error
-                                ];
-                                
-                                if error.is_null() && !test_resolved.is_null() {
-                                    // Get the resolved path and compare
-                                    if let Some(path_nsstring) = (&*(test_resolved as *const NSURL)).path() {
-                                        let resolved_path = path_nsstring.as_str(pool).to_owned();
-                                        let resolved_normalized = std::fs::canonicalize(&resolved_path)
-                                            .map(|p| p.to_string_lossy().to_string())
-                                            .unwrap_or_else(|_| resolved_path.clone());
-                                        
-                                        crate::write_immediate_crash_log(&format!("RESOLVE: key '{}' -> resolved='{}'", ks, resolved_normalized));
-                                        
-                                        if resolved_normalized == target_path_normalized {
-                                            crate::write_immediate_crash_log(&format!("RESOLVE: tolerant match found! using key '{}'", ks));
-                                            eprintln!("RESOLVE_FIXED: Tolerant match found for key: {}", ks);
-                                            bookmark_data = test_bookmark;
-                                            
-                                            // Learn this alias for future direct lookups
-                                            let _: () = msg_send![&*defaults, setObject: bookmark_data forKey: &*modern_key];
-                                            let _: () = msg_send![&*defaults, setObject: bookmark_data forKey: &*legacy_key];
-                                            let sync_ok: bool = msg_send![&*defaults, synchronize];
-                                            crate::write_immediate_crash_log(&format!("RESOLVE: learned alias sync_ok={}", sync_ok));
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Limit testing to avoid excessive work
-                            if tested_count >= 10 {
-                                crate::write_immediate_crash_log("RESOLVE: tolerant restore tested 10 keys, stopping");
-                                break;
-                            }
-                        }
-                    }
-                    
-                    crate::write_immediate_crash_log(&format!("RESOLVE: tolerant restore complete - keys total={} vs_count={} tested={}", total, vs_count, tested_count));
-                } else {
-                    crate::write_immediate_crash_log("RESOLVE: dictionaryRepresentation unavailable");
-                }
-                
-                if bookmark_data.is_null() {
-                    eprintln!("RESOLVE_FIXED: No bookmark found after tolerant restore");
-                    crate::write_immediate_crash_log("RESOLVE: no bookmark found after tolerant restore");
-                    return None;
-                }
-            }
-            
-            // Verify it's NSData
-            let nsdata_class = objc2::runtime::AnyClass::get("NSData").unwrap();
-            let is_nsdata: bool = msg_send![bookmark_data, isKindOfClass: nsdata_class];
-            
-            if !is_nsdata {
-                eprintln!("RESOLVE_FIXED: ERROR - not NSData, cleaning up");
-                crate::write_immediate_crash_log("RESOLVE: object for key not NSData");
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*modern_key];
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*legacy_key];
-                return None;
-            }
-            
-            eprintln!("RESOLVE_FIXED: Found valid bookmark data");
-            crate::write_immediate_crash_log("RESOLVE: attempting URLByResolvingBookmarkData");
-            
-            // CRITICAL: Resolve bookmark to get NEW security-scoped URL instance
-            let mut is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
-            let mut error: *mut AnyObject = std::ptr::null_mut();
-            
-            eprintln!("RESOLVE_FIXED: About to resolve bookmark data to NEW URL instance");
-            let resolved_url: *mut AnyObject = msg_send![
-                objc2::runtime::AnyClass::get("NSURL").unwrap(),
-                URLByResolvingBookmarkData: bookmark_data
-                options: NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE
-                relativeToURL: std::ptr::null::<AnyObject>()
-                bookmarkDataIsStale: &mut is_stale
-                error: &mut error
-            ];
-            
-            if !error.is_null() {
-                eprintln!("RESOLVE_FIXED: ERROR - bookmark resolution failed, removing stale bookmark");
-                crate::write_immediate_crash_log("RESOLVE: URLByResolvingBookmarkData error");
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*modern_key];
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*legacy_key];
-                return None;
-            }
-            
-            if resolved_url.is_null() {
-                eprintln!("RESOLVE_FIXED: ERROR - resolved URL is null, removing bookmark");
-                crate::write_immediate_crash_log("RESOLVE: resolved_url is null");
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*modern_key];
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*legacy_key];
-                return None;
-            }
-            
-            // Verify it's an NSURL
-            let nsurl_class = objc2::runtime::AnyClass::get("NSURL").unwrap();
-            let is_nsurl: bool = msg_send![resolved_url, isKindOfClass: nsurl_class];
-            
-            if !is_nsurl {
-                eprintln!("RESOLVE_FIXED: ERROR - resolved object is not NSURL");
-                crate::write_immediate_crash_log("RESOLVE: resolved object not NSURL");
-                return None;
-            }
-            
-            eprintln!("RESOLVE_FIXED: Successfully resolved bookmark to security-scoped URL");
-            
-            // Log resolved path string
-            if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
-                let rs = path_nsstring.as_str(pool).to_owned();
-                crate::write_immediate_crash_log(&format!("RESOLVE: resolved_url.path='{}'", rs));
-            }
-            
-            // CRITICAL: Call startAccessingSecurityScopedResource on the RESOLVED URL instance
-            eprintln!("RESOLVE_FIXED: About to start accessing security-scoped resource on RESOLVED URL");
-            let access_granted: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
-            crate::write_immediate_crash_log(&format!("RESOLVE: startAccessingSecurityScopedResource={}", access_granted));
-            
-            // COMPREHENSIVE DIAGNOSTICS: If startAccessing failed, diagnose why
-            if !access_granted {
-                // Check macOS version - there's a known bug in macOS 15.0 Sequoia
-                let os_version_info = std::process::Command::new("sw_vers")
-                    .arg("-productVersion")
-                    .output()
-                    .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-                    .unwrap_or_else(|_| "unknown".to_string());
-                
-                crate::write_immediate_crash_log(&format!("RESOLVE: macOS version={}", os_version_info));
-                
-                // Check if this is the known macOS Sequoia bug
-                let is_sequoia_bug = os_version_info.starts_with("15.0");
-                if is_sequoia_bug {
-                    crate::write_immediate_crash_log("RESOLVE: WARNING - macOS 15.0 Sequoia has known ScopedBookmarksAgent bug");
-                    crate::write_immediate_crash_log("RESOLVE: This is a known macOS bug fixed in 15.1+");
-                }
-                
-                // Additional diagnostics
-                let url_is_file_url: bool = msg_send![resolved_url, isFileURL];
-                let url_has_directory_path: bool = msg_send![resolved_url, hasDirectoryPath];
-                
-                if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
-                    let path_str = path_nsstring.as_str(pool).to_owned();
-                    let path_exists = std::path::Path::new(&path_str).exists();
-                    let path_is_dir = std::path::Path::new(&path_str).is_dir();
-                    let path_readable = std::fs::read_dir(&path_str).is_ok();
-                    
-                    crate::write_immediate_crash_log(&format!("RESOLVE: URL diagnostics - isFileURL={} hasDirectoryPath={} pathExists={} isDir={} readable={}", 
-                        url_is_file_url, url_has_directory_path, path_exists, path_is_dir, path_readable));
-                    
-                    // Try to get file attributes to see if there are permission issues
-                    if let Ok(metadata) = std::fs::metadata(&path_str) {
-                        let permissions = metadata.permissions();
-                        crate::write_immediate_crash_log(&format!("RESOLVE: path metadata - readonly={}", permissions.readonly()));
-                    } else {
-                        crate::write_immediate_crash_log("RESOLVE: could not get path metadata");
-                    }
-                }
-                
-                // Check if we can create a non-security-scoped bookmark from this resolved URL
-                let diagnostic_bookmark: *mut AnyObject = msg_send![
-                    resolved_url,
-                    bookmarkDataWithOptions: 0u64  // No security scope
-                    includingResourceValuesForKeys: std::ptr::null::<AnyObject>()
-                    relativeToURL: std::ptr::null::<AnyObject>()
-                    error: std::ptr::null_mut::<*mut AnyObject>()
-                ];
-                
-                if !diagnostic_bookmark.is_null() {
-                    let diag_len: usize = msg_send![diagnostic_bookmark, length];
-                    crate::write_immediate_crash_log(&format!("RESOLVE: non-security-scoped bookmark created successfully len={}", diag_len));
-                } else {
-                    crate::write_immediate_crash_log("RESOLVE: even non-security-scoped bookmark creation failed");
-                }
-                
-                // For macOS Sequoia bug, try a workaround: kill and restart ScopedBookmarksAgent
-                if is_sequoia_bug {
-                    crate::write_immediate_crash_log("RESOLVE: attempting ScopedBookmarksAgent restart workaround");
-                    
-                    // Try to kill ScopedBookmarksAgent (this might fail silently, which is fine)
-                    let _kill_result = std::process::Command::new("pkill")
-                        .arg("-f")
-                        .arg("ScopedBookmarksAgent")
-                        .output();
-                    
-                    // Wait a moment for the agent to restart
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    
-                    // Try startAccessing again after the agent restart
-                    let retry_access: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
-                    crate::write_immediate_crash_log(&format!("RESOLVE: post-agent-restart startAccessing={}", retry_access));
-                    
-                    if retry_access {
-                        crate::write_immediate_crash_log("RESOLVE: SUCCESS - agent restart workaround worked!");
-                        
-                        // Create Retained<NSURL> from the resolved URL
-                        let _: *mut AnyObject = msg_send![resolved_url, retain];
-                        let nsurl_ptr = resolved_url as *mut NSURL;
-                        
-                        if let Some(retained_url) = Retained::from_raw(nsurl_ptr) {
-                            store_security_scoped_url(directory_path, retained_url.clone());
-                            return Some(retained_url);
-                        } else {
-                            let _: () = msg_send![resolved_url, stopAccessingSecurityScopedResource];
-                        }
-                    }
-                }
-            }
-            
-            if access_granted {
-                // Handle stale bookmarks by refreshing them
-                if is_stale.as_bool() {
-                    eprintln!("RESOLVE_FIXED: Bookmark is stale, refreshing it");
-                    // Create fresh bookmark from the resolved URL (which now has active scope)
-                    let fresh_bookmark_result: *mut AnyObject = msg_send![
-                        resolved_url,
-                        bookmarkDataWithOptions: NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE
-                        includingResourceValuesForKeys: std::ptr::null::<AnyObject>()
-                        relativeToURL: std::ptr::null::<AnyObject>()
-                        error: std::ptr::null_mut::<*mut AnyObject>()
-                    ];
-                    
-                    if !fresh_bookmark_result.is_null() {
-                        eprintln!("RESOLVE_FIXED: Created fresh bookmark, storing it");
-                        crate::write_immediate_crash_log("RESOLVE: refreshed stale bookmark and stored");
-                        let _: () = msg_send![&*defaults, setObject: fresh_bookmark_result forKey: &*modern_key];
-                        let _: () = msg_send![&*defaults, setObject: fresh_bookmark_result forKey: &*legacy_key];
-                        let _: bool = msg_send![&*defaults, synchronize];
-                    } else {
-                        eprintln!("RESOLVE_FIXED: WARNING - failed to create fresh bookmark");
-                        crate::write_immediate_crash_log("RESOLVE: failed to refresh stale bookmark");
-                    }
-                }
-                
-                // Create Retained<NSURL> from the resolved URL
-                let _: *mut AnyObject = msg_send![resolved_url, retain];
-                let nsurl_ptr = resolved_url as *mut NSURL;
-                
-                if let Some(retained_url) = Retained::from_raw(nsurl_ptr) {
-                    eprintln!("RESOLVE_FIXED: SUCCESS - created Retained<NSURL> from resolved security-scoped URL");
-                    crate::write_immediate_crash_log("RESOLVE: success");
-                    
-                    // Store the resolved URL for session use
-                    store_security_scoped_url(directory_path, retained_url.clone());
-                    debug!("Successfully restored directory access from bookmark");
-                    Some(retained_url)
-                } else {
-                    eprintln!("RESOLVE_FIXED: ERROR - failed to create Retained<NSURL>");
-                    crate::write_immediate_crash_log("RESOLVE: failed to retain resolved URL");
-                    // Clean up - stop accessing the resource
-                    let _: () = msg_send![resolved_url, stopAccessingSecurityScopedResource];
-                    None
-                }
-            } else {
-                // All diagnostics have already been performed above
-                eprintln!("RESOLVE_FIXED: ERROR - failed to start accessing security-scoped resource");
-                debug!("Failed to start accessing restored security-scoped resource");
-                crate::write_immediate_crash_log("RESOLVE: startAccessing failed (final)");
-                None
-            }
-        });
-        
-        match &result {
-            Some(_) => eprintln!("RESOLVE_FIXED: FINAL SUCCESS"),
-            None => eprintln!("RESOLVE_FIXED: FINAL FAILURE"),
-        }
-        
-        result
-    }
-    
-    /// FIXED: Proper implementation following Apple's documented pattern with lifecycle management
-    fn resolve_security_scoped_bookmark_OLD_REMOVE_ME(directory_path: &str) -> Option<Retained<NSURL>> {
-        if DISABLE_BOOKMARK_RESTORATION {
-            eprintln!("RESOLVE_FIXED: disabled - skipping");
-            return None;
-        }
-        
-        eprintln!("RESOLVE_FIXED: Starting for path: {}", directory_path);
-        debug!("Resolving security-scoped bookmark for: {}", directory_path);
-        crate::write_immediate_crash_log(&format!("RESOLVE: begin path={}", directory_path));
-        
-        let result = autoreleasepool(|pool| unsafe {
-            eprintln!("RESOLVE_FIXED: Entered autoreleasepool");
-            
-            // Validate input
-            if directory_path.is_empty() || directory_path.len() > 500 {
-                eprintln!("RESOLVE_FIXED: ERROR - invalid path");
-                crate::write_immediate_crash_log("RESOLVE: invalid path");
-                return None;
-            }
-            
-            // Log standardized form (best-effort via NSString)
-            let orig_ns = NSString::from_str(directory_path);
-            let std_ns: *mut AnyObject = msg_send![&*orig_ns, stringByStandardizingPath];
-            if !std_ns.is_null() {
-                let std_str = (&*(std_ns as *const NSString)).as_str(pool).to_owned();
-                crate::write_immediate_crash_log(&format!("RESOLVE: standardized='{}'", std_str));
-            }
-            
-            // Also try canonicalize via std (may fail in sandbox)
-            if let Ok(canon) = std::fs::canonicalize(directory_path) {
-                if let Some(s) = canon.to_str() {
-                    crate::write_immediate_crash_log(&format!("RESOLVE: canonicalize='{}'", s));
-                }
-            }
-            
-            let defaults = NSUserDefaults::standardUserDefaults();
-            
-            // STEP 1: Try direct lookup first
-            let (modern_key, legacy_key) = make_bookmark_keys(directory_path);
-            eprintln!("RESOLVE_FIXED: Looking for modern key");
-            let mut bookmark_data: *mut AnyObject = msg_send![&*defaults, objectForKey: &*modern_key];
-            if !bookmark_data.is_null() {
-                let len: usize = msg_send![bookmark_data, length];
-                crate::write_immediate_crash_log(&format!("RESOLVE: found modern key len={} bytes", len));
-            }
-            if bookmark_data.is_null() {
-                eprintln!("RESOLVE_FIXED: Modern key not found, trying legacy");
-                crate::write_immediate_crash_log("RESOLVE: modern key not found, trying legacy");
-                bookmark_data = msg_send![&*defaults, objectForKey: &*legacy_key];
-                if !bookmark_data.is_null() {
-                    let len: usize = msg_send![bookmark_data, length];
-                    crate::write_immediate_crash_log(&format!("RESOLVE: found legacy key len={} bytes", len));
-                }
-            }
-            
-            // STEP 2: If direct lookup failed, try tolerant restore (enumerate all VSBookmark keys)
-            if bookmark_data.is_null() {
-                crate::write_immediate_crash_log("RESOLVE: direct lookup failed, attempting tolerant restore");
-                eprintln!("RESOLVE_FIXED: Direct lookup failed, attempting tolerant restore");
-                
-                let dict: *mut AnyObject = msg_send![&*defaults, dictionaryRepresentation];
-                if !dict.is_null() {
-                    let nsdict = &*(dict as *const NSDictionary<NSString, AnyObject>);
-                    let keys = nsdict.allKeys();
-                    let mut total = 0usize;
-                    let mut vs_count = 0usize;
-                    let mut tested_count = 0usize;
-                    
-                    // Normalize target path for comparison
-                    let target_path_normalized = std::fs::canonicalize(directory_path)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| directory_path.to_string());
-                    
-                    crate::write_immediate_crash_log(&format!("RESOLVE: tolerant restore target_normalized='{}'", target_path_normalized));
-                    
-                    for i in 0..keys.len() {
-                        total += 1;
-                        let k = &keys[i];
-                        let ks = k.as_str(pool).to_owned();
-                        
-                        if ks.starts_with("VSBookmark") {
-                            vs_count += 1;
-                            tested_count += 1;
-                            
-                            crate::write_immediate_crash_log(&format!("RESOLVE: testing key '{}'", ks));
-                            
-                            let test_bookmark: *mut AnyObject = msg_send![&*defaults, objectForKey: k];
-                            if !test_bookmark.is_null() {
-                                // Try to resolve this bookmark
-                                let mut is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
-                                let mut error: *mut AnyObject = std::ptr::null_mut();
-                                
-                                let test_resolved: *mut AnyObject = msg_send![
-                                    objc2::runtime::AnyClass::get("NSURL").unwrap(),
-                                    URLByResolvingBookmarkData: test_bookmark
-                                    options: NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE
-                                    relativeToURL: std::ptr::null::<AnyObject>()
-                                    bookmarkDataIsStale: &mut is_stale
-                                    error: &mut error
-                                ];
-                                
-                                if error.is_null() && !test_resolved.is_null() {
-                                    // Get the resolved path and compare
-                                    if let Some(path_nsstring) = (&*(test_resolved as *const NSURL)).path() {
-                                        let resolved_path = path_nsstring.as_str(pool).to_owned();
-                                        let resolved_normalized = std::fs::canonicalize(&resolved_path)
-                                            .map(|p| p.to_string_lossy().to_string())
-                                            .unwrap_or_else(|_| resolved_path.clone());
-                                        
-                                        crate::write_immediate_crash_log(&format!("RESOLVE: key '{}' -> resolved='{}'", ks, resolved_normalized));
-                                        
-                                        if resolved_normalized == target_path_normalized {
-                                            crate::write_immediate_crash_log(&format!("RESOLVE: tolerant match found! using key '{}'", ks));
-                                            eprintln!("RESOLVE_FIXED: Tolerant match found for key: {}", ks);
-                                            bookmark_data = test_bookmark;
-                                            
-                                            // Learn this alias for future direct lookups
-                                            let _: () = msg_send![&*defaults, setObject: bookmark_data forKey: &*modern_key];
-                                            let _: () = msg_send![&*defaults, setObject: bookmark_data forKey: &*legacy_key];
-                                            let sync_ok: bool = msg_send![&*defaults, synchronize];
-                                            crate::write_immediate_crash_log(&format!("RESOLVE: learned alias sync_ok={}", sync_ok));
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Limit testing to avoid excessive work
-                            if tested_count >= 10 {
-                                crate::write_immediate_crash_log("RESOLVE: tolerant restore tested 10 keys, stopping");
-                                break;
-                            }
-                        }
-                    }
-                    
-                    crate::write_immediate_crash_log(&format!("RESOLVE: tolerant restore complete - keys total={} vs_count={} tested={}", total, vs_count, tested_count));
-                } else {
-                    crate::write_immediate_crash_log("RESOLVE: dictionaryRepresentation unavailable");
-                }
-                
-                if bookmark_data.is_null() {
-                    eprintln!("RESOLVE_FIXED: No bookmark found after tolerant restore");
-                    crate::write_immediate_crash_log("RESOLVE: no bookmark found after tolerant restore");
-                    return None;
-                }
-            }
-            
-            // Verify it's NSData
-            let nsdata_class = objc2::runtime::AnyClass::get("NSData").unwrap();
-            let is_nsdata: bool = msg_send![bookmark_data, isKindOfClass: nsdata_class];
-            
-            if !is_nsdata {
-                eprintln!("RESOLVE_FIXED: ERROR - not NSData, cleaning up");
-                crate::write_immediate_crash_log("RESOLVE: object for key not NSData");
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*modern_key];
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*legacy_key];
-                return None;
-            }
-            
-            eprintln!("RESOLVE_FIXED: Found valid bookmark data");
-            crate::write_immediate_crash_log("RESOLVE: attempting URLByResolvingBookmarkData");
-            
-            // CRITICAL: Resolve bookmark to get NEW security-scoped URL instance
-            let mut is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
-            let mut error: *mut AnyObject = std::ptr::null_mut();
-            
-            eprintln!("RESOLVE_FIXED: About to resolve bookmark data to NEW URL instance");
-            let resolved_url: *mut AnyObject = msg_send![
-                objc2::runtime::AnyClass::get("NSURL").unwrap(),
-                URLByResolvingBookmarkData: bookmark_data
-                options: NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE
-                relativeToURL: std::ptr::null::<AnyObject>()
-                bookmarkDataIsStale: &mut is_stale
-                error: &mut error
-            ];
-            
-            if !error.is_null() {
-                eprintln!("RESOLVE_FIXED: ERROR - bookmark resolution failed, removing stale bookmark");
-                crate::write_immediate_crash_log("RESOLVE: URLByResolvingBookmarkData error");
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*modern_key];
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*legacy_key];
-                return None;
-            }
-            
-            if resolved_url.is_null() {
-                eprintln!("RESOLVE_FIXED: ERROR - resolved URL is null, removing bookmark");
-                crate::write_immediate_crash_log("RESOLVE: resolved_url is null");
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*modern_key];
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*legacy_key];
-                return None;
-            }
-            
-            // Verify it's an NSURL
-            let nsurl_class = objc2::runtime::AnyClass::get("NSURL").unwrap();
-            let is_nsurl: bool = msg_send![resolved_url, isKindOfClass: nsurl_class];
-            
-            if !is_nsurl {
-                eprintln!("RESOLVE_FIXED: ERROR - resolved object is not NSURL");
-                crate::write_immediate_crash_log("RESOLVE: resolved object not NSURL");
-                return None;
-            }
-            
-            eprintln!("RESOLVE_FIXED: Successfully resolved bookmark to security-scoped URL");
-            
-            // Log resolved path string
-            if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
-                let rs = path_nsstring.as_str(pool).to_owned();
-                crate::write_immediate_crash_log(&format!("RESOLVE: resolved_url.path='{}'", rs));
-            }
-            
-            // CRITICAL: Call startAccessingSecurityScopedResource on the RESOLVED URL instance
-            eprintln!("RESOLVE_FIXED: About to start accessing security-scoped resource on RESOLVED URL");
-            let access_granted: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
-            crate::write_immediate_crash_log(&format!("RESOLVE: startAccessingSecurityScopedResource={}", access_granted));
-            
-            // COMPREHENSIVE DIAGNOSTICS: If startAccessing failed, diagnose why
-            if !access_granted {
-                // Check macOS version - there's a known bug in macOS 15.0 Sequoia
-                let os_version_info = std::process::Command::new("sw_vers")
-                    .arg("-productVersion")
-                    .output()
-                    .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-                    .unwrap_or_else(|_| "unknown".to_string());
-                
-                crate::write_immediate_crash_log(&format!("RESOLVE: macOS version={}", os_version_info));
-                
-                // Check if this is the known macOS Sequoia bug
-                let is_sequoia_bug = os_version_info.starts_with("15.0");
-                if is_sequoia_bug {
-                    crate::write_immediate_crash_log("RESOLVE: WARNING - macOS 15.0 Sequoia has known ScopedBookmarksAgent bug");
-                    crate::write_immediate_crash_log("RESOLVE: This is a known macOS bug fixed in 15.1+");
-                }
-                
-                // Additional diagnostics
-                let url_is_file_url: bool = msg_send![resolved_url, isFileURL];
-                let url_has_directory_path: bool = msg_send![resolved_url, hasDirectoryPath];
-                
-                if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
-                    let path_str = path_nsstring.as_str(pool).to_owned();
-                    let path_exists = std::path::Path::new(&path_str).exists();
-                    let path_is_dir = std::path::Path::new(&path_str).is_dir();
-                    let path_readable = std::fs::read_dir(&path_str).is_ok();
-                    
-                    crate::write_immediate_crash_log(&format!("RESOLVE: URL diagnostics - isFileURL={} hasDirectoryPath={} pathExists={} isDir={} readable={}", 
-                        url_is_file_url, url_has_directory_path, path_exists, path_is_dir, path_readable));
-                    
-                    // Try to get file attributes to see if there are permission issues
-                    if let Ok(metadata) = std::fs::metadata(&path_str) {
-                        let permissions = metadata.permissions();
-                        crate::write_immediate_crash_log(&format!("RESOLVE: path metadata - readonly={}", permissions.readonly()));
-                    } else {
-                        crate::write_immediate_crash_log("RESOLVE: could not get path metadata");
-                    }
-                }
-                
-                // Check if we can create a non-security-scoped bookmark from this resolved URL
-                let diagnostic_bookmark: *mut AnyObject = msg_send![
-                    resolved_url,
-                    bookmarkDataWithOptions: 0u64  // No security scope
-                    includingResourceValuesForKeys: std::ptr::null::<AnyObject>()
-                    relativeToURL: std::ptr::null::<AnyObject>()
-                    error: std::ptr::null_mut::<*mut AnyObject>()
-                ];
-                
-                if !diagnostic_bookmark.is_null() {
-                    let diag_len: usize = msg_send![diagnostic_bookmark, length];
-                    crate::write_immediate_crash_log(&format!("RESOLVE: non-security-scoped bookmark created successfully len={}", diag_len));
-                } else {
-                    crate::write_immediate_crash_log("RESOLVE: even non-security-scoped bookmark creation failed");
-                }
-                
-                // For macOS Sequoia bug, try a workaround: kill and restart ScopedBookmarksAgent
-                if is_sequoia_bug {
-                    crate::write_immediate_crash_log("RESOLVE: attempting ScopedBookmarksAgent restart workaround");
-                    
-                    // Try to kill ScopedBookmarksAgent (this might fail silently, which is fine)
-                    let _kill_result = std::process::Command::new("pkill")
-                        .arg("-f")
-                        .arg("ScopedBookmarksAgent")
-                        .output();
-                    
-                    // Wait a moment for the agent to restart
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    
-                    // Try startAccessing again after the agent restart
-                    let retry_access: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
-                    crate::write_immediate_crash_log(&format!("RESOLVE: post-agent-restart startAccessing={}", retry_access));
-                    
-                    if retry_access {
-                        crate::write_immediate_crash_log("RESOLVE: SUCCESS - agent restart workaround worked!");
-                        
-                        // Create Retained<NSURL> from the resolved URL
-                        let _: *mut AnyObject = msg_send![resolved_url, retain];
-                        let nsurl_ptr = resolved_url as *mut NSURL;
-                        
-                        if let Some(retained_url) = Retained::from_raw(nsurl_ptr) {
-                            store_security_scoped_url(directory_path, retained_url.clone());
-                            return Some(retained_url);
-                        } else {
-                            let _: () = msg_send![resolved_url, stopAccessingSecurityScopedResource];
-                        }
-                    }
-                }
-            }
-            
-            if access_granted {
-                // Handle stale bookmarks by refreshing them
-                if is_stale.as_bool() {
-                    eprintln!("RESOLVE_FIXED: Bookmark is stale, refreshing it");
-                    // Create fresh bookmark from the resolved URL (which now has active scope)
-                    let fresh_bookmark_result: *mut AnyObject = msg_send![
-                        resolved_url,
-                        bookmarkDataWithOptions: NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE
-                        includingResourceValuesForKeys: std::ptr::null::<AnyObject>()
-                        relativeToURL: std::ptr::null::<AnyObject>()
-                        error: std::ptr::null_mut::<*mut AnyObject>()
-                    ];
-                    
-                    if !fresh_bookmark_result.is_null() {
-                        eprintln!("RESOLVE_FIXED: Created fresh bookmark, storing it");
-                        crate::write_immediate_crash_log("RESOLVE: refreshed stale bookmark and stored");
-                        let _: () = msg_send![&*defaults, setObject: fresh_bookmark_result forKey: &*modern_key];
-                        let _: () = msg_send![&*defaults, setObject: fresh_bookmark_result forKey: &*legacy_key];
-                        let _: bool = msg_send![&*defaults, synchronize];
-                    } else {
-                        eprintln!("RESOLVE_FIXED: WARNING - failed to create fresh bookmark");
-                        crate::write_immediate_crash_log("RESOLVE: failed to refresh stale bookmark");
-                    }
-                }
-                
-                // Create Retained<NSURL> from the resolved URL
-                let _: *mut AnyObject = msg_send![resolved_url, retain];
-                let nsurl_ptr = resolved_url as *mut NSURL;
-                
-                if let Some(retained_url) = Retained::from_raw(nsurl_ptr) {
-                    eprintln!("RESOLVE_FIXED: SUCCESS - created Retained<NSURL> from resolved security-scoped URL");
-                    crate::write_immediate_crash_log("RESOLVE: success");
-                    
-                    // Store the resolved URL for session use
-                    store_security_scoped_url(directory_path, retained_url.clone());
-                    debug!("Successfully restored directory access from bookmark");
-                    Some(retained_url)
-                } else {
-                    eprintln!("RESOLVE_FIXED: ERROR - failed to create Retained<NSURL>");
-                    crate::write_immediate_crash_log("RESOLVE: failed to retain resolved URL");
-                    // Clean up - stop accessing the resource
-                    let _: () = msg_send![resolved_url, stopAccessingSecurityScopedResource];
-                    None
-                }
-            } else {
-                // All diagnostics have already been performed above
-                eprintln!("RESOLVE_FIXED: ERROR - failed to start accessing security-scoped resource");
-                debug!("Failed to start accessing restored security-scoped resource");
-                crate::write_immediate_crash_log("RESOLVE: startAccessing failed (final)");
-                None
-            }
-        });
-        
-        match &result {
-            Some(_) => eprintln!("RESOLVE_FIXED: FINAL SUCCESS"),
-            None => eprintln!("RESOLVE_FIXED: FINAL FAILURE"),
-        }
-        
-        result
-    }
     
     /// Public function to restore directory access for a specific path using stored bookmarks
     /// This is called when the app needs to regain access to a previously granted directory
@@ -1056,15 +288,7 @@ pub mod macos_file_handler {
             }
         }
     }
-    
-    /// Normalizes a directory path for use as a UserDefaults key - SIMPLIFIED VERSION
-    fn normalize_path_for_key(path: &str) -> String {
-        // Create a simple, safe key from the directory path
-        path.chars()
-            .filter(|c| c.is_alphanumeric() || *c == '_')
-            .take(50)
-            .collect::<String>()
-    }
+
 
     /// Requests directory access via NSOpenPanel and creates persistent bookmark
     /// FIXED: Proper handling of NSOpenPanel security-scoped URLs
@@ -1193,103 +417,6 @@ pub mod macos_file_handler {
         result
     }
 
-    /// Attempts to read a directory using existing security-scoped access
-    /// FIXED: Use the resolved URL path for file operations
-    pub fn read_directory_with_security_scoped_access(path: &str) -> Option<Result<std::fs::ReadDir, std::io::Error>> {
-        debug!("Attempting to read directory with existing security-scoped access: {}", path);
-        
-        // Try to get a resolved security-scoped URL
-        if let Some(resolved_url) = get_resolved_security_scoped_url(path) {
-            debug!("Have security-scoped URL, attempting directory read");
-            
-            // Get the resolved path from the URL for file operations
-            let resolved_path = autoreleasepool(|pool| unsafe {
-                if let Some(path_nsstring) = resolved_url.path() {
-                    Some(path_nsstring.as_str(pool).to_owned())
-                } else {
-                    None
-                }
-            });
-            
-            if let Some(resolved_path) = resolved_path {
-                debug!("Using resolved security-scoped path: {}", resolved_path);
-                let result = Some(std::fs::read_dir(resolved_path));
-                
-                // Clean up - stop accessing the security scoped resource
-                unsafe {
-                    let _: () = msg_send![&*resolved_url, stopAccessingSecurityScopedResource];
-                }
-                
-                return result;
-        } else {
-                error!("Failed to get path from resolved security-scoped URL for: {}", path);
-                
-                // Clean up - stop accessing the security scoped resource
-                unsafe {
-                    let _: () = msg_send![&*resolved_url, stopAccessingSecurityScopedResource];
-                }
-                
-                return Some(std::fs::read_dir(path)); // Fallback to original path
-            }
-        }
-        
-            debug!("No security-scoped access available for directory read");
-            
-            // Check for "Open With" scenario - individual file access within this directory
-            if let Ok(urls) = SECURITY_SCOPED_URLS.lock() {
-                let has_file_in_directory = urls.keys().any(|key| {
-                    let key_path = std::path::Path::new(key);
-                    if key_path.is_file() {
-                        if let Some(file_parent) = key_path.parent() {
-                            return file_parent.to_string_lossy() == path;
-                        }
-                    }
-                    false
-                });
-                
-                if has_file_in_directory {
-                    debug!("Detected 'Open With' scenario - requesting directory access");
-                    drop(urls); // Release lock before calling request function
-                    
-                    if request_directory_access_with_nsopenpanel(path) {
-                        debug!("Directory access granted, retrying read");
-                    // After granting access, try to get the resolved URL again
-                    if let Some(resolved_url) = get_resolved_security_scoped_url(path) {
-                        let resolved_path = autoreleasepool(|pool| unsafe {
-                            if let Some(path_nsstring) = resolved_url.path() {
-                                Some(path_nsstring.as_str(pool).to_owned())
-                            } else {
-                                None
-                            }
-                        });
-                        
-                        if let Some(resolved_path) = resolved_path {
-                            debug!("Using newly resolved security-scoped path: {}", resolved_path);
-                            let result = Some(std::fs::read_dir(resolved_path));
-                            
-                            // Clean up
-                            unsafe {
-                                let _: () = msg_send![&*resolved_url, stopAccessingSecurityScopedResource];
-                            }
-                            
-                            return result;
-                        } else {
-                            // Clean up
-                            unsafe {
-                                let _: () = msg_send![&*resolved_url, stopAccessingSecurityScopedResource];
-                            }
-                            
-                            return Some(std::fs::read_dir(path)); // Fallback
-                        }
-                    } else {
-                            return Some(std::fs::read_dir(path)); // Fallback
-                        }
-                    }
-                }
-            }
-            
-            None
-    }
 
     /// Helper function to request parent directory access for a file
     pub fn request_parent_directory_permission_dialog(file_path: &str) -> bool {
@@ -1330,19 +457,6 @@ pub mod macos_file_handler {
         }
     }
 
-    /// Simplified full disk access request - actually requests directory access
-    pub fn request_full_disk_access_once() -> bool {
-        debug!("🔍 request_full_disk_access_once() - using directory access instead");
-        
-        // In a sandboxed environment, we can't get true "full disk access"
-        // Instead, we request access to the user's home directory as a reasonable default
-        if let Some(home_dir) = dirs::home_dir() {
-            let home_path = home_dir.to_string_lossy();
-            request_directory_access_with_nsopenpanel(&home_path)
-        } else {
-            false
-        }
-    }
 
     /// Handle opening a file via "Open With" from Finder
     unsafe extern "C" fn handle_opened_file(
@@ -1624,319 +738,86 @@ pub mod macos_file_handler {
         }
     }
 
-    /// CRITICAL FIX: Clear corrupted bookmark data that may be causing crashes
-    pub fn clear_corrupted_bookmarks() {
-        eprintln!("BOOKMARK_CLEANUP: Starting cleanup of potentially corrupted bookmarks");
-        
-        autoreleasepool(|_pool| unsafe {
-            let defaults = NSUserDefaults::standardUserDefaults();
-            
-            // Safer cleanup: Only remove legacy/broken prefixes and debug counters
-            // DO NOT remove new-format VSBookmark_ keys, as they hold valid bookmarks
-            let bookmark_prefixes = [
-                "ViewSkaterSecurityBookmark_", // legacy broken format
-                // "VSBookmark_",               // KEEP new format intact
-                "ViewSkaterLastCrashLog",
-                "ViewSkaterCrashCounter",
-                "ViewSkaterImmediateCrashLog",
-            ];
-            
-            for prefix in &bookmark_prefixes {
-                eprintln!("BOOKMARK_CLEANUP: Clearing keys with prefix: {}", prefix);
-                
-                // Create a simple test key to see if any exist
-                for i in 0..50 { // Check up to 50 possible entries
-                    let test_key_str = format!("{}{}", prefix, i);
-                    let test_key = NSString::from_str(&test_key_str);
-                    
-                    let obj: *mut AnyObject = msg_send![&*defaults, objectForKey: &*test_key];
-                    if !obj.is_null() {
-                        eprintln!("BOOKMARK_CLEANUP: Removing key: {}", test_key_str);
-                        let _: () = msg_send![&*defaults, removeObjectForKey: &*test_key];
-                    }
-                }
-                
-                // Also try to remove the base prefix key
-                let base_key = NSString::from_str(prefix);
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*base_key];
-            }
-            
-            // Also clean up any entries that match the exact pattern we use for the legacy format
-            let common_paths = [
-                "/Users", "/Applications", "/Documents", "/Desktop", "/Downloads",
-                "/Pictures", "/Movies", "/Music", "/Library",
-            ];
-            
-            for path in &common_paths {
-                let normalized = normalize_path_for_key(path);
-                let key_str = format!("ViewSkaterSecurityBookmark_{}", normalized);
-                let key = NSString::from_str(&key_str);
-                
-                eprintln!("BOOKMARK_CLEANUP: Attempting to remove: {}", key_str);
-                let _: () = msg_send![&*defaults, removeObjectForKey: &*key];
-            }
-            
-            // Force synchronization to ensure cleanup is persisted
-            let sync_result: bool = msg_send![&*defaults, synchronize];
-            eprintln!("BOOKMARK_CLEANUP: Synchronization result: {}", sync_result);
-            eprintln!("BOOKMARK_CLEANUP: Cleanup completed successfully");
-        });
-    }
-
-    /// SIMPLIFIED: Resolve security-scoped bookmark and return the actual NSURL instance for direct use
-    /// The key insight: we must use the resolved NSURL instance directly, not convert it to a path string
-    fn resolve_security_scoped_bookmark_for_direct_use(directory_path: &str) -> Option<Retained<NSURL>> {
-        if DISABLE_BOOKMARK_RESTORATION {
-            eprintln!("RESOLVE_DIRECT: disabled - skipping");
-            return None;
-        }
-        
-        eprintln!("RESOLVE_DIRECT: Starting direct resolution for path: {}", directory_path);
-        crate::write_immediate_crash_log(&format!("RESOLVE_DIRECT: begin path={}", directory_path));
-        
-        let result = autoreleasepool(|pool| unsafe {
-            // Validate input
-            if directory_path.is_empty() || directory_path.len() > 500 {
-                crate::write_immediate_crash_log("RESOLVE_DIRECT: invalid path");
-                return None;
-            }
-            
-            let defaults = NSUserDefaults::standardUserDefaults();
-            
-            // Try direct lookup first
-            let (modern_key, legacy_key) = make_bookmark_keys(directory_path);
-            let mut bookmark_data: *mut AnyObject = msg_send![&*defaults, objectForKey: &*modern_key];
-            if bookmark_data.is_null() {
-                bookmark_data = msg_send![&*defaults, objectForKey: &*legacy_key];
-            }
-            
-            // If direct lookup failed, try tolerant restore (simplified)
-            if bookmark_data.is_null() {
-                crate::write_immediate_crash_log("RESOLVE_DIRECT: direct lookup failed, attempting tolerant restore");
-                
-                let dict: *mut AnyObject = msg_send![&*defaults, dictionaryRepresentation];
-                if !dict.is_null() {
-                    let nsdict = &*(dict as *const NSDictionary<NSString, AnyObject>);
-                    let keys = nsdict.allKeys();
-                    
-                    let target_path_normalized = std::fs::canonicalize(directory_path)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| directory_path.to_string());
-                    
-                    for i in 0..keys.len().min(5) {  // Limit to 5 keys for performance
-                        let k = &keys[i];
-                        let ks = k.as_str(pool).to_owned();
-                        
-                        if ks.starts_with("VSBookmark") {
-                            let test_bookmark: *mut AnyObject = msg_send![&*defaults, objectForKey: k];
-                            if !test_bookmark.is_null() {
-                                // Quick test resolve to check path match
-                                let mut is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
-                                let mut error: *mut AnyObject = std::ptr::null_mut();
-                                
-                                let test_resolved: *mut AnyObject = msg_send![
-                                    objc2::runtime::AnyClass::get("NSURL").unwrap(),
-                                    URLByResolvingBookmarkData: test_bookmark
-                                    options: NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE
-                                    relativeToURL: std::ptr::null::<AnyObject>()
-                                    bookmarkDataIsStale: &mut is_stale
-                                    error: &mut error
-                                ];
-                                
-                                if error.is_null() && !test_resolved.is_null() {
-                                    if let Some(path_nsstring) = (&*(test_resolved as *const NSURL)).path() {
-                                        let resolved_path = path_nsstring.as_str(pool).to_owned();
-                                        let resolved_normalized = std::fs::canonicalize(&resolved_path)
-                                            .map(|p| p.to_string_lossy().to_string())
-                                            .unwrap_or_else(|_| resolved_path.clone());
-                                        
-                                        if resolved_normalized == target_path_normalized {
-                                            crate::write_immediate_crash_log(&format!("RESOLVE_DIRECT: tolerant match found! using key '{}'", ks));
-                                            bookmark_data = test_bookmark;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                if bookmark_data.is_null() {
-                    crate::write_immediate_crash_log("RESOLVE_DIRECT: no bookmark found after tolerant restore");
-                    return None;
-                }
-            }
-            
-            // Verify it's NSData
-            let nsdata_class = objc2::runtime::AnyClass::get("NSData").unwrap();
-            let is_nsdata: bool = msg_send![bookmark_data, isKindOfClass: nsdata_class];
-            if !is_nsdata {
-                crate::write_immediate_crash_log("RESOLVE_DIRECT: object for key not NSData");
-                return None;
-            }
-            
-            crate::write_immediate_crash_log("RESOLVE_DIRECT: attempting URLByResolvingBookmarkData");
-            
-            // Resolve bookmark to get NEW security-scoped URL instance
-            let mut is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
-            let mut error: *mut AnyObject = std::ptr::null_mut();
-            
-            let resolved_url: *mut AnyObject = msg_send![
-                objc2::runtime::AnyClass::get("NSURL").unwrap(),
-                URLByResolvingBookmarkData: bookmark_data
-                options: NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE
-                relativeToURL: std::ptr::null::<AnyObject>()
-                bookmarkDataIsStale: &mut is_stale
-                error: &mut error
-            ];
-            
-            if !error.is_null() || resolved_url.is_null() {
-                crate::write_immediate_crash_log("RESOLVE_DIRECT: URLByResolvingBookmarkData failed");
-                return None;
-            }
-            
-            // Verify it's an NSURL
-            let nsurl_class = objc2::runtime::AnyClass::get("NSURL").unwrap();
-            let is_nsurl: bool = msg_send![resolved_url, isKindOfClass: nsurl_class];
-            if !is_nsurl {
-                crate::write_immediate_crash_log("RESOLVE_DIRECT: resolved object not NSURL");
-                return None;
-            }
-            
-            // Log resolved path
-            if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
-                let rs = path_nsstring.as_str(pool).to_owned();
-                crate::write_immediate_crash_log(&format!("RESOLVE_DIRECT: resolved_url.path='{}'", rs));
-            }
-            
-            // CRITICAL: Call startAccessingSecurityScopedResource on the RESOLVED URL instance
-            crate::write_immediate_crash_log("RESOLVE_DIRECT: calling startAccessingSecurityScopedResource on resolved URL");
-            let access_granted: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
-            crate::write_immediate_crash_log(&format!("RESOLVE_DIRECT: startAccessingSecurityScopedResource={}", access_granted));
-            
-            if access_granted {
-                // Handle stale bookmarks
-                if is_stale.as_bool() {
-                    crate::write_immediate_crash_log("RESOLVE_DIRECT: bookmark is stale, refreshing");
-                    let fresh_bookmark_result: *mut AnyObject = msg_send![
-                        resolved_url,
-                        bookmarkDataWithOptions: NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE
-                        includingResourceValuesForKeys: std::ptr::null::<AnyObject>()
-                        relativeToURL: std::ptr::null::<AnyObject>()
-                        error: std::ptr::null_mut::<*mut AnyObject>()
-                    ];
-                    
-                    if !fresh_bookmark_result.is_null() {
-                        let _: () = msg_send![&*defaults, setObject: fresh_bookmark_result forKey: &*modern_key];
-                        let _: () = msg_send![&*defaults, setObject: fresh_bookmark_result forKey: &*legacy_key];
-                        let _: bool = msg_send![&*defaults, synchronize];
-                        crate::write_immediate_crash_log("RESOLVE_DIRECT: refreshed stale bookmark");
-                    }
-                }
-                
-                // Create Retained<NSURL> from the resolved URL
-                let _: *mut AnyObject = msg_send![resolved_url, retain];
-                let nsurl_ptr = resolved_url as *mut NSURL;
-                
-                if let Some(retained_url) = Retained::from_raw(nsurl_ptr) {
-                    crate::write_immediate_crash_log("RESOLVE_DIRECT: SUCCESS - returning resolved URL for direct use");
-                    
-                    // Store for session use (but don't over-complicate with caching)
-                    store_security_scoped_url_with_info(directory_path, retained_url.clone(), true);
-                    Some(retained_url)
-                } else {
-                    crate::write_immediate_crash_log("RESOLVE_DIRECT: failed to retain resolved URL");
-                    let _: () = msg_send![resolved_url, stopAccessingSecurityScopedResource];
-                    None
-                }
-            } else {
-                crate::write_immediate_crash_log("RESOLVE_DIRECT: startAccessingSecurityScopedResource failed");
-                
-                // Log diagnostic info
-                let url_is_file_url: bool = msg_send![resolved_url, isFileURL];
-                if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
-                    let path_str = path_nsstring.as_str(pool).to_owned();
-                    let path_exists = std::path::Path::new(&path_str).exists();
-                    let path_is_dir = std::path::Path::new(&path_str).is_dir();
-                    crate::write_immediate_crash_log(&format!(
-                        "RESOLVE_DIRECT: diagnostics - isFileURL={} pathExists={} pathIsDir={} path='{}'", 
-                        url_is_file_url, path_exists, path_is_dir, path_str
-                    ));
-                } else {
-                    crate::write_immediate_crash_log("RESOLVE_DIRECT: no path available from resolved URL");
-                }
-                
-                None
-            }
-        });
-        
-        match &result {
-            Some(_) => {
-                eprintln!("RESOLVE_DIRECT: SUCCESS");
-                crate::write_immediate_crash_log("RESOLVE_DIRECT: success");
-            }
-            None => {
-                eprintln!("RESOLVE_DIRECT: FAILURE");
-                crate::write_immediate_crash_log("RESOLVE_DIRECT: failure");
-            }
-        }
-        
-        result
-    }
     
     /// Get a resolved NSURL instance for direct file operations (not a path string!)
-    /// This follows Apple's documented pattern - resolve fresh each time, use the exact returned instance
+    /// This implements "resolve once per session" to avoid multiple URLByResolvingBookmarkData calls
+    /// which can fail on macOS when called multiple times for the same bookmark data
     pub fn get_resolved_security_scoped_url(directory_path: &str) -> Option<Retained<NSURL>> {
         if DISABLE_BOOKMARK_RESTORATION {
-            crate::write_immediate_crash_log("RESOLVE_SIMPLE: DISABLED - bookmark restoration is disabled");
+            crate::write_immediate_crash_log("SESSION_RESOLVE: DISABLED - bookmark restoration is disabled");
             return None;
         }
         
-        crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: Starting for path: {}", directory_path));
+        crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Starting for path: {}", directory_path));
         
-        autoreleasepool(|pool| unsafe {
+        // STEP 1: Check session cache first - this is the key to "resolve once per session"
+        if let Ok(session_cache) = SESSION_RESOLVED_URLS.lock() {
+            if let Some(cached_url) = session_cache.get(directory_path) {
+                crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: CACHE HIT - Using cached resolved URL for: {}", directory_path));
+                
+                // Try to activate security scope on the cached URL
+                let access_granted: bool = unsafe { 
+                    msg_send![&**cached_url, startAccessingSecurityScopedResource] 
+                };
+                crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: startAccessingSecurityScopedResource on cached URL = {}", access_granted));
+                
+                if access_granted {
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: SUCCESS - Using cached URL with active scope");
+                    return Some(cached_url.clone());
+                } else {
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: CACHE INVALID - Cached URL failed to activate scope, will re-resolve");
+                    // Don't return here - fall through to re-resolve
+                }
+            } else {
+                crate::write_immediate_crash_log("SESSION_RESOLVE: CACHE MISS - No cached URL found, will resolve fresh");
+            }
+        }
+        
+        // STEP 2: No valid cached URL found, resolve fresh (this should only happen once per session per directory)
+        crate::write_immediate_crash_log("SESSION_RESOLVE: Resolving bookmark fresh (should only happen once per session)");
+        
+        let resolved_url = autoreleasepool(|pool| unsafe {
             let defaults = NSUserDefaults::standardUserDefaults();
             let (modern_key, legacy_key) = make_bookmark_keys(directory_path);
             
-            crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: Looking for keys - modern:'{}' legacy:'{}'", 
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Looking for bookmark keys - modern:'{}' legacy:'{}'", 
                 modern_key.as_str(pool), legacy_key.as_str(pool)));
             
             // Get bookmark data
             let mut bookmark_data: *mut AnyObject = msg_send![&*defaults, objectForKey: &*modern_key];
             let mut used_modern = true;
             if bookmark_data.is_null() {
-                crate::write_immediate_crash_log("RESOLVE_SIMPLE: Modern key not found, trying legacy");
+                crate::write_immediate_crash_log("SESSION_RESOLVE: Modern key not found, trying legacy");
                 bookmark_data = msg_send![&*defaults, objectForKey: &*legacy_key];
                 used_modern = false;
             }
             
             if bookmark_data.is_null() {
-                crate::write_immediate_crash_log("RESOLVE_SIMPLE: No bookmark found (neither modern nor legacy)");
+                crate::write_immediate_crash_log("SESSION_RESOLVE: No bookmark found (neither modern nor legacy)");
                 return None;
             }
             
-            crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: Found bookmark using {} key", 
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Found bookmark using {} key", 
                 if used_modern { "modern" } else { "legacy" }));
             
             // Verify it's NSData and get size
             let nsdata_class = objc2::runtime::AnyClass::get("NSData").unwrap();
             let is_nsdata: bool = msg_send![bookmark_data, isKindOfClass: nsdata_class];
             if !is_nsdata {
-                crate::write_immediate_crash_log("RESOLVE_SIMPLE: ERROR - bookmark data is not NSData, removing");
+                crate::write_immediate_crash_log("SESSION_RESOLVE: ERROR - bookmark data is not NSData, removing");
                 let _: () = msg_send![&*defaults, removeObjectForKey: &*modern_key];
                 let _: () = msg_send![&*defaults, removeObjectForKey: &*legacy_key];
                 return None;
             }
             
             let bookmark_size: usize = msg_send![bookmark_data, length];
-            crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: Bookmark data is valid NSData, size={} bytes", bookmark_size));
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Bookmark data is valid NSData, size={} bytes", bookmark_size));
             
             // CRITICAL: Resolve bookmark to get NEW URL instance - MUST use this exact instance
             let mut is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
             let mut error: *mut AnyObject = std::ptr::null_mut();
             
-            crate::write_immediate_crash_log("RESOLVE_SIMPLE: Calling URLByResolvingBookmarkData with security scope");
+            crate::write_immediate_crash_log("SESSION_RESOLVE: Calling URLByResolvingBookmarkData with security scope (ONCE PER SESSION)");
             let resolved_url: *mut AnyObject = msg_send![
                 objc2::runtime::AnyClass::get("NSURL").unwrap(),
                 URLByResolvingBookmarkData: bookmark_data
@@ -1953,58 +834,58 @@ pub mod macos_file_handler {
                 if !error_desc.is_null() {
                     let desc_nsstring = &*(error_desc as *const NSString);
                     let error_msg = desc_nsstring.as_str(pool);
-                    crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: URLByResolvingBookmarkData ERROR: {}", error_msg));
+                    crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: URLByResolvingBookmarkData ERROR: {}", error_msg));
                 } else {
-                    crate::write_immediate_crash_log("RESOLVE_SIMPLE: URLByResolvingBookmarkData failed with unknown error");
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: URLByResolvingBookmarkData failed with unknown error");
                 }
                 return None;
             }
             
             if resolved_url.is_null() {
-                crate::write_immediate_crash_log("RESOLVE_SIMPLE: URLByResolvingBookmarkData returned null URL (no error)");
+                crate::write_immediate_crash_log("SESSION_RESOLVE: URLByResolvingBookmarkData returned null URL (no error)");
                 return None;
             }
             
-            crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: URLByResolvingBookmarkData succeeded, is_stale={}", is_stale.as_bool()));
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: URLByResolvingBookmarkData succeeded, is_stale={}", is_stale.as_bool()));
             
             // Verify it's NSURL
             let nsurl_class = objc2::runtime::AnyClass::get("NSURL").unwrap();
             let is_nsurl: bool = msg_send![resolved_url, isKindOfClass: nsurl_class];
             if !is_nsurl {
-                crate::write_immediate_crash_log("RESOLVE_SIMPLE: ERROR - resolved object is not NSURL");
+                crate::write_immediate_crash_log("SESSION_RESOLVE: ERROR - resolved object is not NSURL");
                 return None;
             }
             
             // Get resolved path for logging
             if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
                 let resolved_path = path_nsstring.as_str(pool);
-                crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: Resolved URL path: '{}'", resolved_path));
+                crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Resolved URL path: '{}'", resolved_path));
                 
                 // Check if path exists and is accessible
                 let path_exists = std::path::Path::new(resolved_path).exists();
                 let path_is_dir = std::path::Path::new(resolved_path).is_dir();
-                crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: Path diagnostics - exists={} is_dir={}", path_exists, path_is_dir));
+                crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Path diagnostics - exists={} is_dir={}", path_exists, path_is_dir));
             } else {
-                crate::write_immediate_crash_log("RESOLVE_SIMPLE: WARNING - resolved URL has no path");
+                crate::write_immediate_crash_log("SESSION_RESOLVE: WARNING - resolved URL has no path");
             }
             
             // URL property diagnostics
             let url_is_file_url: bool = msg_send![resolved_url, isFileURL];
             let url_has_directory_path: bool = msg_send![resolved_url, hasDirectoryPath];
-            crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: URL properties - isFileURL={} hasDirectoryPath={}", 
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: URL properties - isFileURL={} hasDirectoryPath={}", 
                 url_is_file_url, url_has_directory_path));
             
             // CRITICAL: Call startAccessingSecurityScopedResource on the EXACT SAME instance
-            crate::write_immediate_crash_log("RESOLVE_SIMPLE: About to call startAccessingSecurityScopedResource on resolved URL instance");
+            crate::write_immediate_crash_log("SESSION_RESOLVE: About to call startAccessingSecurityScopedResource on resolved URL instance");
             let access_granted: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
-            crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: startAccessingSecurityScopedResource={}", access_granted));
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: startAccessingSecurityScopedResource={}", access_granted));
             
             if access_granted {
-                crate::write_immediate_crash_log("RESOLVE_SIMPLE: Security scope activated successfully");
+                crate::write_immediate_crash_log("SESSION_RESOLVE: Security scope activated successfully");
                 
                 // Handle stale bookmarks
                 if is_stale.as_bool() {
-                    crate::write_immediate_crash_log("RESOLVE_SIMPLE: Bookmark is stale, refreshing");
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: Bookmark is stale, refreshing");
                     let fresh_bookmark: *mut AnyObject = msg_send![
                         resolved_url,
                         bookmarkDataWithOptions: NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE
@@ -2017,9 +898,9 @@ pub mod macos_file_handler {
                         let _: () = msg_send![&*defaults, setObject: fresh_bookmark forKey: &*modern_key];
                         let _: () = msg_send![&*defaults, setObject: fresh_bookmark forKey: &*legacy_key];
                         let sync_result: bool = msg_send![&*defaults, synchronize];
-                        crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: Refreshed stale bookmark, sync_result={}", sync_result));
+                        crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Refreshed stale bookmark, sync_result={}", sync_result));
                     } else {
-                        crate::write_immediate_crash_log("RESOLVE_SIMPLE: WARNING - failed to create fresh bookmark for stale data");
+                        crate::write_immediate_crash_log("SESSION_RESOLVE: WARNING - failed to create fresh bookmark for stale data");
                     }
                 }
                 
@@ -2028,25 +909,25 @@ pub mod macos_file_handler {
                 let nsurl_ptr = resolved_url as *mut NSURL;
                 
                 if let Some(retained_url) = Retained::from_raw(nsurl_ptr) {
-                    crate::write_immediate_crash_log("RESOLVE_SIMPLE: SUCCESS - returning active security-scoped URL");
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: SUCCESS - returning active security-scoped URL");
                     Some(retained_url)
                 } else {
-                    crate::write_immediate_crash_log("RESOLVE_SIMPLE: ERROR - failed to create Retained<NSURL>");
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: ERROR - failed to create Retained<NSURL>");
                     let _: () = msg_send![resolved_url, stopAccessingSecurityScopedResource];
                     None
                 }
             } else {
-                crate::write_immediate_crash_log("RESOLVE_SIMPLE: FAILURE - startAccessingSecurityScopedResource returned false");
+                crate::write_immediate_crash_log("SESSION_RESOLVE: FAILURE - startAccessingSecurityScopedResource returned false");
                 
                 // Enhanced failure diagnostics
                 
                 // Check macOS version for known issues
                 if let Ok(output) = std::process::Command::new("sw_vers").arg("-productVersion").output() {
                     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: macOS version: {}", version));
+                    crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: macOS version: {}", version));
                     
                     if version.starts_with("15.0") {
-                        crate::write_immediate_crash_log("RESOLVE_SIMPLE: WARNING - macOS 15.0 has known ScopedBookmarksAgent bugs");
+                        crate::write_immediate_crash_log("SESSION_RESOLVE: WARNING - macOS 15.0 has known ScopedBookmarksAgent bugs");
                     }
                 }
                 
@@ -2061,99 +942,28 @@ pub mod macos_file_handler {
                 
                 if !test_bookmark.is_null() {
                     let test_size: usize = msg_send![test_bookmark, length];
-                    crate::write_immediate_crash_log(&format!("RESOLVE_SIMPLE: Non-security-scoped bookmark creation succeeded (size={})", test_size));
-                    crate::write_immediate_crash_log("RESOLVE_SIMPLE: This suggests the URL is valid but security scope activation failed");
+                    crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: Non-security-scoped bookmark creation succeeded (size={})", test_size));
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: This suggests the URL is valid but security scope activation failed");
                 } else {
-                    crate::write_immediate_crash_log("RESOLVE_SIMPLE: Even non-security-scoped bookmark creation failed");
-                    crate::write_immediate_crash_log("RESOLVE_SIMPLE: This suggests a deeper issue with the resolved URL");
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: Even non-security-scoped bookmark creation failed");
+                    crate::write_immediate_crash_log("SESSION_RESOLVE: This suggests a deeper issue with the resolved URL");
                 }
                 
                 None
             }
-        })
-    }
-
-    /// CACHE-FIRST: Resolve security-scoped bookmark only once per session to avoid iOS-style re-resolution issues
-    /// This addresses the core problem where URLByResolvingBookmarkData can only be called successfully once
-    fn resolve_security_scoped_bookmark_cached(directory_path: &str) -> Option<Retained<NSURL>> {
-        // STEP 0: Check if this path has already failed resolution in this session
-        if let Ok(failed_paths) = FAILED_BOOKMARK_PATHS.lock() {
-            if failed_paths.contains(directory_path) {
-                crate::write_immediate_crash_log(&format!("RESOLUTION_BLOCKED: Path previously failed resolution in this session: {}", directory_path));
-                debug!("Blocking repeated resolution attempt for previously failed path: {}", directory_path);
-                return None;
-            }
-        }
+        });
         
-        // STEP 1: Check session cache first - avoid re-resolution if we already have access
-        if let Ok(urls) = SECURITY_SCOPED_URLS.lock() {
-            if let Some(info) = urls.get(directory_path) {
-                if info.has_active_scope {
-                    crate::write_immediate_crash_log(&format!("CACHE_HIT: Using cached security-scoped URL for: {}", directory_path));
-                    debug!("Using cached security-scoped URL with active scope for: {}", directory_path);
-                    return Some(info.url.clone());
-                } else {
-                    crate::write_immediate_crash_log(&format!("CACHE_STALE: Found cached URL but scope is inactive for: {}", directory_path));
-                    debug!("Found cached URL but scope is inactive for: {}", directory_path);
-                }
-            } else {
-                crate::write_immediate_crash_log(&format!("CACHE_MISS: No cached URL found for: {}", directory_path));
-                debug!("No cached URL found for: {}", directory_path);
+        // STEP 3: Cache the resolved URL for future use (success or failure)
+        if let Some(ref url) = resolved_url {
+            if let Ok(mut session_cache) = SESSION_RESOLVED_URLS.lock() {
+                session_cache.insert(directory_path.to_string(), url.clone());
+                crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: CACHED - Stored resolved URL in session cache for: {}", directory_path));
             }
-        }
-        
-        // STEP 2: Check resolved bookmark cache to avoid re-resolution
-        if let Ok(cache) = RESOLVED_BOOKMARK_CACHE.lock() {
-            if let Some(cached_url) = cache.get(directory_path) {
-                crate::write_immediate_crash_log(&format!("BOOKMARK_CACHE_HIT: Using cached resolved URL for: {}", directory_path));
-                debug!("Using cached resolved bookmark URL for: {}", directory_path);
-                
-                // Try to activate security scope on cached URL
-                let access_granted: bool = unsafe { msg_send![&**cached_url, startAccessingSecurityScopedResource] };
-                crate::write_immediate_crash_log(&format!("BOOKMARK_CACHE: startAccessing on cached URL={}", access_granted));
-                
-                if access_granted {
-                    // Store in session cache with active scope
-                    store_security_scoped_url_with_info(directory_path, cached_url.clone(), true);
-                    return Some(cached_url.clone());
-                } else {
-                    crate::write_immediate_crash_log("BOOKMARK_CACHE: Cached URL failed startAccessing - marking as failed");
-                    debug!("Cached resolved URL failed startAccessing - marking as failed for this session");
-                    
-                    // Mark this path as failed to prevent repeated attempts
-                    if let Ok(mut failed_paths) = FAILED_BOOKMARK_PATHS.lock() {
-                        failed_paths.insert(directory_path.to_string());
-                    }
-                    return None;
-                }
-            }
-        }
-        
-        // STEP 3: Only resolve from bookmark if not in any cache (and limit to one attempt per session)
-        crate::write_immediate_crash_log(&format!("RESOLVING_FRESH: No valid cache found, resolving bookmark for: {}", directory_path));
-        debug!("No valid cache found, resolving bookmark from scratch for: {}", directory_path);
-        
-        if let Some(resolved_url) = resolve_security_scoped_bookmark_for_direct_use(directory_path) {
-            // STEP 4: Cache the resolved URL for future use
-            if let Ok(mut cache) = RESOLVED_BOOKMARK_CACHE.lock() {
-                cache.insert(directory_path.to_string(), resolved_url.clone());
-                crate::write_immediate_crash_log(&format!("BOOKMARK_CACHED: Stored resolved URL in cache for: {}", directory_path));
-                debug!("Stored resolved URL in bookmark cache for: {}", directory_path);
-            }
-            
-            Some(resolved_url)
         } else {
-            crate::write_immediate_crash_log(&format!("RESOLVE_FAILED: Could not resolve bookmark for: {}", directory_path));
-            debug!("Could not resolve bookmark for: {}", directory_path);
-            
-            // Mark this path as failed to prevent repeated attempts in this session
-            if let Ok(mut failed_paths) = FAILED_BOOKMARK_PATHS.lock() {
-                failed_paths.insert(directory_path.to_string());
-                crate::write_immediate_crash_log(&format!("MARKED_FAILED: Added path to failed resolution cache: {}", directory_path));
-            }
-            
-            None
+            crate::write_immediate_crash_log(&format!("SESSION_RESOLVE: FAILED - No URL to cache for: {}", directory_path));
         }
+        
+        resolved_url
     }
 
     /// Read directory contents using the resolved security-scoped NSURL directly
