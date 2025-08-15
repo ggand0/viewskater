@@ -3,13 +3,13 @@ pub mod macos_file_handler {
     use std::sync::mpsc::Sender;
     use std::sync::Mutex;
     use std::collections::HashMap;
-    use std::path::Path;
+
     use objc2::rc::autoreleasepool;
     use objc2::{msg_send, sel};
     use objc2::declare::ClassBuilder;
     use objc2::runtime::{AnyObject, Sel, AnyClass};
     use objc2_app_kit::{NSApplication, NSModalResponse, NSModalResponseOK};
-    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults, NSURL};
+    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults, NSURL, NSRect, NSPoint, NSSize};
     use objc2::rc::Retained;
     use once_cell::sync::Lazy;
     
@@ -340,57 +340,68 @@ pub mod macos_file_handler {
 
 
     /// Requests directory access via NSOpenPanel and creates persistent bookmark
-    /// FIXED: Proper handling of NSOpenPanel security-scoped URLs
-    fn request_directory_access_with_nsopenpanel(requested_path: &str) -> bool {
-        eprintln!("PANEL_FIXED: Starting for path: {}", requested_path);
-        debug!("Requesting directory access via NSOpenPanel for: {}", requested_path);
+    /// Optimized single-dialog approach that feels like a yes/no confirmation
+    fn request_directory_access_with_optimized_dialog(requested_path: &str) -> bool {
+        crate::write_crash_debug_log(&format!("OPTIMIZED_DIALOG: Starting for path: {}", requested_path));
+        debug!("Requesting directory access via optimized dialog for: {}", requested_path);
         
         let result = autoreleasepool(|_pool| unsafe {
-            eprintln!("PANEL_FIXED: Entered autoreleasepool");
+            crate::write_crash_debug_log("OPTIMIZED_DIALOG: Showing single optimized dialog");
             
-            let mtm = MainThreadMarker::new().expect("Must be on main thread");
-            eprintln!("PANEL_FIXED: Main thread marker created");
+            let _mtm = MainThreadMarker::new().expect("Must be on main thread");
                 
             // Create NSOpenPanel
-            eprintln!("PANEL_FIXED: Getting NSOpenPanel class");
             let panel_class = objc2::runtime::AnyClass::get("NSOpenPanel").expect("NSOpenPanel class not found");
-            eprintln!("PANEL_FIXED: Creating NSOpenPanel instance");
             let panel: *mut AnyObject = msg_send![panel_class, openPanel];
-            eprintln!("PANEL_FIXED: NSOpenPanel created");
                 
             // Configure panel for directory selection
-            eprintln!("PANEL_FIXED: Configuring panel");
             let _: () = msg_send![panel, setCanChooseDirectories: true];
             let _: () = msg_send![panel, setCanChooseFiles: false];
             let _: () = msg_send![panel, setAllowsMultipleSelection: false];
             let _: () = msg_send![panel, setCanCreateDirectories: false];
             
-            // Set initial directory to the requested path's parent if possible
-            if let Some(parent_dir) = std::path::Path::new(requested_path).parent() {
-                eprintln!("PANEL_FIXED: Setting initial directory");
-                let parent_str = parent_dir.to_string_lossy();
-                let parent_nsstring = NSString::from_str(&parent_str);
-                let parent_url = NSURL::fileURLWithPath(&parent_nsstring);
-                let _: () = msg_send![panel, setDirectoryURL: &*parent_url];
-                eprintln!("PANEL_FIXED: Initial directory set");
-            }
-                
-            // Set dialog title and message
-            eprintln!("PANEL_FIXED: Setting panel text");
-            let title = NSString::from_str("Grant Directory Access");
+            // CRITICAL: Pre-select the exact directory we want access to
+            crate::write_crash_debug_log("OPTIMIZED_DIALOG: Pre-selecting the target directory");
+            let path_nsstring = NSString::from_str(requested_path);
+            let path_url = NSURL::fileURLWithPath(&path_nsstring);
+            let _: () = msg_send![panel, setDirectoryURL: &*path_url];
+            
+            // Make the dialog look like a permission confirmation
+            let directory_name = std::path::Path::new(requested_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(requested_path);
+            
+            let title = NSString::from_str("Grant Folder Access");
             let _: () = msg_send![panel, setTitle: &*title];
                 
             let message = NSString::from_str(&format!(
-                "ViewSkater needs access to browse images in this directory:\n\n{}\n\nPlease select the directory to grant persistent access.",
-                requested_path
+                "ViewSkater needs access to the \"{}\" folder to browse your images.\n\n✓ The folder is already selected below\n✓ Just click \"Allow Access\" to confirm",
+                directory_name
             ));
             let _: () = msg_send![panel, setMessage: &*message];
+            
+            // Use "Allow Access" instead of generic "Open"
+            let allow_button = NSString::from_str("Allow Access");
+            let _: () = msg_send![panel, setPrompt: &*allow_button];
+            
+            // Hide the file browser chrome to make it look more like a simple dialog
+            // Note: These may not all be available, but we'll try to minimize the UI
+            let _: () = msg_send![panel, setCanCreateDirectories: false];
+            let _: () = msg_send![panel, setShowsHiddenFiles: false];
+            
+            // Make the window smaller and more focused
+            // Set a smaller, more dialog-like size
+            let window_frame = NSRect {
+                origin: NSPoint { x: 0.0, y: 0.0 },
+                size: NSSize { width: 500.0, height: 300.0 }
+            };
+            let _: () = msg_send![panel, setFrame: window_frame display: true];
                 
             // Show the panel and get user response
-            eprintln!("PANEL_FIXED: About to show modal");
-            debug!("Showing NSOpenPanel...");
+            crate::write_crash_debug_log("OPTIMIZED_DIALOG: About to show optimized modal");
             let response: NSModalResponse = msg_send![panel, runModal];
-            eprintln!("PANEL_FIXED: Modal completed with response: {:?}", response as i32);
+            crate::write_crash_debug_log(&format!("OPTIMIZED_DIALOG: Modal completed with response: {:?}", response as i32));
                 
             if response == NSModalResponseOK {
                 eprintln!("PANEL_FIXED: User granted access");
@@ -473,7 +484,7 @@ pub mod macos_file_handler {
         
         if let Some(parent_dir) = std::path::Path::new(file_path).parent() {
             let parent_dir_str = parent_dir.to_string_lossy();
-            request_directory_access_with_nsopenpanel(&parent_dir_str)
+            request_directory_access_with_optimized_dialog(&parent_dir_str)
         } else {
             debug!("Could not determine parent directory for: {}", file_path);
             false
