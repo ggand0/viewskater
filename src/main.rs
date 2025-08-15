@@ -16,7 +16,7 @@ mod utils;
 mod build_info;
 
 #[cfg(target_os = "macos")]
-mod security_bookmarks;
+mod macos_file_access;
 
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};
@@ -312,7 +312,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     write_crash_debug_log("=========================================");
     
     // Test all logging methods comprehensively
-    security_bookmarks::test_crash_logging_methods();
+    macos_file_access::test_crash_logging_methods();
 
     // Register file handler BEFORE creating the runner
     // This is required on macOS so the app can receive file paths
@@ -321,7 +321,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     #[cfg(target_os = "macos")]
     {
         write_immediate_crash_log("MAIN: About to set file channel");
-        security_bookmarks::macos_file_handler::set_file_channel(file_sender);
+        macos_file_access::macos_file_handler::set_file_channel(file_sender);
         write_immediate_crash_log("MAIN: File channel set");
         
         // NOTE: Automatic bookmark cleanup is DISABLED in production builds to avoid
@@ -329,13 +329,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         // tooling to invoke cleanup if ever needed.
         
         write_immediate_crash_log("MAIN: About to register file handler");
-        security_bookmarks::macos_file_handler::register_file_handler();
+        macos_file_access::macos_file_handler::register_file_handler();
         write_immediate_crash_log("MAIN: File handler registered");
         
         // Try to restore full disk access from previous session
         write_immediate_crash_log("MAIN: About to restore full disk access");
         debug!("🔍 Attempting to restore full disk access on startup");
-        let restore_result = security_bookmarks::macos_file_handler::restore_full_disk_access();
+        let restore_result = macos_file_access::macos_file_handler::restore_full_disk_access();
         debug!("🔍 Restore full disk access result: {}", restore_result);
         write_immediate_crash_log(&format!("MAIN: Restore full disk access result: {}", restore_result));
         
@@ -492,7 +492,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     #[cfg(target_os = "macos")]
                                     {
                                         // Clean up all active security-scoped access before shutdown
-                                        security_bookmarks::macos_file_handler::cleanup_all_security_scoped_access();
+                                        macos_file_access::macos_file_handler::cleanup_all_security_scoped_access();
                                     }
                                     event_loop.exit();
                                 }
@@ -837,7 +837,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             #[cfg(target_os = "macos")]
                                             {
                                                 // Clean up all active security-scoped access before shutdown
-                                                security_bookmarks::macos_file_handler::cleanup_all_security_scoped_access();
+                                                macos_file_access::macos_file_handler::cleanup_all_security_scoped_access();
                                             }
                                             event_loop.exit();
                                         }

@@ -415,7 +415,7 @@ fn handle_fallback_for_single_file(
             debug!("  - The app may have individual file access but not directory access");
             
             let path_str = directory_path.to_string_lossy();
-            if crate::security_bookmarks::macos_file_handler::has_security_scoped_access(&path_str) {
+            if crate::macos_file_access::macos_file_handler::has_security_scoped_access(&path_str) {
                 crate::write_crash_debug_log("  - Has security-scoped access for this path");
                 debug!("  - Has security-scoped access for this path");
             } else {
@@ -423,7 +423,7 @@ fn handle_fallback_for_single_file(
                 debug!("  - No security-scoped access for this path");
             }
             
-            if crate::security_bookmarks::macos_file_handler::has_full_disk_access() {
+            if crate::macos_file_access::macos_file_handler::has_full_disk_access() {
                 crate::write_crash_debug_log("  - Has full disk access");
                 debug!("  - Has full disk access");
             } else {
@@ -458,12 +458,12 @@ fn request_directory_access_and_retry(
         // STEP 0: Try to restore directory access from stored bookmarks before prompting
         let path_str = directory_path.to_string_lossy();
         crate::write_crash_debug_log("STEP 0 (retry): Attempting bookmark restoration before prompting user");
-        if crate::security_bookmarks::macos_file_handler::restore_directory_access_for_path(&path_str) {
+        if crate::macos_file_access::macos_file_handler::restore_directory_access_for_path(&path_str) {
             crate::write_crash_debug_log("STEP 0 (retry): ✅ Restored directory access from bookmark, retrying read");
             
             // Use the same NSURL-based approach as the main function for consistency
             crate::write_crash_debug_log("STEP 0 (retry): Attempting to read directory using resolved NSURL directly");
-            if let Some(file_paths) = crate::security_bookmarks::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
+            if let Some(file_paths) = crate::macos_file_access::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
                 crate::write_crash_debug_log(&format!("STEP 0 (retry): ✅ Successfully read directory using NSURL, found {} files", file_paths.len()));
                 
                 // Convert to DirEntry-like structure for compatibility with existing code
@@ -490,20 +490,20 @@ fn request_directory_access_and_retry(
         
         // Try permission dialog first
         crate::write_crash_debug_log("Getting accessible paths");
-        let accessible_paths = crate::security_bookmarks::macos_file_handler::get_accessible_paths();
+        let accessible_paths = crate::macos_file_access::macos_file_handler::get_accessible_paths();
         crate::write_crash_debug_log(&format!("Got {} accessible paths", accessible_paths.len()));
         
         if let Some(file_path) = accessible_paths.first() {
             crate::write_crash_debug_log(&format!("Using first accessible path: {}", file_path));
             crate::write_crash_debug_log("About to call request_parent_directory_permission_dialog");
-            if crate::security_bookmarks::macos_file_handler::request_parent_directory_permission_dialog(file_path) {
+            if crate::macos_file_access::macos_file_handler::request_parent_directory_permission_dialog(file_path) {
                 crate::write_crash_debug_log("Permission dialog succeeded, retrying directory read");
                 debug!("Permission dialog succeeded, retrying directory read");
                 
                 // CRITICAL FIX: Use the resolved NSURL directly for file operations, don't convert to path string
                 let path_str = directory_path.to_string_lossy();
                 crate::write_crash_debug_log("Attempting to read directory using resolved NSURL directly after permission dialog");
-                if let Some(file_paths) = crate::security_bookmarks::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
+                if let Some(file_paths) = crate::macos_file_access::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
                     crate::write_crash_debug_log(&format!("✅ Successfully read directory using NSURL after permission dialog, found {} files", file_paths.len()));
                     
                     // Convert to DirEntry-like structure for compatibility with existing code
@@ -578,154 +578,143 @@ fn process_directory_entries(
     }
 }
 
-pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageError> {
-    crate::write_crash_debug_log("======== get_image_paths ENTRY ========");
-    crate::write_crash_debug_log(&format!("Directory path: {}", directory_path.display()));
-    crate::write_crash_debug_log(&format!("Path exists: {}", directory_path.exists()));
-    crate::write_crash_debug_log(&format!("Path is_dir: {}", directory_path.is_dir()));
-    crate::write_crash_debug_log(&format!("Path is_file: {}", directory_path.is_file()));
+/// Cross-platform image path discovery
+/// Routes to OS-specific implementations based on compile target
+pub fn get_image_paths(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError> {
+    #[cfg(target_os = "macos")]
+    {
+        get_image_paths_macos(directory_path)
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        get_image_paths_standard(directory_path)
+    }
+}
+
+/// Standard implementation for non-macOS platforms
+/// Simple directory reading without sandbox considerations
+#[cfg(not(target_os = "macos"))]
+fn get_image_paths_standard(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError> {
+    debug!("Standard directory reading for path: {}", directory_path.display());
     
     let allowed_extensions = [
         "jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
         "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"
     ];
-    crate::write_crash_debug_log(&format!("Allowed extensions: {:?}", allowed_extensions));
 
-    crate::write_crash_debug_log("About to attempt std::fs::read_dir");
-    let dir_entries = match fs::read_dir(directory_path) {
+    let dir_entries = fs::read_dir(directory_path)
+        .map_err(ImageError::DirectoryError)?;
+    
+    process_directory_entries(dir_entries, directory_path, &allowed_extensions)
+}
+
+/// macOS implementation with App Store sandbox support
+/// Handles security-scoped bookmarks and "Open With" scenarios
+#[cfg(target_os = "macos")]
+fn get_image_paths_macos(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError> {
+    crate::write_crash_debug_log("======== get_image_paths_macos ENTRY ========");
+    crate::write_crash_debug_log(&format!("Directory path: {}", directory_path.display()));
+    
+    let allowed_extensions = [
+        "jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
+        "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"
+    ];
+
+    // Try standard directory reading first
+    match fs::read_dir(directory_path) {
         Ok(entries) => {
-            crate::write_crash_debug_log("✅ Successfully read directory normally");
+            crate::write_crash_debug_log("✅ Standard directory read successful");
             debug!("Successfully read directory normally (drag-and-drop or non-sandboxed): {}", directory_path.display());
-            entries
+            return process_directory_entries(entries, directory_path, &allowed_extensions);
         }
         Err(e) => {
-            crate::write_crash_debug_log(&format!("❌ Failed to read directory normally: {}", e));
+            crate::write_crash_debug_log(&format!("❌ Standard directory read failed: {}", e));
             debug!("Failed to read directory normally: {} (error: {})", directory_path.display(), e);
             
-            // On macOS, try security-scoped access for "Open With" scenarios
-            #[cfg(target_os = "macos")]
-            {
-                let path_str = directory_path.to_string_lossy();
-                crate::write_crash_debug_log("macOS - checking for 'Open With' scenario");
-                crate::write_crash_debug_log(&format!("Path string: {}", path_str));
-                
-                // STEP 0: Try to restore directory access from stored bookmarks UNCONDITIONALLY
-                // This handles fresh app launches where no in-memory session URLs exist yet
-                crate::write_crash_debug_log("STEP 0: About to call restore_directory_access_for_path (unconditional)");
-                let bookmark_restoration_successful = crate::security_bookmarks::macos_file_handler::restore_directory_access_for_path(&path_str);
-                if bookmark_restoration_successful {
-                    crate::write_crash_debug_log("STEP 0: ✅ Successfully restored directory access from bookmark");
-                    debug!("Successfully restored directory access from bookmark (unconditional), retrying read");
-                    
-                    // CRITICAL FIX: Use the resolved NSURL directly for file operations, don't convert to path string
-                    crate::write_crash_debug_log("STEP 0: Attempting to read directory using resolved NSURL directly");
-                    if let Some(file_paths) = crate::security_bookmarks::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
-                        crate::write_crash_debug_log(&format!("STEP 0: ✅ Successfully read directory using NSURL, found {} files", file_paths.len()));
-                        
-                        // Convert to DirEntry-like structure for compatibility with existing code
-                        let mut image_paths = Vec::new();
-                        for file_path in file_paths {
-                            let path = std::path::Path::new(&file_path);
-                            if let Some(extension) = path.extension() {
-                                if let Some(ext_str) = extension.to_str() {
-                                    if allowed_extensions.contains(&ext_str.to_lowercase().as_str()) {
-                                        image_paths.push(path.to_path_buf());
-                                    }
-                                }
-                            }
-                        }
-                        
-                        crate::write_crash_debug_log(&format!("STEP 0: ✅ Found {} image files", image_paths.len()));
-                        return Ok(image_paths);
-                    } else {
-                        crate::write_crash_debug_log("STEP 0: ❌ Failed to read directory using resolved NSURL");
-                    }
-                } else {
-                    crate::write_crash_debug_log("STEP 0: ❌ No stored bookmark or restoration failed");
-                }
-                
-                // Check if this is an "Open With" scenario by looking for individual file access
-                crate::write_crash_debug_log("Getting accessible paths to check for individual file access");
-                let accessible_paths = crate::security_bookmarks::macos_file_handler::get_accessible_paths();
-                crate::write_crash_debug_log(&format!("Found {} accessible paths", accessible_paths.len()));
-                
-                for (i, accessible_path) in accessible_paths.iter().enumerate() {
-                    crate::write_crash_debug_log(&format!("Accessible path {}: {}", i, accessible_path));
-                }
-                
-                let has_individual_file_access = accessible_paths
-                    .iter()
-                    .any(|key| {
-                        let key_path = std::path::Path::new(key);
-                        if key_path.is_file() {
-                            if let Some(file_parent) = key_path.parent() {
-                                let matches = file_parent.to_string_lossy() == path_str;
-                                crate::write_crash_debug_log(&format!("Checking if file {} parent {} matches directory {}: {}", 
-                                    key, file_parent.display(), path_str, matches));
-                                return matches;
-                            }
-                        }
-                        false
-                    });
-                
-                crate::write_crash_debug_log(&format!("Has individual file access in this directory: {}", has_individual_file_access));
-                
-                if has_individual_file_access {
-                    crate::write_crash_debug_log("Confirmed 'Open With' scenario");
-                    debug!("Confirmed 'Open With' scenario");
-                    
-                    // STEP 1: Check if STEP 0 bookmark restoration was successful
-                    if bookmark_restoration_successful {
-                        crate::write_crash_debug_log("STEP 1: STEP 0 bookmark restoration was successful, but NSURL read failed");
-                        debug!("STEP 0 bookmark restoration was successful, but NSURL read failed");
-                        // Don't retry the same operation - fall back to permission dialog
-                        crate::write_crash_debug_log("STEP 1: Falling back to request_directory_access_and_retry (bookmark exists but NSURL read failed)");
-                        return request_directory_access_and_retry(directory_path, &allowed_extensions, e);
-                    } else {
-                        crate::write_crash_debug_log("STEP 1: STEP 0 bookmark restoration failed, falling back to request_directory_access_and_retry");
-                        debug!("STEP 0 bookmark restoration failed, requesting new access");
-                        return request_directory_access_and_retry(directory_path, &allowed_extensions, e);
-                    }
-                } else {
-                    crate::write_crash_debug_log("Not an 'Open With' scenario - regular directory access failure");
-                    debug!("Not an 'Open With' scenario - regular directory access failure");
-                    return Err(ImageError::DirectoryError(e));
-                }
-            }
-            
-            // For non-macOS, return the original error
-            #[cfg(not(target_os = "macos"))]
-            {
-                crate::write_crash_debug_log("Non-macOS platform - returning original error");
-                return Err(ImageError::DirectoryError(e));
-            }
-            
-            // This should never be reached on macOS since all paths above should return early
-            #[cfg(target_os = "macos")]
-            {
-                unreachable!("All macOS code paths should have returned early");
-            }
+            // Handle macOS App Store sandbox scenarios
+            return handle_macos_sandbox_access(directory_path, &allowed_extensions, e);
         }
-    };
+    }
+}
 
-    crate::write_crash_debug_log("Successfully obtained directory entries, processing...");
-    // Process the directory entries we successfully obtained
-    let result = process_directory_entries(dir_entries, directory_path, &allowed_extensions);
+/// Handle macOS App Store sandbox directory access
+/// This includes bookmark restoration and "Open With" permission dialogs
+#[cfg(target_os = "macos")]
+fn handle_macos_sandbox_access(
+    directory_path: &Path, 
+    allowed_extensions: &[&str], 
+    original_error: std::io::Error
+) -> Result<Vec<PathBuf>, ImageError> {
+    let path_str = directory_path.to_string_lossy();
+    crate::write_crash_debug_log("macOS sandbox - checking for 'Open With' scenario");
     
-    match &result {
-        Ok(paths) => {
-            crate::write_crash_debug_log(&format!("✅ Successfully processed {} image paths", paths.len()));
-            for (i, path) in paths.iter().enumerate() {
-                crate::write_crash_debug_log(&format!("Image path {}: {}", i, path.display()));
-            }
+    // STEP 1: Try to restore directory access from stored bookmarks
+    crate::write_crash_debug_log("STEP 1: Attempting bookmark restoration");
+    let bookmark_restored = crate::macos_file_access::macos_file_handler::restore_directory_access_for_path(&path_str);
+    
+    if bookmark_restored {
+        crate::write_crash_debug_log("STEP 1: ✅ Bookmark restored, trying NSURL directory read");
+        if let Some(file_paths) = crate::macos_file_access::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
+            return convert_file_paths_to_image_paths(file_paths, allowed_extensions);
+        } else {
+            crate::write_crash_debug_log("STEP 1: ❌ NSURL directory read failed");
         }
-        Err(e) => {
-            crate::write_crash_debug_log(&format!("❌ Failed to process directory entries: {}", e));
+    } else {
+        crate::write_crash_debug_log("STEP 1: ❌ No bookmark found or restoration failed");
+    }
+    
+    // STEP 2: Check if this is an "Open With" scenario
+    let accessible_paths = crate::macos_file_access::macos_file_handler::get_accessible_paths();
+    let has_individual_file_access = accessible_paths
+        .iter()
+        .any(|key| {
+            let key_path = std::path::Path::new(key);
+            key_path.is_file() && 
+            key_path.parent()
+                .map(|parent| parent.to_string_lossy() == path_str)
+                .unwrap_or(false)
+        });
+    
+    if has_individual_file_access {
+        crate::write_crash_debug_log("STEP 2: ✅ Confirmed 'Open With' scenario - requesting permission");
+        debug!("Confirmed 'Open With' scenario");
+        return request_directory_access_and_retry(directory_path, allowed_extensions, original_error);
+    } else {
+        crate::write_crash_debug_log("STEP 2: ❌ Not an 'Open With' scenario - regular directory access failure");
+        debug!("Not an 'Open With' scenario - regular directory access failure");
+        return Err(ImageError::DirectoryError(original_error));
+    }
+}
+
+/// Convert file paths from security-scoped URL reading to image paths
+#[cfg(target_os = "macos")]
+fn convert_file_paths_to_image_paths(
+    file_paths: Vec<String>, 
+    allowed_extensions: &[&str]
+) -> Result<Vec<PathBuf>, ImageError> {
+    let mut image_paths = Vec::new();
+    
+    for file_path in file_paths {
+        let path = std::path::Path::new(&file_path);
+        if let Some(extension) = path.extension() {
+            if let Some(ext_str) = extension.to_str() {
+                if allowed_extensions.contains(&ext_str.to_lowercase().as_str()) {
+                    image_paths.push(path.to_path_buf());
+                }
+            }
         }
     }
     
-    crate::write_crash_debug_log("======== get_image_paths EXIT ========");
-    result
+    if image_paths.is_empty() {
+        crate::write_crash_debug_log("❌ No image files found in security-scoped directory");
+        Err(ImageError::NoImagesFound)
+    } else {
+        crate::write_crash_debug_log(&format!("✅ Found {} image files via security-scoped access", image_paths.len()));
+        // Sort paths for consistent ordering
+        alphanumeric_sort::sort_path_slice(&mut image_paths);
+        Ok(image_paths)
+    }
 }
 
 

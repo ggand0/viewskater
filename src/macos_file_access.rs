@@ -1,3 +1,135 @@
+/*
+================================================================================
+                        macOS File Access & Security Bookmarks
+================================================================================
+
+This module handles file system access for macOS App Store builds in sandboxed 
+environments. It provides two main functionalities:
+
+1. **Finder Integration**: Handles files opened via "Open With" or double-click
+2. **Security-Scoped Bookmarks**: Persistent directory access across app launches
+
+## Why This is Needed
+
+When ViewSkater is distributed through the macOS App Store, it runs in a sandbox that
+restricts file system access. Users can open images via Finder's "Open With" 
+menu, but the app needs special permission to browse the containing directory.
+ViewSkater requires parent directory access to browse all images in the folder
+and preload neighboring images for fast navigation between prev/next images.
+
+## How Security-Scoped Bookmarks Work
+
+1. **User Opens Image**: Via Finder → "Open With" → ViewSkater
+2. **Individual File Access**: macOS grants access to that specific image file
+3. **Directory Access Needed**: To browse other images in the same folder
+4. **Permission Dialog**: App shows optimized NSOpenPanel for directory access
+5. **Bookmark Creation**: App creates a security-scoped bookmark for the directory
+6. **Persistent Storage**: Bookmark is stored in NSUserDefaults for future use
+7. **Future Access**: App can restore directory access from stored bookmark
+
+## Key Components
+
+### Security-Scoped URLs
+- `NSURL` objects with special security scope permissions
+- Must call `startAccessingSecurityScopedResource()` to activate
+- Must call `stopAccessingSecurityScopedResource()` when done
+- Only valid for the session unless converted to bookmarks
+
+### Security-Scoped Bookmarks
+- Persistent data that can recreate security-scoped URLs
+- Stored in NSUserDefaults with keys like "VSBookmark|/path/to/directory"
+- Can become "stale" and need refreshing
+- Created with `NSURLBookmarkCreationWithSecurityScope` flag
+- Resolved with `NSURLBookmarkResolutionWithSecurityScope` flag
+
+### Session-Level Caching
+- `SESSION_RESOLVED_URLS`: Caches resolved URLs per session
+- Prevents multiple `URLByResolvingBookmarkData` calls for same directory
+- Critical for performance and avoiding macOS API limitations
+
+## Workflow for "Open With" Scenario
+
+```
+User opens image.jpg via Finder
+        ↓
+handle_opened_file() receives file path
+        ↓
+App gets individual file access automatically
+        ↓
+App tries to access parent directory:
+  → SANDBOXED (App Store): FAILS - needs explicit permission
+  → LOCAL BUILD: SUCCESS - direct access ✓
+        ↓
+[SANDBOXED PATH ONLY]
+restore_directory_access_for_path() checks for stored bookmark
+        ↓
+If bookmark exists:
+  - Resolve bookmark to security-scoped URL
+  - Call startAccessingSecurityScopedResource()
+  - Directory access granted ✓
+        ↓
+If no bookmark:
+  - Show optimized permission dialog (NSOpenPanel)
+  - User clicks "Allow Access"
+  - Create security-scoped bookmark
+  - Store bookmark in NSUserDefaults
+  - Directory access granted ✓
+```
+
+## Critical Constants
+
+- `NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE = 1 << 11` (0x800)
+- `NSURL_BOOKMARK_RESOLUTION_WITH_SECURITY_SCOPE = 1 << 10` (0x400)
+
+These constants are crucial - using wrong values causes bookmark resolution 
+to fail, which was the root cause of the persistent folder access prompts.
+
+## Error Handling
+
+The module includes extensive logging to `security_bookmark_debug.log` for 
+debugging bookmark resolution issues. Key failure points:
+
+1. **Bookmark Creation**: NSOpenPanel URL can't create bookmark
+2. **Bookmark Resolution**: Stored bookmark data is invalid/stale  
+3. **Security Scope Activation**: `startAccessingSecurityScopedResource()` fails
+4. **Directory Reading**: Even with security scope, directory is unreadable
+
+## Thread Safety
+
+All shared state is protected by Mutex:
+- `SECURITY_SCOPED_URLS`: Active security-scoped URLs
+- `SESSION_RESOLVED_URLS`: Session-level bookmark resolution cache
+
+## Converting to Non-Sandboxed (Local Builds Only)
+
+If we decide to drop App Store distribution and only support local builds 
+via GitHub releases in the future, we can simplify this module significantly:
+
+1. **Remove Sandbox Entitlements**: Delete `com.apple.security.app-sandbox` 
+   and related entitlements from Info.plist
+
+2. **Simplify File Access**: In `file_io.rs`, replace `get_image_paths_macos()` 
+   with just `get_image_paths_standard()` - no sandbox means no permission dialogs
+
+3. **Keep Finder Integration**: Keep `handle_opened_file()` and `register_file_handler()` 
+   for "Open With" support, but remove all bookmark-related code
+
+4. **Remove Security Bookmark Code**: Delete these functions:
+   - `create_and_store_security_scoped_bookmark()`
+   - `get_resolved_security_scoped_url()`
+   - `restore_directory_access_for_path()`
+   - `request_directory_access_with_optimized_dialog()`
+   - All NSUserDefaults bookmark storage/retrieval
+
+5. **Simplify Data Structures**: Remove `SECURITY_SCOPED_URLS`, 
+   `SESSION_RESOLVED_URLS`, and related HashMap management
+
+Result: ~80% code reduction while keeping core Finder integration functionality.
+Non-sandboxed apps have full file system access and don't need permission dialogs.
+
+================================================================================
+*/
+
 #[cfg(target_os = "macos")]
 pub mod macos_file_handler {
     use std::sync::mpsc::Sender;
@@ -12,6 +144,7 @@ pub mod macos_file_handler {
     use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults, NSURL, NSRect, NSPoint, NSSize};
     use objc2::rc::Retained;
     use once_cell::sync::Lazy;
+    use std::io::Write;
     
     #[allow(unused_imports)]
     use log::{debug, info, warn, error};
@@ -46,11 +179,31 @@ pub mod macos_file_handler {
 
     // ==================== CRASH DEBUG LOGGING ====================
     
-    /// Writes a crash debug log entry immediately to disk (not buffered)
+    /// Writes a security bookmark debug log entry immediately to disk (not buffered)
     /// This ensures we can see what happened even if the process crashes immediately after
-    fn write_crash_debug_log(message: &str) {
-        // Use the public function from the parent module
-        crate::write_crash_debug_log(message);
+    fn write_security_bookmark_debug_log(message: &str) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        
+        let log_message = format!("{} SECURITY_BOOKMARK: {}", timestamp, message);
+        
+        // Try to write to a security bookmark debug log file in the app's documents directory
+        if let Some(home_dir) = dirs::home_dir() {
+            let log_path = home_dir.join("Documents").join("security_bookmark_debug.log");
+            
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path) {
+                let _ = writeln!(file, "{}", log_message);
+                let _ = file.flush();
+            }
+        }
+        
+        // Also print to stderr as backup
+        eprintln!("{}", log_message);
     }
     
     /// Build stable UserDefaults keys for storing bookmarks
@@ -199,22 +352,22 @@ pub mod macos_file_handler {
             return true;
         }
         
-        write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: Starting for path: {}", directory_path));
+        write_security_bookmark_debug_log(&format!("Creating bookmark for path: {}", directory_path));
         debug!("Creating security-scoped bookmark for: {}", directory_path);
         
         let result = autoreleasepool(|_pool| unsafe {
-            write_crash_debug_log("BOOKMARK_CREATE_FIXED: Entered autoreleasepool");
+            write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: Entered autoreleasepool");
             
             // Validate input path
             if directory_path.is_empty() || directory_path.len() > 500 {
-                write_crash_debug_log("BOOKMARK_CREATE_FIXED: ERROR - invalid directory path");
+                write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ERROR - invalid directory path");
                 return false;
             }
             
             // Create bookmark data from the security-scoped URL (from NSOpenPanel)
             let mut error: *mut AnyObject = std::ptr::null_mut();
             
-            write_crash_debug_log("BOOKMARK_CREATE_FIXED: About to create bookmark data from NSOpenPanel URL");
+            write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: About to create bookmark data from NSOpenPanel URL");
             let bookmark_data: *mut AnyObject = msg_send![
                 &**url,
                 bookmarkDataWithOptions: NSURL_BOOKMARK_CREATION_WITH_SECURITY_SCOPE
@@ -225,12 +378,12 @@ pub mod macos_file_handler {
             
             // Check for errors
             if !error.is_null() {
-                write_crash_debug_log("BOOKMARK_CREATE_FIXED: ERROR - bookmark creation failed");
+                write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ERROR - bookmark creation failed");
                 return false;
             }
             
             if bookmark_data.is_null() {
-                write_crash_debug_log("BOOKMARK_CREATE_FIXED: ERROR - bookmark data is null");
+                write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ERROR - bookmark data is null");
                 return false;
             }
             
@@ -239,13 +392,13 @@ pub mod macos_file_handler {
             let is_nsdata: bool = msg_send![bookmark_data, isKindOfClass: nsdata_class];
             
             if !is_nsdata {
-                write_crash_debug_log("BOOKMARK_CREATE_FIXED: ERROR - bookmark data is not NSData");
+                write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ERROR - bookmark data is not NSData");
                 return false;
             }
             
             // DIAGNOSTIC: Check the size and verify bookmark was created with security scope
             let bookmark_size: usize = msg_send![bookmark_data, length];
-            write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: Created bookmark size: {} bytes", bookmark_size));
+            write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Created bookmark size: {} bytes", bookmark_size));
             
             // Test if we can immediately resolve this bookmark to verify it's valid
             let mut test_is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
@@ -260,29 +413,29 @@ pub mod macos_file_handler {
             ];
             
             if !test_error.is_null() || test_resolved.is_null() {
-                write_crash_debug_log("BOOKMARK_CREATE_FIXED: ERROR - freshly created bookmark cannot be resolved");
+                write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ERROR - freshly created bookmark cannot be resolved");
                 return false;
             } else {
-                write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: ✅ Bookmark resolves immediately, is_stale={}", test_is_stale.as_bool()));
+                write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: ✅ Bookmark resolves immediately, is_stale={}", test_is_stale.as_bool()));
                 
                 // Test if the resolved URL can activate security scope
                 let test_access: bool = msg_send![test_resolved, startAccessingSecurityScopedResource];
-                write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: Test startAccessingSecurityScopedResource={}", test_access));
+                write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Test startAccessingSecurityScopedResource={}", test_access));
                 if test_access {
                     let _: () = msg_send![test_resolved, stopAccessingSecurityScopedResource];
-                    write_crash_debug_log("BOOKMARK_CREATE_FIXED: ✅ Test security scope works - bookmark is valid");
+                    write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ✅ Test security scope works - bookmark is valid");
                 } else {
-                    write_crash_debug_log("BOOKMARK_CREATE_FIXED: ❌ Test security scope FAILED - bookmark creation problem");
+                    write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ❌ Test security scope FAILED - bookmark creation problem");
                 }
             }
             
-            write_crash_debug_log("BOOKMARK_CREATE_FIXED: Bookmark data created successfully");
+            write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: Bookmark data created successfully");
             
             // Store in NSUserDefaults with modern key (and legacy for back-compat)
             let defaults = NSUserDefaults::standardUserDefaults();
             let (modern_key, legacy_key) = make_bookmark_keys(directory_path);
             
-            write_crash_debug_log("BOOKMARK_CREATE_FIXED: About to store in NSUserDefaults");
+            write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: About to store in NSUserDefaults");
             let _: () = msg_send![&*defaults, setObject: bookmark_data forKey: &*modern_key];
             // Also store legacy key for back-compat migration
             let _: () = msg_send![&*defaults, setObject: bookmark_data forKey: &*legacy_key];
@@ -290,32 +443,32 @@ pub mod macos_file_handler {
             // Synchronize to ensure it's persisted
             let sync_ok: bool = msg_send![&*defaults, synchronize];
             if sync_ok {
-                write_crash_debug_log("BOOKMARK_CREATE_FIXED: SUCCESS - bookmark stored and synchronized");
+                write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: SUCCESS - bookmark stored and synchronized");
                 debug!("Successfully stored security-scoped bookmark");
                 // Immediate read-back verification and logging
                 let modern_obj: *mut AnyObject = msg_send![&*defaults, objectForKey: &*modern_key];
                 if modern_obj.is_null() {
-                    write_crash_debug_log("BOOKMARK_CREATE_FIXED: READBACK - modern key not found after store");
+                    write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: READBACK - modern key not found after store");
                 } else {
                     let is_data: bool = msg_send![modern_obj, isKindOfClass: nsdata_class];
                     if is_data {
                         let len: usize = msg_send![modern_obj, length];
-                        write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: READBACK - modern key present, length={} bytes", len));
+                        write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: READBACK - modern key present, length={} bytes", len));
                         crate::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{}' sync_ok=true len={} bytes", directory_path, len));
                     } else {
-                        write_crash_debug_log("BOOKMARK_CREATE_FIXED: READBACK - modern key present but not NSData");
+                        write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: READBACK - modern key present but not NSData");
                         crate::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{}' sync_ok=true (non-NSData)", directory_path));
                     }
                 }
                 true
             } else {
-                write_crash_debug_log("BOOKMARK_CREATE_FIXED: ERROR - failed to synchronize");
+                write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ERROR - failed to synchronize");
                 crate::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{}' sync_ok=false", directory_path));
                 false
             }
         });
         
-        write_crash_debug_log(&format!("BOOKMARK_CREATE_FIXED: Final result: {}", result));
+        write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Final result: {}", result));
         result
     }
     
@@ -342,11 +495,11 @@ pub mod macos_file_handler {
     /// Requests directory access via NSOpenPanel and creates persistent bookmark
     /// Optimized single-dialog approach that feels like a yes/no confirmation
     fn request_directory_access_with_optimized_dialog(requested_path: &str) -> bool {
-        crate::write_crash_debug_log(&format!("OPTIMIZED_DIALOG: Starting for path: {}", requested_path));
+        crate::write_immediate_crash_log(&format!("OPTIMIZED_DIALOG: Starting for path: {}", requested_path));
         debug!("Requesting directory access via optimized dialog for: {}", requested_path);
         
         let result = autoreleasepool(|_pool| unsafe {
-            crate::write_crash_debug_log("OPTIMIZED_DIALOG: Showing single optimized dialog");
+            crate::write_immediate_crash_log("OPTIMIZED_DIALOG: Showing single optimized dialog");
             
             let _mtm = MainThreadMarker::new().expect("Must be on main thread");
                 
@@ -361,7 +514,7 @@ pub mod macos_file_handler {
             let _: () = msg_send![panel, setCanCreateDirectories: false];
             
             // CRITICAL: Pre-select the exact directory we want access to
-            crate::write_crash_debug_log("OPTIMIZED_DIALOG: Pre-selecting the target directory");
+            crate::write_immediate_crash_log("OPTIMIZED_DIALOG: Pre-selecting the target directory");
             let path_nsstring = NSString::from_str(requested_path);
             let path_url = NSURL::fileURLWithPath(&path_nsstring);
             let _: () = msg_send![panel, setDirectoryURL: &*path_url];
@@ -376,7 +529,7 @@ pub mod macos_file_handler {
             let _: () = msg_send![panel, setTitle: &*title];
                 
             let message = NSString::from_str(&format!(
-                "ViewSkater needs access to the \"{}\" folder to browse your images.\n\n✓ The folder is already selected below\n✓ Just click \"Allow Access\" to confirm",
+                "ViewSkater needs access to the \"{}\" folder to browse your images.\n\n✓ The folder is already selected below\n✓ Click \"Allow Access\" to confirm",
                 directory_name
             ));
             let _: () = msg_send![panel, setMessage: &*message];
@@ -399,9 +552,9 @@ pub mod macos_file_handler {
             let _: () = msg_send![panel, setFrame: window_frame display: true];
                 
             // Show the panel and get user response
-            crate::write_crash_debug_log("OPTIMIZED_DIALOG: About to show optimized modal");
+            crate::write_immediate_crash_log("OPTIMIZED_DIALOG: About to show optimized modal");
             let response: NSModalResponse = msg_send![panel, runModal];
-            crate::write_crash_debug_log(&format!("OPTIMIZED_DIALOG: Modal completed with response: {:?}", response as i32));
+            crate::write_immediate_crash_log(&format!("OPTIMIZED_DIALOG: Modal completed with response: {:?}", response as i32));
                 
             if response == NSModalResponseOK {
                 eprintln!("PANEL_FIXED: User granted access");
@@ -526,81 +679,81 @@ pub mod macos_file_handler {
         files: &NSArray<NSString>,
     ) {
         crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Function entry");
-        write_crash_debug_log("FINDER_OPEN: handle_opened_file called");
+        write_security_bookmark_debug_log("FINDER_OPEN: handle_opened_file called");
         debug!("handle_opened_file called with {} files", files.len());
         
         if files.is_empty() {
             crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Empty files array");
-            write_crash_debug_log("FINDER_OPEN: Empty files array received");
+            write_security_bookmark_debug_log("FINDER_OPEN: Empty files array received");
             debug!("Empty files array received");
             return;
         }
         
         crate::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Processing {} files", files.len()));
-        write_crash_debug_log(&format!("FINDER_OPEN: Processing {} files", files.len()));
+        write_security_bookmark_debug_log(&format!("FINDER_OPEN: Processing {} files", files.len()));
         
         autoreleasepool(|pool| {
             crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Entered autoreleasepool");
-            write_crash_debug_log("FINDER_OPEN: Entered autoreleasepool");
+            write_security_bookmark_debug_log("FINDER_OPEN: Entered autoreleasepool");
             
             for (i, file) in files.iter().enumerate() {
                 crate::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Processing file {} of {}", i + 1, files.len()));
-                write_crash_debug_log(&format!("FINDER_OPEN: Processing file {} of {}", i + 1, files.len()));
+                write_security_bookmark_debug_log(&format!("FINDER_OPEN: Processing file {} of {}", i + 1, files.len()));
                 
                 let path = file.as_str(pool).to_owned();
                 crate::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: File path: {}", path));
                 debug!("Processing file: {}", path);
-                write_crash_debug_log(&format!("FINDER_OPEN: File path: {}", path));
+                write_security_bookmark_debug_log(&format!("FINDER_OPEN: File path: {}", path));
                 
                 crate::write_immediate_crash_log("HANDLE_OPENED_FILE: About to create NSURL");
-                write_crash_debug_log("FINDER_OPEN: About to create NSURL");
+                write_security_bookmark_debug_log("FINDER_OPEN: About to create NSURL");
                 // Create NSURL and try to get security-scoped access
                 let url = NSURL::fileURLWithPath(&file);
                 crate::write_immediate_crash_log("HANDLE_OPENED_FILE: NSURL created");
-                write_crash_debug_log("FINDER_OPEN: NSURL created, about to call startAccessingSecurityScopedResource");
+                write_security_bookmark_debug_log("FINDER_OPEN: NSURL created, about to call startAccessingSecurityScopedResource");
                 let file_accessed: bool = msg_send![&*url, startAccessingSecurityScopedResource];
                 crate::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Security access result: {}", file_accessed));
-                write_crash_debug_log(&format!("FINDER_OPEN: Security access result: {}", file_accessed));
+                write_security_bookmark_debug_log(&format!("FINDER_OPEN: Security access result: {}", file_accessed));
                 
                 if file_accessed {
                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Security access granted");
                     debug!("Gained security-scoped access to file: {}", path);
                     
                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: About to store file URL");
-                    write_crash_debug_log("FINDER_OPEN: About to store file URL");
+                    write_security_bookmark_debug_log("FINDER_OPEN: About to store file URL");
                     // Store the file URL
                     store_security_scoped_url(&path, url.clone());
                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: File URL stored");
-                    write_crash_debug_log("FINDER_OPEN: File URL stored successfully");
+                    write_security_bookmark_debug_log("FINDER_OPEN: File URL stored successfully");
                     
                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: About to get parent directory");
-                    write_crash_debug_log("FINDER_OPEN: About to get parent directory");
+                    write_security_bookmark_debug_log("FINDER_OPEN: About to get parent directory");
                     // Try to get parent directory access
                     if let Some(parent_url) = url.URLByDeletingLastPathComponent() {
                         crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Got parent URL");
-                        write_crash_debug_log("FINDER_OPEN: Got parent URL, about to get path");
+                        write_security_bookmark_debug_log("FINDER_OPEN: Got parent URL, about to get path");
                         if let Some(parent_path) = parent_url.path() {
                             let parent_path_str = parent_path.as_str(pool).to_owned();
                             crate::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Parent directory: {}", parent_path_str));
                             debug!("Checking parent directory: {}", parent_path_str);
-                            write_crash_debug_log(&format!("FINDER_OPEN: Parent directory: {}", parent_path_str));
+                            write_security_bookmark_debug_log(&format!("FINDER_OPEN: Parent directory: {}", parent_path_str));
                             
                             crate::write_immediate_crash_log("HANDLE_OPENED_FILE: About to test directory access");
-                            write_crash_debug_log("FINDER_OPEN: About to test directory access");
+                            write_security_bookmark_debug_log("FINDER_OPEN: About to test directory access");
                             // Test if we already have directory access
                             match std::fs::read_dir(&parent_path_str) {
                                 Ok(_) => {
                                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Have directory access");
                                     debug!("Already have parent directory access");
-                                    write_crash_debug_log("FINDER_OPEN: Have directory access, storing parent URL");
+                                    write_security_bookmark_debug_log("FINDER_OPEN: Have directory access, storing parent URL");
                                     store_security_scoped_url(&parent_path_str, parent_url.clone());
                                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Parent URL stored");
-                                    write_crash_debug_log("FINDER_OPEN: Parent URL stored successfully");
+                                    write_security_bookmark_debug_log("FINDER_OPEN: Parent URL stored successfully");
                                 }
                                 Err(_) => {
                                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: No directory access");
                                     debug!("No parent directory access - will restore from bookmark if available");
-                                    write_crash_debug_log("FINDER_OPEN: No directory access - bookmark restoration needed");
+                                    write_security_bookmark_debug_log("FINDER_OPEN: No directory access - bookmark restoration needed");
                                     // EARLY RESTORE: attempt to restore and retry
                                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Attempting early restore_directory_access_for_path on parent [CALLSITE=handle_opened_file]");
                                     if restore_directory_access_for_path(&parent_path_str) {
@@ -629,49 +782,49 @@ pub mod macos_file_handler {
                             }
                         } else {
                             crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Parent URL has no path");
-                            write_crash_debug_log("FINDER_OPEN: Parent URL has no path");
+                            write_security_bookmark_debug_log("FINDER_OPEN: Parent URL has no path");
                         }
                     } else {
                         crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Could not get parent URL");
-                        write_crash_debug_log("FINDER_OPEN: Could not get parent URL");
+                        write_security_bookmark_debug_log("FINDER_OPEN: Could not get parent URL");
                     }
                     
                     crate::write_immediate_crash_log("HANDLE_OPENED_FILE: About to send file path to main thread");
-                    write_crash_debug_log("FINDER_OPEN: About to send file path to main thread");
+                    write_security_bookmark_debug_log("FINDER_OPEN: About to send file path to main thread");
                     // Send file path to main app
                     if let Some(ref sender) = FILE_CHANNEL {
                         match sender.send(path.clone()) {
                             Ok(_) => {
                                 crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Successfully sent to main thread");
                                 debug!("Successfully sent file path to main thread");
-                                write_crash_debug_log("FINDER_OPEN: Successfully sent to main thread");
+                                write_security_bookmark_debug_log("FINDER_OPEN: Successfully sent to main thread");
                             },
                             Err(e) => {
                                 crate::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Failed to send: {}", e));
                                 error!("Failed to send file path: {}", e);
-                                write_crash_debug_log(&format!("FINDER_OPEN: Failed to send: {}", e));
+                                write_security_bookmark_debug_log(&format!("FINDER_OPEN: Failed to send: {}", e));
                             },
                         }
                     } else {
                         crate::write_immediate_crash_log("HANDLE_OPENED_FILE: FILE_CHANNEL is None");
-                        write_crash_debug_log("FINDER_OPEN: FILE_CHANNEL is None");
+                        write_security_bookmark_debug_log("FINDER_OPEN: FILE_CHANNEL is None");
                     }
                 } else {
                     crate::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Failed security access for: {}", path));
                     debug!("Failed to get security-scoped access for file: {}", path);
-                    write_crash_debug_log(&format!("FINDER_OPEN: Failed security access for: {}", path));
+                    write_security_bookmark_debug_log(&format!("FINDER_OPEN: Failed security access for: {}", path));
                 }
                 
                 crate::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Completed file {} of {}", i + 1, files.len()));
-                write_crash_debug_log(&format!("FINDER_OPEN: Completed file {} of {}", i + 1, files.len()));
+                write_security_bookmark_debug_log(&format!("FINDER_OPEN: Completed file {} of {}", i + 1, files.len()));
             }
             
             crate::write_immediate_crash_log("HANDLE_OPENED_FILE: About to exit autoreleasepool");
-            write_crash_debug_log("FINDER_OPEN: About to exit autoreleasepool");
+            write_security_bookmark_debug_log("FINDER_OPEN: About to exit autoreleasepool");
         });
         
         crate::write_immediate_crash_log("HANDLE_OPENED_FILE: Function completed successfully");
-        write_crash_debug_log("FINDER_OPEN: handle_opened_file completed successfully");
+        write_security_bookmark_debug_log("FINDER_OPEN: handle_opened_file completed successfully");
     }
 
     /// Handle opening a single file via legacy "Open With" method (application:openFile:)
@@ -1135,13 +1288,13 @@ pub mod macos_file_handler {
 /// Test function to verify all crash logging methods work
 /// Call this during startup to confirm logs are being written
 pub fn test_crash_logging_methods() {
-    crate::write_crash_debug_log("========== CRASH LOGGING TEST START ==========");
-    crate::write_crash_debug_log("Testing stderr output");
-    crate::write_crash_debug_log("Testing stdout output"); 
-    crate::write_crash_debug_log("Testing syslog output");
-    crate::write_crash_debug_log("Testing NSUserDefaults output");
-    crate::write_crash_debug_log("Testing file output");
-    crate::write_crash_debug_log("========== CRASH LOGGING TEST END ==========");
+    crate::write_immediate_crash_log("========== CRASH LOGGING TEST START ==========");
+    crate::write_immediate_crash_log("Testing stderr output");
+    crate::write_immediate_crash_log("Testing stdout output"); 
+    crate::write_immediate_crash_log("Testing syslog output");
+    crate::write_immediate_crash_log("Testing NSUserDefaults output");
+    crate::write_immediate_crash_log("Testing file output");
+    crate::write_immediate_crash_log("========== CRASH LOGGING TEST END ==========");
     
     // Test retrieval immediately
     #[cfg(target_os = "macos")]
