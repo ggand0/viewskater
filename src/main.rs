@@ -256,6 +256,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     crate::logging::write_crash_debug_log("=========================================");
     
     // Test all logging methods comprehensively
+    #[cfg(target_os = "macos")]
     macos_file_access::test_crash_logging_methods();
 
     // Register file handler BEFORE creating the runner
