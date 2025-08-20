@@ -14,6 +14,7 @@ mod config;
 mod app;
 mod utils;
 mod build_info;
+mod replay;
 
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};
@@ -28,6 +29,8 @@ use std::time::Duration;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::VecDeque;
+use clap::Parser;
+use std::path::PathBuf;
 
 use winit::{
     event::WindowEvent,
@@ -200,7 +203,47 @@ fn update_memory_usage() {
     utils::mem::update_memory_usage();
 }
 
+#[derive(Parser)]
+#[command(name = "viewskater")]
+#[command(about = "A fast image viewer for browsing large collections of images")]
+#[command(version)]
+struct Args {
+    /// Path to image file or directory to open
+    path: Option<PathBuf>,
+    
+    /// Enable replay/benchmark mode
+    #[arg(long)]
+    replay: bool,
+    
+    /// Test directories for replay mode (can be specified multiple times)
+    #[arg(long = "test-dir", value_name = "DIR")]
+    test_directories: Vec<PathBuf>,
+    
+    /// Duration to test each directory in seconds
+    #[arg(long, default_value = "10")]
+    duration: u64,
+    
+    /// Navigation interval in milliseconds
+    #[arg(long, default_value = "50")]
+    nav_interval: u64,
+    
+    /// Test directions: right, left, both
+    #[arg(long, default_value = "both")]
+    directions: String,
+    
+    /// Output file for benchmark results
+    #[arg(long, value_name = "FILE")]
+    output: Option<PathBuf>,
+    
+    /// Verbose output during replay
+    #[arg(long)]
+    verbose: bool,
+}
+
 pub fn main() -> Result<(), winit::error::EventLoopError> {
+    // Parse command line arguments
+    let args = Args::parse();
+    
     // Set up stdout capture FIRST, before any println! statements
     let shared_stdout_buffer = file_io::setup_stdout_capture();
     set_shared_stdout_buffer(Arc::clone(&shared_stdout_buffer));
@@ -216,6 +259,60 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     
     file_io::setup_panic_hook(app_name, shared_log_buffer);
 
+    // Create replay configuration if replay mode is enabled
+    let replay_config = if args.replay {
+        let test_dirs = if args.test_directories.is_empty() {
+            // If no test directories specified, try to use the path argument
+            if let Some(path) = &args.path {
+                vec![path.clone()]
+            } else {
+                eprintln!("Error: Replay mode requires at least one test directory. Use --test-dir or provide a path argument.");
+                std::process::exit(1);
+            }
+        } else {
+            args.test_directories
+        };
+
+        // Validate that all test directories exist
+        for dir in &test_dirs {
+            if !dir.exists() {
+                eprintln!("Error: Test directory does not exist: {}", dir.display());
+                std::process::exit(1);
+            }
+        }
+
+        // Parse directions
+        let directions = match args.directions.to_lowercase().as_str() {
+            "right" => vec![replay::ReplayDirection::Right],
+            "left" => vec![replay::ReplayDirection::Left],
+            "both" => vec![replay::ReplayDirection::Both],
+            _ => {
+                eprintln!("Error: Invalid direction '{}'. Use 'right', 'left', or 'both'", args.directions);
+                std::process::exit(1);
+            }
+        };
+
+        println!("Replay mode enabled:");
+        println!("  Test directories: {:?}", test_dirs);
+        println!("  Duration per directory: {}s", args.duration);
+        println!("  Navigation interval: {}ms", args.nav_interval);
+        println!("  Directions: {:?}", directions);
+        if let Some(ref output) = args.output {
+            println!("  Output file: {}", output.display());
+        }
+
+        Some(replay::ReplayConfig {
+            test_directories: test_dirs,
+            duration_per_directory: Duration::from_secs(args.duration),
+            navigation_interval: Duration::from_millis(args.nav_interval),
+            directions,
+            output_file: args.output,
+            verbose: args.verbose,
+        })
+    } else {
+        None
+    };
+
     // Initialize winit FIRST
     let event_loop = EventLoop::<Action<Message>>::with_user_event()
         .build()
@@ -230,29 +327,25 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     // or using "Open With". Must be set up early in app lifecycle.
     #[cfg(target_os = "macos")]
     {
-        macos_file_handler::set_file_channel(file_sender);
+        macos_file_handler::set_file_channel(file_sender.clone());
         macos_file_handler::register_file_handler();
         println!("macOS file handler registered");
     }
 
-    // Handle command line arguments for Linux (and Windows)
-    // This supports double-click and "Open With" functionality via .desktop files on Linux
-    #[cfg(not(target_os = "macos"))]
-    {
-        let args: Vec<String> = std::env::args().collect();
-        if args.len() > 1 {
-            let file_path = &args[1];
-            println!("File path from command line: {}", file_path);
+    // Handle command line path argument (if not in replay mode)
+    if !args.replay {
+        if let Some(ref path) = args.path {
+            println!("File path from command line: {}", path.display());
             
             // Validate that the path exists and is a file or directory
-            if std::path::Path::new(file_path).exists() {
-                if let Err(e) = file_sender.send(file_path.clone()) {
+            if path.exists() {
+                if let Err(e) = file_sender.send(path.to_string_lossy().to_string()) {
                     println!("Failed to send file path through channel: {}", e);
                 } else {
-                    println!("Successfully queued file path for loading: {}", file_path);
+                    println!("Successfully queued file path for loading: {}", path.display());
                 }
             } else {
-                println!("Warning: Specified file path does not exist: {}", file_path);
+                println!("Warning: Specified file path does not exist: {}", path.display());
             }
         }
     }
@@ -271,6 +364,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             event_sender: StdSender<Event<Action<Message>>>,
             control_receiver: StdReceiver<Control>,
             file_receiver: Receiver<String>,
+            replay_config: Option<crate::replay::ReplayConfig>,
         },
         Ready {
             window: Arc<winit::window::Window>,
@@ -744,7 +838,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     impl winit::application::ApplicationHandler<Action<Message>> for Runner {
         fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
             match self {
-                Self::Loading { proxy, event_sender, control_receiver, file_receiver } => {
+                Self::Loading { proxy, event_sender, control_receiver, file_receiver, replay_config } => {
                     info!("resumed()...");
                     
                     let custom_theme = Theme::custom_with_fn(
@@ -896,6 +990,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         backend,
                         renderer_request_sender,
                         std::mem::replace(file_receiver, mpsc::channel().1),
+                        replay_config.clone(),
                     );
 
                     // Update state creation to lock renderer
@@ -1028,6 +1123,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         event_sender,
         control_receiver,
         file_receiver,
+        replay_config,
     };
     
     event_loop.run_app(&mut runner)

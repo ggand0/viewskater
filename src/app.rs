@@ -136,6 +136,7 @@ pub struct DataViewer {
     pub is_horizontal_split: bool,
     pub file_receiver: Receiver<String>,
     pub synced_zoom: bool,
+    pub replay_controller: Option<crate::replay::ReplayController>,
 }
 
 impl DataViewer {
@@ -145,6 +146,7 @@ impl DataViewer {
         backend: wgpu::Backend,
         renderer_request_sender: Sender<RendererRequest>,
         file_receiver: Receiver<String>,
+        replay_config: Option<crate::replay::ReplayConfig>,
     ) -> Self {
         Self {
             title: String::from("ViewSkater"),
@@ -177,6 +179,7 @@ impl DataViewer {
             is_horizontal_split: false,
             file_receiver,
             synced_zoom: true,
+            replay_controller: replay_config.map(crate::replay::ReplayController::new),
         }
     }
 
@@ -1211,6 +1214,95 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.show_fps = value;
             }
             Message::ToggleSplitOrientation(_bool) => { self.toggle_split_orientation(); },
+        }
+
+        // Handle replay mode logic
+        let replay_action = if let Some(ref mut replay_controller) = self.replay_controller {
+            if replay_controller.is_active() {
+                // Update metrics with current FPS and memory values
+                let ui_fps = {
+                    if let Ok(fps) = crate::CURRENT_FPS.lock() {
+                        *fps
+                    } else {
+                        0.0
+                    }
+                };
+                
+                let image_fps = if self.is_slider_moving {
+                    iced_wgpu::get_image_fps() as f32
+                } else {
+                    crate::pane::IMAGE_RENDER_FPS.lock().map(|fps| *fps).unwrap_or(0.0)
+                };
+
+                let memory_mb = {
+                    if let Ok(mem) = crate::CURRENT_MEMORY_USAGE.lock() {
+                        if *mem == u64::MAX {
+                            -1.0 // Special value indicating memory info is unavailable
+                        } else {
+                            *mem as f64 / 1024.0 / 1024.0
+                        }
+                    } else {
+                        0.0
+                    }
+                };
+
+                replay_controller.update_metrics(ui_fps, image_fps, memory_mb);
+
+                // Check for replay actions and return them for processing
+                replay_controller.update()
+            } else if !replay_controller.is_active() && replay_controller.config.test_directories.len() > 0 {
+                // Start replay if we have a controller but it's not active yet
+                replay_controller.start();
+                // Get the first directory for loading
+                replay_controller.get_current_directory().map(|dir| {
+                    crate::replay::ReplayAction::LoadDirectory(dir.clone())
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Process replay action after releasing the borrow
+        if let Some(action) = replay_action {
+            match action {
+                crate::replay::ReplayAction::LoadDirectory(path) => {
+                    info!("Loading directory for replay: {}", path.display());
+                    self.reset_state(-1);
+                    self.initialize_dir_path(&path, 0);
+                    // Notify replay controller that directory is loaded
+                    if let Some(ref mut replay_controller) = self.replay_controller {
+                        if let Some(directory_index) = replay_controller.config.test_directories.iter().position(|p| p == &path) {
+                            replay_controller.on_directory_loaded(directory_index);
+                        }
+                    }
+                }
+                crate::replay::ReplayAction::NavigateRight => {
+                    self.skate_right = true;
+                    if let Some(ref mut replay_controller) = self.replay_controller {
+                        replay_controller.on_navigation_performed();
+                    }
+                }
+                crate::replay::ReplayAction::NavigateLeft => {
+                    self.skate_left = true;
+                    if let Some(ref mut replay_controller) = self.replay_controller {
+                        replay_controller.on_navigation_performed();
+                    }
+                }
+                crate::replay::ReplayAction::StartNavigatingLeft => {
+                    // Stop right navigation and start left navigation
+                    self.skate_right = false;
+                    self.skate_left = true;
+                    if let Some(ref mut replay_controller) = self.replay_controller {
+                        replay_controller.on_navigation_performed();
+                    }
+                }
+                crate::replay::ReplayAction::Finish => {
+                    info!("Replay mode finished");
+                    // Could exit the application or return to normal mode
+                }
+            }
         }
 
         if self.skate_right {
