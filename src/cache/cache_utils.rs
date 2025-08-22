@@ -43,7 +43,7 @@ pub fn load_original_image(img_path: &PathType) -> Result<DynamicImage, io::Erro
             image::open(img_path)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {e}")))?
         },
-        PathType::FileByte(_, _) => {
+        PathType::FileByte(..) => {
             ImageReader::new(Cursor::new(img_path.bytes()?)).with_guessed_format()?.decode()
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from compressed file: {e} {}", img_path.file_name())))?
         }
@@ -58,7 +58,7 @@ pub fn load_and_resize_image(img_path: &PathType, target_width: u32, target_heig
             image::open(img_path)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {e}")))?
         },
-        PathType::FileByte(_, _) => {
+        PathType::FileByte(..) => {
             ImageReader::new(Cursor::new(img_path.bytes()?)).with_guessed_format()?.decode()
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from compressed file: {e} {}", img_path.file_name())))?
         }

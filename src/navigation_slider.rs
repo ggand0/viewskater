@@ -683,7 +683,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                                     ))
                                 }
                             },
-                            PathType::FileByte(_, _) => {
+                            PathType::FileByte(..) => {
                                 debug!("Compressed file load from memory");
                                 pane.slider_image = Some(iced::widget::image::Handle::from_bytes(img_path.bytes()?.to_vec()));
                                 Ok(())

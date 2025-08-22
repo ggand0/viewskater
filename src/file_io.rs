@@ -129,7 +129,7 @@ pub fn read_image_bytes(path: &PathType) -> Result<Vec<u8>, std::io::Error> {
                 Ok(buffer)
             }
         },
-        PathType::FileByte(_, _) => {
+        PathType::FileByte(..) => {
             Ok(path.bytes()?.to_vec())
         }
     }
@@ -185,7 +185,7 @@ async fn load_image_cpu_async(path: Option<PathType>) -> Result<Option<CachedDat
                     Err(e) => Err(e.kind()),
                 }
             },
-            PathType::FileByte(_, _) => {
+            PathType::FileByte(..) => {
                 match path.bytes() {
                     Ok(bytes) => Ok(Some(CachedData::Cpu(bytes.to_vec()))),
                     Err(e) => Err(e.kind()),

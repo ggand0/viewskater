@@ -113,6 +113,10 @@ pub enum Message {
     ToggleSplitOrientation(bool),
     ToggleSyncedZoom(bool),
     ToggleViewerMode(bool),
+    ToggleFullScreen(bool),
+    CursorOnTop(bool),
+    CursorOnMenu(bool),
+    CursorOnFooter(bool),
 }
 
 pub struct DataViewer {
@@ -146,6 +150,10 @@ pub struct DataViewer {
     pub is_horizontal_split: bool,
     pub file_receiver: Receiver<String>,
     pub synced_zoom: bool,
+    pub is_fullscreen: bool,
+    pub cursor_on_top: bool,
+    pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
+    pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
 }
 
 impl DataViewer {
@@ -187,6 +195,10 @@ impl DataViewer {
             is_horizontal_split: false,
             file_receiver,
             synced_zoom: true,
+            is_fullscreen: false,
+            cursor_on_top: false,
+            cursor_on_menu: false,
+            cursor_on_footer: false,
         }
     }
 
@@ -561,10 +573,6 @@ impl DataViewer {
             Key::Named(Named::F3)  => {
                 self.show_fps = !self.show_fps;
                 debug!("Toggled debug FPS display: {}", self.show_fps);
-            }
-
-            Key::Named(Named::F11) => {
-                crate::change_window_state();
             }
 
             _ => {
@@ -1001,6 +1009,18 @@ impl iced_winit::runtime::Program for DataViewer {
             }
             Message::ToggleViewerMode(enabled) => {
                 *VIEWER_MODE.lock().unwrap() = enabled;
+            }
+            Message::ToggleFullScreen(value) => {
+                self.is_fullscreen = value;
+            }
+            Message::CursorOnTop(value) => {
+                self.cursor_on_top = value;
+            }
+            Message::CursorOnMenu(value) => {
+                self.cursor_on_menu = value;
+            }
+            Message::CursorOnFooter(value) => {
+                self.cursor_on_footer = value;
             }
             Message::PaneSelected(pane_index, is_selected) => {
                 self.panes[pane_index].is_selected = is_selected;

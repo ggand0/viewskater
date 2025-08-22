@@ -581,7 +581,7 @@ impl ImageCache {
                                         ))
                                     }
                                 },
-                                PathType::FileByte(_, _) => {
+                                PathType::FileByte(..) => {
                                     Ok(img_path.bytes()?.to_vec())
                                 }
                             }

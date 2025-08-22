@@ -94,25 +94,6 @@ static LAST_RENDER_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
 static LAST_ASYNC_DELIVERY_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
     Mutex::new(Instant::now())
 });
-// flag to toggle window state
-static TOGGLE_WINDOW: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(false))
-});
-static IS_FULLSCREEN: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(false))
-});
-// flag to show menu on fullscreen
-static CURSOR_ON_TOP: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(false))
-});
-// flag to show footer on fullscreen
-static CURSOR_ON_BOTTOM: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(false))
-});
-// flag to check cursor on menu
-static CURSOR_ON_MENU: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(false))
-});
 
 static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
 const QUEUE_LOG_THRESHOLD: usize = 20;
@@ -403,11 +384,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     event_loop.exit();
                                 }
                                 WindowEvent::CursorMoved { position, .. } => {
-                                    if *IS_FULLSCREEN.lock().unwrap() {
-                                        *CURSOR_ON_TOP.lock().unwrap() =
-                                            position.y < 50.into();
-                                        *CURSOR_ON_BOTTOM.lock().unwrap() =
-                                            position.y > (window.inner_size().height - 100).into();
+                                    if state.program().is_fullscreen {
+                                        state.queue_message(Message::CursorOnTop(position.y < 50.into()));
+                                        state.queue_message(Message::CursorOnFooter(
+                                            position.y > (window.inner_size().height - 100).into()));
                                     }
                                     *cursor_position = Some(position);
                                 }
@@ -418,6 +398,35 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::ModifiersChanged(new_modifiers) => {
                                     *modifiers = new_modifiers.state();
+                                }
+                                WindowEvent::KeyboardInput {
+                                    event:
+                                        winit::event::KeyEvent {
+                                            physical_key: winit::keyboard::PhysicalKey::Code(
+                                                winit::keyboard::KeyCode::F11),
+                                            state: ElementState::Pressed,
+                                            repeat: false,
+                                            ..
+                                        },
+                                    ..
+                                } => {
+                                    let fullscreen = if window.fullscreen().is_some() {
+                                        state.queue_message(Message::ToggleFullScreen(false));
+                                        None
+                                    } else {
+                                        state.queue_message(Message::ToggleFullScreen(true));
+                                        Some(winit::window::Fullscreen::Borderless(None))
+                                    };
+                                    #[cfg(not(target_os = "macos"))] {
+                                        // TODO: switch from fullscreen to window will cause title not update, focus off and on will fix it
+                                        window.set_fullscreen(fullscreen);
+                                    }
+                                    #[cfg(target_os = "macos")] {
+                                        // https://github.com/rust-windowing/winit/issues/4162
+                                        // no screen when using rustdesk remote control mac mini
+                                        use iced_winit::winit::platform::macos::WindowExtMacOS;
+                                        window.set_simple_fullscreen(state.program().is_fullscreen);
+                                    }
                                 }
                                 _ => {}
                             }
@@ -622,34 +631,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         );
 
                                         // TODO: better way to track mouse on menu
-                                        *CURSOR_ON_MENU.lock().unwrap() = state.mouse_interaction() == mouse::Interaction::Pointer;
+                                        state.queue_message(Message::CursorOnMenu(
+                                            !state.program().cursor_on_footer && state.mouse_interaction() == mouse::Interaction::Pointer));
 
                                         if *debug {
                                             let total_frame_time = frame_start.elapsed();
                                             trace!("Total frame time: {:?}", total_frame_time);
-                                        }
-
-                                        if let Ok(mut state) = TOGGLE_WINDOW.lock() {
-                                            if *state {
-                                                *state = false;
-                                                let fullscreen = if window.fullscreen().is_some() {
-                                                    *IS_FULLSCREEN.lock().unwrap() = false;
-                                                    None
-                                                } else {
-                                                    *IS_FULLSCREEN.lock().unwrap() = true;
-                                                    Some(winit::window::Fullscreen::Borderless(None))
-                                                };
-                                                #[cfg(not(target_os = "macos"))] {
-                                                    // TODO: switch from fullscreen to window will cause title not update, focus off and on will fix it
-                                                    window.set_fullscreen(fullscreen);
-                                                }
-                                                #[cfg(target_os = "macos")] {
-                                                    // https://github.com/rust-windowing/winit/issues/4162
-                                                    // no screen when using rustdesk remote control mac mini
-                                                    use iced_winit::winit::platform::macos::WindowExtMacOS;
-                                                    window.set_simple_fullscreen(*IS_FULLSCREEN.lock().unwrap());
-                                                }
-                                            }
                                         }
                                     }
                                     Err(error) => match error {
@@ -1146,13 +1133,6 @@ fn track_async_delivery() {
     }
 }
 
-fn change_window_state() {
-    if let Ok(mut state) = TOGGLE_WINDOW.lock() {
-        if !(*state) {
-            *state = true;
-        }
-    }
-}
 
 /// macOS integration for opening image files via Finder.
 ///

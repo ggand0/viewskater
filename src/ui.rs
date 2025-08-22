@@ -27,7 +27,7 @@ use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::Renderer;
 
 use crate::pane::Pane;
-use crate::{menu as app_menu, CURSOR_ON_BOTTOM, CURSOR_ON_MENU, CURSOR_ON_TOP, IS_FULLSCREEN};
+use crate::{menu as app_menu};
 use app_menu::button_style;
 use crate::menu::PaneLayout;
 use crate::{app::Message, DataViewer};
@@ -124,10 +124,10 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
     let mb = app_menu::build_menu(app);
 
-    let is_fullscreen = *IS_FULLSCREEN.lock().unwrap();
-    let cursor_on_top = *CURSOR_ON_TOP.lock().unwrap();
-    let cursor_on_menu = *CURSOR_ON_MENU.lock().unwrap();
-    let cursor_on_bottom = *CURSOR_ON_BOTTOM.lock().unwrap();
+    let is_fullscreen = app.is_fullscreen;
+    let cursor_on_top = app.cursor_on_top;
+    let cursor_on_menu = app.cursor_on_menu;
+    let cursor_on_footer = app.cursor_on_footer;
 
     let top_bar = container(
         row![
@@ -218,7 +218,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 container(
                     if is_fullscreen && (cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, first_img]
-                    } else if is_fullscreen && cursor_on_bottom {
+                    } else if is_fullscreen && cursor_on_footer {
                         column![fps_bar, first_img, slider_controls, footer]
                     } else if is_fullscreen {
                         column![fps_bar, first_img]
@@ -306,7 +306,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 container(
                     if is_fullscreen && (cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, panes]
-                    } else if is_fullscreen && cursor_on_bottom {
+                    } else if is_fullscreen && cursor_on_footer {
                         column![fps_bar, panes, slider, footer]
                     } else if is_fullscreen  {
                         column![fps_bar, panes]
