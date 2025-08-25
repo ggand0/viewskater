@@ -36,6 +36,16 @@ const ALLOWED_EXTENSIONS: [&str; 15] = ["jpg", "jpeg", "png", "gif", "bmp", "ico
 pub const ALLOWED_COMPRESSED_FILES: [&str; 3] = ["zip", "rar", "7z"];
 
 pub fn supported_image(name: &str) -> bool {
+    // Filter out macOS metadata files
+    if name.starts_with("__MACOSX/") || name.contains("/._") || name.starts_with("._") {
+        return false;
+    }
+    
+    // Filter out other common system/metadata files
+    if name.starts_with(".DS_Store") || name.starts_with("Thumbs.db") {
+        return false;
+    }
+    
     ALLOWED_EXTENSIONS.contains(&name.split('.').next_back().unwrap_or("").to_lowercase().as_str())
 }
 

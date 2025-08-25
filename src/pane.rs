@@ -506,7 +506,10 @@ impl Pane {
         mem::log_memory("Pane::initialize_dir_path: Before loading initial images");
 
         // Load initial images into the cache
-        img_cache.load_initial_images().unwrap();
+        if let Err(e) = img_cache.load_initial_images() {
+            error!("Failed to load initial images: {}", e);
+            return;
+        }
 
         mem::log_memory("Pane::initialize_dir_path: After loading initial images");
 

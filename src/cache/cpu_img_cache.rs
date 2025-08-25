@@ -71,9 +71,17 @@ impl ImageCacheBackend for CpuImageCache {
             if cache_index > image_paths.len() as isize - 1 {
                 break;
             }
-            let image = self.load_image(cache_index as usize, image_paths, compression_strategy)?;
-            cached_data[i] = Some(image);
-            cached_image_indices[i] = cache_index;
+            match self.load_image(cache_index as usize, image_paths, compression_strategy) {
+                Ok(image) => {
+                    cached_data[i] = Some(image);
+                    cached_image_indices[i] = cache_index;
+                },
+                Err(e) => {
+                    warn!("Failed to load image at index {}: {}. Skipping...", cache_index, e);
+                    cached_data[i] = None;
+                    cached_image_indices[i] = -1; // Mark as invalid
+                }
+            }
         }
 
         Ok(())
