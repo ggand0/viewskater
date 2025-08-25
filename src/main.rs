@@ -235,6 +235,10 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     output: Option<PathBuf>,
     
+    /// Number of complete iterations/cycles to run (default: 1)
+    #[arg(long, default_value = "1")]
+    iterations: u32,
+    
     /// Verbose output during replay
     #[arg(long)]
     verbose: bool,
@@ -297,6 +301,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         println!("  Duration per directory: {}s", args.duration);
         println!("  Navigation interval: {}ms", args.nav_interval);
         println!("  Directions: {:?}", directions);
+        println!("  Iterations: {}", args.iterations);
         if let Some(ref output) = args.output {
             println!("  Output file: {}", output.display());
         }
@@ -308,6 +313,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             directions,
             output_file: args.output,
             verbose: args.verbose,
+            iterations: args.iterations,
         })
     } else {
         None
@@ -461,7 +467,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     *moved = false;
                                 }
                                 WindowEvent::Focused(false) => {
-                                    event_loop.set_control_flow(ControlFlow::Wait);
+                                    // In replay mode, keep polling even when unfocused to ensure continuous rendering
+                                    if state.program().replay_controller.as_ref().map_or(false, |rc| rc.is_active()) {
+                                        event_loop.set_control_flow(ControlFlow::Poll);
+                                    } else {
+                                        event_loop.set_control_flow(ControlFlow::Wait);
+                                    }
                                 }
                                 WindowEvent::Resized(size) => {
                                     if size.width > 0 && size.height > 0 {
@@ -508,8 +519,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 *redraw = true;
                             }
 
-                            // If there are events pending
-                            if !state.is_queue_empty() {
+                            // Check if replay mode is active to ensure we update even without events
+                            let replay_active = state.program().replay_controller.as_ref().map_or(false, |rc| rc.is_active());
+                            
+                            // If there are events pending OR replay mode is active
+                            if !state.is_queue_empty() || replay_active {
                                 // We update iced
                                 //let update_start = Instant::now();
                                 let (_, task) = state.update(
@@ -823,9 +837,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                             }
 
-                            // Request a redraw if needed
-                            if *redraw {
+                            // Request a redraw if needed, or if replay mode is active
+                            let replay_active = state.program().replay_controller.as_ref().map_or(false, |rc| rc.is_active());
+                            if *redraw || replay_active {
                                 window.request_redraw();
+                                // Ensure continuous polling during replay mode
+                                if replay_active {
+                                    event_loop.set_control_flow(ControlFlow::Poll);
+                                }
                             }
                         }
                         _ => {}

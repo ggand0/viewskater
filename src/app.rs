@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use once_cell::sync::Lazy;
 
 #[allow(unused_imports)]
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -81,6 +81,7 @@ pub enum Message {
     FileDropped(isize, String),
     Close,
     Quit,
+    ReplayKeepAlive,
     FolderOpened(Result<String, file_io::Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
@@ -137,6 +138,7 @@ pub struct DataViewer {
     pub file_receiver: Receiver<String>,
     pub synced_zoom: bool,
     pub replay_controller: Option<crate::replay::ReplayController>,
+    pub replay_keep_alive_task: Option<Task<Message>>,
 }
 
 impl DataViewer {
@@ -180,6 +182,7 @@ impl DataViewer {
             file_receiver,
             synced_zoom: true,
             replay_controller: replay_config.map(crate::replay::ReplayController::new),
+            replay_keep_alive_task: None,
         }
     }
 
@@ -946,6 +949,15 @@ impl iced_winit::runtime::Program for DataViewer {
 
             Message::ImagesLoaded(result) => {
                 debug!("ImagesLoaded");
+                
+                // Signal replay controller that app is ready to navigate
+                if let Some(ref mut replay_controller) = self.replay_controller {
+                    if matches!(replay_controller.state, crate::replay::ReplayState::WaitingForReady { .. }) {
+                        debug!("Signaling replay controller that app is ready to navigate");
+                        replay_controller.on_ready_to_navigate();
+                    }
+                }
+                
                 match result {
                     Ok((image_data, operation)) => {
                         if let Some(op) = operation {
@@ -1199,6 +1211,11 @@ impl iced_winit::runtime::Program for DataViewer {
 
                 _ => {}
             },
+            Message::ReplayKeepAlive => {
+                // This message is sent periodically during replay mode to keep the update loop active
+                // Even when no navigation is happening (e.g., when at boundaries)
+                debug!("ReplayKeepAlive received - keeping replay update loop active");
+            }
             Message::TimerTick => {
                 // Implementation of TimerTick message
                 // This is a placeholder and should be replaced with the actual implementation
@@ -1218,6 +1235,9 @@ impl iced_winit::runtime::Program for DataViewer {
 
         // Handle replay mode logic
         let replay_action = if let Some(ref mut replay_controller) = self.replay_controller {
+            if replay_controller.is_active() {
+                debug!("App update called during active replay mode, state: {:?}", replay_controller.state);
+            }
             if replay_controller.is_active() {
                 // Update metrics with current FPS and memory values
                 let ui_fps = {
@@ -1248,10 +1268,92 @@ impl iced_winit::runtime::Program for DataViewer {
 
                 replay_controller.update_metrics(ui_fps, image_fps, memory_mb);
 
+                // Ensure app navigation state is synchronized with replay controller state
+                // Also force progress if replay seems stuck
+                match &replay_controller.state {
+                    crate::replay::ReplayState::NavigatingRight { start_time, .. } => {
+                        // Check if we're at the end of images (can't navigate right anymore)
+                        let at_end = self.panes.iter().all(|pane| {
+                            pane.is_selected && pane.dir_loaded && 
+                            pane.img_cache.current_index >= pane.img_cache.image_paths.len().saturating_sub(1)
+                        });
+                        
+                        if at_end {
+                            // We've reached the end - stop trying to navigate right
+                            if self.skate_right {
+                                debug!("Reached end of images, stopping right navigation");
+                                self.skate_right = false;
+                            }
+                        } else if !self.skate_right {
+                            debug!("Syncing app state: setting skate_right = true");
+                            self.skate_right = true;
+                            self.skate_left = false;
+                        }
+                        
+                        // Force progress if stuck for too long
+                        if start_time.elapsed() > replay_controller.config.duration_per_directory + Duration::from_secs(1) {
+                            warn!("Replay seems stuck in NavigatingRight state, forcing progress");
+                            self.skate_right = false;
+                        }
+                    }
+                    crate::replay::ReplayState::NavigatingLeft { start_time, .. } => {
+                        // Check if we're at the beginning of images (can't navigate left anymore)
+                        let at_beginning = self.panes.iter().all(|pane| {
+                            pane.is_selected && pane.dir_loaded && pane.img_cache.current_index == 0
+                        });
+                        
+                        if at_beginning {
+                            // We've reached the beginning - stop trying to navigate left but keep the replay state active
+                            if self.skate_left {
+                                debug!("Reached beginning of images, stopping left navigation but continuing replay timing");
+                                self.skate_left = false;
+                            }
+                            // Don't do anything else - let the replay controller handle the timing
+                        } else if !self.skate_left {
+                            debug!("Syncing app state: setting skate_left = true");
+                            self.skate_left = true;
+                            self.skate_right = false;
+                        }
+                        
+                        // Force progress if stuck for too long
+                        if start_time.elapsed() > replay_controller.config.duration_per_directory + Duration::from_secs(1) {
+                            warn!("Replay seems stuck in NavigatingLeft state, forcing progress");
+                            self.skate_left = false;
+                        }
+                    }
+                    _ => {
+                        // For other states, ensure navigation flags are cleared
+                        if self.skate_right || self.skate_left {
+                            debug!("Syncing app state: clearing navigation flags");
+                            self.skate_right = false;
+                            self.skate_left = false;
+                        }
+                    }
+                }
+
                 // Check for replay actions and return them for processing
-                replay_controller.update()
-            } else if !replay_controller.is_active() && replay_controller.config.test_directories.len() > 0 {
-                // Start replay if we have a controller but it's not active yet
+                let action = replay_controller.update();
+                if let Some(ref a) = action {
+                    debug!("Replay controller returned action: {:?}", a);
+                } else {
+                    debug!("Replay controller returned no action, current state: {:?}", replay_controller.state);
+                }
+                
+                // If replay is active, always ensure we have a keep-alive task to maintain the update loop
+                // This is especially important when we're at boundaries and not navigating but still timing
+                if replay_controller.is_active() {
+                    // Always schedule another update cycle to keep the replay controller timing active
+                    self.replay_keep_alive_task = Some(Task::perform(
+                        async { 
+                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                        }, 
+                        |_| Message::ReplayKeepAlive
+                    ));
+                }
+                
+                action
+            } else if !replay_controller.is_active() && !replay_controller.is_completed() && replay_controller.config.test_directories.len() > 0 {
+                // Start replay if we have a controller but it's not active yet and not completed
                 replay_controller.start();
                 // Get the first directory for loading
                 replay_controller.get_current_directory().map(|dir| {
@@ -1271,12 +1373,49 @@ impl iced_winit::runtime::Program for DataViewer {
                     info!("Loading directory for replay: {}", path.display());
                     self.reset_state(-1);
                     self.initialize_dir_path(&path, 0);
-                    // Notify replay controller that directory is loaded
+                    // Notify replay controller that directory is loaded and app is ready
                     if let Some(ref mut replay_controller) = self.replay_controller {
                         if let Some(directory_index) = replay_controller.config.test_directories.iter().position(|p| p == &path) {
                             replay_controller.on_directory_loaded(directory_index);
+                            // Since initialize_dir_path() loads images synchronously, we're ready immediately
+                            debug!("Directory initialization complete, signaling replay controller that app is ready");
+                            replay_controller.on_ready_to_navigate();
                         }
                     }
+                    
+                    // Return a task to trigger another update cycle so the replay controller's state change takes effect
+                    return Task::perform(async { std::thread::sleep(std::time::Duration::from_millis(1)); }, |_| Message::Nothing);
+                }
+                crate::replay::ReplayAction::RestartIteration(path) => {
+                    info!("Restarting iteration for replay (same directory): {}", path.display());
+                    
+                    // Clean up navigation state from previous iteration
+                    self.skate_right = false;
+                    self.skate_left = false;
+                    self.update_counter = 0;
+                    
+                    // Reset navigation position to start of directory
+                    self.slider_value = 0;
+                    self.prev_slider_value = 0;
+                    self.current_image_index = 0;
+                    
+                    // Clear any pending loading operations aggressively
+                    self.loading_status.reset_load_next_queue_items();
+                    self.loading_status.reset_load_previous_queue_items();
+                    // Also clear the being_loaded_queue to prevent blocking
+                    self.loading_status.being_loaded_queue.clear();
+                    
+                    if let Some(ref mut replay_controller) = self.replay_controller {
+                        if let Some(directory_index) = replay_controller.config.test_directories.iter().position(|p| p == &path) {
+                            replay_controller.on_directory_loaded(directory_index);
+                            // For iteration restart, we're ready immediately since no loading is needed
+                            debug!("Iteration restart complete, signaling replay controller that app is ready");
+                            replay_controller.on_ready_to_navigate();
+                        }
+                    }
+                    
+                    // Return a task to trigger another update cycle so the replay controller's state change takes effect
+                    return Task::perform(async { std::thread::sleep(std::time::Duration::from_millis(1)); }, |_| Message::Nothing);
                 }
                 crate::replay::ReplayAction::NavigateRight => {
                     self.skate_right = true;
@@ -1319,6 +1458,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
+            
             task
         } else if self.skate_left {
             self.update_counter = 0;
@@ -1335,6 +1475,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             );
+            
             task
         } else {
             // Log that there's no task to perform once
@@ -1343,7 +1484,12 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.update_counter += 1;
             }
 
-            iced_winit::runtime::Task::none()
+            // Check if we have a keep-alive task to return
+            if let Some(keep_alive_task) = self.replay_keep_alive_task.take() {
+                keep_alive_task
+            } else {
+                iced_winit::runtime::Task::none()
+            }
         }
     }
 

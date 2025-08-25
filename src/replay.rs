@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 use std::path::PathBuf;
-use log::{info, warn};
+use log::{debug, info, warn};
 
 #[derive(Debug, Clone)]
 pub struct ReplayConfig {
@@ -10,6 +10,7 @@ pub struct ReplayConfig {
     pub directions: Vec<ReplayDirection>,
     pub output_file: Option<PathBuf>,
     pub verbose: bool,
+    pub iterations: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,6 +24,7 @@ pub enum ReplayDirection {
 pub enum ReplayState {
     Inactive,
     LoadingDirectory { directory_index: usize },
+    WaitingForReady { directory_index: usize },
     NavigatingRight { start_time: Instant, directory_index: usize },
     NavigatingLeft { start_time: Instant, directory_index: usize },
     Pausing { start_time: Instant, directory_index: usize },
@@ -155,6 +157,8 @@ pub struct ReplayController {
     pub current_metrics: Option<ReplayMetrics>,
     pub completed_metrics: Vec<ReplayMetrics>,
     pub last_navigation_time: Instant,
+    pub current_iteration: u32,
+    pub completed_iterations: u32,
 }
 
 impl ReplayController {
@@ -165,21 +169,33 @@ impl ReplayController {
             current_metrics: None,
             completed_metrics: Vec::new(),
             last_navigation_time: Instant::now(),
+            current_iteration: 0,
+            completed_iterations: 0,
         }
     }
 
     pub fn start(&mut self) {
-        if !self.config.test_directories.is_empty() {
-            info!("Starting replay mode with {} directories", self.config.test_directories.len());
+        if !self.config.test_directories.is_empty() && self.completed_iterations < self.config.iterations {
+            self.current_iteration += 1;
+            info!("Starting replay mode iteration {}/{} with {} directories", 
+                  self.current_iteration, self.config.iterations, self.config.test_directories.len());
             self.state = ReplayState::LoadingDirectory { directory_index: 0 };
         } else {
-            warn!("No test directories configured for replay mode");
+            if self.completed_iterations >= self.config.iterations {
+                info!("All {} iterations completed", self.config.iterations);
+            } else {
+                warn!("No test directories configured for replay mode");
+            }
             self.state = ReplayState::Finished;
         }
     }
 
     pub fn is_active(&self) -> bool {
         !matches!(self.state, ReplayState::Inactive | ReplayState::Finished)
+    }
+
+    pub fn is_completed(&self) -> bool {
+        matches!(self.state, ReplayState::Finished) && self.completed_iterations >= self.config.iterations
     }
 
     pub fn should_navigate_right(&self) -> bool {
@@ -223,37 +239,49 @@ impl ReplayController {
     pub fn on_directory_loaded(&mut self, directory_index: usize) {
         if let ReplayState::LoadingDirectory { directory_index: expected_index } = &self.state {
             if *expected_index == directory_index {
-                // Start with the first direction for this directory
-                let direction = self.config.directions.get(0).unwrap_or(&ReplayDirection::Right);
                 let directory_path = self.config.test_directories[directory_index].clone();
+                info!("Directory loaded for replay: {}, waiting for app to be ready...", directory_path.display());
                 
-                match direction {
-                    ReplayDirection::Right => {
-                        self.state = ReplayState::NavigatingRight { 
-                            start_time: Instant::now(), 
-                            directory_index 
-                        };
-                        self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Right));
-                    }
-                    ReplayDirection::Left => {
-                        self.state = ReplayState::NavigatingLeft { 
-                            start_time: Instant::now(), 
-                            directory_index 
-                        };
-                        self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Left));
-                    }
-                    ReplayDirection::Both => {
-                        // Start with right navigation first
-                        self.state = ReplayState::NavigatingRight { 
-                            start_time: Instant::now(), 
-                            directory_index 
-                        };
-                        self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Right));
-                    }
-                }
-                
-                info!("Started replay for directory: {}", directory_path.display());
+                // Transition to waiting state instead of immediately starting navigation
+                self.state = ReplayState::WaitingForReady { directory_index };
             }
+        }
+    }
+    
+    pub fn on_ready_to_navigate(&mut self) {
+        if let ReplayState::WaitingForReady { directory_index } = &self.state {
+            let directory_index = *directory_index;
+            let directory_path = self.config.test_directories[directory_index].clone();
+            
+            // Start with the first direction for this directory
+            let direction = self.config.directions.get(0).unwrap_or(&ReplayDirection::Right);
+            
+            match direction {
+                ReplayDirection::Right => {
+                    self.state = ReplayState::NavigatingRight { 
+                        start_time: Instant::now(), 
+                        directory_index 
+                    };
+                    self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Right));
+                }
+                ReplayDirection::Left => {
+                    self.state = ReplayState::NavigatingLeft { 
+                        start_time: Instant::now(), 
+                        directory_index 
+                    };
+                    self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Left));
+                }
+                ReplayDirection::Both => {
+                    // Start with right navigation first
+                    self.state = ReplayState::NavigatingRight { 
+                        start_time: Instant::now(), 
+                        directory_index 
+                    };
+                    self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Right));
+                }
+            }
+            
+            info!("App ready - started replay navigation for directory: {}", directory_path.display());
         }
     }
 
@@ -281,6 +309,8 @@ impl ReplayController {
                     // Check if we need to test left navigation for this directory
                     if self.config.directions.contains(&ReplayDirection::Both) {
                         let directory_path = self.config.test_directories[*directory_index].clone();
+                        info!("Switching from right to left navigation for directory: {}", directory_path.display());
+                        // Switch immediately to left navigation
                         self.state = ReplayState::NavigatingLeft { 
                             start_time: Instant::now(), 
                             directory_index: *directory_index 
@@ -291,9 +321,11 @@ impl ReplayController {
                         // Move to next directory or finish
                         self.advance_to_next_directory(*directory_index)
                     }
-                } else if self.should_navigate_right() {
+                } else if self.last_navigation_time.elapsed() >= self.config.navigation_interval {
+                    // Navigate right if enough time has passed since last navigation
                     Some(ReplayAction::NavigateRight)
                 } else {
+                    // Still within duration but need to wait for navigation interval
                     None
                 }
             }
@@ -301,8 +333,17 @@ impl ReplayController {
             ReplayState::NavigatingLeft { start_time, directory_index } => {
                 let elapsed = start_time.elapsed();
                 
+                // Debug: Log timing during left navigation
+                if elapsed.as_millis() % 500 < 50 { // Log every ~500ms
+                    debug!("Left navigation progress: {:.2}s / {:.2}s (target: {:.2}s)", 
+                           elapsed.as_secs_f64(), 
+                           self.config.duration_per_directory.as_secs_f64(),
+                           self.config.duration_per_directory.as_secs_f64());
+                }
+                
                 if elapsed >= self.config.duration_per_directory {
-                    // Finish current metrics
+                    // Left navigation duration completed - stop regardless of current image index
+                    // This is time-based testing, not completion-based (we don't need to reach index 0)
                     if let Some(mut metrics) = self.current_metrics.take() {
                         metrics.finalize();
                         if self.config.verbose {
@@ -313,20 +354,27 @@ impl ReplayController {
                     
                     // Move to next directory or finish
                     self.advance_to_next_directory(*directory_index)
-                } else if self.should_navigate_left() {
+                } else if self.last_navigation_time.elapsed() >= self.config.navigation_interval {
+                    // Navigate left if enough time has passed since last navigation
                     Some(ReplayAction::NavigateLeft)
                 } else {
+                    // Still within duration but need to wait for navigation interval
                     None
                 }
             }
             
             ReplayState::Pausing { start_time, directory_index } => {
-                if start_time.elapsed() >= Duration::from_millis(1000) {
-                    // Resume with next directory
+                // Brief pause between operations if needed
+                if start_time.elapsed() >= Duration::from_millis(100) {
                     self.advance_to_next_directory(*directory_index)
                 } else {
                     None
                 }
+            }
+            
+            ReplayState::WaitingForReady { .. } => {
+                // Wait for app to signal readiness via on_ready_to_navigate()
+                None
             }
             
             _ => None,
@@ -337,13 +385,29 @@ impl ReplayController {
         let next_index = current_directory_index + 1;
         
         if next_index < self.config.test_directories.len() {
+            // Still have more directories in this iteration
             self.state = ReplayState::LoadingDirectory { directory_index: next_index };
             Some(ReplayAction::LoadDirectory(self.config.test_directories[next_index].clone()))
         } else {
-            self.state = ReplayState::Finished;
-            info!("Replay mode completed!");
-            self.print_final_summary();
-            Some(ReplayAction::Finish)
+            // Completed all directories in this iteration
+            self.completed_iterations += 1;
+            info!("Completed iteration {}/{}", self.completed_iterations, self.config.iterations);
+            
+            if self.completed_iterations < self.config.iterations {
+                // Start next iteration - use RestartIteration for same directory to avoid reload delay
+                info!("Starting next iteration...");
+                debug!("Transitioning from completed iteration {} to iteration {}", self.completed_iterations, self.completed_iterations + 1);
+                self.current_iteration += 1;
+                self.state = ReplayState::LoadingDirectory { directory_index: 0 };
+                debug!("Set state to LoadingDirectory, returning RestartIteration action");
+                Some(ReplayAction::RestartIteration(self.config.test_directories[0].clone()))
+            } else {
+                // All iterations completed
+                self.state = ReplayState::Finished;
+                info!("Replay mode completed! All {} iterations finished.", self.config.iterations);
+                self.print_final_summary();
+                Some(ReplayAction::Finish)
+            }
         }
     }
 
@@ -411,6 +475,7 @@ impl ReplayController {
 #[derive(Debug, Clone)]
 pub enum ReplayAction {
     LoadDirectory(PathBuf),
+    RestartIteration(PathBuf), // Same directory, new iteration - no need to reload
     NavigateRight,
     NavigateLeft,
     StartNavigatingLeft,

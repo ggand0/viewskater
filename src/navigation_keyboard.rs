@@ -597,7 +597,16 @@ pub fn move_left_all(
         }
     }
     if panes_to_load.len() == 0 {
+        debug!("move_left_all() - All panes at beginning (index 0), returning Task::none()");
         return Task::none();
+    }
+    
+    // Additional safety check: if any pane is at index 0, don't proceed
+    for pane in panes_to_load.iter() {
+        if pane.img_cache.current_index == 0 {
+            debug!("move_left_all() - Found pane at index 0 during processing, returning Task::none()");
+            return Task::none();
+        }
     }
 
     
@@ -648,6 +657,14 @@ pub fn move_left_all(
     debug!("move_left_all() - loading_status.is_prev_image_loaded: {}", loading_status.is_prev_image_loaded);
     
     if !are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
+        // Final boundary check before rendering
+        for pane in panes_to_load.iter() {
+            if pane.img_cache.current_index == 0 {
+                debug!("move_left_all() - Pane reached index 0 before rendering, returning Task::none()");
+                return Task::none();
+            }
+        }
+        
         debug!("move_left_all() - setting prev image...");
         let did_render_happen: bool = render_prev_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
         for pane in panes_to_load.iter_mut() {
