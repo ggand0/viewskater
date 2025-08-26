@@ -410,22 +410,57 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         },
                                     ..
                                 } => {
-                                    let fullscreen = if window.fullscreen().is_some() {
-                                        state.queue_message(Message::ToggleFullScreen(false));
-                                        None
-                                    } else {
-                                        state.queue_message(Message::ToggleFullScreen(true));
-                                        Some(winit::window::Fullscreen::Borderless(None))
-                                    };
-                                    #[cfg(not(target_os = "macos"))] {
-                                        // TODO: switch from fullscreen to window will cause title not update, focus off and on will fix it
-                                        window.set_fullscreen(fullscreen);
-                                    }
                                     #[cfg(target_os = "macos")] {
+                                        // On macOS, window.fullscreen().is_some() doesn't work with set_simple_fullscreen()
+                                        // so we need to use the application's internal state
+                                        let fullscreen = if state.program().is_fullscreen {
+                                            state.queue_message(Message::ToggleFullScreen(false));
+                                            None
+                                        } else {
+                                            state.queue_message(Message::ToggleFullScreen(true));
+                                            Some(winit::window::Fullscreen::Borderless(None))
+                                        };
                                         // https://github.com/rust-windowing/winit/issues/4162
                                         // no screen when using rustdesk remote control mac mini
                                         use iced_winit::winit::platform::macos::WindowExtMacOS;
-                                        window.set_simple_fullscreen(state.program().is_fullscreen);
+                                        window.set_simple_fullscreen(fullscreen.is_some());
+                                    }
+                                    #[cfg(not(target_os = "macos"))] {
+                                        let fullscreen = if window.fullscreen().is_some() {
+                                            state.queue_message(Message::ToggleFullScreen(false));
+                                            None
+                                        } else {
+                                            state.queue_message(Message::ToggleFullScreen(true));
+                                            Some(winit::window::Fullscreen::Borderless(None))
+                                        };
+                                        // TODO: switch from fullscreen to window will cause title not update, focus off and on will fix it
+                                        window.set_fullscreen(fullscreen);
+                                    }
+                                }
+                                WindowEvent::KeyboardInput {
+                                    event:
+                                        winit::event::KeyEvent {
+                                            physical_key: winit::keyboard::PhysicalKey::Code(
+                                                winit::keyboard::KeyCode::Escape),
+                                            state: ElementState::Pressed,
+                                            repeat: false,
+                                            ..
+                                        },
+                                    ..
+                                } => {
+                                    // Handle Escape key to exit fullscreen on macOS
+                                    #[cfg(target_os = "macos")] {
+                                        if window.fullscreen().is_some() || state.program().is_fullscreen {
+                                            state.queue_message(Message::ToggleFullScreen(false));
+                                            use iced_winit::winit::platform::macos::WindowExtMacOS;
+                                            window.set_simple_fullscreen(false);
+                                        }
+                                    }
+                                    #[cfg(not(target_os = "macos"))] {
+                                        if window.fullscreen().is_some() {
+                                            state.queue_message(Message::ToggleFullScreen(false));
+                                            window.set_fullscreen(None);
+                                        }
                                     }
                                 }
                                 _ => {}
