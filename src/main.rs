@@ -99,6 +99,15 @@ static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
 const QUEUE_LOG_THRESHOLD: usize = 20;
 const QUEUE_RESET_THRESHOLD: usize = 50;
 
+// Fullscreen UI detection zones
+#[cfg(target_os = "macos")]
+const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 200.0;  // Larger zone for menu interactions with set_simple_fullscreen()
+
+#[cfg(not(target_os = "macos"))]
+const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 50.0;   // Standard zone for native fullscreen
+
+const FULLSCREEN_BOTTOM_ZONE_HEIGHT: f64 = 100.0;  // Standard bottom zone for all platforms
+
 // Store the actual shared log buffer from the file_io module
 static SHARED_LOG_BUFFER: Lazy<Arc<Mutex<Option<Arc<Mutex<VecDeque<String>>>>>>> = Lazy::new(|| {
     Arc::new(Mutex::new(None))
@@ -385,9 +394,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::CursorMoved { position, .. } => {
                                     if state.program().is_fullscreen {
-                                        state.queue_message(Message::CursorOnTop(position.y < 50.into()));
+                                        state.queue_message(Message::CursorOnTop(position.y < FULLSCREEN_TOP_ZONE_HEIGHT));
                                         state.queue_message(Message::CursorOnFooter(
-                                            position.y > (window.inner_size().height - 100).into()));
+                                            position.y > (window.inner_size().height as f64 - FULLSCREEN_BOTTOM_ZONE_HEIGHT)));
                                     }
                                     *cursor_position = Some(position);
                                 }
