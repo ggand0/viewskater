@@ -599,10 +599,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                                 let frame_start = Instant::now();
 
-                                // Update window title dynamically based on the current image
-                                if !*moved {
-                                    let new_title = state.program().title();
+                                // Set window title when the title is actually changed
+                                let mut last_title = String::new();
+                                let new_title = state.program().title();
+                                if new_title != last_title {
                                     window.set_title(&new_title);
+                                    last_title = new_title;
                                 }
 
                                 match surface.get_current_texture() {
