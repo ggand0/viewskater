@@ -302,6 +302,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             resized: bool,
             moved: bool,                // Flag to track window movement
             redraw: bool,
+            last_title: String,         // Track last set title to avoid unnecessary updates
             debug: bool,
             debug_tool: Debug,
             _event_sender: StdSender<Event<Action<Message>>>,
@@ -352,6 +353,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     resized,
                     moved,
                     redraw,
+                    last_title,
                     debug,
                     debug_tool,
                     control_receiver,
@@ -600,11 +602,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 let frame_start = Instant::now();
 
                                 // Set window title when the title is actually changed
-                                let mut last_title = String::new();
                                 let new_title = state.program().title();
-                                if new_title != last_title {
+                                if new_title != *last_title {
                                     window.set_title(&new_title);
-                                    last_title = new_title;
+                                    *last_title = new_title;
                                 }
 
                                 match surface.get_current_texture() {
@@ -1044,6 +1045,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         resized: false,
                         moved: false,
                         redraw: true,
+                        last_title: String::new(),
                         debug: false,
                         debug_tool,
                         _event_sender: event_sender,
