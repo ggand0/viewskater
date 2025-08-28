@@ -37,12 +37,7 @@ pub const ALLOWED_COMPRESSED_FILES: [&str; 3] = ["zip", "rar", "7z"];
 
 pub fn supported_image(name: &str) -> bool {
     // Filter out macOS metadata files
-    if name.starts_with("__MACOSX/") || name.contains("/._") || name.starts_with("._") {
-        return false;
-    }
-    
-    // Filter out other common system/metadata files
-    if name.starts_with(".DS_Store") || name.starts_with("Thumbs.db") {
+    if name.starts_with("__MACOSX/") {
         return false;
     }
     
