@@ -32,7 +32,6 @@ use iced_aw::{menu_bar, menu_items};
 use iced_aw::MenuBar;
 use iced_aw::style::{menu_bar::primary, Status};
 
-use crate::app::VIEWER_MODE;
 use crate::{app::Message, DataViewer};
 use crate::widgets::toggler;
 use crate::cache::img_cache::CacheStrategy;
@@ -250,16 +249,16 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
         }))
         (container(
             toggler::Toggler::new(
-                Some("  Toggle Viewer Mode".into()),
-                *VIEWER_MODE.lock().unwrap(),
-                Message::ToggleViewerMode,
+                Some("  Toggle Mouse Wheel Zoom".into()),
+                app.mouse_wheel_zoom,
+                Message::ToggleMouseWheelZoom,
             ).width(Length::Fill)
         ).style(|_theme: &WinitTheme| container::Style {
             text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
             ..container::Style::default()
         }))
     ))
-    .max_width(200.0)
+    .max_width(235.0)
     .spacing(0.0);
 
     // Create the formatted strings first as owned values

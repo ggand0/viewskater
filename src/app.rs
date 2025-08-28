@@ -64,14 +64,6 @@ use std::sync::mpsc::{Sender, Receiver};
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("App Update"))
 });
-// flag to change mouse scroll wheel behavior
-pub static VIEWER_MODE: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(true))
-});
-// flag to check ctrl/cmd(mac) is pressed
-pub static CTRL_PRESSED: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(false))
-});
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -112,7 +104,7 @@ pub enum Message {
     ToggleFpsDisplay(bool),
     ToggleSplitOrientation(bool),
     ToggleSyncedZoom(bool),
-    ToggleViewerMode(bool),
+    ToggleMouseWheelZoom(bool),
     ToggleFullScreen(bool),
     CursorOnTop(bool),
     CursorOnMenu(bool),
@@ -154,6 +146,8 @@ pub struct DataViewer {
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
+    pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
+    pub ctrl_pressed: bool,                             // Flag to save ctrl/cmd(macOS) press state
 }
 
 impl DataViewer {
@@ -199,6 +193,8 @@ impl DataViewer {
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,
+            mouse_wheel_zoom: false,
+            ctrl_pressed: false,
         }
     }
 
@@ -578,13 +574,16 @@ impl DataViewer {
             _ => {
                 #[cfg(target_os = "macos")] {
                     if key.as_ref() == Key::Named(Named::Super) {
-                        *CTRL_PRESSED.lock().unwrap() = true;
+                        self.ctrl_pressed =  true;
                     }
                 }
                 #[cfg(not(target_os = "macos"))] {
                     if key.as_ref() == Key::Named(Named::Control) {
-                        *CTRL_PRESSED.lock().unwrap() = true;
+                        self.ctrl_pressed = true;
                     }
+                }
+                for pane in self.panes.iter_mut() {
+                    pane.ctrl_pressed = true;
                 }
             }
         }
@@ -619,13 +618,16 @@ impl DataViewer {
             _ => {
                 #[cfg(target_os = "macos")] {
                     if key_code.as_ref() == Key::Named(Named::Super) {
-                        *CTRL_PRESSED.lock().unwrap() = false;
+                        self.ctrl_pressed = false;
                     }
                 }
                 #[cfg(not(target_os = "macos"))] {
                     if key_code.as_ref() == Key::Named(Named::Control) {
-                        *CTRL_PRESSED.lock().unwrap() = false;
+                        self.ctrl_pressed = false;
                     }
+                }
+                for pane in self.panes.iter_mut() {
+                    pane.ctrl_pressed = false;
                 }
             },
         }
@@ -1007,11 +1009,14 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ToggleSyncedZoom(enabled) => {
                 self.synced_zoom = enabled;
             }
-            Message::ToggleViewerMode(enabled) => {
-                *VIEWER_MODE.lock().unwrap() = enabled;
+            Message::ToggleMouseWheelZoom(enabled) => {
+                self.mouse_wheel_zoom = enabled;
+                for pane in self.panes.iter_mut() {
+                    pane.mouse_wheel_zoom = enabled;
+                }
             }
-            Message::ToggleFullScreen(value) => {
-                self.is_fullscreen = value;
+            Message::ToggleFullScreen(enabled) => {
+                self.is_fullscreen = enabled;
             }
             Message::CursorOnTop(value) => {
                 self.cursor_on_top = value;
@@ -1236,8 +1241,7 @@ impl iced_winit::runtime::Program for DataViewer {
 
             Message::Event(event) => match event {
                 Event::Mouse(iced_core::mouse::Event::WheelScrolled { delta }) => {
-                    // debug!("mouse scrolled in app {:?}", delta);
-                    if !*CTRL_PRESSED.lock().unwrap() && *VIEWER_MODE.lock().unwrap() {
+                    if !self.ctrl_pressed && !self.mouse_wheel_zoom {
                         match delta {
                             iced_core::mouse::ScrollDelta::Lines { y, .. }
                             | iced_core::mouse::ScrollDelta::Pixels { y, .. } => {

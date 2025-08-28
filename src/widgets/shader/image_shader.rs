@@ -11,7 +11,6 @@ use iced_core::event;
 use iced_winit::core::{self, layout, mouse, renderer, widget::{self, tree::{self, Tree}}, Element, Length, Rectangle, Shell, Size};
 use iced_widget::shader::{self, Viewport, Storage};
 use iced_wgpu::{wgpu, primitive};
-use crate::app::{CTRL_PRESSED, VIEWER_MODE};
 use crate::widgets::shader::texture_pipeline::TexturePipeline;
 use crate::Scene;
 use std::collections::HashMap;
@@ -31,6 +30,8 @@ pub struct ImageShader<Message> {
     _phantom: PhantomData<Message>,
     debug: bool,
     is_horizontal_split: bool,
+    mouse_wheel_zoom: bool,
+    ctrl_pressed: bool,
 }
 
 impl<Message> ImageShader<Message> {
@@ -67,6 +68,8 @@ impl<Message> ImageShader<Message> {
             _phantom: PhantomData,
             debug: debug,
             is_horizontal_split: false,
+            mouse_wheel_zoom: false,
+            ctrl_pressed: false,
         }
     }
 
@@ -540,7 +543,7 @@ where
 
         match event {
             core::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
-                if *VIEWER_MODE.lock().unwrap() && !*CTRL_PRESSED.lock().unwrap() {
+                if !self.mouse_wheel_zoom && !self.ctrl_pressed {
                     // log::debug!("image shader mouse scroll ignored");
                     return event::Status::Ignored;
                 }
@@ -709,7 +712,7 @@ where
         if state.is_cursor_grabbed() {
             mouse::Interaction::Grabbing
         } else if is_mouse_over {
-            if *VIEWER_MODE.lock().unwrap() && !*CTRL_PRESSED.lock().unwrap() {
+            if !self.mouse_wheel_zoom && !self.ctrl_pressed {
                 mouse::Interaction::None
             } else {
                 mouse::Interaction::Grab
@@ -840,5 +843,11 @@ impl<Message> ImageShader<Message> {
             width: scaled_size.width - 2.0 * padding,
             height: scaled_size.height - 2.0 * padding,
         }
+    }
+
+    pub fn with_interaction_state(mut self, mouse_wheel_zoom: bool, ctrl_pressed: bool) -> Self {
+        self.mouse_wheel_zoom = mouse_wheel_zoom;
+        self.ctrl_pressed = ctrl_pressed;
+        self
     }
 }

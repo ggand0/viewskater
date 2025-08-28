@@ -59,6 +59,8 @@ pub struct Pane {
     pub queue: Option<Arc<wgpu::Queue>>,
     pub pane_id: usize, // New field for pane identification
     pub compression_strategy: CompressionStrategy,
+    pub mouse_wheel_zoom: bool,
+    pub ctrl_pressed: bool,
 }
 
 impl Default for Pane {
@@ -82,6 +84,8 @@ impl Default for Pane {
             slider_image: None,
             pane_id: 0, // Default to pane 0
             compression_strategy: CompressionStrategy::None,
+            mouse_wheel_zoom: false,
+            ctrl_pressed: false,
         }
     }
 }
@@ -117,6 +121,8 @@ impl Pane {
             slider_image: None,
             pane_id, // Use the provided pane_id
             compression_strategy,
+            mouse_wheel_zoom: false,
+            ctrl_pressed: false,
         }
     }
 
@@ -593,7 +599,8 @@ impl Pane {
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
-                        .horizontal_split(is_horizontal_split);
+                        .horizontal_split(is_horizontal_split)
+                        .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed);
 
                 container(center(shader_widget))
                     .width(Length::Fill)
@@ -662,11 +669,6 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), B
         let filename = header.entry().filename.to_string_lossy().to_string();
         archive = if header.entry().is_file() {
             if supported_image(&filename) {
-                // let (data, rest) = header.read()?;
-                // let ol = OnceLock::new();
-                // let _ = ol.set(data);
-                // files.push(PathType::FileByte(filename, ol));
-                // rest
                 file_paths.push(PathType::FileByte(filename, OnceLock::new()));
                 header.skip()?
             } else {
@@ -682,7 +684,6 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), B
     Ok(())
 }
 
-// TODO: https://github.com/hasenbanck/sevenz-rust2/blob/main/examples/mt_decompress.rs
 fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn Error>> {
     use std::thread;
     let password = sevenz_rust2::Password::empty();
@@ -721,7 +722,7 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Bo
                 });
             });
         }
-        file_paths.append(&mut sevenz_list.into_inner().unwrap());
+        file_paths.append(&mut sevenz_list.into_inner()?);
     } else {
         sevenz_rust2::ArchiveReader::open(path, password)?.for_each_entries(|entry, _|{
             if !entry.is_directory && supported_image(entry.name()) {
