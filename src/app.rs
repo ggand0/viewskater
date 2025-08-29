@@ -147,7 +147,7 @@ pub struct DataViewer {
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
-    pub ctrl_pressed: bool,                             // Flag to save ctrl/cmd(macOS) press state
+    ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
 }
 
 impl DataViewer {
@@ -282,6 +282,13 @@ impl DataViewer {
         );
 
         self.last_opened_pane = pane_index as isize;
+    }
+
+    fn set_ctrl_pressed(&mut self, enabled: bool) {
+        self.ctrl_pressed = enabled;
+        for pane in self.panes.iter_mut() {
+            pane.ctrl_pressed = enabled;
+        }
     }
 
     fn handle_key_pressed_event(&mut self, key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
@@ -570,22 +577,17 @@ impl DataViewer {
                 self.show_fps = !self.show_fps;
                 debug!("Toggled debug FPS display: {}", self.show_fps);
             }
-
-            _ => {
+            Key::Named(Named::Super) => {
                 #[cfg(target_os = "macos")] {
-                    if key.as_ref() == Key::Named(Named::Super) {
-                        self.ctrl_pressed =  true;
-                    }
-                }
-                #[cfg(not(target_os = "macos"))] {
-                    if key.as_ref() == Key::Named(Named::Control) {
-                        self.ctrl_pressed = true;
-                    }
-                }
-                for pane in self.panes.iter_mut() {
-                    pane.ctrl_pressed = true;
+                    self.set_ctrl_pressed(true);
                 }
             }
+            Key::Named(Named::Control) => {
+                #[cfg(not(target_os = "macos"))] {
+                    self.set_ctrl_pressed(true);
+                }
+            }
+            _ => {}
         }
 
         tasks
@@ -615,21 +617,17 @@ impl DataViewer {
                 debug!("Right key or 'D' key released!");
                 self.skate_right = false;
             }
-            _ => {
+            Key::Named(Named::Super) => {
                 #[cfg(target_os = "macos")] {
-                    if key_code.as_ref() == Key::Named(Named::Super) {
-                        self.ctrl_pressed = false;
-                    }
+                    self.set_ctrl_pressed(false);
                 }
+            }
+            Key::Named(Named::Control) => {
                 #[cfg(not(target_os = "macos"))] {
-                    if key_code.as_ref() == Key::Named(Named::Control) {
-                        self.ctrl_pressed = false;
-                    }
+                    self.set_ctrl_pressed(false);
                 }
-                for pane in self.panes.iter_mut() {
-                    pane.ctrl_pressed = false;
-                }
-            },
+            }
+            _ => {},
         }
 
         tasks
