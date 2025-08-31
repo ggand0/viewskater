@@ -14,6 +14,7 @@ mod config;
 mod app;
 mod utils;
 mod build_info;
+mod archive_cache;
 
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};

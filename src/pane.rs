@@ -1,10 +1,9 @@
 use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::OnceLock;
 use std::time::Instant;
-use std::sync::Mutex;
 use std::fs::File;
 use once_cell::sync::Lazy;
 
@@ -20,10 +19,11 @@ use crate::cache::img_cache::PathType;
 use crate::config::CONFIG;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
+use crate::archive_cache::ArchiveCache;
 use crate::file_io::supported_image;
-use crate::file_io::ArchiveType;
+use crate::archive_cache::ArchiveType;
 use crate::file_io::ALLOWED_COMPRESSED_FILES;
-use crate::file_io::COMPRESSED_FILE;
+
 use crate::menu::PaneLayout;
 use crate::widgets::viewer;
 use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
@@ -61,6 +61,8 @@ pub struct Pane {
     pub compression_strategy: CompressionStrategy,
     pub mouse_wheel_zoom: bool,
     pub ctrl_pressed: bool,
+    pub has_compressed_file: bool,
+    pub archive_cache: Arc<Mutex<ArchiveCache>>,
 }
 
 impl Default for Pane {
@@ -86,6 +88,8 @@ impl Default for Pane {
             compression_strategy: CompressionStrategy::None,
             mouse_wheel_zoom: false,
             ctrl_pressed: false,
+            has_compressed_file: false,
+            archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
         }
     }
 }
@@ -123,6 +127,8 @@ impl Pane {
             compression_strategy,
             mouse_wheel_zoom: false,
             ctrl_pressed: false,
+            has_compressed_file: false,
+            archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
         }
     }
 
@@ -421,7 +427,8 @@ impl Pane {
             }
             self.directory_path = Some(path.display().to_string());
             file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(a.file_name(), b.file_name()));
-            *COMPRESSED_FILE.lock().unwrap() = (path.to_path_buf(), archive);
+            self.has_compressed_file = true;
+            self.archive_cache.lock().unwrap().set_current_archive(path.to_path_buf(), archive);
         } else {
             // Get directory path and image files
             let (dir_path, paths_result) = if is_file(path) {
@@ -477,6 +484,7 @@ impl Pane {
                     }
                 };
             }
+            self.has_compressed_file = false;
         };
 
         // Calculate if directory size is bigger than other panes
@@ -511,8 +519,15 @@ impl Pane {
         // Track memory before loading initial images
         mem::log_memory("Pane::initialize_dir_path: Before loading initial images");
 
-        // Load initial images into the cache
-        if let Err(e) = img_cache.load_initial_images() {
+        // Load initial images into the cache  
+        let mut archive_guard = self.archive_cache.lock().unwrap();
+        let archive_cache = if self.has_compressed_file {
+            Some(&mut *archive_guard)
+        } else {
+            None
+        };
+        
+        if let Err(e) = img_cache.load_initial_images(archive_cache) {
             error!("Failed to load initial images: {}", e);
             return;
         }

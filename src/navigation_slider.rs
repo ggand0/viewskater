@@ -117,7 +117,14 @@ fn load_full_res_image(
                     .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1, compression_strategy)));
 
                 // Load the full-resolution image synchronously
-                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy) {
+                // Use the archive cache if provided
+                let mut archive_guard = pane.archive_cache.lock().unwrap();
+                let archive_cache = if matches!(&img_path, PathType::FileByte(..)) {
+                    Some(&mut *archive_guard)
+                } else {
+                    None
+                };
+                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy, archive_cache) {
                     debug!("Failed to load full-res image {} for pane {idx}: {err}", img_path.file_name());
                     continue;
                 }
@@ -135,7 +142,13 @@ fn load_full_res_image(
             } else {
                 // CPU-based loading
                 // Load the full-resolution image using CPU
-                match img_cache.load_image(pos) {
+                let mut archive_guard = pane.archive_cache.lock().unwrap();
+                let archive_cache = if pane.has_compressed_file {
+                    Some(&mut *archive_guard)
+                } else {
+                    None
+                };
+                match img_cache.load_image(pos, archive_cache) {
                     Ok(cached_data) => {
                         // Store in cache and update current image
                         img_cache.cached_data[target_index] = Some(cached_data.clone());
@@ -326,11 +339,12 @@ pub fn load_remaining_images(
 }
 
 
-// Async loading task for Image widget - updated to include pane_idx
+// Async loading task for Image widget - updated to include pane_idx and archive cache
 pub async fn create_async_image_widget_task(
     img_paths: Vec<PathType>,
     pos: usize,
-    pane_idx: usize
+    pane_idx: usize,
+    archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
 ) -> Result<(usize, usize, Handle), (usize, usize)> {
     // Start overall timer
     let task_start = std::time::Instant::now();
@@ -344,7 +358,15 @@ pub async fn create_async_image_widget_task(
     let read_start = std::time::Instant::now();
 
     // Load image bytes directly without resizing
-    let bytes_result = file_io::read_image_bytes(&img_paths[pos]);
+    // Use the archive cache if provided
+    let bytes_result = if let Some(cache_arc) = archive_cache {
+        match cache_arc.lock() {
+            Ok(mut cache) => file_io::read_image_bytes(&img_paths[pos], Some(&mut *cache)),
+            Err(_) => file_io::read_image_bytes(&img_paths[pos], None),
+        }
+    } else {
+        file_io::read_image_bytes(&img_paths[pos], None)
+    };
 
     // Measure file reading time
     let read_time = read_start.elapsed();
@@ -445,10 +467,17 @@ pub fn update_pos(
                 if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
                     debug!("#####################update_pos - Creating async image loading task for pane {}", idx);
                     let img_paths = pane.img_cache.image_paths.clone();
+                    
+                    // Check if the pane has compressed files and get the archive cache
+                    let archive_cache = if pane.has_compressed_file {
+                        Some(Arc::clone(&pane.archive_cache))
+                    } else {
+                        None
+                    };
 
                     // Create task for this pane
                     let pane_task = Task::perform(
-                        create_async_image_widget_task(img_paths.clone(), pos, idx),
+                        create_async_image_widget_task(img_paths.clone(), pos, idx, archive_cache),
                         move |result| Message::SliderImageWidgetLoaded(result)
                     );
 
@@ -537,7 +566,13 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
 
     // Always load from file directly for best slider performance
     // Use the safe load_original_image function to prevent crashes with oversized images
-    match crate::cache::cache_utils::load_original_image(img_path) {
+    let mut archive_guard = pane.archive_cache.lock().unwrap();
+    let archive_cache = if matches!(img_path, PathType::FileByte(..)) {
+        Some(&mut *archive_guard)
+    } else {
+        None
+    };
+    match crate::cache::cache_utils::load_original_image(img_path, archive_cache) {
         Ok(img) => {
             // Resize the image to smaller dimensions for slider
             /*let resized = img.resize(
@@ -589,7 +624,13 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
     // Load the image at pos synchronously into the center position of cache
     // Assumes that the image at pos is already in the cache
     let img_cache = &mut pane.img_cache;
-    match img_cache.load_image(pos as usize) {
+    let mut archive_guard = pane.archive_cache.lock().unwrap();
+    let archive_cache = if pane.has_compressed_file {
+        Some(&mut *archive_guard)
+    } else {
+        None
+    };
+    match img_cache.load_image(pos as usize, archive_cache) {
         Ok(image) => {
             let target_index: usize;
             if pos < img_cache.cache_count {
@@ -608,7 +649,13 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
             img_cache.current_index = pos;
 
             // Use the new method that ensures we get CPU data
-            match img_cache.get_initial_image_as_cpu() {
+            let mut archive_guard = pane.archive_cache.lock().unwrap();
+            let archive_cache = if pane.has_compressed_file {
+                Some(&mut *archive_guard)
+            } else {
+                None
+            };
+            match img_cache.get_initial_image_as_cpu(archive_cache) {
                 Ok(bytes) => {
                     pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
 
@@ -685,7 +732,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                             },
                             PathType::FileByte(..) => {
                                 debug!("Compressed file load from memory");
-                                pane.slider_image = Some(iced::widget::image::Handle::from_bytes(img_path.bytes()?.to_vec()));
+                                pane.slider_image = Some(iced::widget::image::Handle::from_bytes(img_path.bytes(Some(&mut *pane.archive_cache.lock().unwrap()))?.to_vec()));
                                 Ok(())
                             }
                         }

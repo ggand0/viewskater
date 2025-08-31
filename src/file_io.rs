@@ -59,17 +59,6 @@ static STDOUT_BUFFER: Lazy<Arc<Mutex<VecDeque<String>>>> = Lazy::new(|| {
 // Global flag to control stdout capture
 static STDOUT_CAPTURE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-// Global ref for compressed file
-pub static COMPRESSED_FILE: Lazy<Arc<Mutex<(PathBuf, ArchiveType)>>> = Lazy::new(|| {
-    Arc::new(Mutex::new((PathBuf::new(), ArchiveType::None)))
-});
-#[derive(Debug, Clone)]
-pub enum ArchiveType {
-    None,
-    Zip,
-    Rar,
-    SevenZ,
-}
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -93,11 +82,12 @@ pub fn get_filename(path: &str) -> Option<String> {
 ///
 /// # Arguments
 /// * `path` - The path to the image file
+/// * `archive_cache` - The archive cache to use for compressed files
 ///
 /// # Returns
 /// * `Ok(Vec<u8>)` - The raw bytes of the image file
 /// * `Err(io::Error)` - An error if reading fails
-pub fn read_image_bytes(path: &PathType) -> Result<Vec<u8>, std::io::Error> {
+pub fn read_image_bytes(path: &PathType, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<Vec<u8>, std::io::Error> {
     use std::fs::File;
     use std::io::{self, Read};
     use memmap2::Mmap;
@@ -135,7 +125,7 @@ pub fn read_image_bytes(path: &PathType) -> Result<Vec<u8>, std::io::Error> {
             }
         },
         PathType::FileByte(..) => {
-            Ok(path.bytes()?.to_vec())
+            Ok(path.bytes(archive_cache)?.to_vec())
         }
     }
 }
@@ -157,8 +147,9 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
     }
 }
 
+
 #[allow(dead_code)]
-async fn load_image_cpu_async(path: Option<PathType>) -> Result<Option<CachedData>, std::io::ErrorKind> {
+async fn load_image_cpu_async(path: Option<PathType>, archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>) -> Result<Option<CachedData>, std::io::ErrorKind> {
     // Load a single image asynchronously
     if let Some(path) = path {
         match path {
@@ -190,10 +181,38 @@ async fn load_image_cpu_async(path: Option<PathType>) -> Result<Option<CachedDat
                     Err(e) => Err(e.kind()),
                 }
             },
-            PathType::FileByte(..) => {
-                match path.bytes() {
-                    Ok(bytes) => Ok(Some(CachedData::Cpu(bytes.to_vec()))),
-                    Err(e) => Err(e.kind()),
+            PathType::FileByte(name, lock) => {
+                let vec = lock.get_or_init(|| {
+                    debug!("init loading {name}");
+                    match &archive_cache {
+                        Some(cache_arc) => {
+                            match cache_arc.lock() {
+                                Ok(mut cache) => {
+                                    match cache.read_compressed_file(&name) {
+                                        Ok(v) => v,
+                                        Err(e) => {
+                                            debug!("Failed to read {name} from compressed file: {e}");
+                                            Vec::new()
+                                        },
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to lock archive cache: {e}");
+                                    Vec::new()
+                                }
+                            }
+                        }
+                        None => {
+                            error!("Archive cache not provided for compressed file: {name}");
+                            Vec::new()
+                        }
+                    }
+                });
+                
+                if vec.is_empty() {
+                    Err(std::io::ErrorKind::InvalidData)
+                } else {
+                    Ok(Some(CachedData::Cpu(vec.to_vec())))
                 }
             }
         }
@@ -203,19 +222,67 @@ async fn load_image_cpu_async(path: Option<PathType>) -> Result<Option<CachedDat
     }
 }
 
-
 #[allow(dead_code)]
 async fn load_image_gpu_async(
     path: Option<PathType>,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
-    compression_strategy: CompressionStrategy
+    compression_strategy: CompressionStrategy,
+    archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
 ) -> Result<Option<CachedData>, std::io::ErrorKind> {
-    if let Some(_) = path {
+    if let Some(path) = path {
         let start = Instant::now();
 
-        // Use the safe load_original_image function from cache_utils to prevent crashes with oversized images
-        match crate::cache::cache_utils::load_original_image(&path.unwrap()) {
+        // Load image data based on path type - handle compressed files with archive cache
+        let img_result = match &path {
+            PathType::PathBuf(pb) => {
+                image::open(pb)
+                    .map_err(|e| {
+                        error!("Failed to open image from PathBuf: {}", e);
+                        std::io::ErrorKind::InvalidData
+                    })
+            },
+            PathType::FileByte(name, lock) => {
+                let bytes = lock.get_or_init(|| {
+                    debug!("init loading {name} for GPU");
+                    match &archive_cache {
+                        Some(cache_arc) => {
+                            match cache_arc.lock() {
+                                Ok(mut cache) => {
+                                    match cache.read_compressed_file(&name) {
+                                        Ok(v) => v,
+                                        Err(e) => {
+                                            debug!("Failed to read {name} from compressed file: {e}");
+                                            Vec::new()
+                                        },
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to lock archive cache: {e}");
+                                    Vec::new()
+                                }
+                            }
+                        }
+                        None => {
+                            error!("Archive cache not provided for compressed file: {name}");
+                            Vec::new()
+                        }
+                    }
+                });
+                
+                if bytes.is_empty() {
+                    return Err(std::io::ErrorKind::InvalidData);
+                }
+                
+                image::load_from_memory(bytes)
+                    .map_err(|e| {
+                        error!("Failed to load image from memory: {}", e);
+                        std::io::ErrorKind::InvalidData
+                    })
+            }
+        };
+
+        match img_result {
             Ok(img) => {
                 let (width, height) = img.dimensions();
                 let rgba = img.to_rgba8();
@@ -280,24 +347,26 @@ pub async fn load_images_async(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     compression_strategy: CompressionStrategy,
-    load_operation: LoadOperation
+    load_operation: LoadOperation,
+    archive_caches: Vec<Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>>
 ) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
     debug!("load_images_async - cache_strategy: {:?}, compression: {:?}", cache_strategy, compression_strategy);
 
-    let futures = paths.into_iter().map(|path| {
+    let futures = paths.into_iter().enumerate().map(|(i, path)| { 
         let device = Arc::clone(device);
         let queue = Arc::clone(queue);
+        let pane_archive_cache = archive_caches.get(i).cloned().flatten();
 
-        async move {
-            match cache_strategy {
+        async move {            
+            match cache_strategy {  
                 CacheStrategy::Cpu => {
                     debug!("load_images_async - loading image with CPU strategy");
-                    load_image_cpu_async(path).await
+                    load_image_cpu_async(path, pane_archive_cache).await
                 },
                 CacheStrategy::Gpu => {
                     debug!("load_images_async - loading image with GPU strategy and compression: {:?}", compression_strategy);
-                    load_image_gpu_async(path, &device, &queue, compression_strategy).await
+                    load_image_gpu_async(path, &device, &queue, compression_strategy, pane_archive_cache).await
                 },
             }
         }

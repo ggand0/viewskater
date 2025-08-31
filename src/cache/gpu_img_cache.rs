@@ -26,11 +26,12 @@ impl ImageCacheBackend for GpuImageCache {
         &self,
         index: usize,
         image_paths: &[PathType],
-        compression_strategy: CompressionStrategy
+        compression_strategy: CompressionStrategy,
+        archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
     ) -> Result<CachedData, io::Error> {
         if let Some(image_path) = image_paths.get(index) {
             // Use the safe load_original_image function to prevent crashes with oversized images
-            let img = crate::cache::cache_utils::load_original_image(image_path).map_err(|e| {
+            let img = crate::cache::cache_utils::load_original_image(image_path, archive_cache).map_err(|e| {
                 io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e))
             })?;
 
@@ -82,6 +83,7 @@ impl ImageCacheBackend for GpuImageCache {
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
         compression_strategy: CompressionStrategy,
+        mut archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<(), io::Error> {
         let start_index: isize;
         let end_index: isize;
@@ -105,7 +107,8 @@ impl ImageCacheBackend for GpuImageCache {
             if cache_index > image_paths.len() as isize - 1 {
                 break;
             }
-            match self.load_image(cache_index as usize, image_paths, compression_strategy) {
+            // Reborrow to avoid consuming archive_cache in the loop
+            match self.load_image(cache_index as usize, image_paths, compression_strategy, archive_cache.as_deref_mut()) {
                 Ok(image) => {
                     cached_data[i] = Some(image);
                     cached_image_indices[i] = cache_index;
@@ -151,6 +154,7 @@ impl ImageCacheBackend for GpuImageCache {
         cached_image_indices: &mut Vec<isize>,
         cache_count: usize,
         _compression_strategy: CompressionStrategy,
+        _archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<bool, io::Error> {
         println!("GpuCache: Setting image at position {}", pos);
 

@@ -37,14 +37,14 @@ fn check_and_resize_if_oversized(img: DynamicImage) -> DynamicImage {
 }
 
 /// Loads an image with safety resizing for oversized images (>8192px)
-pub fn load_original_image(img_path: &PathType) -> Result<DynamicImage, io::Error> {
+pub fn load_original_image(img_path: &PathType, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<DynamicImage, io::Error> {
     let img = match img_path {
         PathType::PathBuf(img_path) => {
             image::open(img_path)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {e}")))?
         },
         PathType::FileByte(..) => {
-            ImageReader::new(Cursor::new(img_path.bytes()?)).with_guessed_format()?.decode()
+            ImageReader::new(Cursor::new(img_path.bytes(archive_cache)?)).with_guessed_format()?.decode()
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from compressed file: {e} {}", img_path.file_name())))?
         }
     };
@@ -52,14 +52,14 @@ pub fn load_original_image(img_path: &PathType) -> Result<DynamicImage, io::Erro
 }
 
 /// Loads and resizes an image to target dimensions, then applies safety size check
-pub fn load_and_resize_image(img_path: &PathType, target_width: u32, target_height: u32) -> Result<DynamicImage, io::Error> {
+pub fn load_and_resize_image(img_path: &PathType, target_width: u32, target_height: u32, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<DynamicImage, io::Error> {
     let img = match img_path {
         PathType::PathBuf(img_path) => {
             image::open(img_path)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {e}")))?
         },
         PathType::FileByte(..) => {
-            ImageReader::new(Cursor::new(img_path.bytes()?)).with_guessed_format()?.decode()
+            ImageReader::new(Cursor::new(img_path.bytes(archive_cache)?)).with_guessed_format()?.decode()
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from compressed file: {e} {}", img_path.file_name())))?
         }
     };
@@ -293,11 +293,12 @@ pub fn load_image_resized_sync(
     queue: &wgpu::Queue,
     existing_texture: &mut Arc<wgpu::Texture>,
     compression_strategy: CompressionStrategy,
+    archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
 ) -> Result<(), io::Error> {
     let img = if is_slider_move {
-        load_and_resize_image(img_path, 1280, 720)?
+        load_and_resize_image(img_path, 1280, 720, archive_cache)?
     } else {
-        load_original_image(img_path)?
+        load_original_image(img_path, archive_cache)?
     };
     let (image_bytes, width, height) = convert_image_to_rgba(&img);
 
@@ -322,9 +323,9 @@ pub async fn _load_image_resized(
 ) -> Result<(), io::Error> {
     // Use the appropriate loading function based on whether it's for slider or full-res
     let img = if is_slider_move {
-        load_and_resize_image(img_path, 1280, 720)
+        load_and_resize_image(img_path, 1280, 720, None)
     } else {
-        load_original_image(img_path)
+        load_original_image(img_path, None)
     }.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?;
 
     let rgba_image = img.to_rgba8();

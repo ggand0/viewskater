@@ -11,7 +11,7 @@ use std::sync::Arc;
 use iced_winit::runtime::Task;
 use iced_wgpu::wgpu;
 
-use crate::file_io::{empty_async_block_vec, COMPRESSED_FILE};
+use crate::file_io::{empty_async_block_vec};
 use crate::loading_status::LoadingStatus;
 use crate::app::Message;
 use crate::pane::Pane;
@@ -183,18 +183,26 @@ impl PathType {
         }
     }
     /// only use in compressed file
-    pub fn bytes(&self) -> Result<&[u8], io::Error> {
+    pub fn bytes(&self, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<&[u8], io::Error> {
         match self {
             PathType::PathBuf(_) => todo!(),
             PathType::FileByte(name, lock) => {
                 let vec = lock.get_or_init(|| {
                     debug!("init loading {name}");
-                    match read_compressed_bytes_by_name(name) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            debug!("Failed to read {name} from compressed file: {e}");
+                    match archive_cache {
+                        Some(cache) => {
+                            match cache.read_compressed_file(name) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    debug!("Failed to read {name} from compressed file: {e}");
+                                    Vec::new()
+                                },
+                            }
+                        }
+                        None => {
+                            error!("Archive cache not provided for compressed file: {name}");
                             Vec::new()
-                        },
+                        }
                     }
                 });
                 if vec.is_empty() {
@@ -213,7 +221,8 @@ pub trait ImageCacheBackend {
         &self,
         index: usize,
         image_paths: &[PathType],
-        compression_strategy: CompressionStrategy
+        compression_strategy: CompressionStrategy,
+        archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
     ) -> Result<CachedData, io::Error>;
 
     fn load_initial_images(
@@ -225,6 +234,7 @@ pub trait ImageCacheBackend {
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
         compression_strategy: CompressionStrategy,
+        archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<(), io::Error>;
 
     #[allow(dead_code)]
@@ -237,6 +247,7 @@ pub trait ImageCacheBackend {
         cached_image_indices: &mut Vec<isize>,
         cache_count: usize,
         compression_strategy: CompressionStrategy,
+        archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<bool, io::Error>;
 }
 
@@ -347,8 +358,8 @@ impl ImageCache {
         }
     }
 
-    pub fn load_image(&self, index: usize) -> Result<CachedData, io::Error> {
-        self.backend.load_image(index, &self.image_paths, self.compression_strategy)
+    pub fn load_image(&self, index: usize, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<CachedData, io::Error> {
+        self.backend.load_image(index, &self.image_paths, self.compression_strategy, archive_cache)
     }
 
     pub fn _load_pos(
@@ -356,6 +367,7 @@ impl ImageCache {
         new_data: Option<CachedData>,
         pos: usize,
         data_index: isize,
+        archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<bool, io::Error> {
         //self.backend.load_pos(new_data, pos, data_index)
 
@@ -367,10 +379,11 @@ impl ImageCache {
             &mut self.cached_image_indices,
             self.cache_count,
             self.compression_strategy,
+            archive_cache,
         )
     }
 
-    pub fn load_initial_images(&mut self) -> Result<(), io::Error> {
+    pub fn load_initial_images(&mut self, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<(), io::Error> {
         self.backend.load_initial_images(
             &self.image_paths,
             self.cache_count,
@@ -379,6 +392,7 @@ impl ImageCache {
             &mut self.cached_image_indices,
             &mut self.current_offset,
             self.compression_strategy,
+            archive_cache,
         )
     }
 
@@ -556,7 +570,7 @@ impl ImageCache {
 
     /// Gets the initial image as CPU data, loading from file if necessary
     /// This is useful for slider images which need Vec<u8> data
-    pub fn get_initial_image_as_cpu(&self) -> Result<Vec<u8>, io::Error> {
+    pub fn get_initial_image_as_cpu(&self, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<Vec<u8>, io::Error> {
         // First try to get from cache
         match self.get_initial_image() {
             Ok(cached_data) => {
@@ -582,7 +596,7 @@ impl ImageCache {
                                     }
                                 },
                                 PathType::FileByte(..) => {
-                                    Ok(img_path.bytes()?.to_vec())
+                                    Ok(img_path.bytes(archive_cache)?.to_vec())
                                 }
                             }
 
@@ -805,6 +819,7 @@ pub fn load_images_by_operation_slider(
     operation: LoadOperation
 ) -> Task<Message> {
     let mut paths = Vec::new();
+    let mut archive_caches = Vec::new();
 
     // Ensure we access the correct pane by the pane_index
     if let Some(pane) = panes.get_mut(pane_index) {
@@ -815,13 +830,20 @@ pub fn load_images_by_operation_slider(
             if let Some((target_index, cache_pos)) = target {
                 if let Some(path) = img_cache.image_paths.get(*target_index as usize) {
                     paths.push(Some(path.clone()));
+                    if pane.has_compressed_file {
+                        archive_caches.push(Some(Arc::clone(&pane.archive_cache)));
+                    } else {
+                        archive_caches.push(None);
+                    }
                     // Store the target image at the specified cache position
                     img_cache.cached_image_indices[*cache_pos] = *target_index;
                 } else {
                     paths.push(None);
+                    archive_caches.push(None);
                 }
             } else {
                 paths.push(None);
+                archive_caches.push(None);
             }
         }
 
@@ -829,8 +851,15 @@ pub fn load_images_by_operation_slider(
         if !paths.is_empty() {
             let device_clone = Arc::clone(device);
             let queue_clone = Arc::clone(queue);
+            
+            // Check if the pane has compressed files and get the archive cache
+            let archive_cache = if pane.has_compressed_file {
+                Some(Arc::clone(&pane.archive_cache))
+            } else {
+                None
+            };
+            
             debug!("Task::perform started for {:?}", operation);
-
 
             let images_loading_task = async move {
                 file_io::load_images_async(
@@ -839,7 +868,8 @@ pub fn load_images_by_operation_slider(
                     &device_clone,
                     &queue_clone,
                     compression_strategy,
-                    operation
+                    operation,
+                    archive_caches
                 ).await
             };
 
@@ -865,17 +895,28 @@ pub fn load_images_by_indices(
 ) -> Task<Message> {
     let mut paths = Vec::new();
 
+    let mut archive_caches = Vec::new();
+    
     for (pane_index, pane) in panes.iter_mut().enumerate() {
         let img_cache = &mut pane.img_cache;
 
         if let Some(target_index) = target_indices[pane_index] {
             if let Some(path) = img_cache.image_paths.get(target_index as usize) {
                 paths.push(Some(path.clone()));
+                
+                // Add archive cache if this pane has compressed files
+                if pane.has_compressed_file {
+                    archive_caches.push(Some(Arc::clone(&pane.archive_cache)));
+                } else {
+                    archive_caches.push(None);
+                }
             } else {
                 paths.push(None);
+                archive_caches.push(None);
             }
         } else {
             paths.push(None);
+            archive_caches.push(None);
         }
     }
 
@@ -892,7 +933,8 @@ pub fn load_images_by_indices(
                     &device_clone,
                     &queue_clone,
                     compression_strategy,
-                    operation
+                    operation,
+                    archive_caches
                 ).await;
                 result
             },
@@ -1013,41 +1055,3 @@ pub fn load_all_images_in_queue(
     }
 }
 
-fn read_compressed_bytes_by_name(name: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let archive = COMPRESSED_FILE.lock().unwrap();
-    let mut buffer = Vec::new();
-    match archive.1 {
-        file_io::ArchiveType::Zip => {
-            use std::io::Read;
-            debug!("read {name} from {archive:?}");
-            let file = std::io::BufReader::new(std::fs::File::open(
-                &archive.0)?);
-
-            let mut archive = zip::ZipArchive::new(file)?;
-            let _ = archive.by_name(name)?.read_to_end(&mut buffer);
-            Ok(buffer)
-        },
-        file_io::ArchiveType::Rar => {
-            let mut archive =
-                unrar::Archive::new(&archive.0).open_for_processing()?;
-            while let Some(header) = archive.read_header()? {
-                let filename = header.entry().filename.as_os_str();
-                debug!("reading rar {name} ?= {filename:?}");
-                archive = if name == filename {
-                    let (data, rest) = header.read()?;
-                    drop(rest);
-                    return Ok(data);
-                } else {
-                    header.skip()?
-                };
-            }
-            Ok(buffer)
-        },
-        file_io::ArchiveType::SevenZ => {
-            let mut archive = sevenz_rust2::ArchiveReader::open(
-                &archive.0, sevenz_rust2::Password::empty())?;
-            Ok(archive.read_file(name)?)
-        }
-        file_io::ArchiveType::None => Ok(buffer),
-    }
-}

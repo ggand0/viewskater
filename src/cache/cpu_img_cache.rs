@@ -21,7 +21,8 @@ impl ImageCacheBackend for CpuImageCache {
         &self,
         index: usize,
         image_paths: &[PathType],
-        #[allow(unused_variables)] compression_strategy: CompressionStrategy
+        #[allow(unused_variables)] compression_strategy: CompressionStrategy,
+        archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
     ) -> Result<CachedData, io::Error> {
         if let Some(path) = image_paths.get(index) {
             debug!("CpuCache: Loading image from {:?}", path.file_name());
@@ -30,7 +31,7 @@ impl ImageCacheBackend for CpuImageCache {
                     Ok(CachedData::Cpu(fs::read(path)?))
                 },
                 PathType::FileByte(..) => {
-                    Ok(CachedData::Cpu(path.bytes()?.to_vec()))
+                    Ok(CachedData::Cpu(path.bytes(archive_cache)?.to_vec()))
                 }
             }
 
@@ -48,6 +49,7 @@ impl ImageCacheBackend for CpuImageCache {
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
         #[allow(unused_variables)] compression_strategy: CompressionStrategy,
+        mut archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<(), io::Error> {
         let start_index: isize;
         let end_index: isize;
@@ -71,7 +73,8 @@ impl ImageCacheBackend for CpuImageCache {
             if cache_index > image_paths.len() as isize - 1 {
                 break;
             }
-            match self.load_image(cache_index as usize, image_paths, compression_strategy) {
+            // Reborrow to avoid consuming archive_cache in the loop
+            match self.load_image(cache_index as usize, image_paths, compression_strategy, archive_cache.as_deref_mut()) {
                 Ok(image) => {
                     cached_data[i] = Some(image);
                     cached_image_indices[i] = cache_index;
@@ -96,6 +99,7 @@ impl ImageCacheBackend for CpuImageCache {
         _cached_image_indices: &mut Vec<isize>,
         _cache_count: usize,
         #[allow(unused_variables)] _compression_strategy: CompressionStrategy,
+        _archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<bool, io::Error> {
         match new_image {
             Some(CachedData::Cpu(_)) => {
