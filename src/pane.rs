@@ -725,11 +725,15 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Bo
                     let block_decoder = sevenz_rust2::BlockDecoder::new(cpu_threads, block_index, &archive, &password, &mut source);
                     block_decoder.for_each_entries(&mut |entry, reader| {
                         if !entry.is_directory && supported_image(entry.name()) {
-                            let ol = OnceLock::new();
                             let mut buffer = Vec::new();
-                            reader.read_to_end(&mut buffer)?;
-                            let _ = ol.set(buffer);
-                            sevenz_list.lock().unwrap().push(PathType::FileByte(entry.name().to_string(), ol));
+                            match reader.read_to_end(&mut buffer) {
+                                Ok(_) => {
+                                    let ol = OnceLock::new();
+                                    let _ = ol.set(bytes::Bytes::from(buffer));
+                                    sevenz_list.lock().unwrap().push(PathType::FileByte(entry.name().to_string(), ol));
+                                },
+                                Err(_) => {},
+                            }
                         }
                         Ok(true)
                     })

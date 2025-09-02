@@ -445,7 +445,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             state.queue_message(Message::ToggleFullScreen(true));
                                             Some(winit::window::Fullscreen::Borderless(None))
                                         };
-                                        // TODO: switch from fullscreen to window will cause title not update, focus off and on will fix it
                                         window.set_fullscreen(fullscreen);
                                     }
                                 }
