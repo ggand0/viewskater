@@ -341,7 +341,7 @@ pub fn load_remaining_images(
 
 // Async loading task for Image widget - updated to include pane_idx and archive cache
 pub async fn create_async_image_widget_task(
-    img_paths: Vec<PathType>,
+    img_path: PathType,
     pos: usize,
     pane_idx: usize,
     archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
@@ -349,10 +349,6 @@ pub async fn create_async_image_widget_task(
     // Start overall timer
     let task_start = std::time::Instant::now();
 
-    // Check if position is valid
-    if pos >= img_paths.len() {
-        return Err((pane_idx, pos));
-    }
 
     // Start file reading timer
     let read_start = std::time::Instant::now();
@@ -361,11 +357,15 @@ pub async fn create_async_image_widget_task(
     // Use the archive cache if provided
     let bytes_result = if let Some(cache_arc) = archive_cache {
         match cache_arc.lock() {
-            Ok(mut cache) => file_io::read_image_bytes(&img_paths[pos], Some(&mut *cache)),
-            Err(_) => file_io::read_image_bytes(&img_paths[pos], None),
+            Ok(mut cache) => {
+                file_io::read_image_bytes(&img_path, Some(&mut *cache))
+            },
+            Err(_) => {
+                file_io::read_image_bytes(&img_path, None)
+            },
         }
     } else {
-        file_io::read_image_bytes(&img_paths[pos], None)
+        file_io::read_image_bytes(&img_path, None)
     };
 
     // Measure file reading time
@@ -378,7 +378,7 @@ pub async fn create_async_image_widget_task(
             let handle_start = std::time::Instant::now();
 
             // Convert directly to Handle without resizing
-            let handle = iced::widget::image::Handle::from_bytes(bytes);
+            let handle = iced::widget::image::Handle::from_bytes(bytes.clone());
 
             // Measure handle creation time
             let handle_time = handle_start.elapsed();
@@ -464,9 +464,11 @@ pub fn update_pos(
         // Create async image loading task for each pane
         for idx in pane_indices {
             if let Some(pane) = panes.get(idx) {
-                if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
+                if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() && pos < pane.img_cache.image_paths.len() {
                     debug!("#####################update_pos - Creating async image loading task for pane {}", idx);
-                    let img_paths = pane.img_cache.image_paths.clone();
+
+                    // Get only the single path we need from each pane
+                    let img_path = pane.img_cache.image_paths[pos].clone();
                     
                     // Check if the pane has compressed files and get the archive cache
                     let archive_cache = if pane.has_compressed_file {
@@ -477,7 +479,7 @@ pub fn update_pos(
 
                     // Create task for this pane
                     let pane_task = Task::perform(
-                        create_async_image_widget_task(img_paths.clone(), pos, idx, archive_cache),
+                        create_async_image_widget_task(img_path, pos, idx, archive_cache),
                         move |result| Message::SliderImageWidgetLoaded(result)
                     );
 
