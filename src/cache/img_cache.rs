@@ -170,7 +170,7 @@ impl CachedData {
 #[derive(Clone)]
 pub enum PathType {
     PathBuf(PathBuf),
-    FileByte(String, std::sync::OnceLock<bytes::Bytes>)
+    FileByte(String, std::sync::OnceLock<Vec<u8>>)
 }
 
 impl PathType {
@@ -189,20 +189,19 @@ impl PathType {
             PathType::FileByte(name, lock) => {
                 let vec = lock.get_or_init(|| {
                     debug!("init loading {name}");
-                    let b = bytes::Bytes::new();
                     match archive_cache {
                         Some(cache) => {
                             match cache.read_compressed_file(name) {
-                                Ok(v) => bytes::Bytes::from(v),
+                                Ok(v) => v,
                                 Err(e) => {
                                     debug!("Failed to read {name} from compressed file: {e}");
-                                    b
+                                    Vec::new()
                                 },
                             }
                         }
                         None => {
                             error!("Archive cache not provided for compressed file: {name}");
-                            b
+                            Vec::new()
                         }
                     }
                 });

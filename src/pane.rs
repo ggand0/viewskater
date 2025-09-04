@@ -666,34 +666,65 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
 }
 
 fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn Error>> {
+    use std::io::Read;
+    let mut files = Vec::new();
     let mut archive = zip::ZipArchive::new(std::io::BufReader::new(
         File::open(path)?))?;
     for i in 0..archive.len() {
         let file = archive.by_index(i)?;
         if file.is_file() && supported_image(file.name()) {
             file_paths.push(PathType::FileByte(file.name().to_string(), OnceLock::new()));
+            files.push(file.size());
+        }
+    }
+    if files.iter().sum::<u64>() < CONFIG.archive_cache_size {
+        for (_, pt) in file_paths.iter().enumerate() {
+            match pt {
+                PathType::FileByte(name, once_lock) => {
+                    let mut buffer = Vec::new();
+                    archive.by_name(name)?.read_to_end(&mut buffer)?;
+                    let _ = once_lock.set(buffer);
+                },
+                _ => {}
+            }
         }
     }
     Ok(())
 }
 
 fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Box<dyn Error>> {
-    let mut archive = unrar::Archive::new(path)
-            .open_for_processing()?;
-    while let Some(header) = archive.read_header()? {
-        let filename = header.entry().filename.to_string_lossy().to_string();
-        archive = if header.entry().is_file() {
-            if supported_image(&filename) {
-                file_paths.push(PathType::FileByte(filename, OnceLock::new()));
-                header.skip()?
-            } else {
-                debug!("Unsupported file {filename} in {}", path.to_string_lossy().to_string());
-                header.skip()?
+    let archive = unrar::Archive::new(path)
+        .open_for_listing()?;
+    let mut files = Vec::new();
+    for result in archive {
+        let header = result?;
+        let name = header.filename.to_str().unwrap_or("");
+        if header.is_file() && supported_image(name) {
+            file_paths.push(PathType::FileByte(name.to_string(), OnceLock::new()));
+            files.push(header.unpacked_size);
+        }
+    }
+
+    if files.iter().sum::<u64>() < CONFIG.archive_cache_size {
+        for (_, pt) in file_paths.iter().enumerate() {
+            let mut archive = unrar::Archive::new(path)
+                .open_for_processing()?;
+            match pt {
+                PathType::FileByte(name, once_lock) => {
+                    while let Some(process) = archive.read_header()? {
+                        archive = if **name == *process.entry().filename.as_os_str() {
+                            let (data, rest) = process.read()?;
+                            let _ = once_lock.set(data);
+                            drop(rest);
+                            return Ok(());
+                        } else {
+                            process.skip()?
+                        };
+                    }
+                },
+                _ => {},
             }
-        } else {
-            debug!("Skipping directory {filename}");
-            header.skip()?
-        };
+        }
     }
 
     Ok(())
@@ -704,9 +735,9 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Bo
     let password = sevenz_rust2::Password::empty();
     let mut file = File::open(path)?;
     let archive = sevenz_rust2::Archive::read(&mut file, &password)?;
-    let is_solid = archive.is_solid;
-    // solid file is too slow for lazy loading
-    if is_solid {
+    // Solid file is too slow for lazy loading
+    // Cache smallish file because we don't know what's the codec for 7z
+    if archive.is_solid || file.metadata()?.len() < CONFIG.archive_cache_size {
         let block_count = archive.blocks.len();
         debug!("{path:?} block_count: {block_count}");
         let cpu_threads = if thread::available_parallelism().is_ok() {
@@ -724,16 +755,16 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Bo
                     //    supporting this. We try to use all threads report from std::thread.
                     let block_decoder = sevenz_rust2::BlockDecoder::new(cpu_threads, block_index, &archive, &password, &mut source);
                     block_decoder.for_each_entries(&mut |entry, reader| {
+                        let mut buffer = Vec::new();
                         if !entry.is_directory && supported_image(entry.name()) {
-                            let mut buffer = Vec::new();
-                            match reader.read_to_end(&mut buffer) {
-                                Ok(_) => {
-                                    let ol = OnceLock::new();
-                                    let _ = ol.set(bytes::Bytes::from(buffer));
-                                    sevenz_list.lock().unwrap().push(PathType::FileByte(entry.name().to_string(), ol));
-                                },
-                                Err(_) => {},
-                            }
+                            reader.read_to_end(&mut buffer)?;
+                            let ol = OnceLock::new();
+                            let _ = ol.set(buffer);
+                            sevenz_list.lock().unwrap().push(PathType::FileByte(entry.name().to_string(), ol));
+                        } else {
+                            // As `for_each_entries` noted, we can not skip any files we don't want.
+                            // Write the bytes we don't want to buffer and ignore it.
+                            reader.read_to_end(&mut buffer)?;
                         }
                         Ok(true)
                     })
