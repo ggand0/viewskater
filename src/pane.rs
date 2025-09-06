@@ -678,7 +678,7 @@ fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), B
         }
     }
     if files.iter().sum::<u64>() < CONFIG.archive_cache_size {
-        for (_, pt) in file_paths.iter().enumerate() {
+        for pt in file_paths.iter() {
             match pt {
                 PathType::FileByte(name, once_lock) => {
                     let mut buffer = Vec::new();
@@ -706,7 +706,7 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), B
     }
 
     if files.iter().sum::<u64>() < CONFIG.archive_cache_size {
-        for (_, pt) in file_paths.iter().enumerate() {
+        for pt in file_paths.iter() {
             let mut archive = unrar::Archive::new(path)
                 .open_for_processing()?;
             match pt {
@@ -716,7 +716,7 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), B
                             let (data, rest) = process.read()?;
                             let _ = once_lock.set(data);
                             drop(rest);
-                            return Ok(());
+                            break;
                         } else {
                             process.skip()?
                         };
