@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::io::Read;
+use std::collections::HashMap;
 
 #[allow(unused_imports)]
 use log::{debug, error, warn};
@@ -22,6 +23,9 @@ pub struct ArchiveCache {
     
     /// Cached 7z archive instance 
     sevenz_archive: Option<Arc<std::sync::Mutex<sevenz_rust2::ArchiveReader<std::fs::File>>>>,
+    
+    /// Preloaded file data for small solid archives (filename -> bytes)
+    preloaded_data: HashMap<String, Vec<u8>>,
 }
 
 impl ArchiveCache {
@@ -30,6 +34,7 @@ impl ArchiveCache {
             current_archive: None,
             zip_archive: None,
             sevenz_archive: None,
+            preloaded_data: HashMap::new(),
         }
     }
     
@@ -51,12 +56,28 @@ impl ArchiveCache {
     pub fn clear_cache(&mut self) {
         self.zip_archive = None;
         self.sevenz_archive = None;
+        self.preloaded_data.clear();
         debug!("Archive cache cleared");
     }
     
+    /// Add preloaded data for a file (used for solid 7z preloading)
+    pub fn add_preloaded_data(&mut self, filename: String, data: Vec<u8>) {
+        self.preloaded_data.insert(filename, data);
+    }
+    
+    /// Get preloaded data for a file if available
+    pub fn get_preloaded_data(&self, filename: &str) -> Option<&[u8]> {
+        self.preloaded_data.get(filename).map(|v| v.as_slice())
+    }
+    
+    /// Clear all preloaded data
+    pub fn clear_preloaded_data(&mut self) {
+        self.preloaded_data.clear();
+    }
+
     /// Read a file from the current compressed archive
-    /// This is the main entry point that replaces read_compressed_bytes_by_name
-    pub fn read_compressed_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    /// This is the main entry point for archive-only operations
+    pub fn read_from_archive(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let (path, archive_type) = match self.current_archive.as_ref() {
             Some((p, t)) => (p.clone(), t.clone()),
             None => return Err("No current archive set".into()),

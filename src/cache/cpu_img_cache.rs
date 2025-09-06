@@ -2,8 +2,6 @@
 use log::{debug, info, warn, error};
 
 use std::io;
-use std::fs;
-use crate::cache::img_cache::PathType;
 use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 use iced_wgpu::engine::CompressionStrategy;
 
@@ -20,21 +18,13 @@ impl ImageCacheBackend for CpuImageCache {
     fn load_image(
         &self,
         index: usize,
-        image_paths: &[PathType],
+        image_paths: &[crate::cache::img_cache::PathSource],
         #[allow(unused_variables)] compression_strategy: CompressionStrategy,
         archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
     ) -> Result<CachedData, io::Error> {
-        if let Some(path) = image_paths.get(index) {
-            debug!("CpuCache: Loading image from {:?}", path.file_name());
-            match path {
-                PathType::PathBuf(path) => {
-                    Ok(CachedData::Cpu(fs::read(path)?))
-                },
-                PathType::FileByte(..) => {
-                    Ok(CachedData::Cpu(path.bytes(archive_cache)?.to_vec()))
-                }
-            }
-
+        if let Some(path_source) = image_paths.get(index) {
+            debug!("CpuCache: Loading image from {:?}", path_source.file_name());
+            Ok(CachedData::Cpu(crate::file_io::read_image_bytes(path_source, archive_cache)?))
         } else {
             Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid image index"))
         }
@@ -42,7 +32,7 @@ impl ImageCacheBackend for CpuImageCache {
 
     fn load_initial_images(
         &mut self,
-        image_paths: &[PathType],
+        image_paths: &[crate::cache::img_cache::PathSource],
         cache_count: usize,
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,

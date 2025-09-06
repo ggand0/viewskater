@@ -6,7 +6,6 @@ use std::ffi::OsStr;
 use rfd;
 use futures::future::join_all;
 use crate::cache::img_cache::LoadOperation;
-use crate::cache::img_cache::PathType;
 use tokio::time::Instant;
 
 #[allow(unused_imports)]
@@ -75,57 +74,87 @@ pub fn get_filename(path: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Reads an image file into a byte vector.
+/// Reads an image file into a byte vector with dispatch based on PathSource.
 ///
-/// This function reads raw bytes from a file using memory mapping for
-/// improved performance with large files.
+/// This function uses type-safe routing for optimal performance:
+/// - Filesystem: Direct filesystem I/O with mmap optimization
+/// - Preloaded: Direct HashMap lookup in ArchiveCache
+/// - Archive: Direct archive reading without unnecessary checks
 ///
 /// # Arguments
-/// * `path` - The path to the image file
-/// * `archive_cache` - The archive cache to use for compressed files
+/// * `path_source` - The typed path indicating source and loading strategy
+/// * `archive_cache` - The archive cache for archive/preloaded content
 ///
 /// # Returns
 /// * `Ok(Vec<u8>)` - The raw bytes of the image file
 /// * `Err(io::Error)` - An error if reading fails
-pub fn read_image_bytes(path: &PathType, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<Vec<u8>, std::io::Error> {
+pub fn read_image_bytes(path_source: &crate::cache::img_cache::PathSource, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<Vec<u8>, std::io::Error> {
     use std::fs::File;
     use std::io::{self, Read};
     use memmap2::Mmap;
+    use crate::cache::img_cache::PathSource;
 
-    match path {
-        PathType::PathBuf(path) => {
-            // Verify the file exists before attempting to read
+    // Dispatch based on PathSource type
+    match path_source {
+        PathSource::Filesystem(path) => {
+            // Direct filesystem reading with mmap optimization
             if !path.exists() {
                 return Err(io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("File not found: {}", path.display())
+                    io::ErrorKind::NotFound,
+                    format!("Filesystem file not found: {}", path.display())
                 ));
             }
 
-            // Use memory mapping for efficient file reading
             let file = File::open(path)?;
             let metadata = file.metadata()?;
             let file_size = metadata.len() as usize;
 
-            // Only use mmap for files over a certain size (e.g., 1MB)
-            // For smaller files, regular reading is often faster
+            // Use mmap for files over 1MB, regular reading for smaller files
             if file_size > 1_048_576 {
-                // Memory map the file for faster access
                 let mmap = unsafe { Mmap::map(&file)? };
                 let bytes = mmap.to_vec();
-                debug!("Read {} bytes from {} using mmap", bytes.len(), path.display());
+                debug!("Read {} bytes from filesystem using mmap: {}", bytes.len(), path.display());
                 Ok(bytes)
             } else {
-                // For smaller files, regular reading is fine
+                // For smaller files, regular reading is often faster
                 let mut buffer = Vec::with_capacity(file_size);
                 let mut file = File::open(path)?;
                 file.read_to_end(&mut buffer)?;
-                debug!("Read {} bytes from {}", buffer.len(), path.display());
+                debug!("Read {} bytes from filesystem: {}", buffer.len(), path.display());
                 Ok(buffer)
             }
         },
-        PathType::FileByte(..) => {
-            Ok(path.bytes(archive_cache)?.to_vec())
+        
+        PathSource::Preloaded(path) => {
+            // Direct HashMap lookup - fastest path for preloaded content
+            let cache = archive_cache.ok_or_else(|| io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Archive cache required for preloaded content"
+            ))?;
+            
+            let path_str = path.to_string_lossy();
+            if let Some(data) = cache.get_preloaded_data(&path_str) {
+                debug!("Using preloaded data for: {}", path_str);
+                Ok(data.to_vec())
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("Preloaded data not found: {}", path_str)
+                ))
+            }
+        },
+        
+        PathSource::Archive(path) => {
+            // Direct archive reading - no filesystem checks
+            let cache = archive_cache.ok_or_else(|| io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Archive cache required for archive content"
+            ))?;
+            
+            let path_str = path.to_string_lossy();
+            debug!("Reading from archive: {}", path_str);
+            cache.read_from_archive(&path_str)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to read from archive: {}", e)))
         }
     }
 }
@@ -149,74 +178,48 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
 
 
 #[allow(dead_code)]
-async fn load_image_cpu_async(path: Option<PathType>, archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>) -> Result<Option<CachedData>, std::io::ErrorKind> {
+async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathSource>, archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>) -> Result<Option<CachedData>, std::io::ErrorKind> {
     // Load a single image asynchronously
-    if let Some(path) = path {
-        match path {
-            PathType::PathBuf(pb) => {
-                let path = pb.to_path_buf();
-                let file_path = Path::new(&path);
-                let start = Instant::now();
-                debug!("load_image_cpu_async - Starting to load: {:?}", path.file_name());
+    if let Some(path_source) = path_source {
+        let start = Instant::now();
+        debug!("load_image_cpu_async - Starting to load: {:?}", path_source.file_name());
 
-                match tokio::fs::File::open(file_path).await {
-                    Ok(mut file) => {
-                        let file_open_time = start.elapsed();
-                        debug!("load_image_cpu_async - File opened in {:?}", file_open_time);
-
-                        let read_start = Instant::now();
-                        let mut buffer = Vec::new();
-                        if file.read_to_end(&mut buffer).await.is_ok() {
-                            let read_time = read_start.elapsed();
-                            debug!("load_image_cpu_async - Read {} bytes in {:?}", buffer.len(), read_time);
-
-                            let total_time = start.elapsed();
-                            debug!("load_image_cpu_async - Total load time: {:?}", total_time);
-
-                            Ok(Some(CachedData::Cpu(buffer)))
-                        } else {
-                            Err(std::io::ErrorKind::InvalidData)
-                        }
-                    }
-                    Err(e) => Err(e.kind()),
+        // Dispatch based on PathSource type
+        let bytes = match &path_source {
+            crate::cache::img_cache::PathSource::Filesystem(path) => {
+                // Direct filesystem reading - no archive cache needed
+                match tokio::fs::read(path).await {
+                    Ok(bytes) => bytes,
+                    Err(e) => return Err(e.kind()),
                 }
             },
-            PathType::FileByte(name, lock) => {
-                let vec = lock.get_or_init(|| {
-                    debug!("init loading {name}");
-                    match &archive_cache {
-                        Some(cache_arc) => {
-                            match cache_arc.lock() {
-                                Ok(mut cache) => {
-                                    match cache.read_compressed_file(&name) {
-                                        Ok(v) => v,
-                                        Err(e) => {
-                                            debug!("Failed to read {name} from compressed file: {e}");
-                                            Vec::new()
-                                        },
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Failed to lock archive cache: {e}");
-                                    Vec::new()
-                                }
-                            }
+            crate::cache::img_cache::PathSource::Archive(_) | crate::cache::img_cache::PathSource::Preloaded(_) => {
+                // Archive content requires archive cache
+                if let Some(cache_arc) = archive_cache {
+                    let cache_bytes_result = {
+                        match cache_arc.lock() {
+                            Ok(mut cache) => read_image_bytes(&path_source, Some(&mut *cache)),
+                            Err(_) => Err(std::io::Error::new(std::io::ErrorKind::Other, "Archive cache lock failed")),
                         }
-                        None => {
-                            error!("Archive cache not provided for compressed file: {name}");
-                            Vec::new()
+                    };
+                    
+                    match cache_bytes_result {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            error!("Failed to read archive content: {}", e);
+                            return Err(std::io::ErrorKind::Other);
                         }
                     }
-                });
-                
-                if vec.is_empty() {
-                    Err(std::io::ErrorKind::InvalidData)
                 } else {
-                    Ok(Some(CachedData::Cpu(vec.to_vec())))
+                    error!("Archive cache required for archive/preloaded content");
+                    return Err(std::io::ErrorKind::InvalidInput);
                 }
             }
-        }
+        };
 
+        let total_time = start.elapsed();
+        debug!("load_image_cpu_async - Total load time: {:?}", total_time);
+        Ok(Some(CachedData::Cpu(bytes)))
     } else {
         Ok(None)
     }
@@ -224,61 +227,55 @@ async fn load_image_cpu_async(path: Option<PathType>, archive_cache: Option<Arc<
 
 #[allow(dead_code)]
 async fn load_image_gpu_async(
-    path: Option<PathType>,
+    path_source: Option<crate::cache::img_cache::PathSource>,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     compression_strategy: CompressionStrategy,
     archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
 ) -> Result<Option<CachedData>, std::io::ErrorKind> {
-    if let Some(path) = path {
+    if let Some(path_source) = path_source {
         let start = Instant::now();
 
-        // Load image data based on path type - handle compressed files with archive cache
-        let img_result = match &path {
-            PathType::PathBuf(pb) => {
-                image::open(pb)
+        // Dispatch based on PathSource type
+        let img_result = match &path_source {
+            crate::cache::img_cache::PathSource::Filesystem(path) => {
+                // Direct filesystem reading - no archive cache needed
+                image::open(path)
                     .map_err(|e| {
-                        error!("Failed to open image from PathBuf: {}", e);
+                        error!("Failed to open filesystem image: {}", e);
                         std::io::ErrorKind::InvalidData
                     })
             },
-            PathType::FileByte(name, lock) => {
-                let bytes = lock.get_or_init(|| {
-                    debug!("init loading {name} for GPU");
-                    match &archive_cache {
-                        Some(cache_arc) => {
-                            match cache_arc.lock() {
-                                Ok(mut cache) => {
-                                    match cache.read_compressed_file(&name) {
-                                        Ok(v) => v,
-                                        Err(e) => {
-                                            debug!("Failed to read {name} from compressed file: {e}");
-                                            Vec::new()
-                                        },
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Failed to lock archive cache: {e}");
-                                    Vec::new()
-                                }
+            crate::cache::img_cache::PathSource::Archive(_) | crate::cache::img_cache::PathSource::Preloaded(_) => {
+                // Archive content requires archive cache
+                if let Some(cache_arc) = &archive_cache {
+                    let cache_bytes_result = {
+                        match cache_arc.lock() {
+                            Ok(mut cache) => read_image_bytes(&path_source, Some(&mut *cache)),
+                            Err(e) => {
+                                error!("Failed to lock archive cache: {}", e);
+                                Err(std::io::Error::new(std::io::ErrorKind::Other, "Archive cache lock failed"))
                             }
                         }
-                        None => {
-                            error!("Archive cache not provided for compressed file: {name}");
-                            Vec::new()
+                    };
+                    
+                    match cache_bytes_result {
+                        Ok(bytes) => {
+                            image::load_from_memory(&bytes)
+                                .map_err(|e| {
+                                    error!("Failed to load image from archive memory: {}", e);
+                                    std::io::ErrorKind::InvalidData
+                                })
+                        }
+                        Err(e) => {
+                            error!("Failed to read archive content: {}", e);
+                            Err(std::io::ErrorKind::Other)
                         }
                     }
-                });
-                
-                if bytes.is_empty() {
-                    return Err(std::io::ErrorKind::InvalidData);
+                } else {
+                    error!("Archive cache required for archive/preloaded content");
+                    Err(std::io::ErrorKind::InvalidInput)
                 }
-                
-                image::load_from_memory(bytes)
-                    .map_err(|e| {
-                        error!("Failed to load image from memory: {}", e);
-                        std::io::ErrorKind::InvalidData
-                    })
             }
         };
 
@@ -342,7 +339,7 @@ async fn load_image_gpu_async(
 
 
 pub async fn load_images_async(
-    paths: Vec<Option<PathType>>,
+    paths: Vec<Option<crate::cache::img_cache::PathSource>>,
     cache_strategy: CacheStrategy,
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,

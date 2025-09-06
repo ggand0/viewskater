@@ -31,7 +31,6 @@ use iced::widget::image::Handle;
 use iced_wgpu::wgpu;
 use iced::Task;
 use std::io;
-use crate::cache::img_cache::PathType;
 use crate::Arc;
 
 use crate::pane;
@@ -41,7 +40,6 @@ use crate::loading_status::LoadingStatus;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy};
 use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
-use crate::file_io;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use iced_wgpu::engine::CompressionStrategy;
@@ -119,7 +117,7 @@ fn load_full_res_image(
                 // Load the full-resolution image synchronously
                 // Use the archive cache if provided
                 let mut archive_guard = pane.archive_cache.lock().unwrap();
-                let archive_cache = if matches!(&img_path, PathType::FileByte(..)) {
+                let archive_cache = if pane.has_compressed_file {
                     Some(&mut *archive_guard)
                 } else {
                     None
@@ -341,7 +339,7 @@ pub fn load_remaining_images(
 
 // Async loading task for Image widget - updated to include pane_idx and archive cache
 pub async fn create_async_image_widget_task(
-    img_path: PathType,
+    img_path: crate::cache::img_cache::PathSource,
     pos: usize,
     pane_idx: usize,
     archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
@@ -353,19 +351,27 @@ pub async fn create_async_image_widget_task(
     // Start file reading timer
     let read_start = std::time::Instant::now();
 
-    // Load image bytes directly without resizing
-    // Use the archive cache if provided
-    let bytes_result = if let Some(cache_arc) = archive_cache {
-        match cache_arc.lock() {
-            Ok(mut cache) => {
-                file_io::read_image_bytes(&img_path, Some(&mut *cache))
-            },
-            Err(_) => {
-                file_io::read_image_bytes(&img_path, None)
-            },
+    // Dispatch based on PathSource type
+    let bytes_result = match &img_path {
+        crate::cache::img_cache::PathSource::Filesystem(path) => {
+            // Direct filesystem reading - no archive cache needed
+            std::fs::read(path)
+        },
+        crate::cache::img_cache::PathSource::Archive(_) | crate::cache::img_cache::PathSource::Preloaded(_) => {
+            // Archive content requires archive cache
+            if let Some(cache_arc) = archive_cache {
+                match cache_arc.lock() {
+                    Ok(mut cache) => {
+                        crate::file_io::read_image_bytes(&img_path, Some(&mut *cache))
+                    },
+                    Err(_) => {
+                        Err(std::io::Error::new(std::io::ErrorKind::Other, "Archive cache lock failed"))
+                    },
+                }
+            } else {
+                Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Archive cache required for archive/preloaded content"))
+            }
         }
-    } else {
-        file_io::read_image_bytes(&img_path, None)
     };
 
     // Measure file reading time
@@ -569,7 +575,8 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
     // Always load from file directly for best slider performance
     // Use the safe load_original_image function to prevent crashes with oversized images
     let mut archive_guard = pane.archive_cache.lock().unwrap();
-    let archive_cache = if matches!(img_path, PathType::FileByte(..)) {
+    // For PathBuf, we'll use ArchiveCache if the pane has compressed files
+    let archive_cache = if pane.has_compressed_file {
         Some(&mut *archive_guard)
     } else {
         None
@@ -693,50 +700,54 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
 
                     // Fallback: load directly from file
                     if let Some(img_path) = img_cache.image_paths.get(pos) {
-                        match img_path {
-                            PathType::PathBuf(img_path) => {
-                                match std::fs::read(img_path) {
-                                    Ok(bytes) => {
-                                        pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
-
-                                        // Record image rendering time for FPS calculation (for fallback path)
-                                        if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
-                                            let now = Instant::now();
-                                            render_times.push(now);
-
-                                            // Calculate image rendering FPS
-                                            if render_times.len() > 1 {
-                                                let oldest = render_times[0];
-                                                let elapsed = now.duration_since(oldest);
-
-                                                if elapsed.as_secs_f32() > 0.0 {
-                                                    let fps = render_times.len() as f32 / elapsed.as_secs_f32();
-
-                                                    // Store the current image rendering FPS
-                                                    if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
-                                                        *image_fps = fps;
-                                                    }
-
-                                                    // Keep only recent frames (last 3 seconds)
-                                                    let cutoff = now - std::time::Duration::from_secs(3);
-                                                    render_times.retain(|&t| t > cutoff);
-                                                }
-                                            }
-                                        }
-
-                                        Ok(())
-                                    },
-                                    Err(err) => Err(io::Error::new(
-                                        io::ErrorKind::Other,
-                                        format!("Failed to read image file for slider: {}", err),
-                                    ))
-                                }
+                        // Dispatch based on PathSource type
+                        let bytes_result = match img_path {
+                            crate::cache::img_cache::PathSource::Filesystem(path) => {
+                                // Direct filesystem reading - no archive cache needed
+                                std::fs::read(path)
                             },
-                            PathType::FileByte(..) => {
-                                debug!("Compressed file load from memory");
-                                pane.slider_image = Some(iced::widget::image::Handle::from_bytes(img_path.bytes(Some(&mut *pane.archive_cache.lock().unwrap()))?.to_vec()));
-                                Ok(())
+                            crate::cache::img_cache::PathSource::Archive(_) | crate::cache::img_cache::PathSource::Preloaded(_) => {
+                                // Archive content requires archive cache
+                                let mut archive_cache = pane.archive_cache.lock().unwrap();
+                                crate::file_io::read_image_bytes(img_path, Some(&mut *archive_cache))
                             }
+                        };
+                        
+                        match bytes_result {
+                            Ok(bytes) => {
+                                pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+
+                                // Record image rendering time for FPS calculation (for fallback path)
+                                if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
+                                    let now = Instant::now();
+                                    render_times.push(now);
+
+                                    // Calculate image rendering FPS
+                                    if render_times.len() > 1 {
+                                        let oldest = render_times[0];
+                                        let elapsed = now.duration_since(oldest);
+
+                                        if elapsed.as_secs_f32() > 0.0 {
+                                            let fps = render_times.len() as f32 / elapsed.as_secs_f32();
+
+                                            // Store the current image rendering FPS
+                                            if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
+                                                *image_fps = fps;
+                                            }
+
+                                            // Keep only recent frames (last 3 seconds)
+                                            let cutoff = now - std::time::Duration::from_secs(3);
+                                            render_times.retain(|&t| t > cutoff);
+                                        }
+                                    }
+                                }
+
+                                Ok(())
+                            },
+                            Err(err) => Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("Failed to read image file for slider: {}", err),
+                            ))
                         }
 
                     } else {

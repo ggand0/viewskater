@@ -40,7 +40,6 @@ use iced_winit::core::Theme as WinitTheme;
 use iced_winit::core::{Color, Element};
 use iced_winit::runtime::Task;
 
-use crate::cache::img_cache::PathType;
 use crate::navigation_keyboard::{move_right_all, move_left_all};
 use crate::cache::img_cache::{CachedData, CacheStrategy, LoadOperation};
 use crate::menu::PaneLayout;
@@ -685,14 +684,8 @@ impl DataViewer {
         match self.pane_layout  {
             PaneLayout::SinglePane => {
                 if self.panes[0].dir_loaded {
-                    match &self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index] {
-                        PathType::FileByte(filename, _) => {
-                            filename.to_string()
-                        },
-                        PathType::PathBuf(path) => {
-                            path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| String::from("Unknown"))
-                        }
-                    }
+                    let path = &self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index];
+                    path.file_name().to_string()
                 } else {
                     self.title.clone()
                 }
@@ -706,31 +699,15 @@ impl DataViewer {
                 };
 
                 let first_pane_filename = if self.panes[0].dir_loaded {
-                    match &self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index] {
-                        PathType::PathBuf(path) => {
-                            path.file_name()
-                                .map(|name| name.to_string_lossy().to_string())
-                                .unwrap_or_else(|| String::from("Unknown"))
-                        },
-                        PathType::FileByte(filename, _) => {
-                            filename.to_string()
-                        }
-                    }
+                    let path = &self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index];
+                    path.file_name().to_string()
                 } else {
                     String::from("No File")
                 };
 
                 let second_pane_filename = if self.panes[1].dir_loaded {
-                    match &self.panes[1].img_cache.image_paths[self.panes[1].img_cache.current_index] {
-                        PathType::PathBuf(path) => {
-                            path.file_name()
-                                .map(|name| name.to_string_lossy().to_string())
-                                .unwrap_or_else(|| String::from("Unknown"))
-                        },
-                        PathType::FileByte(filename, _) => {
-                            filename.to_string()
-                        }
-                    }
+                    let path = &self.panes[1].img_cache.image_paths[self.panes[1].img_cache.current_index];
+                    path.file_name().to_string()
                 } else {
                     String::from("No File")
                 };
@@ -965,38 +942,21 @@ impl iced_winit::runtime::Program for DataViewer {
             },
             Message::CopyFilename(pane_index) => {
                 // Get the image path of the specified pane
-                let img_path = match &self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index] {
-                    PathType::PathBuf(path) => {
-                        path.file_name().map(|name| name.to_string_lossy().to_string())
-                    },
-                    PathType::FileByte(filename, _) => {
-                        Some(filename.to_string())
-                    }
-                };
-                if let Some(filename) = img_path {
-                    if let Some(filename) = file_io::get_filename(&filename) {
-                        debug!("Filename: {}", filename);
-                        return clipboard::write::<Message>(filename);
-                    }
+                let path = &self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index];
+                let filename_str = path.file_name().to_string();
+                if let Some(filename) = file_io::get_filename(&filename_str) {
+                    debug!("Filename: {}", filename);
+                    return clipboard::write::<Message>(filename);
                 }
             }
             Message::CopyFilePath(pane_index) => {
                 // Get the image path of the specified pane
-                let img_path = match &self.panes[pane_index].img_cache
-                    .image_paths[self.panes[pane_index].img_cache.current_index] {
-                        PathType::PathBuf(img_path) => {
-                            img_path.file_name().map(|name| name.to_string_lossy().to_string())
-                        },
-                        PathType::FileByte(filename, _) => {
-                            Some(filename.to_string())
-                        }
-                    };
-                if let Some(img_path) = img_path {
-                    if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
-                        let full_path = format!("{}/{}", dir_path, img_path);
-                        debug!("Full Path: {}", full_path);
-                        return clipboard::write::<Message>(full_path);
-                    }
+                let path = &self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index];
+                let img_path = path.file_name().to_string();
+                if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
+                    let full_path = format!("{}/{}", dir_path, img_path);
+                    debug!("Full Path: {}", full_path);
+                    return clipboard::write::<Message>(full_path);
                 }
             }
             Message::OnSplitResize(position) => { self.divider_position = Some(position); },

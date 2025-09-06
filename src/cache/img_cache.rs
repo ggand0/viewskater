@@ -167,52 +167,32 @@ impl CachedData {
         }
     }
 }
-#[derive(Clone)]
-pub enum PathType {
-    PathBuf(PathBuf),
-    FileByte(String, std::sync::OnceLock<Vec<u8>>)
+/// PathSource enum for type-safe image loading with performance optimization
+#[derive(Clone, Debug)]
+pub enum PathSource {
+    /// Regular filesystem file - direct filesystem I/O
+    Filesystem(PathBuf),
+    /// Archive internal path - requires archive reading
+    Archive(PathBuf),
+    /// Preloaded archive content - available in ArchiveCache HashMap
+    Preloaded(PathBuf),
 }
 
-impl PathType {
-    pub fn file_name(&self) -> String {
+impl PathSource {
+    /// Get the underlying PathBuf for any variant
+    pub fn path(&self) -> &PathBuf {
         match self {
-            PathType::FileByte(file_name, _) => file_name.clone(),
-            PathType::PathBuf(pb) => pb.file_name().map(
-                |name| name.to_string_lossy().to_string()).unwrap_or_else(
-                    || String::from("Unknown")),
+            PathSource::Filesystem(path) => path,
+            PathSource::Archive(path) => path, 
+            PathSource::Preloaded(path) => path,
         }
     }
-    /// only use in compressed file
-    pub fn bytes(&self, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<&[u8], io::Error> {
-        match self {
-            PathType::PathBuf(_) => todo!(),
-            PathType::FileByte(name, lock) => {
-                let vec = lock.get_or_init(|| {
-                    debug!("init loading {name}");
-                    match archive_cache {
-                        Some(cache) => {
-                            match cache.read_compressed_file(name) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    debug!("Failed to read {name} from compressed file: {e}");
-                                    Vec::new()
-                                },
-                            }
-                        }
-                        None => {
-                            error!("Archive cache not provided for compressed file: {name}");
-                            Vec::new()
-                        }
-                    }
-                });
-                if vec.is_empty() {
-                    Err(io::Error::new(io::ErrorKind::InvalidData,
-                        format!("Failed to read {name} from compressed file"),))
-                } else {
-                    Ok(vec)
-                }
-            },
-        }
+    
+    /// Get filename for display/sorting purposes
+    pub fn file_name(&self) -> std::borrow::Cow<str> {
+        self.path().file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
     }
 }
 
@@ -220,14 +200,14 @@ pub trait ImageCacheBackend {
     fn load_image(
         &self,
         index: usize,
-        image_paths: &[PathType],
+        image_paths: &[PathSource],
         compression_strategy: CompressionStrategy,
         archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
     ) -> Result<CachedData, io::Error>;
 
     fn load_initial_images(
         &mut self,
-        image_paths: &[PathType],
+        image_paths: &[PathSource],
         cache_count: usize,
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,
@@ -253,7 +233,7 @@ pub trait ImageCacheBackend {
 
 
 pub struct ImageCache {
-    pub image_paths: Vec<PathType>,
+    pub image_paths: Vec<PathSource>,
     pub num_files: usize,
     pub current_index: usize,
     pub current_offset: isize,
@@ -292,7 +272,7 @@ impl Default for ImageCache {
 // Constructor, cached_data getter / setter, and type specific methods
 impl ImageCache {
     pub fn new(
-        image_paths: &[PathType],
+        image_paths: &[PathSource],
         cache_count: usize,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
@@ -585,20 +565,7 @@ impl ImageCache {
                         if image_index >= 0 && (image_index as usize) < self.image_paths.len() {
                             // Load directly from file
                             let img_path = &self.image_paths[image_index as usize];
-                            match img_path {
-                                PathType::PathBuf(img_path) => {
-                                    match std::fs::read(img_path) {
-                                        Ok(bytes) => Ok(bytes),
-                                        Err(err) => Err(io::Error::new(
-                                            io::ErrorKind::Other,
-                                            format!("Failed to read image file: {}", err),
-                                        ))
-                                    }
-                                },
-                                PathType::FileByte(..) => {
-                                    Ok(img_path.bytes(archive_cache)?.to_vec())
-                                }
-                            }
+                            return crate::file_io::read_image_bytes(img_path, archive_cache);
 
                         } else {
                             Err(io::Error::new(
@@ -853,7 +820,7 @@ pub fn load_images_by_operation_slider(
             let queue_clone = Arc::clone(queue);
             
             // Check if the pane has compressed files and get the archive cache
-            let archive_cache = if pane.has_compressed_file {
+            let _archive_cache = if pane.has_compressed_file {
                 Some(Arc::clone(&pane.archive_cache))
             } else {
                 None

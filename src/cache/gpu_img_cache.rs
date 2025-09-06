@@ -6,7 +6,7 @@ use std::io;
 use std::sync::Arc;
 use image::GenericImageView;
 use iced_wgpu::wgpu;
-use crate::cache::img_cache::{CachedData, ImageCacheBackend, PathType};
+use crate::cache::img_cache::{CachedData, ImageCacheBackend};
 use iced_wgpu::engine::CompressionStrategy;
 
 
@@ -25,13 +25,13 @@ impl ImageCacheBackend for GpuImageCache {
     fn load_image(
         &self,
         index: usize,
-        image_paths: &[PathType],
+        image_paths: &[crate::cache::img_cache::PathSource],
         compression_strategy: CompressionStrategy,
         archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
     ) -> Result<CachedData, io::Error> {
-        if let Some(image_path) = image_paths.get(index) {
+        if let Some(path_source) = image_paths.get(index) {
             // Use the safe load_original_image function to prevent crashes with oversized images
-            let img = crate::cache::cache_utils::load_original_image(image_path, archive_cache).map_err(|e| {
+            let img = crate::cache::cache_utils::load_original_image(path_source, archive_cache).map_err(|e| {
                 io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e))
             })?;
 
@@ -76,7 +76,7 @@ impl ImageCacheBackend for GpuImageCache {
 
     fn load_initial_images(
         &mut self,
-        image_paths: &[PathType],
+        image_paths: &[crate::cache::img_cache::PathSource],
         cache_count: usize,
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,
