@@ -28,10 +28,10 @@ use crate::menu::PaneLayout;
 use crate::widgets::viewer;
 use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
 use crate::file_io::{self, is_file, is_directory, get_file_index, ImageError};
+use crate::utils::mem;
 use iced_wgpu::engine::CompressionStrategy;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
-use crate::utils::mem;
 
 pub static IMAGE_RENDER_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
@@ -735,9 +735,26 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathType>) -> Result<(), Bo
     let password = sevenz_rust2::Password::empty();
     let mut file = File::open(path)?;
     let archive = sevenz_rust2::Archive::read(&mut file, &password)?;
-    // Solid file is too slow for lazy loading
-    // Cache smallish file because we don't know what's the codec for 7z
-    if archive.is_solid || file.metadata()?.len() < CONFIG.archive_cache_size {
+    let is_solid = archive.is_solid;
+    
+    // Check for large solid archives and show warning dialog
+    if is_solid {
+        let file_size = std::fs::metadata(path)?.len();
+        let archive_size_mb = file_size / 1_000_000;
+        
+        // Show warning dialog for archives larger than configured threshold
+        if archive_size_mb > CONFIG.archive_warning_threshold_mb {
+            let (available_gb, is_recommended) = mem::check_memory_for_archive(archive_size_mb);
+            
+            // Show the warning dialog and check user response
+            if !file_io::show_memory_warning_sync(archive_size_mb, available_gb, is_recommended) {
+                // User chose not to proceed
+                return Err("User cancelled loading large solid 7z archive".into());
+            }
+            // User chose to proceed, continue with loading
+        }
+        
+        // solid file is too slow for lazy loading - proceed with preload
         let block_count = archive.blocks.len();
         debug!("{path:?} block_count: {block_count}");
         let cpu_threads = if thread::available_parallelism().is_ok() {

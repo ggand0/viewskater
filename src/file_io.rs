@@ -431,6 +431,46 @@ pub async fn pick_file() -> Result<String, Error> {
     }
 }
 
+/// Show memory warning dialog for large solid 7z archives
+/// Returns true if user wants to proceed, false if cancelled
+pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_recommended: bool) -> bool {
+    let warning_level = if is_recommended {
+        "Notice"
+    } else {
+        "Warning"
+    };
+    
+    let memory_note = if is_recommended {
+        "Sufficient memory available, but archive is large."
+    } else {
+        "Low available memory - may cause system slowdown."
+    };
+    
+    let message = format!(
+        "{}: Large Archive Detected\n\n\
+        Archive size: {:.1} MB\n\
+        Available memory: {:.1} GB\n\n\
+        {}\n\n\
+        The application will load the archive into memory for optimal performance. \
+        This may take a moment and use significant RAM.\n\n\
+        Continue?",
+        warning_level, archive_size_mb, available_gb, memory_note
+    );
+
+    let dialog_result = rfd::MessageDialog::new()
+        .set_title("ViewSkater")
+        .set_description(&message)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .set_level(if is_recommended { 
+            rfd::MessageLevel::Info 
+        } else { 
+            rfd::MessageLevel::Warning 
+        })
+        .show();
+
+    matches!(dialog_result, rfd::MessageDialogResult::Yes)
+}
+
 
 #[allow(dead_code)]
 pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<CachedData>, Option<LoadOperation>), std::io::ErrorKind> {
