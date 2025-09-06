@@ -440,7 +440,17 @@ pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_reco
         "Warning"
     };
     
-    let memory_note = if is_recommended {
+    let memory_info = if available_gb > 0.0 {
+        format!("Available memory: {:.1} GB\n\n", available_gb)
+    } else {
+        // Don't show memory size when it's 0.0 GB
+        // related: https://github.com/GuillaumeGomez/sysinfo/issues/1030
+        String::new()
+    };
+    
+    let memory_note = if available_gb == 0.0 {
+        "Memory information unavailable on this system."
+    } else if is_recommended {
         "Sufficient memory available, but archive is large."
     } else {
         "Low available memory - may cause system slowdown."
@@ -449,12 +459,11 @@ pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_reco
     let message = format!(
         "{}: Large Archive Detected\n\n\
         Archive size: {:.1} MB\n\
-        Available memory: {:.1} GB\n\n\
-        {}\n\n\
+        {}{}\n\n\
         The application will load the archive into memory for optimal performance. \
         This may take a moment and use significant RAM.\n\n\
         Continue?",
-        warning_level, archive_size_mb, available_gb, memory_note
+        warning_level, archive_size_mb, memory_info, memory_note
     );
 
     let dialog_result = rfd::MessageDialog::new()
