@@ -152,6 +152,14 @@ impl Pane {
         self.img_cache.clear_cache();
         self.img_cache = ImageCache::default();
 
+        // Clear archive cache preloaded data and reset state
+        if let Ok(mut archive_cache) = self.archive_cache.lock() {
+            archive_cache.clear_preloaded_data();
+        }
+        // Reset archive cache to a fresh instance
+        self.archive_cache = Arc::new(Mutex::new(ArchiveCache::new()));
+        self.has_compressed_file = false;
+
         // Reset other state
         self.directory_path = None;
         self.dir_loaded = false;
