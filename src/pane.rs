@@ -14,6 +14,7 @@ use iced_wgpu::wgpu;
 use iced_core::image::Handle;
 use iced_widget::{center, Container};
 
+use crate::cache::img_cache::PathSource;
 use crate::config::CONFIG;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
@@ -379,7 +380,7 @@ impl Pane {
     ) {
         mem::log_memory("Before pane initialization");
 
-        let mut file_paths: Vec<crate::cache::img_cache::PathSource> = Vec::new();
+        let mut file_paths: Vec<PathSource> = Vec::new();
         let mut initial_index: usize = 0;
 
         let is_dir_size_bigger: bool;
@@ -461,7 +462,7 @@ impl Pane {
             file_paths = match paths_result {
                 Ok(paths) => paths.iter().map(|item| {
                     // Regular filesystem files - use Filesystem variant
-                    crate::cache::img_cache::PathSource::Filesystem(item.to_path_buf())
+                    PathSource::Filesystem(item.to_path_buf())
                 }).collect::<Vec<_>>(),
                 Err(ImageError::NoImagesFound) => {
                     error!("No supported images found in directory");
@@ -528,14 +529,14 @@ impl Pane {
         // Track memory before loading initial images
         mem::log_memory("Pane::initialize_dir_path: Before loading initial images");
 
-        // Load initial images into the cache  
+        // Load initial images into the cache
         let mut archive_guard = self.archive_cache.lock().unwrap();
         let archive_cache = if self.has_compressed_file {
             Some(&mut *archive_guard)
         } else {
             None
         };
-        
+
         if let Err(e) = img_cache.load_initial_images(archive_cache) {
             error!("Failed to load initial images: {}", e);
             return;
@@ -674,13 +675,13 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     pane.img_cache.current_index as usize
 }
 
-fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
     use std::io::Read;
     let mut files = Vec::new();
     let mut archive = zip::ZipArchive::new(std::io::BufReader::new(
         File::open(path)?))?;
     let mut image_names = Vec::new();
-    
+
     // First pass: collect all image files and their sizes
     for i in 0..archive.len() {
         let file = archive.by_index(i)?;
@@ -690,38 +691,38 @@ fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::P
             files.push(file.size());
         }
     }
-    
+
     // Set up the archive cache for this ZIP file
     archive_cache.set_current_archive(path.clone(), ArchiveType::Zip);
-    
+
     // Determine if we'll preload this archive (small archives get preloaded)
     let will_preload = files.iter().sum::<u64>() < CONFIG.archive_cache_size;
-    
+
     // Second pass: create PathSource variants and optionally preload
     for name in &image_names {
         let path_buf = PathBuf::from(name);
-        
+
         if will_preload {
             // Small archive - preload the data and use Preloaded variant
             let mut buffer = Vec::new();
             archive.by_name(name)?.read_to_end(&mut buffer)?;
             archive_cache.add_preloaded_data(name.clone(), buffer);
-            file_paths.push(crate::cache::img_cache::PathSource::Preloaded(path_buf));
+            file_paths.push(PathSource::Preloaded(path_buf));
         } else {
             // Large archive - use Archive variant for on-demand loading
-            file_paths.push(crate::cache::img_cache::PathSource::Archive(path_buf));
+            file_paths.push(PathSource::Archive(path_buf));
         }
     }
-    
+
     Ok(())
 }
 
-fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
     let archive = unrar::Archive::new(path)
         .open_for_listing()?;
     let mut files = Vec::new();
     let mut image_names = Vec::new();
-    
+
     // First pass: collect all image files and their sizes
     for result in archive {
         let header = result?;
@@ -732,7 +733,7 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::P
             files.push(header.unpacked_size);
         }
     }
-    
+
     // Set up the archive cache for this RAR file
     archive_cache.set_current_archive(path.clone(), ArchiveType::Rar);
 
@@ -742,7 +743,7 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::P
     // Second pass: create PathSource variants and optionally preload
     for name in &image_names {
         let path_buf = PathBuf::from(name);
-        
+
         if will_preload {
             // Small archive - preload the data and use Preloaded variant
             let mut archive = unrar::Archive::new(path)
@@ -757,35 +758,49 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::P
                     process.skip()?
                 };
             }
-            file_paths.push(crate::cache::img_cache::PathSource::Preloaded(path_buf));
+            file_paths.push(PathSource::Preloaded(path_buf));
         } else {
             // Large archive - use Archive variant for on-demand loading
-            file_paths.push(crate::cache::img_cache::PathSource::Archive(path_buf));
+            file_paths.push(PathSource::Archive(path_buf));
         }
     }
 
     Ok(())
 }
 
-fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
     use std::thread;
+    use std::io::Read;
     let password = sevenz_rust2::Password::empty();
     let mut file = File::open(path)?;
     let archive = sevenz_rust2::Archive::read(&mut file, &password)?;
     let is_solid = archive.is_solid;
-    
+    let mut files = Vec::new();
+    let mut image_names = Vec::new();
     // Set up the archive cache for this 7Z file
     archive_cache.set_current_archive(path.clone(), ArchiveType::SevenZ);
-    
+
+    // First pass: collect all image files and their sizes
+    for entry in archive.files.iter() {
+        if !entry.is_directory && supported_image(entry.name()) {
+            files.push(entry.size());
+            image_names.push(entry.name());
+        }
+    }
+
+    let image_size = files.iter().sum::<u64>();
+    debug!("Total image size: {}mb", image_size / 1_000_000);
+    // Determine if we'll preload this archive (small archives get preloaded)
+    let will_preload = is_solid || image_size < CONFIG.archive_cache_size;
+
     // Check for large solid archives and show warning dialog
-    if is_solid {
-        let file_size = std::fs::metadata(path)?.len();
-        let archive_size_mb = file_size / 1_000_000;
-        
+    if will_preload && image_size > 0 {
+        let archive_size_mb = image_size / 1_000_000;
+
         // Show warning dialog for archives larger than configured threshold
         if archive_size_mb > CONFIG.archive_warning_threshold_mb {
             let (available_gb, is_recommended) = mem::check_memory_for_archive(archive_size_mb);
-            
+
             // Show the warning dialog and check user response
             if !file_io::show_memory_warning_sync(archive_size_mb, available_gb, is_recommended) {
                 // User chose not to proceed
@@ -793,7 +808,7 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::Pa
             }
             // User chose to proceed, continue with loading
         }
-        
+
         // solid file is too slow for lazy loading - proceed with preload
         let block_count = archive.blocks.len();
         debug!("{path:?} block_count: {block_count}");
@@ -818,8 +833,8 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::Pa
                             sevenz_data.lock().unwrap().push((entry.name().to_string(), buffer));
                         } else {
                             // As `for_each_entries` noted, we can not skip any files we don't want.
-                            // Write the bytes we don't want to buffer and ignore it.
-                            reader.read_to_end(&mut buffer)?;
+                            // Discard all the bytes we don't need.
+                            let _ = std::io::copy(&mut reader.take(entry.size()), &mut std::io::sink());
                         }
                         Ok(true)
                     })
@@ -827,24 +842,20 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<crate::cache::img_cache::Pa
                 });
             });
         }
-        
+
         // Add files and preloaded data to respective structures
         let data_list = sevenz_data.into_inner()?;
         for (filename, data) in data_list {
             let path_buf = PathBuf::from(&filename);
             // Solid 7z archives are always preloaded - use Preloaded variant
-            file_paths.push(crate::cache::img_cache::PathSource::Preloaded(path_buf));
+            file_paths.push(PathSource::Preloaded(path_buf));
             archive_cache.add_preloaded_data(filename, data);
         }
     } else {
-        // Non-solid 7z: just list files without preloading - use Archive variant
-        sevenz_rust2::ArchiveReader::open(path, password)?.for_each_entries(|entry, _|{
-            if !entry.is_directory && supported_image(entry.name()) {
-                let path_buf = PathBuf::from(entry.name());
-                file_paths.push(crate::cache::img_cache::PathSource::Archive(path_buf));
-            }
-            Ok(true)
-        })?;
+        // Non-perload 7z: just list files without preloading - use Archive variant
+        for name in &image_names {
+            file_paths.push(PathSource::Archive(PathBuf::from(name)));
+        }
     }
 
     Ok(())

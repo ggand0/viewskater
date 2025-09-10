@@ -183,16 +183,22 @@ impl PathSource {
     pub fn path(&self) -> &PathBuf {
         match self {
             PathSource::Filesystem(path) => path,
-            PathSource::Archive(path) => path, 
+            PathSource::Archive(path) => path,
             PathSource::Preloaded(path) => path,
         }
     }
-    
     /// Get filename for display/sorting purposes
-    pub fn file_name(&self) -> std::borrow::Cow<str> {
-        self.path().file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
+    pub fn file_name(&'_ self) -> std::borrow::Cow<'_, str> {
+        match self {
+            PathSource::Filesystem(_) => {
+                self.path().file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+            },
+            _ => {
+                std::borrow::Cow::from(self.path().display().to_string())
+            }
+        }
     }
 }
 
@@ -818,14 +824,14 @@ pub fn load_images_by_operation_slider(
         if !paths.is_empty() {
             let device_clone = Arc::clone(device);
             let queue_clone = Arc::clone(queue);
-            
+
             // Check if the pane has compressed files and get the archive cache
             let _archive_cache = if pane.has_compressed_file {
                 Some(Arc::clone(&pane.archive_cache))
             } else {
                 None
             };
-            
+
             debug!("Task::perform started for {:?}", operation);
 
             let images_loading_task = async move {
@@ -863,14 +869,14 @@ pub fn load_images_by_indices(
     let mut paths = Vec::new();
 
     let mut archive_caches = Vec::new();
-    
+
     for (pane_index, pane) in panes.iter_mut().enumerate() {
         let img_cache = &mut pane.img_cache;
 
         if let Some(target_index) = target_indices[pane_index] {
             if let Some(path) = img_cache.image_paths.get(target_index as usize) {
                 paths.push(Some(path.clone()));
-                
+
                 // Add archive cache if this pane has compressed files
                 if pane.has_compressed_file {
                     archive_caches.push(Some(Arc::clone(&pane.archive_cache)));
