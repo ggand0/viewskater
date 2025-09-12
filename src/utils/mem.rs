@@ -101,3 +101,22 @@ pub fn log_memory(label: &str) {
         info!("MEMORY [{:.2}MB] - {}", memory_mb, label);
     }
 }
+
+/// Check if system has enough memory for a large archive
+/// Returns (available_gb, recommended_proceed)
+pub fn check_memory_for_archive(archive_size_mb: u64) -> (f64, bool) {
+    let mut system = System::new();
+    system.refresh_memory();
+    
+    let available_bytes = system.available_memory();
+    let available_gb = available_bytes as f64 / 1024.0 / 1024.0 / 1024.0;
+    
+    // Recommend proceeding if available memory is at least 2x archive size
+    let archive_gb = archive_size_mb as f64 / 1024.0;
+    let recommended = available_gb > (archive_gb * 2.0);
+    
+    debug!("Memory check: Available {:.1}GB, Archive {:.1}GB, Recommended: {}", 
+           available_gb, archive_gb, recommended);
+    
+    (available_gb, recommended)
+}

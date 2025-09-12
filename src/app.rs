@@ -103,6 +103,11 @@ pub enum Message {
     ToggleFpsDisplay(bool),
     ToggleSplitOrientation(bool),
     ToggleSyncedZoom(bool),
+    ToggleMouseWheelZoom(bool),
+    ToggleFullScreen(bool),
+    CursorOnTop(bool),
+    CursorOnMenu(bool),
+    CursorOnFooter(bool),
 }
 
 pub struct DataViewer {
@@ -136,6 +141,12 @@ pub struct DataViewer {
     pub is_horizontal_split: bool,
     pub file_receiver: Receiver<String>,
     pub synced_zoom: bool,
+    pub is_fullscreen: bool,
+    pub cursor_on_top: bool,
+    pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
+    pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
+    pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
+    ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
 }
 
 impl DataViewer {
@@ -177,6 +188,12 @@ impl DataViewer {
             is_horizontal_split: false,
             file_receiver,
             synced_zoom: true,
+            is_fullscreen: false,
+            cursor_on_top: false,
+            cursor_on_menu: false,
+            cursor_on_footer: false,
+            mouse_wheel_zoom: false,
+            ctrl_pressed: false,
         }
     }
 
@@ -198,7 +215,7 @@ impl DataViewer {
         } else {
             self.panes[pane_index as usize].reset_state();
         }
-        
+
         // Reset viewer state
         self.title = String::from("ViewSkater");
         self.directory_path = None;
@@ -206,7 +223,7 @@ impl DataViewer {
         self.slider_value = 0;
         self.prev_slider_value = 0;
         self.last_opened_pane = 0;
-        
+
         self.skate_right = false;
         self.update_counter = 0;
         self.show_about = false;
@@ -228,8 +245,8 @@ impl DataViewer {
             while self.panes.len() <= pane_index {
                 let new_pane_id = self.panes.len();
                 debug!("Creating new pane at index {}", new_pane_id);
-                self.panes.push(pane::Pane::new(    
-                    Arc::clone(&self.device), 
+                self.panes.push(pane::Pane::new(
+                    Arc::clone(&self.device),
                     Arc::clone(&self.queue),
                     self.backend,
                     new_pane_id, // Pass the pane_id matching its index
@@ -266,18 +283,25 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
     }
 
+    fn set_ctrl_pressed(&mut self, enabled: bool) {
+        self.ctrl_pressed = enabled;
+        for pane in self.panes.iter_mut() {
+            pane.ctrl_pressed = enabled;
+        }
+    }
+
     fn handle_key_pressed_event(&mut self, key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
-        
+
         // Helper function to check for the platform-appropriate modifier key
         let is_platform_modifier = |modifiers: &keyboard::Modifiers| -> bool {
             #[cfg(target_os = "macos")]
             return modifiers.logo(); // Use Command key on macOS
-            
+
             #[cfg(not(target_os = "macos"))]
             return modifiers.control(); // Use Control key on other platforms
         };
-        
+
         match key.as_ref() {
             Key::Named(Named::Tab) => {
                 debug!("Tab pressed");
@@ -330,7 +354,7 @@ impl DataViewer {
                     if self.is_slider_dual {
                         self.panes[1].is_selected = !self.panes[1].is_selected;
                     }
-                
+
                     // If shift+alt is pressed, load a file into pane1
                     if modifiers.shift() && modifiers.alt() {
                         debug!("Key2 Shift+Alt pressed");
@@ -400,10 +424,10 @@ impl DataViewer {
                 // Check for first image navigation with platform modifier or Fn key
                 if is_platform_modifier(&modifiers) {
                     debug!("Navigating to first image");
-                    
+
                     // Find which panes need to be updated
                     let mut operations = Vec::new();
-                    
+
                     for (idx, pane) in self.panes.iter_mut().enumerate() {
                         if pane.dir_loaded && (pane.is_selected || self.is_slider_dual) {
                             // Navigate to the first image (index 0)
@@ -411,13 +435,13 @@ impl DataViewer {
                                 let new_pos = 0;
                                 pane.slider_value = new_pos as u16;
                                 self.slider_value = new_pos as u16;
-                                
+
                                 // Save the operation for later execution
                                 operations.push((idx as isize, new_pos));
                             }
                         }
                     }
-                    
+
                     // Now execute all operations after the loop is complete
                     for (pane_idx, new_pos) in operations {
                         tasks.push(crate::navigation_slider::load_remaining_images(
@@ -432,10 +456,10 @@ impl DataViewer {
                             new_pos,
                         ));
                     }
-                    
+
                     return tasks;
                 }
-                
+
                 // Existing left-arrow logic
                 if self.skate_right {
                     self.skate_right = false;
@@ -476,10 +500,10 @@ impl DataViewer {
                 // Check for last image navigation with platform modifier or Fn key
                 if is_platform_modifier(&modifiers) {
                     debug!("Navigating to last image");
-                    
+
                     // Find which panes need to be updated
                     let mut operations = Vec::new();
-                    
+
                     for (idx, pane) in self.panes.iter_mut().enumerate() {
                         if pane.dir_loaded && (pane.is_selected || self.is_slider_dual) {
                             // Get the last valid index
@@ -488,14 +512,14 @@ impl DataViewer {
                                     let new_pos = last_index;
                                     pane.slider_value = new_pos as u16;
                                     self.slider_value = new_pos as u16;
-                                    
+
                                     // Save the operation for later execution
                                     operations.push((idx as isize, new_pos));
                                 }
                             }
                         }
                     }
-                    
+
                     // Now execute all operations after the loop is complete
                     for (pane_idx, new_pos) in operations {
                         tasks.push(crate::navigation_slider::load_remaining_images(
@@ -510,10 +534,10 @@ impl DataViewer {
                             new_pos,
                         ));
                     }
-                    
+
                     return tasks;
                 }
-                
+
                 // Existing right-arrow logic
                 debug!("Right key or 'D' key pressed!");
                 if self.skate_left {
@@ -552,7 +576,16 @@ impl DataViewer {
                 self.show_fps = !self.show_fps;
                 debug!("Toggled debug FPS display: {}", self.show_fps);
             }
-
+            Key::Named(Named::Super) => {
+                #[cfg(target_os = "macos")] {
+                    self.set_ctrl_pressed(true);
+                }
+            }
+            Key::Named(Named::Control) => {
+                #[cfg(not(target_os = "macos"))] {
+                    self.set_ctrl_pressed(true);
+                }
+            }
             _ => {}
         }
 
@@ -569,11 +602,11 @@ impl DataViewer {
             }
             Key::Named(Named::Enter) | Key::Character("NumpadEnter")  => {
                 debug!("Enter key released!");
-                
+
             }
             Key::Named(Named::Escape) => {
                 debug!("Escape key released!");
-                
+
             }
             Key::Named(Named::ArrowLeft) | Key::Character("a") => {
                 debug!("Left key or 'A' key released!");
@@ -582,6 +615,16 @@ impl DataViewer {
             Key::Named(Named::ArrowRight) | Key::Character("d") => {
                 debug!("Right key or 'D' key released!");
                 self.skate_right = false;
+            }
+            Key::Named(Named::Super) => {
+                #[cfg(target_os = "macos")] {
+                    self.set_ctrl_pressed(false);
+                }
+            }
+            Key::Named(Named::Control) => {
+                #[cfg(not(target_os = "macos"))] {
+                    self.set_ctrl_pressed(false);
+                }
             }
             _ => {},
         }
@@ -641,8 +684,8 @@ impl DataViewer {
         match self.pane_layout  {
             PaneLayout::SinglePane => {
                 if self.panes[0].dir_loaded {
-                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index].file_name().map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| String::from("Unknown"))
+                    let path = &self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index];
+                    path.file_name().to_string()
                 } else {
                     self.title.clone()
                 }
@@ -656,19 +699,15 @@ impl DataViewer {
                 };
 
                 let first_pane_filename = if self.panes[0].dir_loaded {
-                    self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index]
-                        .file_name()
-                        .map(|name| name.to_string_lossy().to_string())
-                        .unwrap_or_else(|| String::from("Unknown"))
+                    let path = &self.panes[0].img_cache.image_paths[self.panes[0].img_cache.current_index];
+                    path.file_name().to_string()
                 } else {
                     String::from("No File")
                 };
 
                 let second_pane_filename = if self.panes[1].dir_loaded {
-                    self.panes[1].img_cache.image_paths[self.panes[1].img_cache.current_index]
-                        .file_name()
-                        .map(|name| name.to_string_lossy().to_string())
-                        .unwrap_or_else(|| String::from("Unknown"))
+                    let path = &self.panes[1].img_cache.image_paths[self.panes[1].img_cache.current_index];
+                    path.file_name().to_string()
                 } else {
                     String::from("No File")
                 };
@@ -682,18 +721,18 @@ impl DataViewer {
     fn update_cache_strategy(&mut self, strategy: CacheStrategy) {
         debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
         self.cache_strategy = strategy;
-        
+
         // Get current pane file lengths
         let pane_file_lengths: Vec<usize> = self.panes.iter()
             .map(|p| p.img_cache.num_files)
             .collect();
-        
+
         // Reinitialize all loaded panes with the new cache strategy
         for (i, pane) in self.panes.iter_mut().enumerate() {
             if let Some(dir_path) = &pane.directory_path.clone() {
                 if pane.dir_loaded {
                     let path = PathBuf::from(dir_path);
-                    
+
                     // Reinitialize the pane with the current directory
                     pane.initialize_dir_path(
                         &Arc::clone(&self.device),
@@ -716,9 +755,9 @@ impl DataViewer {
     fn update_compression_strategy(&mut self, strategy: CompressionStrategy) {
         if self.compression_strategy != strategy {
             self.compression_strategy = strategy;
-            
+
             debug!("Queuing compression strategy change to {:?}", strategy);
-            
+
             // Instead of trying to lock renderer directly, send a request to the main thread
             if let Err(e) = self.renderer_request_sender.send(
                 RendererRequest::UpdateCompressionStrategy(strategy)
@@ -737,7 +776,7 @@ impl DataViewer {
                     if let Some(dir_path) = &pane.directory_path.clone() {
                         if pane.dir_loaded {
                             let path = PathBuf::from(dir_path);
-                            
+
                             // Reinitialize the pane with the current directory
                             pane.initialize_dir_path(
                                 &Arc::clone(&self.device),
@@ -836,7 +875,7 @@ impl iced_winit::runtime::Program for DataViewer {
             }
             Message::ShowAbout => {
                 self.show_about = true;
-                
+
                 // Schedule a follow-up redraw in the next frame
                 return Task::perform(async {
                     // Small delay to ensure state has been updated
@@ -903,27 +942,21 @@ impl iced_winit::runtime::Program for DataViewer {
             },
             Message::CopyFilename(pane_index) => {
                 // Get the image path of the specified pane
-                let img_path = self.panes[pane_index].img_cache
-                    .image_paths[self.panes[pane_index].img_cache.current_index]
-                    .file_name().map(|name| name.to_string_lossy().to_string());
-                if let Some(filename) = img_path {
-                    if let Some(filename) = file_io::get_filename(&filename) {
-                        debug!("Filename: {}", filename);
-                        return clipboard::write::<Message>(filename);
-                    }
+                let path = &self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index];
+                let filename_str = path.file_name().to_string();
+                if let Some(filename) = file_io::get_filename(&filename_str) {
+                    debug!("Filename: {}", filename);
+                    return clipboard::write::<Message>(filename);
                 }
             }
             Message::CopyFilePath(pane_index) => {
                 // Get the image path of the specified pane
-                let img_path = self.panes[pane_index].img_cache
-                    .image_paths[self.panes[pane_index].img_cache.current_index]
-                    .file_name().map(|name| name.to_string_lossy().to_string());
-                if let Some(img_path) = img_path {
-                    if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
-                        let full_path = format!("{}/{}", dir_path, img_path);
-                        debug!("Full Path: {}", full_path);
-                        return clipboard::write::<Message>(full_path);
-                    }
+                let path = &self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index];
+                let img_path = path.file_name().to_string();
+                if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
+                    let full_path = format!("{}/{}", dir_path, img_path);
+                    debug!("Full Path: {}", full_path);
+                    return clipboard::write::<Message>(full_path);
                 }
             }
             Message::OnSplitResize(position) => { self.divider_position = Some(position); },
@@ -933,6 +966,24 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ToggleFooter(_bool) => { self.toggle_footer(); },
             Message::ToggleSyncedZoom(enabled) => {
                 self.synced_zoom = enabled;
+            }
+            Message::ToggleMouseWheelZoom(enabled) => {
+                self.mouse_wheel_zoom = enabled;
+                for pane in self.panes.iter_mut() {
+                    pane.mouse_wheel_zoom = enabled;
+                }
+            }
+            Message::ToggleFullScreen(enabled) => {
+                self.is_fullscreen = enabled;
+            }
+            Message::CursorOnTop(value) => {
+                self.cursor_on_top = value;
+            }
+            Message::CursorOnMenu(value) => {
+                self.cursor_on_menu = value;
+            }
+            Message::CursorOnFooter(value) => {
+                self.cursor_on_footer = value;
             }
             Message::PaneSelected(pane_index, is_selected) => {
                 self.panes[pane_index].is_selected = is_selected;
@@ -953,7 +1004,7 @@ impl iced_winit::runtime::Program for DataViewer {
                                 | LoadOperation::ShiftNext((ref pane_indices, ref target_indices))
                                 | LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
                                     let operation_type = cloned_op.operation_type();
-                                    
+
                                     loading_handler::handle_load_operation_all(
                                         &mut self.panes,
                                         &mut self.loading_status,
@@ -992,10 +1043,10 @@ impl iced_winit::runtime::Program for DataViewer {
                         if let Some(pane) = self.panes.get_mut(pane_idx) {
                             // Update the image widget handle directly
                             pane.slider_image = Some(handle);
-                            
+
                             // Also update the cache state to keep everything in sync
                             pane.img_cache.current_index = pos;
-                            
+
                             debug!("Slider image loaded for pane {} at position {}", pane_idx, pos);
                         } else {
                             warn!("SliderImageWidgetLoaded: Invalid pane index {}", pane_idx);
@@ -1011,7 +1062,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 match result {
                     Ok((_pos, cached_data)) => {
                         let pane = &mut self.panes[0]; // For single-pane slider
-                        
+
                         // Update the scene based on data type
                         if let CachedData::Cpu(bytes) = &cached_data {
                             debug!("SliderImageLoaded: loaded data: {:?}", bytes.len());
@@ -1036,8 +1087,8 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 }
             }
-            
-            
+
+
             Message::SliderChanged(pane_index, value) => {
                 self.is_slider_moving = true;
                 self.last_slider_update = Instant::now();
@@ -1052,12 +1103,12 @@ impl iced_winit::runtime::Program for DataViewer {
                 #[cfg(not(target_os = "linux"))]
                 let use_throttle = false;
 
-                
+
                 if pane_index == -1 {
                     // Master slider - only relevant when is_slider_dual is false
                     self.prev_slider_value = self.slider_value;
                     self.slider_value = value;
-                    
+
                     // Clear any stale slider image if this is the first slider movement after loading a new directory
                     if self.panes[0].slider_image.is_none() {
                         for pane in self.panes.iter_mut() {
@@ -1066,7 +1117,7 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 } else {
                     let pane_index_usize = pane_index as usize;
-                    
+
                     // In dual slider mode, clear the slider image for the other pane
                     // to ensure it keeps showing its normal scene
                     if self.is_slider_dual && self.pane_layout == PaneLayout::DualPane {
@@ -1077,41 +1128,41 @@ impl iced_winit::runtime::Program for DataViewer {
                             }
                         }
                     }
-                    
+
                     // Now update the slider value for the active pane
                     let pane = &mut self.panes[pane_index_usize];
                     pane.prev_slider_value = pane.slider_value;
                     pane.slider_value = value;
-                    
+
                     // Clear any stale slider image if this is the first slider movement after loading a new directory
                     if pane.slider_image.is_none() {
                         pane.slider_scene = None;
                     }
                 }
-                
+
                 return navigation_slider::update_pos(
-                    &mut self.panes, 
-                    pane_index, 
-                    value as usize, 
+                    &mut self.panes,
+                    pane_index,
+                    value as usize,
                     use_async,
                     use_throttle,
                 );
             }
-            
+
             Message::SliderReleased(pane_index, value) => {
                 debug!("SLIDER_DEBUG: SliderReleased event received");
                 self.is_slider_moving = false;
-                
+
                 // Get the final image FPS AND the timestamps
                 let final_image_fps = iced_wgpu::get_image_fps();
                 let upload_timestamps = iced_wgpu::get_image_upload_timestamps();
-                
+
                 // Sync our application's image render times with the ones from iced_wgpu
                 if !upload_timestamps.is_empty() {
                     if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
                         // Convert VecDeque to Vec for our storage
                         *render_times = upload_timestamps.into_iter().collect();
-                        
+
                         // Update FPS based on the final calculated value
                         if let Ok(mut fps) = IMAGE_RENDER_FPS.lock() {
                             *fps = final_image_fps as f32;
@@ -1119,7 +1170,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         }
                     }
                 }
-                
+
                 // Continue with loading remaining images
                 if pane_index == -1 {
                     return navigation_slider::load_remaining_images(
@@ -1147,6 +1198,42 @@ impl iced_winit::runtime::Program for DataViewer {
             }
 
             Message::Event(event) => match event {
+                Event::Mouse(iced_core::mouse::Event::WheelScrolled { delta }) => {
+                    if !self.ctrl_pressed && !self.mouse_wheel_zoom {
+                        match delta {
+                            iced_core::mouse::ScrollDelta::Lines { y, .. }
+                            | iced_core::mouse::ScrollDelta::Pixels { y, .. } => {
+                                if y > 0.0 {
+                                    return move_left_all(
+                                        &self.device,
+                                        &self.queue,
+                                        self.cache_strategy,
+                                        self.compression_strategy,
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        &mut self.slider_value,
+                                        &self.pane_layout,
+                                        self.is_slider_dual,
+                                        self.last_opened_pane as usize);
+                                } else if y < 0.0 {
+                                    return move_right_all(
+                                        &self.device,
+                                        &self.queue,
+                                        self.cache_strategy,
+                                        self.compression_strategy,
+                                        &mut self.panes,
+                                        &mut self.loading_status,
+                                        &mut self.slider_value,
+                                        &self.pane_layout,
+                                        self.is_slider_dual,
+                                        self.last_opened_pane as usize
+                                    );
+                                }
+                            }
+                        };
+                    }
+                }
+
                 Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                     debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
                     debug!("modifiers.shift(): {}", modifiers.shift());
@@ -1156,14 +1243,14 @@ impl iced_winit::runtime::Program for DataViewer {
                         return Task::batch(tasks);
                     }
                 }
-            
+
                 Event::Keyboard(iced_core::keyboard::Event::KeyReleased { key, modifiers, .. }) => {
                     let tasks = self.handle_key_released_event(&key, modifiers);
                     if !tasks.is_empty() {
                         return Task::batch(tasks);
                     }
                 }
-                
+
                 // Only using for single pane layout
                 #[cfg(any(target_os = "macos", target_os = "windows"))]
                 Event::Window(iced::window::Event::FileDropped(dropped_paths, _position)) => {
@@ -1347,7 +1434,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 ]
                 .spacing(15)
                 .align_x(iced_winit::core::alignment::Horizontal::Center),
-                
+
             )
             .padding(20)
             .style(|theme: &WinitTheme| {
@@ -1369,4 +1456,3 @@ impl iced_winit::runtime::Program for DataViewer {
         }
     }
 }
-
