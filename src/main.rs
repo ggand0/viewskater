@@ -101,11 +101,11 @@ const QUEUE_LOG_THRESHOLD: usize = 20;
 const QUEUE_RESET_THRESHOLD: usize = 50;
 
 // Fullscreen UI detection zones
-#[cfg(target_os = "macos")]
-const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 200.0;  // Larger zone for menu interactions with set_simple_fullscreen()
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 200.0;  // Larger zone for menu interactions in fullscreen mode
 
-#[cfg(not(target_os = "macos"))]
-const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 50.0;   // Standard zone for native fullscreen
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 50.0;   // Standard zone for other platforms
 
 const FULLSCREEN_BOTTOM_ZONE_HEIGHT: f64 = 100.0;  // Standard bottom zone for all platforms
 
