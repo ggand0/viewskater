@@ -514,7 +514,6 @@ impl StdError for ImageError {}
 /// This tries to treat the directory path as a single image file (useful for sandboxed apps)
 fn handle_fallback_for_single_file(
     directory_path: &Path, 
-    allowed_extensions: &[&str], 
     original_error: std::io::Error
 ) -> Result<Vec<PathBuf>, ImageError> {
     crate::logging::write_crash_debug_log("handle_fallback_for_single_file ENTRY");
@@ -532,7 +531,7 @@ fn handle_fallback_for_single_file(
         if let Some(extension) = directory_path.extension().and_then(std::ffi::OsStr::to_str) {
             crate::logging::write_crash_debug_log(&format!("File extension: {}", extension));
             debug!("File extension: {}", extension);
-            if allowed_extensions.contains(&extension.to_lowercase().as_str()) {
+            if ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
                 crate::logging::write_crash_debug_log(&format!("✅ Valid image file found: {}", directory_path.display()));
                 debug!("✅ Valid image file found: {}", directory_path.display());
                 // Return just this single file
@@ -589,7 +588,6 @@ fn handle_fallback_for_single_file(
 /// This handles the permission dialog flow and fallbacks
 fn request_directory_access_and_retry(
     directory_path: &Path, 
-    allowed_extensions: &[&str], 
     original_error: std::io::Error
 ) -> Result<Vec<PathBuf>, ImageError> {
     crate::logging::write_crash_debug_log("request_directory_access_and_retry ENTRY");
@@ -618,7 +616,7 @@ fn request_directory_access_and_retry(
                     let path = std::path::Path::new(&file_path);
                     if let Some(extension) = path.extension() {
                         if let Some(ext_str) = extension.to_str() {
-                            if allowed_extensions.contains(&ext_str.to_lowercase().as_str()) {
+                            if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
                                 image_paths.push(path.to_path_buf());
                             }
                         }
@@ -658,7 +656,7 @@ fn request_directory_access_and_retry(
                         let path = std::path::Path::new(&file_path);
                         if let Some(extension) = path.extension() {
                             if let Some(ext_str) = extension.to_str() {
-                                if allowed_extensions.contains(&ext_str.to_lowercase().as_str()) {
+                                if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
                                     image_paths.push(path.to_path_buf());
                                 }
                             }
@@ -681,7 +679,7 @@ fn request_directory_access_and_retry(
         // Fallback to single file handling if all else fails
         crate::logging::write_crash_debug_log("All directory access methods failed, falling back to single file handling");
         debug!("All directory access methods failed, falling back to single file handling");
-        return handle_fallback_for_single_file(directory_path, allowed_extensions, original_error);
+        return handle_fallback_for_single_file(directory_path, original_error);
     }
     
     #[cfg(not(target_os = "macos"))]
@@ -694,8 +692,7 @@ fn request_directory_access_and_retry(
 /// Helper function to process directory entries and filter for image files
 fn process_directory_entries(
     entries: std::fs::ReadDir, 
-    directory_path: &Path,
-    allowed_extensions: &[&str]
+    directory_path: &Path
 ) -> Result<Vec<PathBuf>, ImageError> {
     let mut image_paths: Vec<PathBuf> = Vec::new();
     
@@ -738,15 +735,10 @@ pub fn get_image_paths(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError
 fn get_image_paths_standard(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError> {
     debug!("Standard directory reading for path: {}", directory_path.display());
     
-    let allowed_extensions = [
-        "jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
-        "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"
-    ];
-
     let dir_entries = fs::read_dir(directory_path)
         .map_err(ImageError::DirectoryError)?;
     
-    process_directory_entries(dir_entries, directory_path, &allowed_extensions)
+    process_directory_entries(dir_entries, directory_path)
 }
 
 /// macOS implementation with App Store sandbox support
@@ -755,25 +747,20 @@ fn get_image_paths_standard(directory_path: &Path) -> Result<Vec<PathBuf>, Image
 fn get_image_paths_macos(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError> {
     crate::logging::write_crash_debug_log("======== get_image_paths_macos ENTRY ========");
     crate::logging::write_crash_debug_log(&format!("Directory path: {}", directory_path.display()));
-    
-    let allowed_extensions = [
-        "jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
-        "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"
-    ];
 
     // Try standard directory reading first
     match fs::read_dir(directory_path) {
         Ok(entries) => {
             crate::logging::write_crash_debug_log("✅ Standard directory read successful");
             debug!("Successfully read directory normally (drag-and-drop or non-sandboxed): {}", directory_path.display());
-            return process_directory_entries(entries, directory_path, &allowed_extensions);
+            return process_directory_entries(entries, directory_path);
         }
         Err(e) => {
             crate::logging::write_crash_debug_log(&format!("❌ Standard directory read failed: {}", e));
             debug!("Failed to read directory normally: {} (error: {})", directory_path.display(), e);
             
             // Handle macOS App Store sandbox scenarios
-            return handle_macos_sandbox_access(directory_path, &allowed_extensions, e);
+            return handle_macos_sandbox_access(directory_path, e);
         }
     }
 }
@@ -783,7 +770,6 @@ fn get_image_paths_macos(directory_path: &Path) -> Result<Vec<PathBuf>, ImageErr
 #[cfg(target_os = "macos")]
 fn handle_macos_sandbox_access(
     directory_path: &Path, 
-    allowed_extensions: &[&str], 
     original_error: std::io::Error
 ) -> Result<Vec<PathBuf>, ImageError> {
     let path_str = directory_path.to_string_lossy();
@@ -796,7 +782,7 @@ fn handle_macos_sandbox_access(
     if bookmark_restored {
         crate::logging::write_crash_debug_log("STEP 1: ✅ Bookmark restored, trying NSURL directory read");
         if let Some(file_paths) = crate::macos_file_access::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
-            return convert_file_paths_to_image_paths(file_paths, allowed_extensions);
+            return convert_file_paths_to_image_paths(file_paths);
         } else {
             crate::logging::write_crash_debug_log("STEP 1: ❌ NSURL directory read failed");
         }
@@ -819,7 +805,7 @@ fn handle_macos_sandbox_access(
     if has_individual_file_access {
         crate::logging::write_crash_debug_log("STEP 2: ✅ Confirmed 'Open With' scenario - requesting permission");
         debug!("Confirmed 'Open With' scenario");
-        return request_directory_access_and_retry(directory_path, allowed_extensions, original_error);
+        return request_directory_access_and_retry(directory_path, original_error);
     } else {
         crate::logging::write_crash_debug_log("STEP 2: ❌ Not an 'Open With' scenario - regular directory access failure");
         debug!("Not an 'Open With' scenario - regular directory access failure");
@@ -830,8 +816,7 @@ fn handle_macos_sandbox_access(
 /// Convert file paths from security-scoped URL reading to image paths
 #[cfg(target_os = "macos")]
 fn convert_file_paths_to_image_paths(
-    file_paths: Vec<String>, 
-    allowed_extensions: &[&str]
+    file_paths: Vec<String>
 ) -> Result<Vec<PathBuf>, ImageError> {
     let mut image_paths = Vec::new();
     
@@ -839,7 +824,7 @@ fn convert_file_paths_to_image_paths(
         let path = std::path::Path::new(&file_path);
         if let Some(extension) = path.extension() {
             if let Some(ext_str) = extension.to_str() {
-                if allowed_extensions.contains(&ext_str.to_lowercase().as_str()) {
+                if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
                     image_paths.push(path.to_path_buf());
                 }
             }
