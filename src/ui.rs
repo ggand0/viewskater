@@ -333,12 +333,12 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
 
 pub fn build_ui_dual_pane_slider1(
-    panes: &[Pane],
+    panes: &'_ [Pane],
     divider_position: Option<u16>,
     is_slider_moving: bool,
     is_horizontal_split: bool,
     synced_zoom: bool
-) -> Element<Message, WinitTheme, Renderer> {
+) -> Element<'_, Message, WinitTheme, Renderer> {
     let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split);
     let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split);
 
@@ -367,13 +367,13 @@ pub fn build_ui_dual_pane_slider1(
 
 
 pub fn build_ui_dual_pane_slider2(
-    panes: &[Pane],
+    panes: &'_ [Pane],
     divider_position: Option<u16>,
     show_footer: bool,
     is_slider_moving: bool,
     is_horizontal_split: bool,
     _synced_zoom: bool
-) -> Element<Message, WinitTheme, Renderer> {
+) -> Element<'_, Message, WinitTheme, Renderer> {
     let footer_texts = vec![
         format!(
             "{}/{}",
