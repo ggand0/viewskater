@@ -570,7 +570,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         .map(mouse::Cursor::Available)
                                         .unwrap_or(mouse::Cursor::Unavailable),
                                     &mut *renderer.lock().unwrap(),
-                                    &custom_theme,
+                                    custom_theme,
                                     &renderer::Style {
                                         text_color: Color::WHITE,
                                     },
@@ -638,7 +638,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         let mut renderer_guard = renderer.lock().unwrap();
 
                                         // Update the config safely from the main render thread
-                                        renderer_guard.update_image_config(&device, &mut *engine_guard, config);
+                                        renderer_guard.update_image_config(device, &mut engine_guard, config);
 
                                         debug!("Compression strategy updated successfully in main thread");
                                     }
@@ -681,9 +681,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             let mut renderer_guard = renderer.lock().unwrap();
 
                                             renderer_guard.present(
-                                                &mut *engine_guard,
-                                                &device,
-                                                &queue,
+                                                &mut engine_guard,
+                                                device,
+                                                queue,
                                                 &mut encoder,
                                                 None,
                                                 frame.texture.format(),
@@ -693,7 +693,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             );
 
                                             // Submit commands while still holding the lock
-                                            engine_guard.submit(&queue, encoder);
+                                            engine_guard.submit(queue, encoder);
                                         }
                                         let present_time = present_start.elapsed();
 

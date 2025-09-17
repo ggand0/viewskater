@@ -87,7 +87,7 @@ pub fn render_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
     let mut did_render_happen = false;
 
     // Render the next image for all panes
-    for (_cache_index, pane) in panes.iter_mut().enumerate() {
+    for pane in panes.iter_mut() {
         let render_happened = pane.render_next_image(_pane_layout, is_slider_dual);
         debug!("render_next_image_all - render_happened: {}", render_happened);
 
@@ -102,27 +102,27 @@ pub fn render_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
         if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
             let now = Instant::now();
             render_times.push(now);
-            
+
             // Calculate image rendering FPS
             if render_times.len() > 1 {
                 let oldest = render_times[0];
                 let elapsed = now.duration_since(oldest);
-                
+
                 if elapsed.as_secs_f32() > 0.0 {
                     let fps = render_times.len() as f32 / elapsed.as_secs_f32();
-                    
+
                     // Store the current image rendering FPS
                     if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
                         *image_fps = fps;
                     }
-                    
+
                     // Keep only recent frames (last 3 seconds)
                     let cutoff = now - std::time::Duration::from_secs(3);
                     render_times.retain(|&t| t > cutoff);
-                    
+
                     // Sync back to iced_wgpu tracker for bidirectional sync
                     // Convert Vec to VecDeque for iced_wgpu
-                    let timestamps: std::collections::VecDeque<Instant> = 
+                    let timestamps: std::collections::VecDeque<Instant> =
                         render_times.iter().cloned().collect();
                     iced_wgpu::sync_image_tracker_timestamps(timestamps);
                 }
@@ -139,7 +139,7 @@ pub fn render_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
     // First, check if the prev images of all panes are loaded.
     // If not, assume they haven't been loaded yet and wait for the next render cycle.
     // use if img_cache.is_some_at_index
-    for (_cache_index, pane) in panes.iter_mut().enumerate() {
+    for pane in panes.iter_mut() {
         let img_cache = &mut pane.img_cache;
         img_cache.print_cache();
         if !img_cache.is_some_at_index(0) {
@@ -148,7 +148,7 @@ pub fn render_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
     }
 
     // Render the prev image for all panes
-    for (_cache_index, pane) in panes.iter_mut().enumerate() {
+    for pane in panes.iter_mut() {
         let render_happened = pane.render_prev_image(_pane_layout, is_slider_dual);
         if render_happened {
             debug!("render_prev_image_all - render_happened: {}", render_happened);
@@ -162,27 +162,27 @@ pub fn render_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
         if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
             let now = Instant::now();
             render_times.push(now);
-            
+
             // Calculate image rendering FPS
             if render_times.len() > 1 {
                 let oldest = render_times[0];
                 let elapsed = now.duration_since(oldest);
-                
+
                 if elapsed.as_secs_f32() > 0.0 {
                     let fps = render_times.len() as f32 / elapsed.as_secs_f32();
-                    
+
                     // Store the current image rendering FPS
                     if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
                         *image_fps = fps;
                     }
-                    
+
                     // Keep only recent frames (last 3 seconds)
                     let cutoff = now - std::time::Duration::from_secs(3);
                     render_times.retain(|&t| t > cutoff);
-                    
+
                     // Sync back to iced_wgpu tracker for bidirectional sync
                     // Convert Vec to VecDeque for iced_wgpu
-                    let timestamps: std::collections::VecDeque<Instant> = 
+                    let timestamps: std::collections::VecDeque<Instant> =
                         render_times.iter().cloned().collect();
                     iced_wgpu::sync_image_tracker_timestamps(timestamps);
                 }
@@ -244,7 +244,7 @@ pub fn load_next_images_all(
             debug!("load_next_images_all - running load_images_by_operation()");
             return load_images_by_operation(
                 //Some(Arc::clone(&device)), Some(Arc::clone(&queue)), is_gpu_supported,
-                &device, &queue, cache_strategy,
+                device, queue, cache_strategy,
                 compression_strategy,
                 panes, loading_status);
         }
@@ -326,6 +326,7 @@ pub fn load_prev_images_all(
     let target_indices = get_target_indices_for_previous(panes);
 
     // NOTE: target_indices.is_empty() would return true on [None]
+    #[allow(clippy::len_zero)]
     if target_indices.len() == 0 {
         return Task::none();
     }
@@ -350,7 +351,7 @@ pub fn load_prev_images_all(
                 loading_status.enqueue_image_load(load_prev_operation);
             }
             return load_images_by_operation(
-                &device, &queue, cache_strategy,
+                device, queue, cache_strategy,
                 compression_strategy,
                 panes, loading_status);
         }
@@ -394,6 +395,7 @@ fn calculate_loading_conditions_for_previous(
     }
 
     // NOTE: prev_image_indices_to_load.is_empty() would return true for [None]
+    #[allow(clippy::len_zero)]
     if prev_image_indices_to_load.len() == 0 {
         None
     } else {
@@ -410,7 +412,7 @@ fn should_enqueue_loading(
     panes: &mut Vec<&mut Pane>,
 ) -> bool {
     is_image_index_within_bounds &&
-        loading_status.are_next_image_indices_in_queue(&image_indices_to_load) &&
+        loading_status.are_next_image_indices_in_queue(image_indices_to_load) &&
         !loading_status.is_blocking_loading_ops_in_queue(panes, load_operation)
 }
 
@@ -422,7 +424,7 @@ fn get_target_indices_for_previous(panes: &mut Vec<&mut Pane>) -> Vec<Option<isi
             None
         } else {
             let cache = &mut pane.img_cache;
-            let target_index = (cache.current_index as isize + (-(cache.cache_count as isize) - cache.current_offset) as isize) - 1;
+            let target_index = (cache.current_index as isize + (-(cache.cache_count as isize) - cache.current_offset)) - 1;
             if target_index < 0 {
                 // Use None for out-of-bounds values
                 None
@@ -441,7 +443,7 @@ pub fn move_right_all(
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>, 
+    panes: &mut Vec<pane::Pane>,
     loading_status: &mut LoadingStatus,
     slider_value: &mut u16,
     pane_layout: &PaneLayout,
@@ -473,7 +475,7 @@ pub fn move_right_all(
             indices_to_load.push(index);
         }
     }
-    if panes_to_load.len() == 0 {
+    if panes_to_load.is_empty() {
         return Task::none();
     }
 
@@ -502,8 +504,8 @@ pub fn move_right_all(
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftNext)
         {
             tasks.push(load_next_images_all(
-                &device,
-                &queue,
+                device,
+                queue,
                 cache_strategy,
                 compression_strategy,
                 &mut panes_to_load,
@@ -516,7 +518,7 @@ pub fn move_right_all(
 
         // If panes already reached the edge, mark their is_next_image_loaded as true
         // We already picked the pane with the largest dir size, so we don't have to worry about the rest
-        for (_cache_index, pane) in panes_to_load.iter_mut().enumerate() {
+        for pane in panes_to_load.iter_mut() {
             if pane.img_cache.current_index == pane.img_cache.image_paths.len() - 1 {
                 pane.is_next_image_loaded = true;
                 loading_status.is_next_image_loaded = true;
@@ -536,8 +538,8 @@ pub fn move_right_all(
             }
 
             tasks.push(load_next_images_all(
-                &device,
-                &queue,
+                device,
+                queue,
                 cache_strategy,
                 compression_strategy,
                 &mut panes_to_load,
@@ -545,11 +547,11 @@ pub fn move_right_all(
                 loading_status,
                 pane_layout,
                 is_slider_dual
-            ));    
+            ));
         }
     }
 
-    
+
     let did_new_render_happen = are_all_next_images_loaded(&panes_to_load, is_slider_dual, loading_status);
 
     // Update master slider when !is_slider_dual
@@ -589,18 +591,18 @@ pub fn move_left_all(
     // Collect mutable references to the panes that haven't reached the edge
     let mut panes_to_load: Vec<&mut pane::Pane> = vec![];
     let mut indices_to_load: Vec<usize> = vec![];
-    
+
     for (index, pane) in panes.iter_mut().enumerate() {
         if pane.is_selected && pane.dir_loaded && pane.img_cache.current_index > 0 {
             panes_to_load.push(pane);
             indices_to_load.push(index);
         }
     }
-    if panes_to_load.len() == 0 {
+    if panes_to_load.is_empty() {
         return Task::none();
     }
 
-    
+
     // If all panes have been rendered, start rendering the next(prev) image; reset is_next_image_loaded
     if are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
         debug!("move_left_all() - all prev images loaded");
@@ -624,8 +626,8 @@ pub fn move_left_all(
             !loading_status.is_operation_in_queues(LoadOperationType::ShiftPrevious)
         {
             tasks.push(load_prev_images_all(
-                &device,
-                &queue,
+                device,
+                queue,
                 cache_strategy,
                 compression_strategy,
                 &mut panes_to_load,
@@ -635,7 +637,7 @@ pub fn move_left_all(
         }
         // If panes already reached the edge, mark their is_next_image_loaded as true
         // We already picked the pane with the largest dir size, so we don't have to worry about the rest
-        for (_cache_index, pane) in panes_to_load.iter_mut().enumerate() {
+        for pane in panes_to_load.iter_mut() {
             if pane.img_cache.current_index == 0 {
                 pane.is_prev_image_loaded = true;
                 loading_status.is_prev_image_loaded = true;
@@ -646,7 +648,7 @@ pub fn move_left_all(
 
     debug!("move_left_all() - are_all_prev_images_loaded(): {}", are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status));
     debug!("move_left_all() - loading_status.is_prev_image_loaded: {}", loading_status.is_prev_image_loaded);
-    
+
     if !are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
         debug!("move_left_all() - setting prev image...");
         let did_render_happen: bool = render_prev_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
@@ -659,8 +661,8 @@ pub fn move_left_all(
 
             debug!("move_left_all() - loading prev images...");
             tasks.push(load_prev_images_all(
-                &device,
-                &queue,
+                device,
+                queue,
                 cache_strategy,
                 compression_strategy,
                 &mut panes_to_load,

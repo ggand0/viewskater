@@ -58,92 +58,92 @@ impl CpuScene {
             debug!("CpuScene::new - No image data provided, using default dimensions");
             (0, 0)
         };
-        
+
         CpuScene {
             image_bytes,
             texture: None,
             texture_size: dimensions,
             needs_update: true,
-            use_cached_texture: use_cached_texture,
+            use_cached_texture,
         }
     }
-    
+
     pub fn update_image(&mut self, new_image_bytes: Vec<u8>) {
         // Update image bytes and mark texture for recreation
         self.image_bytes = new_image_bytes;
-        
+
         // Attempt to update dimensions from the new image bytes
         if let Ok(img) = image::load_from_memory(&self.image_bytes) {
             self.texture_size = img.dimensions();
         }
-        
+
         self.needs_update = true;
         self.texture = None; // Force texture recreation
     }
-    
+
     // Create GPU texture from CPU bytes - expose as public
     pub fn ensure_texture(&mut self, device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>, pane_id: &str) -> Option<Arc<wgpu::Texture>> {
         if self.needs_update || self.texture.is_none() {
             let start = Instant::now();
-            debug!("CpuScene::ensure_texture - Using cached or creating texture from {} bytes for pane {}", 
+            debug!("CpuScene::ensure_texture - Using cached or creating texture from {} bytes for pane {}",
                    self.image_bytes.len(), pane_id);
-            
+
             // Validate image data before attempting to create texture
             if self.image_bytes.is_empty() {
                 error!("CpuScene::ensure_texture - Empty image data, cannot create texture");
                 return None;
             }
-            
+
             if self.use_cached_texture {
                 let cache_start = Instant::now();
                 if let Ok(mut caches) = TEXTURE_CACHES.lock() {
                     let cache_lock_time = cache_start.elapsed();
                     debug!("CpuScene::ensure_texture - Acquired texture caches lock in {:?}", cache_lock_time);
-                    
+
                     // Get or create the cache for this specific pane
                     let cache = caches.entry(pane_id.to_string())
                                      .or_insert_with(TextureCache::new);
-                    
+
                     let texture_start = Instant::now();
                     if let Some(texture) = cache.get_or_create_texture(
-                        device, 
-                        queue, 
-                        &self.image_bytes, 
+                        device,
+                        queue,
+                        &self.image_bytes,
                         self.texture_size
                     ) {
                         let texture_time = texture_start.elapsed();
-                        debug!("CpuScene::ensure_texture - get_or_create_texture took {:?} for pane {}", 
+                        debug!("CpuScene::ensure_texture - get_or_create_texture took {:?} for pane {}",
                                texture_time, pane_id);
-                        
+
                         self.texture = Some(Arc::clone(&texture));
                         self.needs_update = false;
-                        
+
                         let total_time = start.elapsed();
-                        debug!("CpuScene::ensure_texture - Total time: {:?} for pane {}", 
+                        debug!("CpuScene::ensure_texture - Total time: {:?} for pane {}",
                                total_time, pane_id);
-                        
+
                         return Some(Arc::clone(&texture));
                     }
                 }
-                
+
                 // If we failed to get/create a texture from the cache, fallback to direct creation
                 error!("Failed to get/create texture from cache for pane {}", pane_id);
             }
-            
+
             // Direct texture creation (fallback or when cache is disabled)
             let texture_start = Instant::now();
             match image::load_from_memory(&self.image_bytes) {
                 Ok(img) => {
                     let rgba = img.to_rgba8();
                     let dimensions = img.dimensions();
-                    
+
                     if dimensions.0 == 0 || dimensions.1 == 0 {
                         error!("CpuScene::ensure_texture - Invalid image dimensions: {}x{}", dimensions.0, dimensions.1);
                         return None;
                     }
-                    
+
                     debug!("CpuScene::ensure_texture - Creating texture with dimensions {}x{}", dimensions.0, dimensions.1);
-                    
+
                     let texture = device.create_texture(
                         &wgpu::TextureDescriptor {
                             label: Some("CpuScene Texture"),
@@ -160,7 +160,7 @@ impl CpuScene {
                             view_formats: &[],
                         }
                     );
-                    
+
                     queue.write_texture(
                         wgpu::ImageCopyTexture {
                             texture: &texture,
@@ -180,14 +180,14 @@ impl CpuScene {
                             depth_or_array_layers: 1,
                         },
                     );
-                    
+
                     let texture_arc = Arc::new(texture);
                     self.texture = Some(Arc::clone(&texture_arc));
                     self.needs_update = false;
-                    
+
                     let creation_time = texture_start.elapsed();
                     debug!("Created texture directly in {:?}", creation_time);
-                    
+
                     return Some(texture_arc);
                 },
                 Err(e) => {
@@ -196,11 +196,11 @@ impl CpuScene {
                 }
             }
         }
-        
+
         if self.texture.is_none() {
             warn!("CpuScene::ensure_texture - No texture available after ensure_texture call");
         }
-        
+
         self.texture.clone()
     }
 }
@@ -259,9 +259,9 @@ impl shader::Primitive for CpuPrimitive {
             (bounds.width * scale_factor) / viewport_size.width as f32,
             (bounds.height * scale_factor) / viewport_size.height as f32,
         );
-        
+
         // Create a unique key for this pipeline based on position
-        let pipeline_key = format!("cpu_pipeline_{}_{}_{}_{}", 
+        let pipeline_key = format!("cpu_pipeline_{}_{}_{}_{}",
                                   bounds.x, bounds.y, bounds.width, bounds.height);
 
         // Only proceed if we have a valid texture
@@ -270,12 +270,12 @@ impl shader::Primitive for CpuPrimitive {
             if !storage.has::<CpuPipelineRegistry>() {
                 storage.store(CpuPipelineRegistry::default());
             }
-            
+
             // Get the registry
             let registry = storage.get_mut::<CpuPipelineRegistry>().unwrap();
-            
+
             // Check if we need to create a new pipeline for this position
-            if !registry.pipelines.contains_key(&pipeline_key) {                
+            if !registry.pipelines.contains_key(&pipeline_key) {
                 let pipeline = TexturePipeline::new(
                     device,
                     queue,
@@ -285,20 +285,20 @@ impl shader::Primitive for CpuPrimitive {
                     self.texture_size,
                     bounds_relative,
                 );
-                
+
                 registry.pipelines.insert(pipeline_key.clone(), pipeline);
             } else {
                 let pipeline = registry.pipelines.get_mut(&pipeline_key).unwrap();
-                
+
                 let vertices_start = Instant::now();
                 pipeline.update_vertices(device, bounds_relative);
                 let _vertices_time = vertices_start.elapsed();
-                
+
                 let texture_update_start = Instant::now();
                 pipeline.update_texture(device, queue, texture.clone());
                 let _texture_update_time = texture_update_start.elapsed();
-                
-                
+
+
                 let uniforms_start = Instant::now();
                 pipeline.update_screen_uniforms(queue, self.texture_size, shader_size, bounds_relative);
                 let _uniforms_time = uniforms_start.elapsed();
@@ -306,7 +306,7 @@ impl shader::Primitive for CpuPrimitive {
         } else {
             warn!("No texture available for rendering");
         }
-        
+
         let prepare_time = prepare_start.elapsed();
         if debug {
             debug!("CpuPrimitive prepare - bounds: {:?}, bounds_relative: {:?}", bounds, bounds_relative);
@@ -323,12 +323,12 @@ impl shader::Primitive for CpuPrimitive {
         clip_bounds: &Rectangle<u32>,
     ) {
         let render_start = Instant::now();
-        
+
         if self.texture.is_some() {
             // Get the pipeline key for this position
-            let pipeline_key = format!("cpu_pipeline_{}_{}_{}_{}", 
+            let pipeline_key = format!("cpu_pipeline_{}_{}_{}_{}",
                                      self.bounds.x, self.bounds.y, self.bounds.width, self.bounds.height);
-            
+
             // Find our pipeline in the registry
             if let Some(registry) = storage.get::<CpuPipelineRegistry>() {
                 if let Some(pipeline) = registry.pipelines.get(&pipeline_key) {

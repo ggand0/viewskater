@@ -245,7 +245,7 @@ impl Pane {
                         if let Some(device) = &self.device {
                             if let Some(queue) = &self.queue {
                                 if let Some(scene) = &mut self.scene {
-                                    scene.ensure_texture(&device, &queue, self.pane_id);
+                                    scene.ensure_texture(device, queue, self.pane_id);
                                 }
                             }
                         }
@@ -254,13 +254,13 @@ impl Pane {
                     }
                     CachedData::Gpu(texture) => {
                         debug!("Setting GPU texture as current_image");
-                        self.current_image = CachedData::Gpu(Arc::clone(&texture));
+                        self.current_image = CachedData::Gpu(Arc::clone(texture));
                         self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }
                     CachedData::BC1(texture) => {
                         debug!("Setting BC1 compressed texture as current_image");
-                        self.current_image = CachedData::BC1(Arc::clone(&texture));
+                        self.current_image = CachedData::BC1(Arc::clone(texture));
                         self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
                         self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                     }
@@ -315,20 +315,20 @@ impl Pane {
                             if let Some(device) = &self.device {
                                 if let Some(queue) = &self.queue {
                                     if let Some(scene) = &mut self.scene {
-                                        scene.ensure_texture(&device, &queue, self.pane_id);
+                                        scene.ensure_texture(device, queue, self.pane_id);
                                     }
                                 }
                             }
                         }
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
-                            self.current_image = CachedData::Gpu(Arc::clone(&texture)); // Borrow before cloning
+                            self.current_image = CachedData::Gpu(Arc::clone(texture)); // Borrow before cloning
                             self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                         }
                         CachedData::BC1(texture) => {
                             debug!("Setting BC1 compressed texture as current_image");
-                            self.current_image = CachedData::BC1(Arc::clone(&texture));
+                            self.current_image = CachedData::BC1(Arc::clone(texture));
                             self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
                             self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
                         }
@@ -382,7 +382,7 @@ impl Pane {
 
         let mut file_paths: Vec<PathSource> = Vec::new();
         let mut initial_index: usize = 0;
-        let is_dir_size_bigger: bool;
+
         let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
 
         // compressed file
@@ -430,7 +430,7 @@ impl Pane {
                     return;
                 }
             }
-            if file_paths.len() == 0 {
+            if file_paths.is_empty() {
                 error!("No supported images found in {path:?}");
                 return;
             }
@@ -523,9 +523,8 @@ impl Pane {
         };
 
         // Calculate if directory size is bigger than other panes
-        is_dir_size_bigger = if *pane_layout == PaneLayout::SinglePane {
-            true
-        } else if *pane_layout == PaneLayout::DualPane && is_slider_dual {
+        let is_dir_size_bigger: bool = if *pane_layout == PaneLayout::SinglePane ||
+            *pane_layout == PaneLayout::DualPane && is_slider_dual {
             true
         } else {
             file_paths.len() >= *longest_file_length
@@ -673,11 +672,9 @@ pub fn get_pane_with_largest_dir_size(panes: &Vec<&mut Pane>) -> isize {
     let mut max_dir_size = 0;
     let mut max_dir_size_index = -1;
     for (i, pane) in panes.iter().enumerate() {
-        if pane.dir_loaded {
-            if pane.img_cache.num_files > max_dir_size {
-                max_dir_size = pane.img_cache.num_files;
-                max_dir_size_index = i as isize;
-            }
+        if pane.dir_loaded && pane.img_cache.num_files > max_dir_size {
+            max_dir_size = pane.img_cache.num_files;
+            max_dir_size_index = i as isize;
         }
     }
     max_dir_size_index
@@ -688,16 +685,14 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     let mut max_dir_size = 0;
     let mut max_dir_size_index = 0;
     for (i, pane) in panes.iter().enumerate() {
-        if pane.dir_loaded {
-            if pane.img_cache.num_files > max_dir_size {
-                max_dir_size = pane.img_cache.num_files;
-                max_dir_size_index = i;
-            }
+        if pane.dir_loaded && pane.img_cache.num_files > max_dir_size {
+            max_dir_size = pane.img_cache.num_files;
+            max_dir_size_index = i;
         }
     }
 
     let pane = &panes[max_dir_size_index];
-    pane.img_cache.current_index as usize
+    pane.img_cache.current_index
 }
 
 fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {

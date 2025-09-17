@@ -31,7 +31,7 @@ pub fn supported_image(name: &str) -> bool {
     if name.starts_with("__MACOSX/") {
         return false;
     }
-    
+
     ALLOWED_EXTENSIONS.contains(&name.split('.').next_back().unwrap_or("").to_lowercase().as_str())
 }
 
@@ -109,14 +109,14 @@ pub fn read_image_bytes(path_source: &crate::cache::img_cache::PathSource, archi
                 Ok(buffer)
             }
         },
-        
+
         PathSource::Preloaded(path) => {
             // Direct HashMap lookup - fastest path for preloaded content
             let cache = archive_cache.ok_or_else(|| io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Archive cache required for preloaded content"
             ))?;
-            
+
             let path_str = path.to_string_lossy();
             if let Some(data) = cache.get_preloaded_data(&path_str) {
                 debug!("Using preloaded data for: {}", path_str);
@@ -128,18 +128,18 @@ pub fn read_image_bytes(path_source: &crate::cache::img_cache::PathSource, archi
                 ))
             }
         },
-        
+
         PathSource::Archive(path) => {
             // Direct archive reading - no filesystem checks
             let cache = archive_cache.ok_or_else(|| io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Archive cache required for archive content"
             ))?;
-            
+
             let path_str = path.to_string_lossy();
             debug!("Reading from archive: {}", path_str);
             cache.read_from_archive(&path_str)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to read from archive: {}", e)))
+                .map_err(|e| io::Error::other(format!("Failed to read from archive: {}", e)))
         }
     }
 }
@@ -184,10 +184,10 @@ async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathS
                     let cache_bytes_result = {
                         match cache_arc.lock() {
                             Ok(mut cache) => read_image_bytes(&path_source, Some(&mut *cache)),
-                            Err(_) => Err(std::io::Error::new(std::io::ErrorKind::Other, "Archive cache lock failed")),
+                            Err(_) => Err(std::io::Error::other("Archive cache lock failed")),
                         }
                     };
-                    
+
                     match cache_bytes_result {
                         Ok(bytes) => bytes,
                         Err(e) => {
@@ -239,11 +239,11 @@ async fn load_image_gpu_async(
                             Ok(mut cache) => read_image_bytes(&path_source, Some(&mut *cache)),
                             Err(e) => {
                                 error!("Failed to lock archive cache: {}", e);
-                                Err(std::io::Error::new(std::io::ErrorKind::Other, "Archive cache lock failed"))
+                                Err(std::io::Error::other("Archive cache lock failed"))
                             }
                         }
                     };
-                    
+
                     match cache_bytes_result {
                         Ok(bytes) => {
                             image::load_from_memory(&bytes)
@@ -288,7 +288,7 @@ async fn load_image_gpu_async(
                 if use_compression {
                     // Use utility to compress and upload
                     let (compressed_data, row_bytes) = crate::cache::cache_utils::compress_image_data(
-                        &rgba_data, width, height
+                        rgba_data, width, height
                     );
 
                     // Upload using the utility
@@ -303,7 +303,7 @@ async fn load_image_gpu_async(
                 } else {
                     // Upload uncompressed
                     crate::cache::cache_utils::upload_uncompressed_texture(
-                        queue, &texture, &rgba_data, width, height
+                        queue, &texture, rgba_data, width, height
                     );
 
                     let upload_duration = upload_start.elapsed();
@@ -335,13 +335,13 @@ pub async fn load_images_async(
     let start = Instant::now();
     debug!("load_images_async - cache_strategy: {:?}, compression: {:?}", cache_strategy, compression_strategy);
 
-    let futures = paths.into_iter().enumerate().map(|(i, path)| { 
+    let futures = paths.into_iter().enumerate().map(|(i, path)| {
         let device = Arc::clone(device);
         let queue = Arc::clone(queue);
         let pane_archive_cache = archive_caches.get(i).cloned().flatten();
 
-        async move {            
-            match cache_strategy {  
+        async move {
+            match cache_strategy {
                 CacheStrategy::Cpu => {
                     debug!("load_images_async - loading image with CPU strategy");
                     load_image_cpu_async(path, pane_archive_cache).await
@@ -421,7 +421,7 @@ pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_reco
     } else {
         "Warning"
     };
-    
+
     let memory_info = if available_gb > 0.0 {
         format!("Available memory: {:.1} GB\n\n", available_gb)
     } else {
@@ -429,7 +429,7 @@ pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_reco
         // related: https://github.com/GuillaumeGomez/sysinfo/issues/1030
         String::new()
     };
-    
+
     let memory_note = if available_gb == 0.0 {
         "Memory information unavailable on this system."
     } else if is_recommended {
@@ -437,7 +437,7 @@ pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_reco
     } else {
         "Low available memory - may cause system slowdown."
     };
-    
+
     let message = format!(
         "{}: Large Archive Detected\n\n\
         Archive size: {:.1} MB\n\
@@ -452,10 +452,10 @@ pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_reco
         .set_title("ViewSkater")
         .set_description(&message)
         .set_buttons(rfd::MessageButtons::YesNo)
-        .set_level(if is_recommended { 
-            rfd::MessageLevel::Info 
-        } else { 
-            rfd::MessageLevel::Warning 
+        .set_level(if is_recommended {
+            rfd::MessageLevel::Info
+        } else {
+            rfd::MessageLevel::Warning
         })
         .show();
 

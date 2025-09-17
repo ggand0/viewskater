@@ -43,7 +43,7 @@ pub fn handle_load_operation_all(
             None => continue,
         };
 
-        if cache.is_operation_blocking(operation_type.clone()) {
+        if cache.is_operation_blocking(operation_type) {
             return;
         }
 
@@ -71,8 +71,8 @@ pub fn handle_load_operation_all(
                     }
                     None => None,
                 };
-                
-                    
+
+
                 match op {
                     LoadOperation::LoadNext(..) => {
                         cache.move_next(converted_data.take(), target_index).unwrap();
@@ -98,13 +98,13 @@ pub fn handle_load_operation_all(
                             info!("Setting CPU image as current_image");
                             pane.current_image = CachedData::Cpu(data.clone());
                             pane.scene = Some(Scene::new(Some(&CachedData::Cpu(data.clone()))));
-                            
+
                             // Ensure texture is created immediately to avoid black screens
                             if let Some(device) = &pane.device {
                                 if let Some(queue) = &pane.queue {
                                     if let Some(scene) = &mut pane.scene {
                                         debug!("Ensuring texture is created for loaded image");
-                                        scene.ensure_texture(&device, &queue, pane.pane_id);
+                                        scene.ensure_texture(device, queue, pane.pane_id);
                                     }
                                 }
                             } else {
@@ -113,18 +113,18 @@ pub fn handle_load_operation_all(
                         }
                         CachedData::Gpu(texture) => {
                             debug!("Setting GPU texture as current_image");
-                            pane.current_image = CachedData::Gpu(Arc::clone(&texture));
+                            pane.current_image = CachedData::Gpu(Arc::clone(texture));
                             pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
                         }
                         CachedData::BC1(texture) => {
                             info!("Setting BC1 compressed texture as current_image");
                             pane.current_image = CachedData::BC1(Arc::clone(texture));
                             pane.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
-                            
+
                             // Ensure texture is created immediately to avoid black screens
                             if let Some(scene) = &mut pane.scene {
                                 if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
-                                    scene.ensure_texture(&device, &queue, pane.pane_id);
+                                    scene.ensure_texture(device, queue, pane.pane_id);
                                 }
                             }
                         }
@@ -159,7 +159,7 @@ pub fn handle_load_pos_operation(
             debug!("Target index and cache position: {:?}", target_opt);
 
             if let Some((target_index, cache_pos)) = target_opt {
-                processed_indices.extend(target_opt.clone());
+                processed_indices.extend(*target_opt);
                 let target_index_usize = *target_index as usize;
 
                 // Ensure that the target index is within valid bounds
@@ -179,7 +179,7 @@ pub fn handle_load_pos_operation(
                                 cache.set_cached_data(*cache_pos, CachedData::BC1(Arc::clone(texture)));
                             }
                         }
-                        
+
                         if cache.current_index == target_index_usize {
                             // Reload current image if necessary
                             if let Ok(cached_image) = cache.get_initial_image() {
@@ -191,18 +191,18 @@ pub fn handle_load_pos_operation(
                                     }
                                     CachedData::Gpu(texture) => {
                                         debug!("Setting GPU texture as current_image");
-                                        pane.current_image = CachedData::Gpu(Arc::clone(&texture));
+                                        pane.current_image = CachedData::Gpu(Arc::clone(texture));
                                         pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
                                     }
                                     CachedData::BC1(texture) => {
                                         info!("Setting BC1 compressed texture as current_image");
                                         pane.current_image = CachedData::BC1(Arc::clone(texture));
                                         pane.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
-                                        
+
                                         // Ensure texture is created immediately to avoid black screens
                                         if let Some(scene) = &mut pane.scene {
                                             if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
-                                                scene.ensure_texture(&device, &queue, pane.pane_id);
+                                                scene.ensure_texture(device, queue, pane.pane_id);
                                             }
                                         }
                                     }

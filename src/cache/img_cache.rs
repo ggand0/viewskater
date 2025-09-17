@@ -487,7 +487,7 @@ impl ImageCache {
             self.shift_cache_left(new_image);
             Ok(false)
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
+            Err(io::Error::other("No more images to display"))
         }
     }
 
@@ -498,7 +498,7 @@ impl ImageCache {
             self.shift_cache_right(new_image);
             Ok(false)
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
+            Err(io::Error::other("No previous images to display"))
         }
     }
 
@@ -506,7 +506,7 @@ impl ImageCache {
         if self.current_index < self.image_paths.len() - 1 {
             Ok(false)
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "No more images to display"))
+            Err(io::Error::other("No more images to display"))
         }
     }
 
@@ -514,7 +514,7 @@ impl ImageCache {
         if self.current_index > 0 {
             Ok(false)
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "No previous images to display"))
+            Err(io::Error::other("No previous images to display"))
         }
     }
 
@@ -541,16 +541,10 @@ impl ImageCache {
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
-                Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Image data is not cached",
-                ))
+                Err(io::Error::other("Image data is not cached"))
             }
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid cache index",
-            ))
+            Err(io::Error::other("Invalid cache index"))
         }
     }
 
@@ -562,7 +556,7 @@ impl ImageCache {
             Ok(cached_data) => {
                 // If it's already CPU data, return it
                 match cached_data.as_vec() {
-                    Ok(bytes) => return Ok(bytes),
+                    Ok(bytes) => Ok(bytes),
                     Err(_) => {
                         // If it's GPU data, we need to load from file instead
                         let cache_index = (self.cache_count as isize + self.current_offset) as usize;
@@ -571,13 +565,10 @@ impl ImageCache {
                         if image_index >= 0 && (image_index as usize) < self.image_paths.len() {
                             // Load directly from file
                             let img_path = &self.image_paths[image_index as usize];
-                            return crate::file_io::read_image_bytes(img_path, archive_cache);
+                            crate::file_io::read_image_bytes(img_path, archive_cache)
 
                         } else {
-                            Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "Invalid image index",
-                            ))
+                            Err(io::Error::other("Invalid image index"))
                         }
                     }
                 }
@@ -610,16 +601,10 @@ impl ImageCache {
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
-                Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Image data is not cached",
-                ))
+                Err(io::Error::other("Image data is not cached"))
             }
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid cache index",
-            ))
+            Err(io::Error::other("Invalid cache index"))
         }
     }
 
@@ -629,16 +614,10 @@ impl ImageCache {
             if let Some(image_data) = image_data_option {
                 Ok(image_data)
             } else {
-                Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Image data is not cached",
-                ))
+                Err(io::Error::other("Image data is not cached"))
             }
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid cache index",
-            ))
+            Err(io::Error::other("Invalid cache index"))
         }
     }
 
@@ -646,24 +625,21 @@ impl ImageCache {
         self.cache_count as isize + self.current_offset + 1
     }
 
+    #[allow(clippy::let_and_return)]
     pub fn get_next_image_to_load(&self) -> usize {
-        let next_image_index = (self.current_index as isize + (self.cache_count as isize -  self.current_offset) as isize) as usize + 1;
+        let next_image_index = (self.current_index as isize + (self.cache_count as isize -  self.current_offset)) as usize + 1;
         next_image_index
     }
 
     pub fn get_prev_image_to_load(&self) -> usize {
-        let prev_image_index_to_load = (self.current_index as isize + (-(self.cache_count as isize) - self.current_offset) as isize) - 1;
+        let prev_image_index_to_load = (self.current_index as isize + (-(self.cache_count as isize) - self.current_offset)) - 1;
         prev_image_index_to_load as usize
     }
 
     pub fn is_some_at_index(&self, index: usize) -> bool {
         // Using pattern matching to check if element is None
         if let Some(image_data_option) = self.cached_data.get(index) {
-            if let Some(_image_data) = image_data_option {
-                true
-            } else {
-                false
-            }
+            matches!(image_data_option, Some(_image_data))
         } else {
             false
         }
@@ -682,7 +658,7 @@ impl ImageCache {
         if next_image_index_to_render >= self.image_paths.len() {
             return false;
         }
-        self.is_cache_index_within_bounds(next_image_index_to_render as usize)
+        self.is_cache_index_within_bounds(next_image_index_to_render)
     }
 
     pub fn is_prev_cache_index_within_bounds(&self) -> bool {
@@ -737,7 +713,7 @@ impl ImageCache {
                     return true;
                 }
                 if self.current_offset == self.cache_count as isize {
-                    if loading_status.being_loaded_queue.len() == 0 {
+                    if loading_status.being_loaded_queue.is_empty() {
                         return false;
                     }
 
@@ -941,7 +917,7 @@ pub fn load_images_by_operation(
                         cache_strategy,
                         compression_strategy,
                         panes,
-                        &target_indicies,
+                        target_indicies,
                         operation.clone()
                     )
                 }
@@ -952,7 +928,7 @@ pub fn load_images_by_operation(
                         cache_strategy,
                         compression_strategy,
                         panes,
-                        &target_indicies,
+                        target_indicies,
                         operation.clone()
                     )
                 }

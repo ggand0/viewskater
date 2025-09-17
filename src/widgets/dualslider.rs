@@ -139,7 +139,7 @@ where
             value,
             default: None,
             range,
-            pane_index: pane_index,
+            pane_index,
             step: T::from(1),
             shift_step: None,
             on_change: Box::new(on_change),

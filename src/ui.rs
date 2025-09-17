@@ -272,9 +272,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.synced_zoom
                 );
 
-                let footer_texts = vec![
+                let footer_texts = [
                     format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files),
-                    format!("{}/{}", app.panes[1].img_cache.current_index + 1, app.panes[1].img_cache.num_files),
+                    format!("{}/{}", app.panes[1].img_cache.current_index + 1, app.panes[1].img_cache.num_files)
                 ];
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
@@ -374,7 +374,7 @@ pub fn build_ui_dual_pane_slider2(
     is_horizontal_split: bool,
     _synced_zoom: bool
 ) -> Element<'_, Message, WinitTheme, Renderer> {
-    let footer_texts = vec![
+    let footer_texts = [
         format!(
             "{}/{}",
             panes[0].img_cache.current_index + 1,
