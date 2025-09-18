@@ -640,8 +640,8 @@ impl DataViewer {
                 pane.is_prev_image_loaded = false;
             }
 
-            let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
-            self.slider_value = pane::get_master_slider_value(&mut panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+            let panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
+            self.slider_value = pane::get_master_slider_value(&panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
         } else {
             // Single to dual slider: give slider.value to each slider
             for pane in self.panes.iter_mut() {
@@ -661,8 +661,8 @@ impl DataViewer {
 
                 if self.pane_layout == PaneLayout::DualPane {
                     // Reset the slider value to the first pane's current index
-                    let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
-                    self.slider_value = pane::get_master_slider_value(&mut panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+                    let panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
+                    self.slider_value = pane::get_master_slider_value(&panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
                     self.panes[0].is_selected = true;
                 }
             }

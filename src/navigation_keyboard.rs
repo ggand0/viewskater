@@ -256,7 +256,7 @@ pub fn load_next_images_all(
 
 fn calculate_loading_conditions_for_next(
     panes: &Vec<&mut Pane>,
-    target_indices: &Vec<Option<isize>>,
+    target_indices: &[Option<isize>],
 ) -> Option<(Vec<Option<isize>>, bool, bool)> {
     let mut next_image_indices_to_load = Vec::new();
     let mut is_image_index_within_bounds = false;
@@ -363,7 +363,7 @@ pub fn load_prev_images_all(
 
 fn calculate_loading_conditions_for_previous(
     panes: &Vec<&mut Pane>,
-    target_indices: &Vec<Option<isize>>,
+    target_indices: &[Option<isize>],
 ) -> Option<(Vec<Option<isize>>, bool, bool)> {
     let mut prev_image_indices_to_load = Vec::new();
     let mut is_image_index_within_bounds = false;
@@ -407,7 +407,7 @@ fn calculate_loading_conditions_for_previous(
 fn should_enqueue_loading(
     is_image_index_within_bounds: bool,
     loading_status: &LoadingStatus,
-    image_indices_to_load: &Vec<Option<isize>>,
+    image_indices_to_load: &[Option<isize>],
     load_operation: &LoadOperation,
     panes: &mut Vec<&mut Pane>,
 ) -> bool {
@@ -443,7 +443,7 @@ pub fn move_right_all(
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
     slider_value: &mut u16,
     pane_layout: &PaneLayout,
@@ -557,7 +557,7 @@ pub fn move_right_all(
     // Update master slider when !is_slider_dual
     if did_new_render_happen && !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
         // Use the current_index of the pane with largest dir size
-        *slider_value = (get_master_slider_value(&mut panes_to_load, pane_layout, is_slider_dual, last_opened_pane)) as u16;
+        *slider_value = (get_master_slider_value(&panes_to_load, pane_layout, is_slider_dual, last_opened_pane)) as u16;
     }
 
     // print tasks
@@ -573,7 +573,7 @@ pub fn move_left_all(
     //is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
     slider_value: &mut u16,
     pane_layout: &PaneLayout,
@@ -675,7 +675,7 @@ pub fn move_left_all(
     let did_new_render_happen = are_all_prev_images_loaded(&panes_to_load, is_slider_dual, loading_status);
     // Update master slider when !is_slider_dual
     if did_new_render_happen && !is_slider_dual || *pane_layout == PaneLayout::SinglePane {
-        *slider_value = (get_master_slider_value(&mut panes_to_load, pane_layout, is_slider_dual, last_opened_pane) ) as u16;
+        *slider_value = (get_master_slider_value(&panes_to_load, pane_layout, is_slider_dual, last_opened_pane) ) as u16;
     }
 
     Task::batch(tasks)

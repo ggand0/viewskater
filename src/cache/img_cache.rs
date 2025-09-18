@@ -762,7 +762,7 @@ pub fn load_images_by_operation_slider(
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     pane_index: usize,
     target_indices_and_cache: &[Option<(isize, usize)>],
     operation: LoadOperation
@@ -957,7 +957,7 @@ pub fn load_all_images_in_queue(
     queue: &Arc<wgpu::Queue>,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
 ) -> Task<Message> {
     let mut tasks = Vec::new();

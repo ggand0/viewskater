@@ -485,7 +485,7 @@ pub fn is_directory(path: &Path) -> bool {
     fs::metadata(path).map(|metadata| metadata.is_dir()).unwrap_or(false)
 }
 
-pub fn get_file_index(files: &[PathBuf], file: &PathBuf) -> Option<usize> {
+pub fn get_file_index(files: &[PathBuf], file: &Path) -> Option<usize> {
     let file_name = file.file_name()?;
     files.iter().position(|f| f.file_name() == Some(file_name))
 }

@@ -8,9 +8,9 @@ use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::scene::Scene;
 
 pub fn handle_load_operation_all(
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
-    pane_indices: &Vec<usize>,
+    pane_indices: &[usize],
     target_indices: &[Option<isize>],
     image_data: &[Option<CachedData>],
     op: &LoadOperation,
@@ -137,7 +137,7 @@ pub fn handle_load_operation_all(
 
 
 pub fn handle_load_pos_operation(
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
     pane_index: usize,
     target_indices_and_cache: &[Option<(isize, usize)>],

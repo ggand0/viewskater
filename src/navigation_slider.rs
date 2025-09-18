@@ -55,7 +55,7 @@ fn load_full_res_image(
     queue: &Arc<wgpu::Queue>,
     is_gpu_supported: bool,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     pane_index: isize,
     pos: usize,
 ) -> Task<Message> {
@@ -188,7 +188,7 @@ fn get_loading_tasks_slider(
     _is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
     pane_index: usize,
     pos: usize,
@@ -268,7 +268,7 @@ pub fn load_remaining_images(
     is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
     pane_index: isize,
     pos: usize,
@@ -398,7 +398,7 @@ pub async fn create_async_image_widget_task(
 }
 
 pub fn update_pos(
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     pane_index: isize,
     pos: usize,
     use_async: bool,
@@ -483,7 +483,7 @@ pub fn update_pos(
                     // Create task for this pane
                     let pane_task = Task::perform(
                         create_async_image_widget_task(img_path, pos, idx, archive_cache),
-                        move |result| Message::SliderImageWidgetLoaded(result)
+                        Message::SliderImageWidgetLoaded
                     );
 
                     tasks.push(pane_task);
