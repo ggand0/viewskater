@@ -105,8 +105,7 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
                 text(footer_text)
                 .font(Font::MONOSPACE)
                 .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([0.8, 0.8, 0.8])), // Wrap Color in a style configuration
-                    ..Default::default()
+                    color: Some(Color::from([0.8, 0.8, 0.8])) // Wrap Color in a style configuration
                 })
                 .size(14)
             )
@@ -529,8 +528,7 @@ fn get_fps_container(app: &DataViewer) -> Container<'_, Message, WinitTheme, Ren
                          ui_fps, image_fps, memory_text))
                 .size(14)
                 .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([1.0, 1.0, 1.0])),
-                    ..Default::default()
+                    color: Some(Color::from([1.0, 1.0, 1.0]))
                 })
         )
         .padding(5)

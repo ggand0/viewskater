@@ -1335,22 +1335,19 @@ impl iced_winit::runtime::Program for DataViewer {
                 text(format!("Build: {} ({})", BuildInfo::build_string(), BuildInfo::build_profile())).size(12)
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
-                        color: Some(theme.extended_palette().background.weak.color),
-                        ..Default::default()
+                        color: Some(theme.extended_palette().background.weak.color)
                     }
                 }),
                 text(format!("Commit: {}", BuildInfo::git_hash_short())).size(12)
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
-                        color: Some(theme.extended_palette().background.weak.color),
-                        ..Default::default()
+                        color: Some(theme.extended_palette().background.weak.color)
                     }
                 }),
                 text(format!("Platform: {}", BuildInfo::target_platform())).size(12)
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
                         color: Some(theme.extended_palette().background.weak.color),
-                        ..Default::default()
                     }
                 }),
             ];
@@ -1363,7 +1360,6 @@ impl iced_winit::runtime::Program for DataViewer {
                     .style(|theme: &WinitTheme| {
                         iced_widget::text::Style {
                             color: Some(theme.extended_palette().background.weak.color),
-                            ..Default::default()
                         }
                     })
                 );
@@ -1375,7 +1371,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
                         color: Some(theme.extended_palette().primary.strong.color),
-                        ..Default::default()
                     }
                 })
             ]);

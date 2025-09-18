@@ -408,13 +408,13 @@ where
 
                 // Detect pane selection
                 if self.enable_pane_selection {
-                    let is_within_bounds_first = is_cursor_within_bounds::<Message>(first_layout, cursor, 0, split_state);
+                    let is_within_bounds_first = is_cursor_within_bounds(first_layout, cursor, 0, split_state);
                     if is_within_bounds_first {
                         split_state.panes_seleced[0] = !split_state.panes_seleced[0];
                         shell.publish((self.on_select)(0, split_state.panes_seleced[0]));
 
                     }
-                    let is_within_bounds_second = is_cursor_within_bounds::<Message>(second_layout, cursor, 1, split_state);
+                    let is_within_bounds_second = is_cursor_within_bounds(second_layout, cursor, 1, split_state);
                     if is_within_bounds_second {
                         split_state.panes_seleced[1] = !split_state.panes_seleced[1];
                         shell.publish((self.on_select)(1, split_state.panes_seleced[1]));
@@ -856,7 +856,7 @@ where
 // Helper function to process a layout and check for cursor position
 // This function assumes that the first child of the container is the Image widget
 // TODO: Fix hardcoding
-fn is_cursor_within_bounds<Message>(
+fn is_cursor_within_bounds(
     layout: Layout<'_>,
     cursor: Cursor,
     _pane_index: usize,

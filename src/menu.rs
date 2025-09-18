@@ -427,8 +427,7 @@ pub fn build_menu(app: &'_ DataViewer) -> MenuBar<'_, Message, WinitTheme, Rende
         menu_border: Border{
             color: theme.extended_palette().background.weak.color,
             width: 1.0,
-            radius: Radius::new(0.0),
-            ..Default::default()
+            radius: Radius::new(0.0)
         },
         menu_background_expand: Padding::from(0.0),
         path_border: Border{

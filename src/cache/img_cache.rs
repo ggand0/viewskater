@@ -977,22 +977,18 @@ pub fn load_all_images_in_queue(
     // Process each operation in the loading queue
     while let Some(operation) = loading_status.loading_queue.pop_front() {
         loading_status.enqueue_image_being_loaded(operation.clone());
-        match operation {
-            LoadOperation::LoadPos((ref pane_index, ref target_indices_and_cache)) => {
-                let task = load_images_by_operation_slider(
-                    device,
-                    queue,
-                    cache_strategy,
-                    compression_strategy,
-                    panes,
-                    *pane_index,
-                    &target_indices_and_cache,
-                    operation.clone(),
-                );
-                tasks.push(task);
-            }
-            _ => {
-            }
+        if let LoadOperation::LoadPos((ref pane_index, ref target_indices_and_cache)) = operation {
+            let task = load_images_by_operation_slider(
+                device,
+                queue,
+                cache_strategy,
+                compression_strategy,
+                panes,
+                *pane_index,
+                target_indices_and_cache,
+                operation.clone(),
+            );
+            tasks.push(task);
         }
     }
 

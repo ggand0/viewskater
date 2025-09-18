@@ -35,7 +35,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::VecDeque;
 use chrono;
 
-
 use winit::{
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
@@ -221,36 +220,36 @@ fn update_memory_usage() {
 pub fn main() -> Result<(), winit::error::EventLoopError> {
     // CRITICAL: Write to crash log IMMEDIATELY - before any other operations
     crate::logging::write_crash_debug_log("MAIN: App startup initiated");
-    
+
     // Set up signal handler FIRST to catch low-level crashes
     crate::logging::write_crash_debug_log("MAIN: About to setup signal handler");
     crate::logging::setup_signal_crash_handler();
     crate::logging::write_crash_debug_log("MAIN: Signal handler setup completed");
-    
+
     // Set up stdout capture FIRST, before any println! statements
     crate::logging::write_crash_debug_log("MAIN: About to setup stdout capture");
     let shared_stdout_buffer = crate::logging::setup_stdout_capture();
     set_shared_stdout_buffer(Arc::clone(&shared_stdout_buffer));
 
     crate::logging::write_crash_debug_log("MAIN: Stdout capture setup completed");
-    
+
     println!("ViewSkater starting...");
     crate::logging::write_crash_debug_log("MAIN: ViewSkater starting message printed");
-    
+
 
     // Set up panic hook to log to a file
     crate::logging::write_crash_debug_log("MAIN: About to setup logger");
     let app_name = "viewskater";
     let shared_log_buffer = crate::logging::setup_logger(app_name);
-    
+
     // Store the log buffer reference for global access
     set_shared_log_buffer(Arc::clone(&shared_log_buffer));
     crate::logging::write_crash_debug_log("MAIN: Logger setup completed");
-    
+
     crate::logging::write_crash_debug_log("MAIN: About to setup panic hook");
     crate::logging::setup_panic_hook(app_name, shared_log_buffer);
     crate::logging::write_crash_debug_log("MAIN: Panic hook setup completed");
-    
+
     // Initialize winit FIRST
     let event_loop = EventLoop::<Action<Message>>::with_user_event()
         .build()
@@ -266,7 +265,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     crate::logging::write_crash_debug_log(&format!("Timestamp: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
     crate::logging::write_crash_debug_log("If you can see this message, crash debug logging is working");
     crate::logging::write_crash_debug_log("=========================================");
-    
+
     // Test all logging methods comprehensively
     #[cfg(target_os = "macos")]
     macos_file_access::test_crash_logging_methods();
@@ -280,22 +279,22 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         crate::logging::write_crash_debug_log("MAIN: About to set file channel");
         macos_file_access::macos_file_handler::set_file_channel(file_sender);
         crate::logging::write_crash_debug_log("MAIN: File channel set");
-        
+
         // NOTE: Automatic bookmark cleanup is DISABLED in production builds to avoid
         // wiping valid stored access. Use a special maintenance build or developer
         // tooling to invoke cleanup if ever needed.
-        
+
         crate::logging::write_crash_debug_log("MAIN: About to register file handler");
         macos_file_access::macos_file_handler::register_file_handler();
         crate::logging::write_crash_debug_log("MAIN: File handler registered");
-        
+
         // Try to restore full disk access from previous session
         crate::logging::write_crash_debug_log("MAIN: About to restore full disk access");
         debug!("🔍 Attempting to restore full disk access on startup");
         let restore_result = macos_file_access::macos_file_handler::restore_full_disk_access();
         debug!("🔍 Restore full disk access result: {}", restore_result);
         crate::logging::write_crash_debug_log(&format!("MAIN: Restore full disk access result: {}", restore_result));
-        
+
         println!("macOS file handler registered");
         crate::logging::write_crash_debug_log("MAIN: macOS file handler registration completed");
     }
@@ -344,7 +343,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             surface: wgpu::Surface<'static>,
             format: wgpu::TextureFormat,
             engine: Arc<Mutex<Engine>>,
-            renderer: Arc<Mutex<Renderer>>,
+            renderer: std::rc::Rc<Mutex<Renderer>>,
             state: program::State<DataViewer>,
             cursor_position: Option<winit::dpi::PhysicalPosition<f64>>,
             clipboard: Clipboard,
@@ -545,10 +544,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 window.scale_factor(),
                                 *modifiers,
                             ) {
-                                match &event {
-                                    _ => {
-                                        state.queue_message(Message::Event(event.clone()));
-                                    }
+                                {
+                                    state.queue_message(Message::Event(event.clone()));
                                 }
                                 state.queue_event(event);
                                 *redraw = true;
@@ -845,37 +842,34 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         }
                         Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
                             // Process any pending control messages
-                            loop {
-                                match control_receiver.try_recv() {
-                                    Ok(control) => match control {
-                                        Control::ChangeFlow(flow) => {
-                                            use winit::event_loop::ControlFlow;
+                            while let Ok(control) = control_receiver.try_recv() {
+                                match control {
+                                    Control::ChangeFlow(flow) => {
+                                        use winit::event_loop::ControlFlow;
 
-                                            match (event_loop.control_flow(), flow) {
-                                                (
-                                                    ControlFlow::WaitUntil(current),
-                                                    ControlFlow::WaitUntil(new),
-                                                ) if new < current => {}
-                                                (
-                                                    ControlFlow::WaitUntil(target),
-                                                    ControlFlow::Wait,
-                                                ) if target > Instant::now() => {}
-                                                _ => {
-                                                    event_loop.set_control_flow(flow);
-                                                }
+                                        match (event_loop.control_flow(), flow) {
+                                            (
+                                                ControlFlow::WaitUntil(current),
+                                                ControlFlow::WaitUntil(new),
+                                            ) if new < current => {}
+                                            (
+                                                ControlFlow::WaitUntil(target),
+                                                ControlFlow::Wait,
+                                            ) if target > Instant::now() => {}
+                                            _ => {
+                                                event_loop.set_control_flow(flow);
                                             }
                                         }
-                                        Control::Exit => {
-                                            #[cfg(target_os = "macos")]
-                                            {
-                                                // Clean up all active security-scoped access before shutdown
-                                                macos_file_access::macos_file_handler::cleanup_all_security_scoped_access();
-                                            }
-                                            event_loop.exit();
+                                    }
+                                    Control::Exit => {
+                                        #[cfg(target_os = "macos")]
+                                        {
+                                            // Clean up all active security-scoped access before shutdown
+                                            macos_file_access::macos_file_handler::cleanup_all_security_scoped_access();
                                         }
-                                        _ => {}
-                                    },
-                                    Err(_) => break,
+                                        event_loop.exit();
+                                    }
+                                    _ => {}
                                 }
                             }
 
@@ -1028,8 +1022,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
                     register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
 
-                    // Create renderer with Arc<Mutex>
-                    let renderer = Arc::new(Mutex::new(Renderer::new(
+                    // Create renderer with Rc<Mutex>
+                    let renderer = std::rc::Rc::new(Mutex::new(Renderer::new(
                         &device,
                         &engine.lock().unwrap(),
                         Font::with_name("Roboto"),

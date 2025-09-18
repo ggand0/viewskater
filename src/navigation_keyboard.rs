@@ -48,6 +48,7 @@ fn init_is_prev_image_loaded(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
 
 
 // Function to check if all images are loaded for all panes
+#[allow(clippy::nonminimal_bool)]
 fn are_all_next_images_loaded(panes: &Vec<&mut Pane>, is_slider_dual: bool, _loading_status: &mut LoadingStatus) -> bool {
     if is_slider_dual {
         panes
@@ -58,6 +59,7 @@ fn are_all_next_images_loaded(panes: &Vec<&mut Pane>, is_slider_dual: bool, _loa
         panes.iter().all(|pane| !pane.dir_loaded || (pane.dir_loaded && pane.is_next_image_loaded))
     }
 }
+#[allow(clippy::nonminimal_bool)]
 fn are_all_prev_images_loaded(panes: &Vec<&mut Pane>, is_slider_dual: bool, _loading_status: &mut LoadingStatus) -> bool {
     if is_slider_dual {
         panes
