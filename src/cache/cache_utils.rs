@@ -135,7 +135,7 @@ pub fn compress_image_data(
     );
 
     // Calculate compressed data layout
-    let blocks_x = (width + 3) / 4;
+    let blocks_x = width.div_ceil(4);
     let bytes_per_block = 8; // BC1 uses 8 bytes per 4x4 block
     let row_bytes = blocks_x * bytes_per_block;
 
@@ -215,8 +215,8 @@ pub fn compress_image_data_texpresso(image_data: &[u8], width: u32, height: u32)
     let height_usize = height as usize;
 
     // Calculate the output size
-    let blocks_wide = (width_usize + 3) / 4;
-    let blocks_tall = (height_usize + 3) / 4;
+    let blocks_wide = width_usize.div_ceil(4);
+    let blocks_tall = height_usize.div_ceil(4);
     let block_size = Format::Bc1.block_size();
     let output_size = blocks_wide * blocks_tall * block_size;
 

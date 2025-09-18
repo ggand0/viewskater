@@ -186,15 +186,17 @@ impl Pane {
                         ));
                     } else {
                         // Fallback if no device/queue available
-                        let mut new_pane = Pane::default();
-                        new_pane.pane_id = i;
-                        panes.push(new_pane);
+                        panes.push(Pane {
+                            pane_id: i,
+                            .. Pane::default()
+                        });
                     }
                 } else {
                     // Fallback if no existing panes
-                    let mut new_pane = Pane::default();
-                    new_pane.pane_id = i;
-                    panes.push(new_pane);
+                    panes.push(Pane {
+                        pane_id: i,
+                        .. Pane::default()
+                    });
                 }
             }
         } else if new_size < panes.len() {

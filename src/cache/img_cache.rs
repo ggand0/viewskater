@@ -136,8 +136,8 @@ impl CachedData {
                 let height = texture.height();
 
                 // Round up to nearest multiple of 4 if needed
-                let block_width = (width + 3) / 4;
-                let block_height = (height + 3) / 4;
+                let block_width = width.div_ceil(4);
+                let block_height = height.div_ceil(4);
 
                 // Each 4x4 block is 8 bytes in BC1
                 (block_width * block_height * 8) as usize
