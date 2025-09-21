@@ -831,6 +831,7 @@ pub fn write_crash_debug_log(message: &str) {
 
 /// Writes crash debug info immediately to disk (synchronous, unbuffered)
 /// This is specifically for crashes during "Open With" startup where console isn't available
+#[cfg(target_os = "macos")]
 pub fn write_immediate_crash_log(message: &str) {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -942,12 +943,6 @@ pub fn get_crash_debug_logs_from_userdefaults() -> Vec<String> {
         
         results
     })
-}
-
-/// Export crash debug logs from NSUserDefaults to a file (non-macOS fallback)
-#[cfg(not(target_os = "macos"))]
-pub fn get_crash_debug_logs_from_userdefaults() -> Vec<String> {
-    Vec::new() // Not supported on non-macOS
 }
 
 /// Sets up a signal handler to catch low-level crashes that bypass Rust panic hooks

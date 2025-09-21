@@ -512,6 +512,7 @@ impl StdError for ImageError {}
 
 /// Helper function to handle fallback when directory reading fails
 /// This tries to treat the directory path as a single image file (useful for sandboxed apps)
+#[cfg(target_os = "macos")]
 fn handle_fallback_for_single_file(
     directory_path: &Path, 
     original_error: std::io::Error
@@ -586,6 +587,7 @@ fn handle_fallback_for_single_file(
 
 /// Helper function to request directory access when bookmark restoration fails
 /// This handles the permission dialog flow and fallbacks
+#[cfg(target_os = "macos")]
 fn request_directory_access_and_retry(
     directory_path: &Path, 
     original_error: std::io::Error
