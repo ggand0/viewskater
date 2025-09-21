@@ -2,7 +2,6 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
-use std::ffi::OsStr;
 use rfd;
 use futures::future::join_all;
 use crate::cache::img_cache::LoadOperation;
@@ -11,17 +10,10 @@ use tokio::time::Instant;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use std::panic;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::sync::{Arc, Mutex};
-use std::collections::VecDeque;
 use std::error::Error as StdError;
 use std::io;
-use std::process::Command;
+use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
-use env_logger::fmt::Color;
-use log::{LevelFilter, Metadata, Record};
 use image::GenericImageView;
 use iced_wgpu::wgpu;
 
@@ -50,13 +42,6 @@ static GPU_UPLOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("GPU Upload"))
 });
 
-// Global buffer for stdout capture
-static STDOUT_BUFFER: Lazy<Arc<Mutex<VecDeque<String>>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(VecDeque::with_capacity(1000)))
-});
-
-// Global flag to control stdout capture
-static STDOUT_CAPTURE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -525,706 +510,336 @@ impl std::fmt::Display for ImageError {
 
 impl StdError for ImageError {}
 
-pub fn get_image_paths(directory_path: &Path) ->  Result<Vec<PathBuf>, ImageError> {
+/// Helper function to handle fallback when directory reading fails
+/// This tries to treat the directory path as a single image file (useful for sandboxed apps)
+#[cfg(target_os = "macos")]
+fn handle_fallback_for_single_file(
+    directory_path: &Path, 
+    original_error: std::io::Error
+) -> Result<Vec<PathBuf>, ImageError> {
+    crate::logging::write_crash_debug_log("handle_fallback_for_single_file ENTRY");
+    crate::logging::write_crash_debug_log(&format!("Directory path: {}", directory_path.display()));
+    crate::logging::write_crash_debug_log(&format!("Original error: {}", original_error));
+    
+    debug!("🔄 FALLBACK: Attempting single file fallback due to directory access failure");
+    debug!("Directory path: {}", directory_path.display());
+    debug!("Original error: {}", original_error);
+    
+    // If we can't read the directory, check if the path itself is a valid image file
+    if directory_path.is_file() {
+        crate::logging::write_crash_debug_log("Path is a file, checking if it's a valid image");
+        debug!("✅ Path is a file, checking if it's a valid image");
+        if let Some(extension) = directory_path.extension().and_then(std::ffi::OsStr::to_str) {
+            crate::logging::write_crash_debug_log(&format!("File extension: {}", extension));
+            debug!("File extension: {}", extension);
+            if ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
+                crate::logging::write_crash_debug_log(&format!("✅ Valid image file found: {}", directory_path.display()));
+                debug!("✅ Valid image file found: {}", directory_path.display());
+                // Return just this single file
+                return Ok(vec![directory_path.to_path_buf()]);
+            } else {
+                crate::logging::write_crash_debug_log(&format!("❌ File has unsupported extension: {}", extension));
+                debug!("❌ File has unsupported extension: {}", extension);
+            }
+        } else {
+            crate::logging::write_crash_debug_log("❌ File has no extension");
+            debug!("❌ File has no extension");
+        }
+    } else {
+        crate::logging::write_crash_debug_log("❌ Path is not a file");
+        debug!("❌ Path is not a file");
+        
+        // Additional debugging for macOS sandboxing
+        #[cfg(target_os = "macos")]
+        {
+            crate::logging::write_crash_debug_log("🔍 macOS-specific debugging:");
+            crate::logging::write_crash_debug_log("  - This may be due to App Store sandboxing restrictions");
+            crate::logging::write_crash_debug_log("  - The app may have individual file access but not directory access");
+            
+            debug!("🔍 macOS-specific debugging:");
+            debug!("  - This may be due to App Store sandboxing restrictions");
+            debug!("  - The app may have individual file access but not directory access");
+            
+            let path_str = directory_path.to_string_lossy();
+            if crate::macos_file_access::macos_file_handler::has_security_scoped_access(&path_str) {
+                crate::logging::write_crash_debug_log("  - Has security-scoped access for this path");
+                debug!("  - Has security-scoped access for this path");
+            } else {
+                crate::logging::write_crash_debug_log("  - No security-scoped access for this path");
+                debug!("  - No security-scoped access for this path");
+            }
+            
+            if crate::macos_file_access::macos_file_handler::has_full_disk_access() {
+                crate::logging::write_crash_debug_log("  - Has full disk access");
+                debug!("  - Has full disk access");
+            } else {
+                crate::logging::write_crash_debug_log("  - No full disk access");
+                debug!("  - No full disk access");
+            }
+        }
+    }
+    
+    crate::logging::write_crash_debug_log("❌ FALLBACK FAILED: Cannot process as single file, returning original error");
+    debug!("❌ FALLBACK FAILED: Cannot process as single file, returning original error");
+    // If it's not a valid image file, return the original error
+    Err(ImageError::DirectoryError(original_error))
+}
+
+/// Helper function to request directory access when bookmark restoration fails
+/// This handles the permission dialog flow and fallbacks
+#[cfg(target_os = "macos")]
+fn request_directory_access_and_retry(
+    directory_path: &Path, 
+    original_error: std::io::Error
+) -> Result<Vec<PathBuf>, ImageError> {
+    crate::logging::write_crash_debug_log("request_directory_access_and_retry ENTRY");
+    crate::logging::write_crash_debug_log(&format!("Directory path: {}", directory_path.display()));
+    crate::logging::write_crash_debug_log(&format!("Original error: {}", original_error));
+    
+    #[cfg(target_os = "macos")]
+    {
+        crate::logging::write_crash_debug_log("macOS path - attempting to request new directory access");
+        debug!("Attempting to request new directory access");
+        
+        // STEP 0: Try to restore directory access from stored bookmarks before prompting
+        let path_str = directory_path.to_string_lossy();
+        crate::logging::write_crash_debug_log("STEP 0 (retry): Attempting bookmark restoration before prompting user");
+        if crate::macos_file_access::macos_file_handler::restore_directory_access_for_path(&path_str) {
+            crate::logging::write_crash_debug_log("STEP 0 (retry): ✅ Restored directory access from bookmark, retrying read");
+            
+            // Use the same NSURL-based approach as the main function for consistency
+            crate::logging::write_crash_debug_log("STEP 0 (retry): Attempting to read directory using resolved NSURL directly");
+            if let Some(file_paths) = crate::macos_file_access::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
+                crate::logging::write_crash_debug_log(&format!("STEP 0 (retry): ✅ Successfully read directory using NSURL, found {} files", file_paths.len()));
+                
+                // Convert to DirEntry-like structure for compatibility with existing code
+                let mut image_paths = Vec::new();
+                for file_path in file_paths {
+                    let path = std::path::Path::new(&file_path);
+                    if let Some(extension) = path.extension() {
+                        if let Some(ext_str) = extension.to_str() {
+                            if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
+                                image_paths.push(path.to_path_buf());
+                            }
+                        }
+                    }
+                }
+                
+                crate::logging::write_crash_debug_log(&format!("STEP 0 (retry): ✅ Found {} image files", image_paths.len()));
+                return Ok(image_paths);
+            } else {
+                crate::logging::write_crash_debug_log("STEP 0 (retry): ❌ Failed to read directory using resolved NSURL");
+            }
+        } else {
+            crate::logging::write_crash_debug_log("STEP 0 (retry): ❌ No stored bookmark or restoration failed");
+        }
+        
+        // Try permission dialog first
+        crate::logging::write_crash_debug_log("Getting accessible paths");
+        let accessible_paths = crate::macos_file_access::macos_file_handler::get_accessible_paths();
+        crate::logging::write_crash_debug_log(&format!("Got {} accessible paths", accessible_paths.len()));
+        
+        if let Some(file_path) = accessible_paths.first() {
+            crate::logging::write_crash_debug_log(&format!("Using first accessible path: {}", file_path));
+            crate::logging::write_crash_debug_log("About to call request_parent_directory_permission_dialog");
+            if crate::macos_file_access::macos_file_handler::request_parent_directory_permission_dialog(file_path) {
+                crate::logging::write_crash_debug_log("Permission dialog succeeded, retrying directory read");
+                debug!("Permission dialog succeeded, retrying directory read");
+                
+                // CRITICAL FIX: Use the resolved NSURL directly for file operations, don't convert to path string
+                let path_str = directory_path.to_string_lossy();
+                crate::logging::write_crash_debug_log("Attempting to read directory using resolved NSURL directly after permission dialog");
+                if let Some(file_paths) = crate::macos_file_access::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
+                    crate::logging::write_crash_debug_log(&format!("✅ Successfully read directory using NSURL after permission dialog, found {} files", file_paths.len()));
+                    
+                    // Convert to DirEntry-like structure for compatibility with existing code
+                    let mut image_paths = Vec::new();
+                    for file_path in file_paths {
+                        let path = std::path::Path::new(&file_path);
+                        if let Some(extension) = path.extension() {
+                            if let Some(ext_str) = extension.to_str() {
+                                if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
+                                    image_paths.push(path.to_path_buf());
+                                }
+                            }
+                        }
+                    }
+                    
+                    crate::logging::write_crash_debug_log(&format!("✅ Found {} image files after permission dialog", image_paths.len()));
+                    return Ok(image_paths);
+                } else {
+                    crate::logging::write_crash_debug_log("❌ Failed to read directory using resolved NSURL after permission dialog");
+                }
+            } else {
+                crate::logging::write_crash_debug_log("User declined permission dialog");
+                debug!("User declined permission dialog");
+            }
+        } else {
+            crate::logging::write_crash_debug_log("No accessible paths found");
+        }
+        
+        // Fallback to single file handling if all else fails
+        crate::logging::write_crash_debug_log("All directory access methods failed, falling back to single file handling");
+        debug!("All directory access methods failed, falling back to single file handling");
+        return handle_fallback_for_single_file(directory_path, original_error);
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        crate::logging::write_crash_debug_log("Non-macOS platform - returning original error");
+        return Err(ImageError::DirectoryError(original_error));
+    }
+}
+
+/// Helper function to process directory entries and filter for image files
+fn process_directory_entries(
+    entries: std::fs::ReadDir, 
+    directory_path: &Path
+) -> Result<Vec<PathBuf>, ImageError> {
     let mut image_paths: Vec<PathBuf> = Vec::new();
-
-    let dir_entries = fs::read_dir(directory_path)
-        .map_err(|e| ImageError::DirectoryError(e))?;
-
-    for entry in dir_entries.flatten() {
-        if let Some(extension) = entry.path().extension().and_then(OsStr::to_str) {
+    
+    for entry in entries.flatten() {
+        if let Some(extension) = entry.path().extension().and_then(std::ffi::OsStr::to_str) {
             if ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
                 image_paths.push(entry.path());
             }
         }
     }
 
-    // Sort paths like Nautilus file viewer. (`image_paths.sort()` won't achieve this)
-    if !image_paths.is_empty() {
+    if image_paths.is_empty() {
+        debug!("No image files found in directory: {}", directory_path.display());
+        Err(ImageError::NoImagesFound)
+    } else {
+        debug!("Found {} image files", image_paths.len());
+        // Sort paths like Nautilus file viewer for consistent ordering
         alphanumeric_sort::sort_path_slice(&mut image_paths);
         Ok(image_paths)
-    } else {
-        Err(ImageError::NoImagesFound)
     }
 }
 
-
-const MAX_LOG_LINES: usize = 1000;
-
-struct BufferLogger {
-    log_buffer: Arc<Mutex<VecDeque<String>>>,
-}
-
-impl BufferLogger {
-    #[allow(dead_code)]
-    fn new() -> Self {
-        Self {
-            log_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(MAX_LOG_LINES))),
-        }
-    }
-
-    fn log_to_buffer(&self, message: &str, target: &str, line: Option<u32>, _module_path: Option<&str>) {
-        if target.starts_with("viewskater") {
-            let mut buffer = self.log_buffer.lock().unwrap();
-            if buffer.len() == MAX_LOG_LINES {
-                buffer.pop_front();
-            }
-
-            // Format the log message to include only line number to avoid duplication
-            // The module is already in the target in most cases
-            let formatted_message = if let Some(line_num) = line {
-                format!("{}:{} {}", target, line_num, message)
-            } else {
-                format!("{} {}", target, message)
-            };
-
-            buffer.push_back(formatted_message);
-        }
-    }
-
-    #[allow(dead_code)]
-    fn dump_logs(&self) -> Vec<String> {
-        let buffer = self.log_buffer.lock().unwrap();
-        buffer.iter().cloned().collect()
-    }
-
-    #[allow(dead_code)]
-    fn get_shared_buffer(&self) -> Arc<Mutex<VecDeque<String>>> {
-        Arc::clone(&self.log_buffer)
-    }
-}
-
-impl log::Log for BufferLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.target().starts_with("viewskater") && metadata.level() <= LevelFilter::Debug
-    }
-
-    fn log(&self, record: &Record) {
-        if self.enabled(record.metadata()) {
-            let message = format!("{:<5} {}", record.level(), record.args());
-            self.log_to_buffer(
-                &message,
-                record.target(),
-                record.line(),
-                record.module_path()
-            );
-        }
-    }
-
-    fn flush(&self) {}
-}
-
-#[allow(dead_code)]
-struct CompositeLogger {
-    console_logger: env_logger::Logger,
-    buffer_logger: BufferLogger,
-}
-
-impl log::Log for CompositeLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        self.console_logger.enabled(metadata) || self.buffer_logger.enabled(metadata)
-    }
-
-    fn log(&self, record: &Record) {
-        if self.console_logger.enabled(record.metadata()) {
-            self.console_logger.log(record);
-        }
-        if self.buffer_logger.enabled(record.metadata()) {
-            self.buffer_logger.log(record);
-        }
-    }
-
-    fn flush(&self) {
-        self.console_logger.flush();
-        self.buffer_logger.flush();
-    }
-}
-
-use env_logger::fmt::Formatter; // Correct import
-use chrono::Utc;
-
-#[allow(dead_code)]
-pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
-    let buffer_logger = BufferLogger::new();
-    let shared_buffer = buffer_logger.get_shared_buffer();
-
-    let mut builder = env_logger::Builder::new();
-
-    // First check if RUST_LOG is set - if so, use that configuration
-    if std::env::var("RUST_LOG").is_ok() {
-        builder.parse_env("RUST_LOG");
-    } else {
-        // If RUST_LOG is not set, use different defaults for debug/release builds
-        if cfg!(debug_assertions) {
-            // In debug mode, show debug logs and above
-            builder.filter(Some("viewskater"), LevelFilter::Debug);
-        } else {
-            // In release mode, only show errors by default
-            builder.filter(Some("viewskater"), LevelFilter::Error);
-        }
-    }
-
-    // Filter out all other crates' logs
-    builder.filter(None, LevelFilter::Off);
-
-    builder.format(|buf: &mut Formatter, record: &Record| {
-        let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-
-        // Create the module:line part
-        let module_info = if let (Some(module), Some(line)) = (record.module_path(), record.line()) {
-            format!("{}:{}", module, line)
-        } else if let Some(module) = record.module_path() {
-            module.to_string()
-        } else if let Some(line) = record.line() {
-            format!("line:{}", line)
-        } else {
-            "unknown".to_string()
-        };
-
-        let mut level_style = buf.style();
-        let mut meta_style = buf.style();
-
-        // Set level colors
-        match record.level() {
-            Level::Error => level_style.set_color(Color::Red).set_bold(true),
-            Level::Warn => level_style.set_color(Color::Yellow).set_bold(true),
-            Level::Info => level_style.set_color(Color::Green).set_bold(true),
-            Level::Debug => level_style.set_color(Color::Blue).set_bold(true),
-            Level::Trace => level_style.set_color(Color::White),
-        };
-
-        // Set meta style color based on platform
-        #[cfg(target_os = "macos")]
-        {
-            // Color::Rgb does not work on macOS, so we use Color::Blue as a workaround
-            meta_style.set_color(Color::Blue);
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            // Color formatting with Color::Rgb works fine on Windows/Linux
-            meta_style.set_color(Color::Rgb(120, 120, 120));
-        }
-
-        writeln!(
-            buf,
-            "{} {} {} {}",
-            meta_style.value(timestamp),
-            level_style.value(record.level()),
-            meta_style.value(module_info),
-            record.args()
-        )
-    });
-
-    let console_logger = builder.build();
-
-    let composite_logger = CompositeLogger {
-        console_logger,
-        buffer_logger,
-    };
-
-    log::set_boxed_logger(Box::new(composite_logger)).expect("Failed to set logger");
-
-    // Always set the maximum level to Trace so that filtering works correctly
-    log::set_max_level(LevelFilter::Trace);
-
-    shared_buffer
-}
-
-pub fn get_log_directory(app_name: &str) -> PathBuf {
-    dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(app_name).join("logs")
-}
-
-/// Exports the current log buffer to a debug log file.
-///
-/// This function writes the last 1,000 lines of logs (captured via the log macros like debug!, info!, etc.)
-/// to a separate debug log file. This is useful for troubleshooting issues without waiting for a crash.
-///
-/// NOTE: This currently captures logs from the Rust `log` crate macros (debug!, info!, warn!, error!)
-/// but does NOT capture raw `println!` statements. To capture println! statements, stdout redirection
-/// would be needed, which is more complex and may interfere with normal console output.
-///
-/// # Arguments
-/// * `app_name` - The application name used for the log directory
-/// * `log_buffer` - The shared log buffer containing the recent log messages
-///
-/// # Returns
-/// * `Ok(PathBuf)` - The path to the created debug log file
-/// * `Err(std::io::Error)` - An error if the export fails
-pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) -> Result<PathBuf, std::io::Error> {
-    // NOTE: Use println! instead of debug! to avoid circular logging
-    // (debug! calls would be added to the same buffer we're trying to export)
-    println!("DEBUG: export_debug_logs called");
-
-    let log_dir_path = get_log_directory(app_name);
-    println!("DEBUG: Log directory path: {}", log_dir_path.display());
-
-    std::fs::create_dir_all(&log_dir_path)?;
-    println!("DEBUG: Created log directory");
-
-    let debug_log_path = log_dir_path.join("debug.log");
-    println!("DEBUG: Debug log path: {}", debug_log_path.display());
-
-    println!("DEBUG: About to open file for writing");
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&debug_log_path)?;
-    println!("DEBUG: File opened successfully");
-
-    // Write formatted timestamp
-    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-    println!("DEBUG: About to write header");
-
-    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] ViewSkater Debug Log Export", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] Export timestamp: {}", timestamp, timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] ", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] IMPORTANT: This log captures output from Rust log macros", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] (debug!, info!, warn!, error!) but NOT raw println! statements.", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] Maximum captured entries: {}", timestamp, MAX_LOG_LINES)?;
-    writeln!(file)?; // Empty line for readability
-    println!("DEBUG: Header written");
-
-    // Export all log entries from the buffer
-    println!("DEBUG: About to lock log buffer");
-    let buffer_size;
-    let buffer_empty;
-    let log_entries: Vec<String>;
-
+/// Cross-platform image path discovery
+/// Routes to OS-specific implementations based on compile target
+pub fn get_image_paths(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError> {
+    #[cfg(target_os = "macos")]
     {
-        let buffer = log_buffer.lock().unwrap();
-        println!("DEBUG: Log buffer locked, size: {}", buffer.len());
-        buffer_size = buffer.len();
-        buffer_empty = buffer.is_empty();
-        log_entries = buffer.iter().cloned().collect();
-        println!("DEBUG: Copied {} entries, releasing lock", buffer_size);
-    } // Lock is dropped here
-
-    println!("DEBUG: Buffer lock released");
-
-    if buffer_empty {
-        println!("DEBUG: Buffer is empty, writing empty message");
-        writeln!(file, "{} [DEBUG EXPORT] No log entries found in buffer", timestamp)?;
-        writeln!(file, "{} [DEBUG EXPORT] This may indicate that:", timestamp)?;
-        writeln!(file, "{} [DEBUG EXPORT] 1. No log macros have been called yet", timestamp)?;
-        writeln!(file, "{} [DEBUG EXPORT] 2. All logs were filtered out by log level settings", timestamp)?;
-        writeln!(file, "{} [DEBUG EXPORT] 3. The app just started and no logs have been generated", timestamp)?;
-    } else {
-        println!("DEBUG: Writing {} log entries", buffer_size);
-        writeln!(file, "{} [DEBUG EXPORT] Found {} log entries (showing last {} max):", timestamp, buffer_size, MAX_LOG_LINES)?;
-        writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-        writeln!(file)?; // Empty line for readability
-
-        for (_i, log_entry) in log_entries.iter().enumerate() {
-            writeln!(file, "{} {}", timestamp, log_entry)?;
-        }
-        println!("DEBUG: All entries written");
+        get_image_paths_macos(directory_path)
     }
-
-    println!("DEBUG: Writing footer");
-    writeln!(file)?; // Final empty line
-    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] Export completed successfully", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] Total entries exported: {}", timestamp, buffer_size)?;
-    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-
-    println!("DEBUG: About to flush file");
-    file.flush()?;
-    println!("DEBUG: File flushed");
-
-    println!("DEBUG: About to call info! macro");
-    info!("Debug logs exported to: {}", debug_log_path.display());
-    println!("DEBUG: info! macro completed");
-
-    println!("DEBUG: export_debug_logs completed successfully");
-
-    Ok(debug_log_path)
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        get_image_paths_standard(directory_path)
+    }
 }
 
-/// Exports debug logs and opens the log directory in the file explorer.
-///
-/// This is a convenience function that combines exporting debug logs and opening
-/// the log directory for easy access to the exported files.
-///
-/// # Arguments
-/// * `app_name` - The application name used for the log directory
-/// * `log_buffer` - The shared log buffer containing the recent log messages
-pub fn export_and_open_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) {
-    // NOTE: Use println! to avoid circular logging during export operations
-    println!("DEBUG: About to export debug logs...");
-    if let Ok(buffer) = log_buffer.lock() {
-        println!("DEBUG: Buffer size at export time: {}", buffer.len());
-        if buffer.len() > 0 {
-            println!("DEBUG: First few entries:");
-            for (i, entry) in buffer.iter().take(3).enumerate() {
-                println!("DEBUG: Entry {}: {}", i, entry);
-            }
-        }
-    }
+/// Standard implementation for non-macOS platforms
+/// Simple directory reading without sandbox considerations
+#[cfg(not(target_os = "macos"))]
+fn get_image_paths_standard(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError> {
+    debug!("Standard directory reading for path: {}", directory_path.display());
+    
+    let dir_entries = fs::read_dir(directory_path)
+        .map_err(ImageError::DirectoryError)?;
+    
+    process_directory_entries(dir_entries, directory_path)
+}
 
-    match export_debug_logs(app_name, log_buffer) {
-        Ok(debug_log_path) => {
-            info!("Debug logs successfully exported to: {}", debug_log_path.display());
-            println!("Debug logs exported to: {}", debug_log_path.display());
+/// macOS implementation with App Store sandbox support
+/// Handles security-scoped bookmarks and "Open With" scenarios
+#[cfg(target_os = "macos")]
+fn get_image_paths_macos(directory_path: &Path) -> Result<Vec<PathBuf>, ImageError> {
+    crate::logging::write_crash_debug_log("======== get_image_paths_macos ENTRY ========");
+    crate::logging::write_crash_debug_log(&format!("Directory path: {}", directory_path.display()));
 
-            // Temporarily disable automatic directory opening to prevent hangs
-            // let log_dir = debug_log_path.parent().unwrap_or_else(|| Path::new("."));
-            // open_in_file_explorer(&log_dir.to_string_lossy().to_string());
+    // Try standard directory reading first
+    match fs::read_dir(directory_path) {
+        Ok(entries) => {
+            crate::logging::write_crash_debug_log("✅ Standard directory read successful");
+            debug!("Successfully read directory normally (drag-and-drop or non-sandboxed): {}", directory_path.display());
+            return process_directory_entries(entries, directory_path);
         }
         Err(e) => {
-            error!("Failed to export debug logs: {}", e);
-            eprintln!("Failed to export debug logs: {}", e);
+            crate::logging::write_crash_debug_log(&format!("❌ Standard directory read failed: {}", e));
+            debug!("Failed to read directory normally: {} (error: {})", directory_path.display(), e);
+            
+            // Handle macOS App Store sandbox scenarios
+            return handle_macos_sandbox_access(directory_path, e);
         }
     }
 }
 
-pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>) {
-    let log_file_path = get_log_directory(app_name).join("panic.log");
-    std::fs::create_dir_all(log_file_path.parent().unwrap()).expect("Failed to create log directory");
-
-    panic::set_hook(Box::new(move |info| {
-        let backtrace = backtrace::Backtrace::new();
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&log_file_path)
-            .expect("Failed to open panic log file");
-
-        // Write formatted timestamp
-        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-
-        // Extract panic location information if available
-        let location = if let Some(location) = info.location() {
-            format!("{}:{}", location.file(), location.line())
+/// Handle macOS App Store sandbox directory access
+/// This includes bookmark restoration and "Open With" permission dialogs
+#[cfg(target_os = "macos")]
+fn handle_macos_sandbox_access(
+    directory_path: &Path, 
+    original_error: std::io::Error
+) -> Result<Vec<PathBuf>, ImageError> {
+    let path_str = directory_path.to_string_lossy();
+    crate::logging::write_crash_debug_log("macOS sandbox - checking for 'Open With' scenario");
+    
+    // STEP 1: Try to restore directory access from stored bookmarks
+    crate::logging::write_crash_debug_log("STEP 1: Attempting bookmark restoration");
+    let bookmark_restored = crate::macos_file_access::macos_file_handler::restore_directory_access_for_path(&path_str);
+    
+    if bookmark_restored {
+        crate::logging::write_crash_debug_log("STEP 1: ✅ Bookmark restored, trying NSURL directory read");
+        if let Some(file_paths) = crate::macos_file_access::macos_file_handler::read_directory_with_security_scoped_url(&path_str) {
+            return convert_file_paths_to_image_paths(file_paths);
         } else {
-            "unknown location".to_string()
-        };
-
-        // Create formatted messages that we'll use for both console and file
-        let header_msg = format!("[PANIC] at {} - {}", location, info);
-        let backtrace_header = "[PANIC] Backtrace:";
-
-        // Format backtrace lines
-        let mut backtrace_lines = Vec::new();
-        for line in format!("{:?}", backtrace).lines() {
-            backtrace_lines.push(format!("[BACKTRACE] {}", line.trim()));
+            crate::logging::write_crash_debug_log("STEP 1: ❌ NSURL directory read failed");
         }
-
-        // Log header to file
-        writeln!(file, "{} {}", timestamp, header_msg).expect("Failed to write panic info");
-        writeln!(file, "{} {}", timestamp, backtrace_header).expect("Failed to write backtrace header");
-
-        // Log backtrace to file
-        for line in &backtrace_lines {
-            writeln!(file, "{} {}", timestamp, line).expect("Failed to write backtrace line");
-        }
-
-        // Add double linebreak between backtrace and log entries
-        writeln!(file).expect("Failed to write newline");
-        writeln!(file).expect("Failed to write second newline");
-
-        // Dump the last N log lines from the buffer with timestamps
-        writeln!(file, "{} [PANIC] Last {} log entries:", timestamp, MAX_LOG_LINES)
-            .expect("Failed to write log header");
-
-        let buffer = log_buffer.lock().unwrap();
-        for log in buffer.iter() {
-            writeln!(file, "{} {}", timestamp, log).expect("Failed to write log entry");
-        }
-
-        // ALSO PRINT TO CONSOLE (this is the new part)
-        // Use eprintln! to print to stderr
-        eprintln!("\n\n{}", header_msg);
-        eprintln!("{}", backtrace_header);
-        for line in &backtrace_lines {
-            eprintln!("{}", line);
-        }
-        eprintln!("\nA complete crash log has been written to: {}", log_file_path.display());
-    }));
-}
-
-
-pub fn open_in_file_explorer(path: &str) {
-    if cfg!(target_os = "windows") {
-        // Windows: Use "explorer" to open the directory
-        match Command::new("explorer")
-            .arg(path)
-            .spawn() {
-                Ok(_) => println!("Opened directory in File Explorer: {}", path),
-                Err(e) => eprintln!("Failed to open directory in File Explorer: {}", e),
-            }
-    } else if cfg!(target_os = "macos") {
-        // macOS: Use "open" to open the directory
-        match Command::new("open")
-            .arg(path)
-            .spawn() {
-                Ok(_) => println!("Opened directory in Finder: {}", path),
-                Err(e) => eprintln!("Failed to open directory in Finder: {}", e),
-            }
-    } else if cfg!(target_os = "linux") {
-        // Linux: Use "xdg-open" to open the directory (works with most desktop environments)
-        match Command::new("xdg-open")
-            .arg(path)
-            .spawn() {
-                Ok(_) => println!("Opened directory in File Explorer: {}", path),
-                Err(e) => eprintln!("Failed to open directory in File Explorer: {}", e),
-            }
     } else {
-        error!("Opening directories is not supported on this OS.");
+        crate::logging::write_crash_debug_log("STEP 1: ❌ No bookmark found or restoration failed");
+    }
+    
+    // STEP 2: Check if this is an "Open With" scenario
+    let accessible_paths = crate::macos_file_access::macos_file_handler::get_accessible_paths();
+    let has_individual_file_access = accessible_paths
+        .iter()
+        .any(|key| {
+            let key_path = std::path::Path::new(key);
+            key_path.is_file() && 
+            key_path.parent()
+                .map(|parent| parent.to_string_lossy() == path_str)
+                .unwrap_or(false)
+        });
+    
+    if has_individual_file_access {
+        crate::logging::write_crash_debug_log("STEP 2: ✅ Confirmed 'Open With' scenario - requesting permission");
+        debug!("Confirmed 'Open With' scenario");
+        return request_directory_access_and_retry(directory_path, original_error);
+    } else {
+        crate::logging::write_crash_debug_log("STEP 2: ❌ Not an 'Open With' scenario - regular directory access failure");
+        debug!("Not an 'Open With' scenario - regular directory access failure");
+        return Err(ImageError::DirectoryError(original_error));
     }
 }
 
-/// Sets up stdout capture using Unix pipes to intercept println! and other stdout output.
-///
-/// This function creates a pipe, redirects stdout to the write end of the pipe,
-/// and spawns a thread to read from the read end and capture the output.
-///
-/// # Returns
-/// * `Arc<Mutex<VecDeque<String>>>` - The shared stdout buffer
-#[cfg(unix)]
-pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
-    use std::os::unix::io::FromRawFd;
-    use std::fs::File;
-    use std::io::{BufReader, BufRead};
-
-    // Create a pipe
-    let mut pipe_fds = [0i32; 2];
-    unsafe {
-        if libc::pipe(pipe_fds.as_mut_ptr()) != 0 {
-            eprintln!("Failed to create pipe for stdout capture");
-            return Arc::clone(&STDOUT_BUFFER);
-        }
-    }
-
-    let read_fd = pipe_fds[0];
-    let write_fd = pipe_fds[1];
-
-    // Duplicate the original stdout so we can restore it later
-    let original_stdout_fd = unsafe { libc::dup(libc::STDOUT_FILENO) };
-    if original_stdout_fd == -1 {
-        eprintln!("Failed to duplicate original stdout");
-        unsafe {
-            libc::close(read_fd);
-            libc::close(write_fd);
-        }
-        return Arc::clone(&STDOUT_BUFFER);
-    }
-
-    // Redirect stdout to the write end of the pipe
-    unsafe {
-        if libc::dup2(write_fd, libc::STDOUT_FILENO) == -1 {
-            eprintln!("Failed to redirect stdout to pipe");
-            libc::close(read_fd);
-            libc::close(write_fd);
-            libc::close(original_stdout_fd);
-            return Arc::clone(&STDOUT_BUFFER);
-        }
-    }
-
-    // Create a file from the read end of the pipe
-    let pipe_reader = unsafe { File::from_raw_fd(read_fd) };
-    let mut buf_reader = BufReader::new(pipe_reader);
-
-    // Create a writer for the original stdout
-    let original_stdout = unsafe { File::from_raw_fd(original_stdout_fd) };
-
-    // Enable stdout capture
-    STDOUT_CAPTURE_ENABLED.store(true, std::sync::atomic::Ordering::SeqCst);
-
-    // Clone the buffer for the thread
-    let buffer = Arc::clone(&STDOUT_BUFFER);
-
-    // Spawn a thread to read from the pipe and capture output
-    std::thread::spawn(move || {
-        let mut line = String::new();
-        let mut original_stdout = original_stdout;
-
-        while STDOUT_CAPTURE_ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
-            line.clear();
-            match buf_reader.read_line(&mut line) {
-                Ok(0) => break, // EOF
-                Ok(_) => {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        // Write to original stdout (console)
-                        let _ = writeln!(original_stdout, "{}", trimmed);
-                        let _ = original_stdout.flush();
-
-                        // Capture to buffer
-                        if let Ok(mut buffer) = buffer.lock() {
-                            if buffer.len() >= 1000 {
-                                buffer.pop_front();
-                            }
-                            let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-                            buffer.push_back(format!("{} [STDOUT] {}", timestamp, trimmed));
-                        }
-                    }
+/// Convert file paths from security-scoped URL reading to image paths
+#[cfg(target_os = "macos")]
+fn convert_file_paths_to_image_paths(
+    file_paths: Vec<String>
+) -> Result<Vec<PathBuf>, ImageError> {
+    let mut image_paths = Vec::new();
+    
+    for file_path in file_paths {
+        let path = std::path::Path::new(&file_path);
+        if let Some(extension) = path.extension() {
+            if let Some(ext_str) = extension.to_str() {
+                if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
+                    image_paths.push(path.to_path_buf());
                 }
-                Err(_) => break,
             }
         }
-    });
-
-    // Close the write end of the pipe in this process (the duplicated stdout will handle writing)
-    unsafe {
-        libc::close(write_fd);
     }
-
-    // Add initialization message to buffer
-    if let Ok(mut buf) = STDOUT_BUFFER.lock() {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-        buf.push_back(format!("{} [STDOUT] ViewSkater stdout capture initialized", timestamp));
-    }
-
-    // This println! should now be captured
-    println!("Stdout capture initialized - all println! statements will be captured");
-
-    Arc::clone(&STDOUT_BUFFER)
-}
-
-/// Sets up stdout capture (Windows/non-Unix fallback - manual capture only)
-///
-/// This function provides a fallback for non-Unix systems where stdout redirection
-/// is more complex. It uses manual capture only.
-///
-/// # Returns
-/// * `Arc<Mutex<VecDeque<String>>>` - The shared stdout buffer
-#[cfg(not(unix))]
-pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
-    // Add initialization message to buffer
-    if let Ok(mut buf) = STDOUT_BUFFER.lock() {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-        buf.push_back(format!("{} [STDOUT] ViewSkater stdout capture initialized", timestamp));
-    }
-
-    println!("Stdout capture initialized (manual mode) - use capture_stdout() for important messages");
-
-    Arc::clone(&STDOUT_BUFFER)
-}
-
-/// Exports stdout logs to a separate file.
-///
-/// This function writes the captured stdout output (from println! and other stdout writes)
-/// to a separate stdout log file. This complements the debug log export.
-///
-/// # Arguments
-/// * `app_name` - The application name used for the log directory
-/// * `stdout_buffer` - The shared stdout buffer containing captured output
-///
-/// # Returns
-/// * `Ok(PathBuf)` - The path to the created stdout log file
-/// * `Err(std::io::Error)` - An error if the export fails
-pub fn export_stdout_logs(app_name: &str, stdout_buffer: Arc<Mutex<VecDeque<String>>>) -> Result<PathBuf, std::io::Error> {
-    let log_dir_path = get_log_directory(app_name);
-    std::fs::create_dir_all(&log_dir_path)?;
-
-    let stdout_log_path = log_dir_path.join("stdout.log");
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&stdout_log_path)?;
-
-    // Write formatted timestamp
-    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-
-    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] ViewSkater Stdout Log Export", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] Export timestamp: {}", timestamp, timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] ", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] This log captures stdout output including println! statements", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] Maximum captured entries: 1000", timestamp)?;
-    writeln!(file)?; // Empty line for readability
-
-    // Export all stdout entries from the buffer
-    let buffer = stdout_buffer.lock().unwrap();
-    if buffer.is_empty() {
-        writeln!(file, "{} [STDOUT EXPORT] No stdout entries found in buffer", timestamp)?;
-        writeln!(file, "{} [STDOUT EXPORT] Note: Automatic stdout capture is disabled", timestamp)?;
-        writeln!(file, "{} [STDOUT EXPORT] Use debug logs (debug!, info!, etc.) for logging instead", timestamp)?;
+    
+    if image_paths.is_empty() {
+        crate::logging::write_crash_debug_log("❌ No image files found in security-scoped directory");
+        Err(ImageError::NoImagesFound)
     } else {
-        writeln!(file, "{} [STDOUT EXPORT] Found {} stdout entries:", timestamp, buffer.len())?;
-        writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-        writeln!(file)?; // Empty line for readability
-
-        for stdout_entry in buffer.iter() {
-            writeln!(file, "{}", stdout_entry)?;
-        }
-    }
-
-    writeln!(file)?; // Final empty line
-    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] Export completed successfully", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] Total entries exported: {}", timestamp, buffer.len())?;
-    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-
-    file.flush()?;
-
-    info!("Stdout logs exported to: {}", stdout_log_path.display());
-    println!("Stdout logs exported to: {}", stdout_log_path.display());
-
-    Ok(stdout_log_path)
-}
-
-/// Exports both debug logs and stdout logs, then opens the log directory.
-///
-/// This is a convenience function that exports both types of logs and opens
-/// the log directory for easy access to all exported files.
-///
-/// # Arguments
-/// * `app_name` - The application name used for the log directory
-/// * `log_buffer` - The shared log buffer containing recent log messages
-/// * `stdout_buffer` - The shared stdout buffer containing captured output
-pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>, stdout_buffer: Arc<Mutex<VecDeque<String>>>) {
-    // NOTE: Use println! to avoid circular logging during export operations
-    println!("DEBUG: About to export all logs...");
-    if let Ok(log_buf) = log_buffer.lock() {
-        println!("DEBUG: Log buffer size: {}", log_buf.len());
-    }
-    if let Ok(stdout_buf) = stdout_buffer.lock() {
-        println!("DEBUG: Stdout buffer size: {}", stdout_buf.len());
-    }
-
-    // Export debug logs
-    match export_debug_logs(app_name, log_buffer) {
-        Ok(debug_log_path) => {
-            info!("Debug logs successfully exported to: {}", debug_log_path.display());
-
-            // Open the log directory in file explorer (using debug log path)
-            let log_dir = debug_log_path.parent().unwrap_or_else(|| Path::new("."));
-            open_in_file_explorer(&log_dir.to_string_lossy().to_string());
-        }
-        Err(e) => {
-            error!("Failed to export debug logs: {}", e);
-            eprintln!("Failed to export debug logs: {}", e);
-        }
-    }
-
-    // Only export stdout logs if there's actually something in the buffer
-    let should_export_stdout = {
-        if let Ok(stdout_buf) = stdout_buffer.lock() {
-            !stdout_buf.is_empty()
-        } else {
-            false
-        }
-    };
-
-    if should_export_stdout {
-        match export_stdout_logs(app_name, stdout_buffer) {
-            Ok(stdout_log_path) => {
-                info!("Stdout logs successfully exported to: {}", stdout_log_path.display());
-            }
-            Err(e) => {
-                error!("Failed to export stdout logs: {}", e);
-                eprintln!("Failed to export stdout logs: {}", e);
-            }
-        }
-    } else {
-        println!("Skipping stdout.log export - buffer is empty (stdout capture disabled)");
+        crate::logging::write_crash_debug_log(&format!("✅ Found {} image files via security-scoped access", image_paths.len()));
+        // Sort paths for consistent ordering
+        alphanumeric_sort::sort_path_slice(&mut image_paths);
+        Ok(image_paths)
     }
 }

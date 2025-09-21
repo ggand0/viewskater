@@ -14,6 +14,10 @@ mod config;
 mod app;
 mod utils;
 mod build_info;
+mod logging;
+
+#[cfg(target_os = "macos")]
+mod macos_file_access;
 mod archive_cache;
 
 #[allow(unused_imports)]
@@ -29,6 +33,8 @@ use std::time::Duration;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::VecDeque;
+use chrono;
+
 
 use winit::{
     event::WindowEvent,
@@ -210,22 +216,41 @@ fn update_memory_usage() {
     utils::mem::update_memory_usage();
 }
 
+
+
 pub fn main() -> Result<(), winit::error::EventLoopError> {
+    // CRITICAL: Write to crash log IMMEDIATELY - before any other operations
+    crate::logging::write_crash_debug_log("MAIN: App startup initiated");
+    
+    // Set up signal handler FIRST to catch low-level crashes
+    crate::logging::write_crash_debug_log("MAIN: About to setup signal handler");
+    crate::logging::setup_signal_crash_handler();
+    crate::logging::write_crash_debug_log("MAIN: Signal handler setup completed");
+    
     // Set up stdout capture FIRST, before any println! statements
-    let shared_stdout_buffer = file_io::setup_stdout_capture();
+    crate::logging::write_crash_debug_log("MAIN: About to setup stdout capture");
+    let shared_stdout_buffer = crate::logging::setup_stdout_capture();
     set_shared_stdout_buffer(Arc::clone(&shared_stdout_buffer));
 
+    crate::logging::write_crash_debug_log("MAIN: Stdout capture setup completed");
+    
     println!("ViewSkater starting...");
+    crate::logging::write_crash_debug_log("MAIN: ViewSkater starting message printed");
+    
 
     // Set up panic hook to log to a file
+    crate::logging::write_crash_debug_log("MAIN: About to setup logger");
     let app_name = "viewskater";
-    let shared_log_buffer = file_io::setup_logger(app_name);
-
+    let shared_log_buffer = crate::logging::setup_logger(app_name);
+    
     // Store the log buffer reference for global access
     set_shared_log_buffer(Arc::clone(&shared_log_buffer));
-
-    file_io::setup_panic_hook(app_name, shared_log_buffer);
-
+    crate::logging::write_crash_debug_log("MAIN: Logger setup completed");
+    
+    crate::logging::write_crash_debug_log("MAIN: About to setup panic hook");
+    crate::logging::setup_panic_hook(app_name, shared_log_buffer);
+    crate::logging::write_crash_debug_log("MAIN: Panic hook setup completed");
+    
     // Initialize winit FIRST
     let event_loop = EventLoop::<Action<Message>>::with_user_event()
         .build()
@@ -234,15 +259,45 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     // Set up the file channel AFTER winit initialization
     let (file_sender, file_receiver) = mpsc::channel();
 
+    // Test crash debug logging immediately at startup
+    crate::logging::write_crash_debug_log("========== VIEWSKATER STARTUP ==========");
+    crate::logging::write_crash_debug_log("Testing crash debug logging system at startup");
+    crate::logging::write_crash_debug_log(&format!("App version: {}", env!("CARGO_PKG_VERSION")));
+    crate::logging::write_crash_debug_log(&format!("Timestamp: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+    crate::logging::write_crash_debug_log("If you can see this message, crash debug logging is working");
+    crate::logging::write_crash_debug_log("=========================================");
+    
+    // Test all logging methods comprehensively
+    #[cfg(target_os = "macos")]
+    macos_file_access::test_crash_logging_methods();
+
     // Register file handler BEFORE creating the runner
     // This is required on macOS so the app can receive file paths
     // when launched by opening a file (e.g. double-clicking in Finder)
     // or using "Open With". Must be set up early in app lifecycle.
     #[cfg(target_os = "macos")]
     {
-        macos_file_handler::set_file_channel(file_sender);
-        macos_file_handler::register_file_handler();
+        crate::logging::write_crash_debug_log("MAIN: About to set file channel");
+        macos_file_access::macos_file_handler::set_file_channel(file_sender);
+        crate::logging::write_crash_debug_log("MAIN: File channel set");
+        
+        // NOTE: Automatic bookmark cleanup is DISABLED in production builds to avoid
+        // wiping valid stored access. Use a special maintenance build or developer
+        // tooling to invoke cleanup if ever needed.
+        
+        crate::logging::write_crash_debug_log("MAIN: About to register file handler");
+        macos_file_access::macos_file_handler::register_file_handler();
+        crate::logging::write_crash_debug_log("MAIN: File handler registered");
+        
+        // Try to restore full disk access from previous session
+        crate::logging::write_crash_debug_log("MAIN: About to restore full disk access");
+        debug!("🔍 Attempting to restore full disk access on startup");
+        let restore_result = macos_file_access::macos_file_handler::restore_full_disk_access();
+        debug!("🔍 Restore full disk access result: {}", restore_result);
+        crate::logging::write_crash_debug_log(&format!("MAIN: Restore full disk access result: {}", restore_result));
+        
         println!("macOS file handler registered");
+        crate::logging::write_crash_debug_log("MAIN: macOS file handler registration completed");
     }
 
     // Handle command line arguments for Linux (and Windows)
@@ -393,6 +448,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
+                                    #[cfg(target_os = "macos")]
+                                    {
+                                        // Clean up all active security-scoped access before shutdown
+                                        macos_file_access::macos_file_handler::cleanup_all_security_scoped_access();
+                                    }
                                     event_loop.exit();
                                 }
                                 WindowEvent::CursorMoved { position, .. } => {
@@ -806,6 +866,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             }
                                         }
                                         Control::Exit => {
+                                            #[cfg(target_os = "macos")]
+                                            {
+                                                // Clean up all active security-scoped access before shutdown
+                                                macos_file_access::macos_file_handler::cleanup_all_security_scoped_access();
+                                            }
                                             event_loop.exit();
                                         }
                                         _ => {}
@@ -1180,97 +1245,3 @@ fn track_async_delivery() {
         trace!("TIMING: Phase difference: {:?}", phase_diff);
     }
 }
-
-
-/// macOS integration for opening image files via Finder.
-///
-/// This module handles cases where the user launches ViewSkater by double-clicking
-/// an image file or using "Open With" in Finder. macOS sends the file path through
-/// the `application:openFiles:` message, which is delivered to the app's delegate.
-///
-/// This code:
-/// - Subclasses the existing `NSApplicationDelegate` to override `application:openFiles:`
-/// - Forwards received file paths to Rust using an MPSC channel
-/// - Disables automatic argument parsing by setting `NSTreatUnknownArgumentsAsOpen = NO`
-///
-/// The channel is set up in `main.rs` and connected to the rest of the app so that
-/// the selected image can be loaded on startup.
-
-#[cfg(target_os = "macos")]
-mod macos_file_handler {
-    use std::sync::mpsc::Sender;
-    use objc2::rc::autoreleasepool;
-    use objc2::{msg_send, sel};
-    use objc2::declare::ClassBuilder;
-    use objc2::runtime::{AnyObject, Sel, AnyClass};
-    use objc2_app_kit::NSApplication;
-    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults};
-    use objc2::rc::Retained;
-
-    static mut FILE_CHANNEL: Option<Sender<String>> = None;
-
-    pub fn set_file_channel(sender: Sender<String>) {
-        unsafe {
-            FILE_CHANNEL = Some(sender);
-        }
-    }
-
-    unsafe extern "C" fn handle_open_files(
-        _this: &mut AnyObject,
-        _sel: Sel,
-        _sender: &AnyObject,
-        files: &NSArray<NSString>,
-    ) {
-        println!("application_open_files called with {} files", files.len());
-        autoreleasepool(|pool| {
-            for file in files.iter() {
-                let path = file.as_str(pool).to_owned();
-                println!("Received file path: {}", path);
-                unsafe {
-                    if let Some(ref sender) = *(&raw const FILE_CHANNEL) {
-                        if let Err(e) = sender.send(path.clone()) {
-                            println!("Failed to send file path through channel: {}", e);
-                        } else {
-                            println!("Successfully sent file path through channel");
-                        }
-                    } else {
-                        println!("FILE_CHANNEL is None when trying to send path");
-                    }
-                }
-            }
-        });
-    }
-
-    pub fn register_file_handler() {
-        let mtm = MainThreadMarker::new().expect("Must be on main thread");
-        unsafe {
-            let app = NSApplication::sharedApplication(mtm);
-
-            // Get the existing delegate
-            let delegate = app.delegate().unwrap();
-
-            // Find out class of the NSApplicationDelegate
-            let class: &AnyClass = msg_send![&delegate, class];
-
-            // Create a subclass of the existing delegate
-            let mut my_class = ClassBuilder::new("ViewSkaterApplicationDelegate", class).unwrap();
-            my_class.add_method(
-                sel!(application:openFiles:),
-                handle_open_files as unsafe extern "C" fn(_, _, _, _) -> _,
-            );
-            let class = my_class.register();
-
-            // Cast and set the class
-            let delegate_obj = Retained::cast::<AnyObject>(delegate);
-            AnyObject::set_class(&delegate_obj, class);
-
-            // Prevent AppKit from interpreting our command line
-            let key = NSString::from_str("NSTreatUnknownArgumentsAsOpen");
-            let keys = vec![key.as_ref()];
-            let objects = vec![Retained::cast::<AnyObject>(NSString::from_str("NO"))];
-            let dict = NSDictionary::from_vec(&keys, objects);
-            NSUserDefaults::standardUserDefaults().registerDefaults(dict.as_ref());
-        }
-    }
-}
-
