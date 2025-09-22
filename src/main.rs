@@ -33,7 +33,6 @@ use std::time::Duration;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::VecDeque;
-use chrono;
 
 use winit::{
     event::WindowEvent,

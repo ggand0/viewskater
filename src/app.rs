@@ -831,7 +831,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 let app_name = "viewskater";
                 let log_dir_path = crate::logging::get_log_directory(app_name);
                 let _ = std::fs::create_dir_all(log_dir_path.clone());
-                crate::logging::open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
+                crate::logging::open_in_file_explorer(log_dir_path.to_string_lossy().as_ref());
             }
             Message::ExportDebugLogs => {
                 let app_name = "viewskater";

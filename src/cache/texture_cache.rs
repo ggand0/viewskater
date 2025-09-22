@@ -52,7 +52,7 @@ impl TextureCache {
 
         if let Some(texture) = self.textures.get(&hash) {
             self.hits += 1;
-            if self.hits % 100 == 0 {
+            if self.hits.is_multiple_of(100) {
                 debug!("TextureCache: {} hits, {} misses", self.hits, self.misses);
             }
             debug!("TextureCache: Cache hit for hash {}", hash);

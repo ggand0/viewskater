@@ -2,7 +2,6 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
-use rfd;
 use futures::future::join_all;
 use crate::cache::img_cache::LoadOperation;
 use tokio::time::Instant;
