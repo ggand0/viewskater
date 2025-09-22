@@ -54,19 +54,13 @@ impl LoadingStatus {
 
     pub fn reset_load_next_queue_items(&mut self) {
         // Discard all queue items that are LoadNext or ShiftNext
-        self.loading_queue.retain(|op| match op {
-            LoadOperation::LoadNext(..) => false,
-            LoadOperation::ShiftNext(..) => false,
-            _ => true,
-        });
+        self.loading_queue.retain(|op| !matches!(
+            op, LoadOperation::LoadNext(..) | LoadOperation::ShiftNext(..)));
     }
     pub fn reset_load_previous_queue_items(&mut self) {
         // Discard all queue items that are LoadPrevious or ShiftPrevious
-        self.loading_queue.retain(|op| match op {
-            LoadOperation::LoadPrevious(..) => false,
-            LoadOperation::ShiftPrevious(..) => false,
-            _ => true,
-        });
+        self.loading_queue.retain(|op| !matches!(
+            op, LoadOperation::LoadPrevious(..) | LoadOperation::ShiftPrevious(..)));
     }
 
 

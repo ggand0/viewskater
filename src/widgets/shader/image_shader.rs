@@ -44,17 +44,15 @@ impl<Message> ImageShader<Message> {
         // Add debug output to track scene creation
         if debug && scene.is_some() {
             debug!("ImageShader::new - Created with a scene");
-            if let Some(ref s) = scene {
+            if let Some(s) = scene {
                 if s.get_texture().is_some() {
                     debug!("ImageShader::new - Scene has a texture");
                 } else {
                     debug!("ImageShader::new - Scene has NO texture!");
                 }
             }
-        } else {
-            if debug {
-                debug!("ImageShader::new - Created with NO scene");
-            }
+        } else if debug {
+            debug!("ImageShader::new - Created with NO scene");
         }
 
         Self {
@@ -66,7 +64,7 @@ impl<Message> ImageShader<Message> {
             max_scale: 10.0,
             scale_step: 0.10,
             _phantom: PhantomData,
-            debug: debug,
+            debug,
             is_horizontal_split: false,
             mouse_wheel_zoom: false,
             ctrl_pressed: false,
@@ -377,12 +375,11 @@ impl shader::Primitive for ImagePrimitive {
 
                     // Find any pipeline that might be related to our texture and use it
                     let mut rendered = false;
-                    for (key, pipeline) in &registry.pipelines {
+                    if let Some((key, pipeline)) = &registry.pipelines.iter().next() {
                         debug!("ImagePrimitive::render - Trying pipeline with key: {}", key);
                         pipeline.render(target, encoder, clip_bounds);
                         rendered = true;
                         debug!("ImagePrimitive::render - Successfully rendered with pipeline: {}", key);
-                        break;  // Just use the first one we find
                     }
 
                     if !rendered {

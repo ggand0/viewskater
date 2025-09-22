@@ -20,6 +20,6 @@ pub static CONFIG: Lazy<Config> = Lazy::new(|| Config {
     window_height: 800,
     atlas_size: 2048,
     double_click_threshold_ms: 250,
-    archive_cache_size: 2_097_152_00,
+    archive_cache_size: 209_715_200,    // 200MB
     archive_warning_threshold_mb: 500,  // 500MB threshold for warning dialog
 });
