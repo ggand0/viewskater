@@ -174,7 +174,7 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
         if app.pane_layout == PaneLayout::SinglePane { "[x] Single Pane (Cmd+1)" } else { "[  ] Single Pane (Cmd+1)" },
         if app.pane_layout == PaneLayout::DualPane { "[x] Dual Pane (Cmd+2)" } else { "[  ] Dual Pane (Cmd+2)" }
     );
-    
+
     #[cfg(not(target_os = "macos"))]
     let (single_pane_text, dual_pane_text) = (
         if app.pane_layout == PaneLayout::SinglePane { "[x] Single Pane (Ctrl+1)" } else { "[  ] Single Pane (Ctrl+1)" },
@@ -247,8 +247,18 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
             text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
             ..container::Style::default()
         }))
+        (container(
+            toggler::Toggler::new(
+                Some("  Toggle Mouse Wheel Zoom".into()),
+                app.mouse_wheel_zoom,
+                Message::ToggleMouseWheelZoom,
+            ).width(Length::Fill)
+        ).style(|_theme: &WinitTheme| container::Style {
+            text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+            ..container::Style::default()
+        }))
     ))
-    .max_width(200.0)
+    .max_width(235.0)
     .spacing(0.0);
 
     // Create the formatted strings first as owned values
@@ -303,19 +313,19 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
 pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     #[cfg(target_os = "macos")]
     let menu_tpl_2 = |items| Menu::new(items).max_width(210.0).offset(5.0);
-    
+
     #[cfg(not(target_os = "macos"))]
     let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
-    
+
     // Use platform-specific modifier text for menu items
     #[cfg(target_os = "macos")]
-    let (open_folder_text, open_file_text, close_text, quit_text) = 
+    let (open_folder_text, open_file_text, close_text, quit_text) =
         ("Open Folder (Cmd+Shift+O)", "Open File (Cmd+O)", "Close (Cmd+W)", "Quit (Cmd+Q)");
-    
+
     #[cfg(not(target_os = "macos"))]
-    let (open_folder_text, open_file_text, close_text, quit_text) = 
+    let (open_folder_text, open_file_text, close_text, quit_text) =
         ("Open Folder (Ctrl+Shift+O)", "Open File (Ctrl+O)", "Close (Ctrl+W)", "Quit (Ctrl+Q)");
-    
+
     // Create submenu for "Open Folder"
     let open_folder_submenu = Menu::new(menu_items!(
         (labeled_button(
@@ -331,7 +341,7 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     ))
     .max_width(180.0)
     .spacing(0.0);
-    
+
     // Create submenu for "Open File"
     let open_file_submenu = Menu::new(menu_items!(
         (labeled_button(
@@ -347,7 +357,7 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     ))
     .max_width(180.0)
     .spacing(0.0);
-    
+
     menu_tpl_2(
         menu_items!(
             (submenu_button(open_folder_text, MENU_ITEM_FONT_SIZE), open_folder_submenu)

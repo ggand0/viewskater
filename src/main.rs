@@ -15,6 +15,11 @@ mod app;
 mod utils;
 mod build_info;
 mod replay;
+mod logging;
+
+#[cfg(target_os = "macos")]
+mod macos_file_access;
+mod archive_cache;
 
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};
@@ -31,6 +36,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::VecDeque;
 use clap::Parser;
 use std::path::PathBuf;
+use chrono;
+
 
 use winit::{
     event::WindowEvent,
@@ -101,6 +108,15 @@ static LAST_ASYNC_DELIVERY_TIME: Lazy<Mutex<Instant>> = Lazy::new(|| {
 static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
 const QUEUE_LOG_THRESHOLD: usize = 20;
 const QUEUE_RESET_THRESHOLD: usize = 50;
+
+// Fullscreen UI detection zones
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 200.0;  // Larger zone for menu interactions in fullscreen mode
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 50.0;   // Standard zone for other platforms
+
+const FULLSCREEN_BOTTOM_ZONE_HEIGHT: f64 = 100.0;  // Standard bottom zone for all platforms
 
 // Store the actual shared log buffer from the file_io module
 static SHARED_LOG_BUFFER: Lazy<Arc<Mutex<Option<Arc<Mutex<VecDeque<String>>>>>>> = Lazy::new(|| {
@@ -178,12 +194,12 @@ fn monitor_message_queue(state: &mut program::State<DataViewer>) {
     LAST_QUEUE_LENGTH.store(queue_len, Ordering::SeqCst);
 
     trace!("Message queue size: {}", queue_len);
-    
+
     // Log if the queue is getting large
     if queue_len > QUEUE_LOG_THRESHOLD {
         debug!("Message queue size: {}", queue_len);
     }
-    
+
     // Reset queue if it exceeds our threshold
     if queue_len > QUEUE_RESET_THRESHOLD {
         warn!("MESSAGE QUEUE OVERLOAD: {} messages pending - clearing queue", queue_len);
@@ -245,24 +261,41 @@ struct Args {
 }
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
+    // CRITICAL: Write to crash log IMMEDIATELY - before any other operations
+    crate::logging::write_crash_debug_log("MAIN: App startup initiated");
+    
+    // Set up signal handler FIRST to catch low-level crashes
+    crate::logging::write_crash_debug_log("MAIN: About to setup signal handler");
+    crate::logging::setup_signal_crash_handler();
+    crate::logging::write_crash_debug_log("MAIN: Signal handler setup completed");
+
     // Parse command line arguments
     let args = Args::parse();
     
     // Set up stdout capture FIRST, before any println! statements
-    let shared_stdout_buffer = file_io::setup_stdout_capture();
+    crate::logging::write_crash_debug_log("MAIN: About to setup stdout capture");
+    let shared_stdout_buffer = crate::logging::setup_stdout_capture();
     set_shared_stdout_buffer(Arc::clone(&shared_stdout_buffer));
+
+    crate::logging::write_crash_debug_log("MAIN: Stdout capture setup completed");
     
     println!("ViewSkater starting...");
+    crate::logging::write_crash_debug_log("MAIN: ViewSkater starting message printed");
     
+
     // Set up panic hook to log to a file
+    crate::logging::write_crash_debug_log("MAIN: About to setup logger");
     let app_name = "viewskater";
-    let shared_log_buffer = file_io::setup_logger(app_name);
+    let shared_log_buffer = crate::logging::setup_logger(app_name);
     
     // Store the log buffer reference for global access
     set_shared_log_buffer(Arc::clone(&shared_log_buffer));
+    crate::logging::write_crash_debug_log("MAIN: Logger setup completed");
     
-    file_io::setup_panic_hook(app_name, shared_log_buffer);
-
+    crate::logging::write_crash_debug_log("MAIN: About to setup panic hook");
+    crate::logging::setup_panic_hook(app_name, shared_log_buffer);
+    crate::logging::write_crash_debug_log("MAIN: Panic hook setup completed");
+    
     // Create replay configuration if replay mode is enabled
     let replay_config = if args.replay {
         let test_dirs = if args.test_directories.is_empty() {
@@ -327,31 +360,68 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     // Set up the file channel AFTER winit initialization
     let (file_sender, file_receiver) = mpsc::channel();
 
+    // Test crash debug logging immediately at startup
+    crate::logging::write_crash_debug_log("========== VIEWSKATER STARTUP ==========");
+    crate::logging::write_crash_debug_log("Testing crash debug logging system at startup");
+    crate::logging::write_crash_debug_log(&format!("App version: {}", env!("CARGO_PKG_VERSION")));
+    crate::logging::write_crash_debug_log(&format!("Timestamp: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+    crate::logging::write_crash_debug_log("If you can see this message, crash debug logging is working");
+    crate::logging::write_crash_debug_log("=========================================");
+    
+    // Test all logging methods comprehensively
+    #[cfg(target_os = "macos")]
+    macos_file_access::test_crash_logging_methods();
+
     // Register file handler BEFORE creating the runner
     // This is required on macOS so the app can receive file paths
     // when launched by opening a file (e.g. double-clicking in Finder)
     // or using "Open With". Must be set up early in app lifecycle.
     #[cfg(target_os = "macos")]
     {
-        macos_file_handler::set_file_channel(file_sender.clone());
-        macos_file_handler::register_file_handler();
+        crate::logging::write_crash_debug_log("MAIN: About to set file channel");
+        macos_file_access::macos_file_handler::set_file_channel(file_sender);
+        crate::logging::write_crash_debug_log("MAIN: File channel set");
+        
+        // NOTE: Automatic bookmark cleanup is DISABLED in production builds to avoid
+        // wiping valid stored access. Use a special maintenance build or developer
+        // tooling to invoke cleanup if ever needed.
+        
+        crate::logging::write_crash_debug_log("MAIN: About to register file handler");
+        macos_file_access::macos_file_handler::register_file_handler();
+        crate::logging::write_crash_debug_log("MAIN: File handler registered");
+        
+        // Try to restore full disk access from previous session
+        crate::logging::write_crash_debug_log("MAIN: About to restore full disk access");
+        debug!("🔍 Attempting to restore full disk access on startup");
+        let restore_result = macos_file_access::macos_file_handler::restore_full_disk_access();
+        debug!("🔍 Restore full disk access result: {}", restore_result);
+        crate::logging::write_crash_debug_log(&format!("MAIN: Restore full disk access result: {}", restore_result));
+        
         println!("macOS file handler registered");
+        crate::logging::write_crash_debug_log("MAIN: macOS file handler registration completed");
     }
 
     // Handle command line path argument (if not in replay mode)
     if !args.replay {
-        if let Some(ref path) = args.path {
-            println!("File path from command line: {}", path.display());
-            
-            // Validate that the path exists and is a file or directory
-            if path.exists() {
-                if let Err(e) = file_sender.send(path.to_string_lossy().to_string()) {
-                    println!("Failed to send file path through channel: {}", e);
+        // Handle command line arguments for Linux (and Windows)
+        // This supports double-click and "Open With" functionality via .desktop files on Linux
+        #[cfg(not(target_os = "macos"))]
+        {
+            let args: Vec<String> = std::env::args().collect();
+            if args.len() > 1 {
+                let file_path = &args[1];
+                println!("File path from command line: {}", file_path);
+
+                // Validate that the path exists and is a file or directory
+                if path.exists() {
+                    if let Err(e) = file_sender.send(path.to_string_lossy().to_string()) {
+                        println!("Failed to send file path through channel: {}", e);
+                    } else {
+                        println!("Successfully queued file path for loading: {}", path.display());
+                    }
                 } else {
-                    println!("Successfully queued file path for loading: {}", path.display());
+                    println!("Warning: Specified file path does not exist: {}", path.display());
                 }
-            } else {
-                println!("Warning: Specified file path does not exist: {}", path.display());
             }
         }
     }
@@ -393,6 +463,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             resized: bool,
             moved: bool,                // Flag to track window movement
             redraw: bool,
+            last_title: String,         // Track last set title to avoid unnecessary updates
             debug: bool,
             debug_tool: Debug,
             _event_sender: StdSender<Event<Action<Message>>>,
@@ -443,6 +514,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     resized,
                     moved,
                     redraw,
+                    last_title,
                     debug,
                     debug_tool,
                     control_receiver,
@@ -457,10 +529,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             event: window_event,
                         }) => {
                             let _window_event_start = Instant::now();
-                            
+
                             // Monitor the message queue and clear it if it's getting large
                             monitor_message_queue(state);
-                            
+
                             match window_event {
                                 WindowEvent::Focused(true) => {
                                     event_loop.set_control_flow(ControlFlow::Poll);
@@ -486,9 +558,19 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
+                                    #[cfg(target_os = "macos")]
+                                    {
+                                        // Clean up all active security-scoped access before shutdown
+                                        macos_file_access::macos_file_handler::cleanup_all_security_scoped_access();
+                                    }
                                     event_loop.exit();
                                 }
                                 WindowEvent::CursorMoved { position, .. } => {
+                                    if state.program().is_fullscreen {
+                                        state.queue_message(Message::CursorOnTop(position.y < FULLSCREEN_TOP_ZONE_HEIGHT));
+                                        state.queue_message(Message::CursorOnFooter(
+                                            position.y > (window.inner_size().height as f64 - FULLSCREEN_BOTTOM_ZONE_HEIGHT)));
+                                    }
                                     *cursor_position = Some(position);
                                 }
                                 WindowEvent::MouseInput { state, .. } => {
@@ -498,6 +580,69 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::ModifiersChanged(new_modifiers) => {
                                     *modifiers = new_modifiers.state();
+                                }
+                                WindowEvent::KeyboardInput {
+                                    event:
+                                        winit::event::KeyEvent {
+                                            physical_key: winit::keyboard::PhysicalKey::Code(
+                                                winit::keyboard::KeyCode::F11),
+                                            state: ElementState::Pressed,
+                                            repeat: false,
+                                            ..
+                                        },
+                                    ..
+                                } => {
+                                    #[cfg(target_os = "macos")] {
+                                        // On macOS, window.fullscreen().is_some() doesn't work with set_simple_fullscreen()
+                                        // so we need to use the application's internal state
+                                        let fullscreen = if state.program().is_fullscreen {
+                                            state.queue_message(Message::ToggleFullScreen(false));
+                                            None
+                                        } else {
+                                            state.queue_message(Message::ToggleFullScreen(true));
+                                            Some(winit::window::Fullscreen::Borderless(None))
+                                        };
+                                        // https://github.com/rust-windowing/winit/issues/4162
+                                        // no screen when using rustdesk remote control mac mini
+                                        use iced_winit::winit::platform::macos::WindowExtMacOS;
+                                        window.set_simple_fullscreen(fullscreen.is_some());
+                                    }
+                                    #[cfg(not(target_os = "macos"))] {
+                                        let fullscreen = if window.fullscreen().is_some() {
+                                            state.queue_message(Message::ToggleFullScreen(false));
+                                            None
+                                        } else {
+                                            state.queue_message(Message::ToggleFullScreen(true));
+                                            Some(winit::window::Fullscreen::Borderless(None))
+                                        };
+                                        window.set_fullscreen(fullscreen);
+                                    }
+                                }
+                                WindowEvent::KeyboardInput {
+                                    event:
+                                        winit::event::KeyEvent {
+                                            physical_key: winit::keyboard::PhysicalKey::Code(
+                                                winit::keyboard::KeyCode::Escape),
+                                            state: ElementState::Pressed,
+                                            repeat: false,
+                                            ..
+                                        },
+                                    ..
+                                } => {
+                                    // Handle Escape key to exit fullscreen on macOS
+                                    #[cfg(target_os = "macos")] {
+                                        if window.fullscreen().is_some() || state.program().is_fullscreen {
+                                            state.queue_message(Message::ToggleFullScreen(false));
+                                            use iced_winit::winit::platform::macos::WindowExtMacOS;
+                                            window.set_simple_fullscreen(false);
+                                        }
+                                    }
+                                    #[cfg(not(target_os = "macos"))] {
+                                        if window.fullscreen().is_some() {
+                                            state.queue_message(Message::ToggleFullScreen(false));
+                                            window.set_fullscreen(None);
+                                        }
+                                    }
                                 }
                                 _ => {}
                             }
@@ -595,27 +740,27 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 match request {
                                     RendererRequest::UpdateCompressionStrategy(strategy) => {
                                         debug!("Main thread handling compression strategy update to {:?}", strategy);
-                                        
+
                                         let config = ImageConfig {
                                             atlas_size: CONFIG.atlas_size,
                                             compression_strategy: strategy,
                                         };
-                                        
+
                                         // We already have locks for renderer and engine in the rendering code
                                         let mut engine_guard = engine.lock().unwrap();
                                         let mut renderer_guard = renderer.lock().unwrap();
-                                        
+
                                         // Update the config safely from the main render thread
                                         renderer_guard.update_image_config(&device, &mut *engine_guard, config);
-                                        
+
                                         debug!("Compression strategy updated successfully in main thread");
                                     }
                                     RendererRequest::ClearPrimitiveStorage => {
                                         debug!("Main thread handling primitive storage clear request");
-                                        
+
                                         // Get engine lock
                                         let mut engine_guard = engine.lock().unwrap();
-                                        
+
                                         // Access the primitive storage directly
                                         engine_guard.clear_primitive_storage();
                                         debug!("Primitive storage cleared successfully");
@@ -626,13 +771,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             // Render if needed
                             if *redraw {
                                 *redraw = false;
-                                
+
                                 let frame_start = Instant::now();
 
-                                // Update window title dynamically based on the current image
-                                if !*moved {
-                                    let new_title = state.program().title();
+                                // Set window title when the title is actually changed
+                                let new_title = state.program().title();
+                                if new_title != *last_title {
                                     window.set_title(&new_title);
+                                    *last_title = new_title;
                                 }
 
                                 match surface.get_current_texture() {
@@ -646,7 +792,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         {
                                             let mut engine_guard = engine.lock().unwrap();
                                             let mut renderer_guard = renderer.lock().unwrap();
-                                            
+
                                             renderer_guard.present(
                                                 &mut *engine_guard,
                                                 &device,
@@ -658,16 +804,16 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                                 viewport,
                                                 &debug_tool.overlay(),
                                             );
-                                            
+
                                             // Submit commands while still holding the lock
                                             engine_guard.submit(&queue, encoder);
                                         }
                                         let present_time = present_start.elapsed();
-                                        
+
                                         // Submit the commands to the queue
                                         let submit_start = Instant::now();
                                         let submit_time = submit_start.elapsed();
-                                        
+
                                         let present_frame_start = Instant::now();
                                         frame.present();
                                         let present_frame_time = present_frame_start.elapsed();
@@ -681,11 +827,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         if present_time.as_millis() > 50 {
                                             warn!("BOTTLENECK: Renderer present took {:?}", present_time);
                                         }
-                                        
+
                                         if submit_time.as_millis() > 50 {
                                             warn!("BOTTLENECK: Command submission took {:?}", submit_time);
                                         }
-                                        
+
                                         if present_frame_time.as_millis() > 50 {
                                             warn!("BOTTLENECK: Frame presentation took {:?}", present_frame_time);
                                         }
@@ -703,7 +849,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                                 state.mouse_interaction(),
                                             ),
                                         );
-                                        
+
+                                        // TODO: better way to track mouse on menu
+                                        state.queue_message(Message::CursorOnMenu(
+                                            !state.program().cursor_on_footer && state.mouse_interaction() == mouse::Interaction::Pointer));
+
                                         if *debug {
                                             let total_frame_time = frame_start.elapsed();
                                             trace!("Total frame time: {:?}", total_frame_time);
@@ -724,7 +874,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 if let Ok(mut frame_times) = FRAME_TIMES.lock() {
                                     let now = Instant::now();
                                     frame_times.push(now);
-                                    
+
                                     // Only update stats once per second
                                     let should_update_stats = {
                                         if let Ok(last_update) = LAST_STATS_UPDATE.lock() {
@@ -733,26 +883,26 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             false
                                         }
                                     };
-                                    
+
                                     if should_update_stats {
                                         // Update the timestamp
                                         if let Ok(mut last_update) = LAST_STATS_UPDATE.lock() {
                                             *last_update = now;
                                         }
-                                        
+
                                         // Clean up old frames
                                         let cutoff = now - Duration::from_secs(1);
                                         frame_times.retain(|&t| t > cutoff);
-                                        
+
                                         // Calculate FPS
                                         let fps = frame_times.len() as f32;
                                         trace!("Current FPS: {:.1}", fps);
-                                        
+
                                         // Store the current FPS value
                                         if let Ok(mut current_fps) = CURRENT_FPS.lock() {
                                             *current_fps = fps;
                                         }
-                                        
+
                                         // Update memory usage (which has its own throttling as a backup)
                                         update_memory_usage();
                                     }
@@ -782,17 +932,17 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     match action {
                                         iced_runtime::clipboard::Action::Write { target, contents } => {
                                             debug!("Main thread received clipboard write request: {:?}, {:?}", target, contents);
-                                            
+
                                             // Write to the clipboard using the Clipboard instance
                                             clipboard.write(target, contents);
                                             debug!("Successfully wrote to clipboard");
                                         }
                                         iced_runtime::clipboard::Action::Read { target, channel } => {
                                             debug!("Main thread received clipboard read request: {:?}", target);
-                                            
+
                                             // Read from clipboard and send result back through the channel
                                             let content = clipboard.read(target);
-                                            
+
                                             if let Err(err) = channel.send(content) {
                                                 error!("Failed to send clipboard content through channel: {:?}", err);
                                             }
@@ -829,6 +979,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             }
                                         }
                                         Control::Exit => {
+                                            #[cfg(target_os = "macos")]
+                                            {
+                                                // Clean up all active security-scoped access before shutdown
+                                                macos_file_access::macos_file_handler::cleanup_all_security_scoped_access();
+                                            }
                                             event_loop.exit();
                                         }
                                         _ => {}
@@ -859,7 +1014,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             match self {
                 Self::Loading { proxy, event_sender, control_receiver, file_receiver, replay_config } => {
                     info!("resumed()...");
-                    
+
                     let custom_theme = Theme::custom_with_fn(
                         "Custom Theme".to_string(),
                         iced_winit::core::theme::Palette {
@@ -870,21 +1025,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         |palette| {
                             // Generate the extended palette from the base palette
                             let mut extended: iced_core::theme::palette::Extended = iced_core::theme::palette::Extended::generate(palette);
-                            
+
                             // Customize specific parts of the extended palette
                             extended.primary.weak.text = iced_winit::core::Color::from_rgba8(224, 224, 224, 1.0);
-                            
+
                             // Return the modified extended palette
                             extended
                         }
                     );
-                    
+
                     let window = Arc::new(
                         event_loop
                         .create_window(
                             winit::window::WindowAttributes::default()
                                 .with_inner_size(winit::dpi::PhysicalSize::new(
-                                    CONFIG.window_width, 
+                                    CONFIG.window_width,
                                     CONFIG.window_height
                                 ))
                                 .with_title("ViewSkater")
@@ -924,7 +1079,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .expect("Create adapter");
 
                                 let capabilities = surface.get_capabilities(&adapter);
-                                
+
                                 let (device, queue) = adapter
                                     .request_device(
                                         &wgpu::DeviceDescriptor {
@@ -936,7 +1091,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     )
                                     .await
                                     .expect("Request device");
-                                
+
                                 (
                                     capabilities
                                         .formats
@@ -990,7 +1145,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     register_font_manually(include_bytes!("../assets/fonts/viewskater-fonts.ttf"));
                     register_font_manually(include_bytes!("../assets/fonts/Iosevka-Regular-ascii.ttf"));
                     register_font_manually(include_bytes!("../assets/fonts/Roboto-Regular.ttf"));
-                    
+
                     // Create renderer with Arc<Mutex>
                     let renderer = Arc::new(Mutex::new(Renderer::new(
                         &device,
@@ -1004,8 +1159,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     // Pass a cloned Arc reference to DataViewer
                     let shader_widget = DataViewer::new(
-                        Arc::clone(&device), 
-                        Arc::clone(&queue), 
+                        Arc::clone(&device),
+                        Arc::clone(&queue),
                         backend,
                         renderer_request_sender,
                         std::mem::replace(file_receiver, mpsc::channel().1),
@@ -1035,12 +1190,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     let waker = {
                         // Create a waker that does nothing
                         struct NoopWaker;
-                        
+
                         impl Wake for NoopWaker {
                             fn wake(self: Arc<Self>) {}
                             fn wake_by_ref(self: &Arc<Self>) {}
                         }
-                        
+
                         // Create a waker and leak it to make it 'static
                         let waker_arc = Arc::new(NoopWaker);
                         let waker = Waker::from(waker_arc);
@@ -1052,7 +1207,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     // Create a new Ready state with the event_sender and control_receiver
                     // Note: We don't clone the receiver as it's not clonable
                     let event_sender = event_sender.clone();
-                    
+
                     // Move the control_receiver into the Ready state
                     // We need to take ownership of it from the Loading state
                     let control_receiver = std::mem::replace(control_receiver, std_mpsc::channel().1);
@@ -1074,6 +1229,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         resized: false,
                         moved: false,
                         redraw: true,
+                        last_title: String::new(),
                         debug: false,
                         debug_tool,
                         _event_sender: event_sender,
@@ -1144,7 +1300,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         file_receiver,
         replay_config,
     };
-    
+
     event_loop.run_app(&mut runner)
 }
 
@@ -1154,38 +1310,38 @@ fn track_render_cycle() {
         let now = Instant::now();
         let elapsed = now.duration_since(*time);
         *time = now;
-        
+
         // Use the new diagnostics APIs
-        let (fps, upload_secs, render_secs, min_render, max_render, frame_count) = 
+        let (fps, upload_secs, render_secs, min_render, max_render, frame_count) =
             get_image_rendering_diagnostics();
-        
+
         // Check for bottlenecks
         if elapsed.as_millis() > 50 {
             warn!("LONG FRAME DETECTED: Render time: {:?}", elapsed);
             warn!("Image stats: FPS={:.1}, Upload={:.2}ms, Render={:.2}ms, Min={:.2}ms, Max={:.2}ms",
-                 fps, upload_secs * 1000.0, render_secs * 1000.0, 
+                 fps, upload_secs * 1000.0, render_secs * 1000.0,
                  min_render * 1000.0, max_render * 1000.0);
-            
+
             // Log detailed stats to console
             log_image_rendering_stats();
-            
+
             // Check if upload or render is the bottleneck
             if upload_secs > 0.050 {  // 50ms threshold
                 warn!("BOTTLENECK: GPU texture upload is slow: {:.2}ms avg", upload_secs * 1000.0);
             }
-            
+
             if render_secs > 0.050 {  // 50ms threshold
                 warn!("BOTTLENECK: GPU render time is slow: {:.2}ms avg", render_secs * 1000.0);
             }
         }
-        
+
         // Display diagnostics in UI during development
         if frame_count % 60 == 0 {
             // Periodic stats logging
-            trace!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms", 
+            trace!("Image FPS: {:.1}, Upload: {:.2}ms, Render: {:.2}ms",
                   fps, upload_secs * 1000.0, render_secs * 1000.0);
         }
-        
+
         //trace!("TIMING: Render frame time: {:?}", elapsed);
     }
 }
@@ -1202,103 +1358,10 @@ fn track_async_delivery() {
     // Check image rendering FPS from custom iced_wgpu
     let image_fps = iced_wgpu::get_image_fps();
     trace!("TIMING: Image FPS: {}", image_fps);
-    
+
     // Also check phase alignment
     if let (Ok(render_time), Ok(async_time)) = (LAST_RENDER_TIME.lock(), LAST_ASYNC_DELIVERY_TIME.lock()) {
         let phase_diff = async_time.duration_since(*render_time);
         trace!("TIMING: Phase difference: {:?}", phase_diff);
     }
 }
-
-/// macOS integration for opening image files via Finder.
-///
-/// This module handles cases where the user launches ViewSkater by double-clicking
-/// an image file or using "Open With" in Finder. macOS sends the file path through
-/// the `application:openFiles:` message, which is delivered to the app's delegate.
-///
-/// This code:
-/// - Subclasses the existing `NSApplicationDelegate` to override `application:openFiles:`
-/// - Forwards received file paths to Rust using an MPSC channel
-/// - Disables automatic argument parsing by setting `NSTreatUnknownArgumentsAsOpen = NO`
-///
-/// The channel is set up in `main.rs` and connected to the rest of the app so that
-/// the selected image can be loaded on startup.
-
-#[cfg(target_os = "macos")]
-mod macos_file_handler {
-    use std::sync::mpsc::Sender;
-    use objc2::rc::autoreleasepool;
-    use objc2::{msg_send, sel};
-    use objc2::declare::ClassBuilder;
-    use objc2::runtime::{AnyObject, Sel, AnyClass};
-    use objc2_app_kit::NSApplication;
-    use objc2_foundation::{MainThreadMarker, NSArray, NSString, NSDictionary, NSUserDefaults};
-    use objc2::rc::Retained;
-
-    static mut FILE_CHANNEL: Option<Sender<String>> = None;
-
-    pub fn set_file_channel(sender: Sender<String>) {
-        unsafe {
-            FILE_CHANNEL = Some(sender);
-        }
-    }
-
-    unsafe extern "C" fn handle_open_files(
-        _this: &mut AnyObject,
-        _sel: Sel,
-        _sender: &AnyObject,
-        files: &NSArray<NSString>,
-    ) {
-        println!("application_open_files called with {} files", files.len());
-        autoreleasepool(|pool| {
-            for file in files.iter() {
-                let path = file.as_str(pool).to_owned();
-                println!("Received file path: {}", path);
-                unsafe {
-                    if let Some(ref sender) = *(&raw const FILE_CHANNEL) {
-                        if let Err(e) = sender.send(path.clone()) {
-                            println!("Failed to send file path through channel: {}", e);
-                        } else {
-                            println!("Successfully sent file path through channel");
-                        }
-                    } else {
-                        println!("FILE_CHANNEL is None when trying to send path");
-                    }
-                }
-            }
-        });
-    }
-
-    pub fn register_file_handler() {
-        let mtm = MainThreadMarker::new().expect("Must be on main thread");
-        unsafe {
-            let app = NSApplication::sharedApplication(mtm);
-            
-            // Get the existing delegate
-            let delegate = app.delegate().unwrap();
-            
-            // Find out class of the NSApplicationDelegate
-            let class: &AnyClass = msg_send![&delegate, class];
-            
-            // Create a subclass of the existing delegate
-            let mut my_class = ClassBuilder::new("ViewSkaterApplicationDelegate", class).unwrap();
-            my_class.add_method(
-                sel!(application:openFiles:),
-                handle_open_files as unsafe extern "C" fn(_, _, _, _) -> _,
-            );
-            let class = my_class.register();
-            
-            // Cast and set the class
-            let delegate_obj = Retained::cast::<AnyObject>(delegate);
-            AnyObject::set_class(&delegate_obj, class);
-            
-            // Prevent AppKit from interpreting our command line
-            let key = NSString::from_str("NSTreatUnknownArgumentsAsOpen");
-            let keys = vec![key.as_ref()];
-            let objects = vec![Retained::cast::<AnyObject>(NSString::from_str("NO"))];
-            let dict = NSDictionary::from_vec(&keys, objects);
-            NSUserDefaults::standardUserDefaults().registerDefaults(dict.as_ref());
-        }
-    }
-}
-

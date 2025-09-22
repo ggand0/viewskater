@@ -10,6 +10,7 @@ It aims to alleviate the challenges of exploring and comparing numerous images. 
 - Continuous image rendering via key presses and the slider UI
 - Dual pane view for side-by-side image comparison
 - Supports image formats supported by the image crate (JPG, PNG, GIF, BMP, TIFF, WebP, QOI, TGA, etc.)
+- Supports viewing images inside ZIP, RAR, and 7z (LZMA2 codec) files
 - Renders images up to 8192×8192 px (larger images are resized to fit)
 
 ## Installation
@@ -53,6 +54,7 @@ You can switch to per-pane sliders by selecting the "Controls -> Controls -> Tog
 | Open file (Single pane)            | Cmd + O              | Ctrl + O               |
 | Open folder (Single pane)          | Cmd + Shift + O      | Ctrl + Shift + O       |
 | Toggle single / dual pane mode     | Cmd + 1 / 2          | Ctrl + 1 / 2           |
+| Toggle fullscreen mode             | F11                  | F11                    |
 | Close all panes                    | Cmd + W              | Ctrl + W               |
 | Exit                               | Cmd + Q              | Ctrl + Q               |
 

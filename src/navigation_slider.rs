@@ -22,7 +22,6 @@ use image;
 use image::codecs::png::PngEncoder;
 use image::ImageEncoder;
 use image::ExtendedColorType;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[allow(unused_imports)]
 use std::time::{Instant, Duration};
@@ -41,7 +40,6 @@ use crate::loading_status::LoadingStatus;
 use crate::app::Message;
 use crate::cache::img_cache::{CachedData, CacheStrategy};
 use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
-use crate::file_io;
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use iced_wgpu::engine::CompressionStrategy;
@@ -51,7 +49,7 @@ pub static LATEST_SLIDER_POS: AtomicUsize = AtomicUsize::new(0);
 #[allow(dead_code)]
 static LAST_SLIDER_LOAD: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now()));
 
-const _THROTTLE_INTERVAL_MS: u64 = 100; // Default throttle interval 
+const _THROTTLE_INTERVAL_MS: u64 = 100; // Default throttle interval
 
 fn load_full_res_image(
     device: &Arc<wgpu::Device>,
@@ -93,9 +91,9 @@ fn load_full_res_image(
                 target_index = pos;
                 img_cache.current_offset = -(img_cache.cache_count as isize - pos as isize);
             } else if pos >= img_cache.image_paths.len() - img_cache.cache_count {
-                target_index = img_cache.cache_count + (img_cache.cache_count as isize - 
+                target_index = img_cache.cache_count + (img_cache.cache_count as isize -
                               ((img_cache.image_paths.len()-1) as isize - pos as isize)) as usize;
-                img_cache.current_offset = img_cache.cache_count as isize - 
+                img_cache.current_offset = img_cache.cache_count as isize -
                                          ((img_cache.image_paths.len()-1) as isize - pos as isize);
             } else {
                 target_index = img_cache.cache_count;
@@ -104,7 +102,7 @@ fn load_full_res_image(
 
             // Check if this pane has GPU support by checking if device and queue are available
             let has_gpu_support = is_gpu_supported && pane.device.is_some() && pane.queue.is_some();
-            
+
             if has_gpu_support {
                 // GPU-based loading
                 // Get or create a texture
@@ -117,8 +115,15 @@ fn load_full_res_image(
                     .unwrap_or_else(|| Arc::new(create_gpu_texture(device, 1, 1, compression_strategy)));
 
                 // Load the full-resolution image synchronously
-                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy) {
-                    debug!("Failed to load full-res image {} for pane {}: {}", img_path.display(), idx, err);
+                // Use the archive cache if provided
+                let mut archive_guard = pane.archive_cache.lock().unwrap();
+                let archive_cache = if pane.has_compressed_file {
+                    Some(&mut *archive_guard)
+                } else {
+                    None
+                };
+                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy, archive_cache) {
+                    debug!("Failed to load full-res image {} for pane {idx}: {err}", img_path.file_name());
                     continue;
                 }
 
@@ -130,26 +135,32 @@ fn load_full_res_image(
 
                 // Update the currently displayed image
                 pane.current_image = loaded_image;
-                pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture))))); 
+                pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
                 pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
             } else {
                 // CPU-based loading
                 // Load the full-resolution image using CPU
-                match img_cache.load_image(pos) {
+                let mut archive_guard = pane.archive_cache.lock().unwrap();
+                let archive_cache = if pane.has_compressed_file {
+                    Some(&mut *archive_guard)
+                } else {
+                    None
+                };
+                match img_cache.load_image(pos, archive_cache) {
                     Ok(cached_data) => {
                         // Store in cache and update current image
                         img_cache.cached_data[target_index] = Some(cached_data.clone());
                         img_cache.cached_image_indices[target_index] = pos as isize;
                         img_cache.current_index = pos;
-                        
+
                         // Update the currently displayed image
                         pane.current_image = cached_data.clone();
-                        
+
                         // Update scene if using CPU-based cached data
                         if let CachedData::Cpu(_img) = &cached_data {
                             // Create a new scene with the CPU image
                             pane.scene = Some(Scene::new(Some(&cached_data)));
-                            
+
                             // Ensure texture is created for the new scene if device/queue available
                             if let (Some(device), Some(queue)) = (&pane.device, &pane.queue) {
                                 if let Some(scene) = &mut pane.scene {
@@ -234,11 +245,11 @@ fn get_loading_tasks_slider(
 
         // Generate loading tasks
         let local_tasks = load_all_images_in_queue(
-            device, 
-            queue, 
+            device,
+            queue,
             cache_strategy,
             compression_strategy,
-            panes, 
+            panes,
             loading_status
         );
         tasks.push(local_tasks);
@@ -326,46 +337,63 @@ pub fn load_remaining_images(
 }
 
 
-// Async loading task for Image widget - updated to include pane_idx
+// Async loading task for Image widget - updated to include pane_idx and archive cache
 pub async fn create_async_image_widget_task(
-    img_paths: Vec<PathBuf>, 
+    img_path: crate::cache::img_cache::PathSource,
     pos: usize,
-    pane_idx: usize
+    pane_idx: usize,
+    archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
 ) -> Result<(usize, usize, Handle), (usize, usize)> {
     // Start overall timer
     let task_start = std::time::Instant::now();
-    
-    // Check if position is valid
-    if pos >= img_paths.len() {
-        return Err((pane_idx, pos));
-    }
-    
+
+
     // Start file reading timer
     let read_start = std::time::Instant::now();
-    
-    // Load image bytes directly without resizing
-    let bytes_result = file_io::read_image_bytes(&img_paths[pos]);
-    
+
+    // Dispatch based on PathSource type
+    let bytes_result = match &img_path {
+        crate::cache::img_cache::PathSource::Filesystem(path) => {
+            // Direct filesystem reading - no archive cache needed
+            std::fs::read(path)
+        },
+        crate::cache::img_cache::PathSource::Archive(_) | crate::cache::img_cache::PathSource::Preloaded(_) => {
+            // Archive content requires archive cache
+            if let Some(cache_arc) = archive_cache {
+                match cache_arc.lock() {
+                    Ok(mut cache) => {
+                        crate::file_io::read_image_bytes(&img_path, Some(&mut *cache))
+                    },
+                    Err(_) => {
+                        Err(std::io::Error::new(std::io::ErrorKind::Other, "Archive cache lock failed"))
+                    },
+                }
+            } else {
+                Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Archive cache required for archive/preloaded content"))
+            }
+        }
+    };
+
     // Measure file reading time
     let read_time = read_start.elapsed();
     trace!("PERF: File read time for pos {}: {:?}", pos, read_time);
-    
+
     match bytes_result {
         Ok(bytes) => {
             // Start handle creation timer
             let handle_start = std::time::Instant::now();
-            
+
             // Convert directly to Handle without resizing
-            let handle = iced::widget::image::Handle::from_bytes(bytes);
-            
+            let handle = iced::widget::image::Handle::from_bytes(bytes.clone());
+
             // Measure handle creation time
             let handle_time = handle_start.elapsed();
             trace!("PERF: Handle creation time for pos {}: {:?}", pos, handle_time);
-            
+
             // Measure total function time
             let total_time = task_start.elapsed();
             trace!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
-            
+
             Ok((pane_idx, pos, handle))
         },
         Err(_) => Err((pane_idx, pos)),
@@ -373,24 +401,24 @@ pub async fn create_async_image_widget_task(
 }
 
 pub fn update_pos(
-    panes: &mut Vec<pane::Pane>, 
-    pane_index: isize, 
-    pos: usize, 
+    panes: &mut Vec<pane::Pane>,
+    pane_index: isize,
+    pos: usize,
     use_async: bool,
     throttle: bool
 ) -> Task<Message> {
     // Store the latest position in the atomic variable for reference
     LATEST_SLIDER_POS.store(pos, Ordering::SeqCst);
-    
+
     // Determine if we should process this update based on throttling settings
     let should_process = if throttle {
         // Platform-specific throttling - use different thresholds for Linux
         #[cfg(target_os = "linux")]
         const PLATFORM_THROTTLE_MS: u64 = 10;
-        
+
         #[cfg(not(target_os = "linux"))]
         const PLATFORM_THROTTLE_MS: u64 = _THROTTLE_INTERVAL_MS;
-        
+
         // Throttling logic during rapid slider movement - With safety check
         let mut last_load = LAST_SLIDER_LOAD.lock().unwrap();
         let now = Instant::now();
@@ -398,15 +426,15 @@ pub fn update_pos(
         // Enhanced safety check for time inconsistencies
         let elapsed = match now.checked_duration_since(*last_load) {
             Some(duration) => duration,
-            None => {                
+            None => {
                 // Update last_load to current time to avoid repeated issues
                 *last_load = now;
-                
+
                 // Return a zero duration to ensure we process this event
                 Duration::from_millis(PLATFORM_THROTTLE_MS)
             }
         };
-        
+
         if elapsed.as_millis() >= PLATFORM_THROTTLE_MS as u128 {
             *last_load = now;
             true
@@ -417,7 +445,7 @@ pub fn update_pos(
         // No throttling, always process
         true
     };
-    
+
     // Skip processing if we're throttling
     if !should_process {
         //debug!("Throttling slider image load at position {}", pos);
@@ -427,7 +455,7 @@ pub fn update_pos(
     if use_async {
         // Collect tasks for all applicable panes
         let mut tasks = Vec::new();
-        
+
         // Determine which panes to update
         let pane_indices: Vec<usize> = if pane_index == -1 {
             // Master slider - update all panes with loaded directories
@@ -438,30 +466,39 @@ pub fn update_pos(
             // Individual pane slider - update only that pane
             vec![pane_index as usize]
         };
-        
+
         // Create async image loading task for each pane
         for idx in pane_indices {
             if let Some(pane) = panes.get(idx) {
-                if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
+                if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() && pos < pane.img_cache.image_paths.len() {
                     debug!("#####################update_pos - Creating async image loading task for pane {}", idx);
-                    let img_paths = pane.img_cache.image_paths.clone();
+
+                    // Get only the single path we need from each pane
+                    let img_path = pane.img_cache.image_paths[pos].clone();
                     
+                    // Check if the pane has compressed files and get the archive cache
+                    let archive_cache = if pane.has_compressed_file {
+                        Some(Arc::clone(&pane.archive_cache))
+                    } else {
+                        None
+                    };
+
                     // Create task for this pane
                     let pane_task = Task::perform(
-                        create_async_image_widget_task(img_paths.clone(), pos, idx),
+                        create_async_image_widget_task(img_path, pos, idx, archive_cache),
                         move |result| Message::SliderImageWidgetLoaded(result)
                     );
-                    
+
                     tasks.push(pane_task);
                 }
             }
         }
-        
+
         // Return all tasks batched together
         if !tasks.is_empty() {
             return Task::batch(tasks);
         }
-        
+
         Task::none()
     } else {
         if pane_index == -1 {
@@ -509,9 +546,9 @@ pub fn update_pos(
 #[allow(dead_code)]
 /// Loads the image at pos synchronously into the cache using CpuScene
 fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io::Error> {
-    // Load the image at pos synchronously 
+    // Load the image at pos synchronously
     let img_cache = &mut pane.img_cache;
-    
+
     // Update indices in the cache
     let target_index: usize;
     if pos < img_cache.cache_count {
@@ -524,19 +561,27 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
         target_index = img_cache.cache_count;
         img_cache.current_offset = 0;
     }
-    
+
     img_cache.cached_image_indices[target_index] = pos as isize;
     img_cache.current_index = pos;
-    
+
     // Get direct access to the image file for CPU loading
     let img_path = match img_cache.image_paths.get(pos) {
         Some(path) => path,
         None => return Err(io::Error::new(io::ErrorKind::NotFound, "Image path not found")),
     };
-    
+
+
     // Always load from file directly for best slider performance
-    // Use the safe load_original_image function to prevent crashes with oversized images  
-    match crate::cache::cache_utils::load_original_image(img_path) {
+    // Use the safe load_original_image function to prevent crashes with oversized images
+    let mut archive_guard = pane.archive_cache.lock().unwrap();
+    // For PathBuf, we'll use ArchiveCache if the pane has compressed files
+    let archive_cache = if pane.has_compressed_file {
+        Some(&mut *archive_guard)
+    } else {
+        None
+    };
+    match crate::cache::cache_utils::load_original_image(img_path, archive_cache) {
         Ok(img) => {
             // Resize the image to smaller dimensions for slider
             /*let resized = img.resize(
@@ -544,7 +589,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
                 600, // Height for slider
                 image::imageops::FilterType::Triangle
             );*/
-            
+
             // Create the CPU bytes
             let mut bytes: Vec<u8> = Vec::new();
             if let Err(err) = {
@@ -559,11 +604,11 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
                 debug!("Failed to encode slider image: {}", err);
                 return Err(io::Error::new(io::ErrorKind::Other, "Failed to encode image"));
             }
-            
+
             // Update the current image to CPU data
             pane.current_image = CachedData::Cpu(bytes.clone());
             pane.slider_scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
-        
+
             // Ensure texture is created for CPU images
             if let Some(device) = &pane.device {
                 if let Some(queue) = &pane.queue {
@@ -572,7 +617,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
                     }
                 }
             }
-            
+
             Ok(())
         },
         Err(err) => {
@@ -588,7 +633,13 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
     // Load the image at pos synchronously into the center position of cache
     // Assumes that the image at pos is already in the cache
     let img_cache = &mut pane.img_cache;
-    match img_cache.load_image(pos as usize) {
+    let mut archive_guard = pane.archive_cache.lock().unwrap();
+    let archive_cache = if pane.has_compressed_file {
+        Some(&mut *archive_guard)
+    } else {
+        None
+    };
+    match img_cache.load_image(pos as usize, archive_cache) {
         Ok(image) => {
             let target_index: usize;
             if pos < img_cache.cache_count {
@@ -607,71 +658,90 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
             img_cache.current_index = pos;
 
             // Use the new method that ensures we get CPU data
-            match img_cache.get_initial_image_as_cpu() {
+            let mut archive_guard = pane.archive_cache.lock().unwrap();
+            let archive_cache = if pane.has_compressed_file {
+                Some(&mut *archive_guard)
+            } else {
+                None
+            };
+            match img_cache.get_initial_image_as_cpu(archive_cache) {
                 Ok(bytes) => {
                     pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
-                    
+
                     // Record image rendering time for FPS calculation
                     if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
                         let now = Instant::now();
                         render_times.push(now);
-                        
+
                         // Calculate image rendering FPS
                         if render_times.len() > 1 {
                             let oldest = render_times[0];
                             let elapsed = now.duration_since(oldest);
-                            
+
                             if elapsed.as_secs_f32() > 0.0 {
                                 let fps = render_times.len() as f32 / elapsed.as_secs_f32();
-                                
+
                                 // Store the current image rendering FPS
                                 if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
                                     *image_fps = fps;
                                 }
-                                
+
                                 // Keep only recent frames (last 3 seconds)
                                 let cutoff = now - std::time::Duration::from_secs(3);
                                 render_times.retain(|&t| t > cutoff);
                             }
                         }
                     }
-                    
+
                     Ok(())
                 },
                 Err(err) => {
                     debug!("Failed to get CPU image data for slider: {}", err);
-                    
+
                     // Fallback: load directly from file
                     if let Some(img_path) = img_cache.image_paths.get(pos) {
-                        match std::fs::read(img_path) {
+                        // Dispatch based on PathSource type
+                        let bytes_result = match img_path {
+                            crate::cache::img_cache::PathSource::Filesystem(path) => {
+                                // Direct filesystem reading - no archive cache needed
+                                std::fs::read(path)
+                            },
+                            crate::cache::img_cache::PathSource::Archive(_) | crate::cache::img_cache::PathSource::Preloaded(_) => {
+                                // Archive content requires archive cache
+                                let mut archive_cache = pane.archive_cache.lock().unwrap();
+                                crate::file_io::read_image_bytes(img_path, Some(&mut *archive_cache))
+                            }
+                        };
+                        
+                        match bytes_result {
                             Ok(bytes) => {
                                 pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
-                                
+
                                 // Record image rendering time for FPS calculation (for fallback path)
                                 if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
                                     let now = Instant::now();
                                     render_times.push(now);
-                                    
+
                                     // Calculate image rendering FPS
                                     if render_times.len() > 1 {
                                         let oldest = render_times[0];
                                         let elapsed = now.duration_since(oldest);
-                                        
+
                                         if elapsed.as_secs_f32() > 0.0 {
                                             let fps = render_times.len() as f32 / elapsed.as_secs_f32();
-                                            
+
                                             // Store the current image rendering FPS
                                             if let Ok(mut image_fps) = IMAGE_RENDER_FPS.lock() {
                                                 *image_fps = fps;
                                             }
-                                            
+
                                             // Keep only recent frames (last 3 seconds)
                                             let cutoff = now - std::time::Duration::from_secs(3);
                                             render_times.retain(|&t| t > cutoff);
                                         }
                                     }
                                 }
-                                
+
                                 Ok(())
                             },
                             Err(err) => Err(io::Error::new(
@@ -679,6 +749,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                                 format!("Failed to read image file for slider: {}", err),
                             ))
                         }
+
                     } else {
                         Err(io::Error::new(
                             io::ErrorKind::NotFound,
