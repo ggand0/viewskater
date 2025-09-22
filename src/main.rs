@@ -114,11 +114,13 @@ const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 50.0;   // Standard zone for other platf
 const FULLSCREEN_BOTTOM_ZONE_HEIGHT: f64 = 100.0;  // Standard bottom zone for all platforms
 
 // Store the actual shared log buffer from the file_io module
+#[allow(clippy::type_complexity)]
 static SHARED_LOG_BUFFER: Lazy<Arc<Mutex<Option<Arc<Mutex<VecDeque<String>>>>>>> = Lazy::new(|| {
     Arc::new(Mutex::new(None))
 });
 
 // Store the stdout buffer for global access
+#[allow(clippy::type_complexity)]
 static SHARED_STDOUT_BUFFER: Lazy<Arc<Mutex<Option<Arc<Mutex<VecDeque<String>>>>>>> = Lazy::new(|| {
     Arc::new(Mutex::new(None))
 });

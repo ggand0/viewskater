@@ -182,6 +182,7 @@ fn load_full_res_image(
     Task::none()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn get_loading_tasks_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -261,7 +262,7 @@ fn get_loading_tasks_slider(
     tasks
 }
 
-
+#[allow(clippy::too_many_arguments)]
 pub fn load_remaining_images(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,

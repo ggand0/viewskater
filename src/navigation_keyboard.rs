@@ -195,6 +195,7 @@ pub fn render_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
     did_render_happen
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn load_next_images_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -312,7 +313,7 @@ fn get_target_indices_for_next(panes: &mut Vec<&mut Pane>) -> Vec<Option<isize>>
     }).collect()
 }
 
-
+#[allow(clippy::too_many_arguments)]
 pub fn load_prev_images_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -438,8 +439,7 @@ fn get_target_indices_for_previous(panes: &mut Vec<&mut Pane>) -> Vec<Option<isi
     }).collect()
 }
 
-
-
+#[allow(clippy::too_many_arguments)]
 pub fn move_right_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
@@ -568,7 +568,7 @@ pub fn move_right_all(
     Task::batch(tasks)
 }
 
-
+#[allow(clippy::too_many_arguments)]
 pub fn move_left_all(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,

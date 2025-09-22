@@ -365,6 +365,7 @@ impl Pane {
         did_render_happen
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[allow(unused_assignments)]
     pub fn initialize_dir_path(
         &mut self,

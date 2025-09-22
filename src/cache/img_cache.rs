@@ -211,6 +211,7 @@ pub trait ImageCacheBackend {
         archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
     ) -> Result<CachedData, io::Error>;
 
+    #[allow(clippy::too_many_arguments)]
     fn load_initial_images(
         &mut self,
         image_paths: &[PathSource],
@@ -224,6 +225,7 @@ pub trait ImageCacheBackend {
     ) -> Result<(), io::Error>;
 
     #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
     fn load_pos(
         &mut self,
         new_image: Option<CachedData>,
@@ -756,7 +758,7 @@ impl ImageCache {
 
 }
 
-
+#[allow(clippy::too_many_arguments)]
 pub fn load_images_by_operation_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,

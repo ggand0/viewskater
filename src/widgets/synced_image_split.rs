@@ -171,6 +171,7 @@ where
     ///     - The position of the divider. If none, the space will be split in half.
     ///     - The [`Axis`] to split at.
     ///     - The message that is send on moving the divider
+    #[allow(clippy::too_many_arguments)]
     pub fn new<A, B, F, G, H, I>(
         enable_pane_selection: bool,
         first: A,
