@@ -332,7 +332,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
 
 pub fn build_ui_dual_pane_slider1(
-    panes: &'_ [Pane],
+    panes: &[Pane],
     divider_position: Option<u16>,
     is_slider_moving: bool,
     is_horizontal_split: bool,
@@ -366,7 +366,7 @@ pub fn build_ui_dual_pane_slider1(
 
 
 pub fn build_ui_dual_pane_slider2(
-    panes: &'_ [Pane],
+    panes: &[Pane],
     divider_position: Option<u16>,
     show_footer: bool,
     is_slider_moving: bool,

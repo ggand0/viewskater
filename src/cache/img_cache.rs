@@ -188,7 +188,7 @@ impl PathSource {
         }
     }
     /// Get filename for display/sorting purposes
-    pub fn file_name(&'_ self) -> std::borrow::Cow<'_, str> {
+    pub fn file_name(&self) -> std::borrow::Cow<'_, str> {
         match self {
             PathSource::Filesystem(_) => {
                 self.path().file_name()

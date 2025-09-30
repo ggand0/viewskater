@@ -492,8 +492,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             state.queue_message(Message::ToggleFullScreen(true));
                                             Some(winit::window::Fullscreen::Borderless(None))
                                         };
-                                        // https://github.com/rust-windowing/winit/issues/4162
-                                        // no screen when using rustdesk remote control mac mini
                                         use iced_winit::winit::platform::macos::WindowExtMacOS;
                                         window.set_simple_fullscreen(fullscreen.is_some());
                                     }

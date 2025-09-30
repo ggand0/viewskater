@@ -1325,7 +1325,7 @@ impl iced_winit::runtime::Program for DataViewer {
         }
     }
 
-    fn view(&'_ self) -> Element<'_, Message, WinitTheme, Renderer> {
+    fn view(&self) -> Element<'_, Message, WinitTheme, Renderer> {
         let content = ui::build_ui(self);
 
         if self.show_about {
