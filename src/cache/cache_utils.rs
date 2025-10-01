@@ -39,7 +39,7 @@ fn check_and_resize_if_oversized(img: DynamicImage) -> DynamicImage {
 /// Loads an image with safety resizing for oversized images (>8192px)
 pub fn load_original_image(path_source: &crate::cache::img_cache::PathSource, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<DynamicImage, io::Error> {
     let img = {
-        // Use PathSource-aware unified function 
+        // Use PathSource-aware unified function
         let bytes = crate::file_io::read_image_bytes(path_source, archive_cache)?;
         ImageReader::new(Cursor::new(bytes)).with_guessed_format()?.decode()
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from PathSource: {e} {}", path_source.file_name())))?
@@ -50,7 +50,7 @@ pub fn load_original_image(path_source: &crate::cache::img_cache::PathSource, ar
 /// Loads and resizes an image to target dimensions, then applies safety size check
 pub fn load_and_resize_image(path_source: &crate::cache::img_cache::PathSource, target_width: u32, target_height: u32, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<DynamicImage, io::Error> {
     let img = {
-        // Use PathSource-aware unified function 
+        // Use PathSource-aware unified function
         let bytes = crate::file_io::read_image_bytes(path_source, archive_cache)?;
         ImageReader::new(Cursor::new(bytes)).with_guessed_format()?.decode()
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from PathSource: {e} {}", path_source.file_name())))?
@@ -77,7 +77,7 @@ pub fn should_use_compression(width: u32, height: u32, strategy: CompressionStra
     match strategy {
         CompressionStrategy::Bc1 => {
             // BC1 compression requires dimensions to be multiples of 4
-            if width % 4 == 0 && height % 4 == 0 {
+            if width.is_multiple_of(4) && height.is_multiple_of(4) {
                 debug!("Using BC1 compression for image ({} x {})", width, height);
                 true
             } else {
@@ -135,7 +135,7 @@ pub fn compress_image_data(
     );
 
     // Calculate compressed data layout
-    let blocks_x = (width + 3) / 4;
+    let blocks_x = width.div_ceil(4);
     let bytes_per_block = 8; // BC1 uses 8 bytes per 4x4 block
     let row_bytes = blocks_x * bytes_per_block;
 
@@ -215,8 +215,8 @@ pub fn compress_image_data_texpresso(image_data: &[u8], width: u32, height: u32)
     let height_usize = height as usize;
 
     // Calculate the output size
-    let blocks_wide = (width_usize + 3) / 4;
-    let blocks_tall = (height_usize + 3) / 4;
+    let blocks_wide = width_usize.div_ceil(4);
+    let blocks_tall = height_usize.div_ceil(4);
     let block_size = Format::Bc1.block_size();
     let output_size = blocks_wide * blocks_tall * block_size;
 

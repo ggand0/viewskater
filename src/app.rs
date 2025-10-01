@@ -474,26 +474,24 @@ impl DataViewer {
 
                 if self.skate_left {
                     // will be handled at the end of update() to run move_left_all
+                } else if modifiers.shift() {
+                    self.skate_left = true;
                 } else {
-                    if modifiers.shift() {
-                        self.skate_left = true;
-                    } else {
-                        self.skate_left = false;
+                    self.skate_left = false;
 
-                        debug!("move_left_all from handle_key_pressed_event()");
-                        let task = move_left_all(
-                            &self.device,
-                            &self.queue,
-                            self.cache_strategy,
-                            self.compression_strategy,
-                            &mut self.panes,
-                            &mut self.loading_status,
-                            &mut self.slider_value,
-                            &self.pane_layout,
-                            self.is_slider_dual,
-                            self.last_opened_pane as usize);
-                        tasks.push(task);
-                    }
+                    debug!("move_left_all from handle_key_pressed_event()");
+                    let task = move_left_all(
+                        &self.device,
+                        &self.queue,
+                        self.cache_strategy,
+                        self.compression_strategy,
+                        &mut self.panes,
+                        &mut self.loading_status,
+                        &mut self.slider_value,
+                        &self.pane_layout,
+                        self.is_slider_dual,
+                        self.last_opened_pane as usize);
+                    tasks.push(task);
                 }
             }
             Key::Named(Named::ArrowRight) | Key::Character("d") => {
@@ -642,8 +640,8 @@ impl DataViewer {
                 pane.is_prev_image_loaded = false;
             }
 
-            let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
-            self.slider_value = pane::get_master_slider_value(&mut panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+            let panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
+            self.slider_value = pane::get_master_slider_value(&panes_refs, &self.pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
         } else {
             // Single to dual slider: give slider.value to each slider
             for pane in self.panes.iter_mut() {
@@ -663,8 +661,8 @@ impl DataViewer {
 
                 if self.pane_layout == PaneLayout::DualPane {
                     // Reset the slider value to the first pane's current index
-                    let mut panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
-                    self.slider_value = pane::get_master_slider_value(&mut panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
+                    let panes_refs: Vec<&mut pane::Pane> = self.panes.iter_mut().collect();
+                    self.slider_value = pane::get_master_slider_value(&panes_refs, &pane_layout, self.is_slider_dual, self.last_opened_pane as usize) as u16;
                     self.panes[0].is_selected = true;
                 }
             }
@@ -833,7 +831,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 let app_name = "viewskater";
                 let log_dir_path = crate::logging::get_log_directory(app_name);
                 let _ = std::fs::create_dir_all(log_dir_path.clone());
-                crate::logging::open_in_file_explorer(&log_dir_path.to_string_lossy().to_string());
+                crate::logging::open_in_file_explorer(log_dir_path.to_string_lossy().as_ref());
             }
             Message::ExportDebugLogs => {
                 let app_name = "viewskater";
@@ -915,7 +913,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.reset_state(-1);
                 debug!("directory_path: {:?}", self.directory_path);
                 debug!("self.current_image_index: {}", self.current_image_index);
-                for (_cache_index, pane) in self.panes.iter_mut().enumerate() {
+                for pane in self.panes.iter_mut() {
                     let img_cache = &mut pane.img_cache;
                     debug!("img_cache.current_index: {}", img_cache.current_index);
                     debug!("img_cache.image_paths.len(): {}", img_cache.image_paths.len());
@@ -1076,7 +1074,7 @@ impl iced_winit::runtime::Program for DataViewer {
                             if let Some(device) = &pane.device {
                                 if let Some(queue) = &pane.queue {
                                     if let Some(scene) = &mut pane.slider_scene {
-                                        scene.ensure_texture(&device, &queue, pane.pane_id);
+                                        scene.ensure_texture(device, queue, pane.pane_id);
                                     }
                                 }
                             }
@@ -1172,29 +1170,16 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
 
                 // Continue with loading remaining images
-                if pane_index == -1 {
-                    return navigation_slider::load_remaining_images(
-                        &self.device,
-                        &self.queue,
-                        self.is_gpu_supported,
-                        self.cache_strategy,
-                        self.compression_strategy,
-                        &mut self.panes,
-                        &mut self.loading_status,
-                        pane_index,
-                        value as usize);
-                } else {
-                    return navigation_slider::load_remaining_images(
-                        &self.device,
-                        &self.queue,
-                        self.is_gpu_supported,
-                        self.cache_strategy,
-                        self.compression_strategy,
-                        &mut self.panes,
-                        &mut self.loading_status,
-                        pane_index as isize,
-                        value as usize);
-                }
+                return navigation_slider::load_remaining_images(
+                    &self.device,
+                    &self.queue,
+                    self.is_gpu_supported,
+                    self.cache_strategy,
+                    self.compression_strategy,
+                    &mut self.panes,
+                    &mut self.loading_status,
+                    pane_index,
+                    value as usize);
             }
 
             Message::Event(event) => match event {
@@ -1302,7 +1287,7 @@ impl iced_winit::runtime::Program for DataViewer {
 
         if self.skate_right {
             self.update_counter = 0;
-            let task = move_right_all(
+            move_right_all(
                 &self.device,
                 &self.queue,
                 self.cache_strategy,
@@ -1313,12 +1298,11 @@ impl iced_winit::runtime::Program for DataViewer {
                 &self.pane_layout,
                 self.is_slider_dual,
                 self.last_opened_pane as usize
-            );
-            task
+            )
         } else if self.skate_left {
             self.update_counter = 0;
             debug!("move_left_all from self.skate_left block");
-            let task = move_left_all(
+            move_left_all(
                 &self.device,
                 &self.queue,
                 self.cache_strategy,
@@ -1329,8 +1313,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 &self.pane_layout,
                 self.is_slider_dual,
                 self.last_opened_pane as usize
-            );
-            task
+            )
         } else {
             // Log that there's no task to perform once
             if self.update_counter == 0 {
@@ -1342,8 +1325,8 @@ impl iced_winit::runtime::Program for DataViewer {
         }
     }
 
-    fn view(&self) -> Element<Message, WinitTheme, Renderer> {
-        let content = ui::build_ui(&self);
+    fn view(&self) -> Element<'_, Message, WinitTheme, Renderer> {
+        let content = ui::build_ui(self);
 
         if self.show_about {
             // Build the info column dynamically to avoid empty text widgets
@@ -1352,22 +1335,19 @@ impl iced_winit::runtime::Program for DataViewer {
                 text(format!("Build: {} ({})", BuildInfo::build_string(), BuildInfo::build_profile())).size(12)
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
-                        color: Some(theme.extended_palette().background.weak.color),
-                        ..Default::default()
+                        color: Some(theme.extended_palette().background.weak.color)
                     }
                 }),
                 text(format!("Commit: {}", BuildInfo::git_hash_short())).size(12)
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
-                        color: Some(theme.extended_palette().background.weak.color),
-                        ..Default::default()
+                        color: Some(theme.extended_palette().background.weak.color)
                     }
                 }),
                 text(format!("Platform: {}", BuildInfo::target_platform())).size(12)
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
                         color: Some(theme.extended_palette().background.weak.color),
-                        ..Default::default()
                     }
                 }),
             ];
@@ -1380,7 +1360,6 @@ impl iced_winit::runtime::Program for DataViewer {
                     .style(|theme: &WinitTheme| {
                         iced_widget::text::Style {
                             color: Some(theme.extended_palette().background.weak.color),
-                            ..Default::default()
                         }
                     })
                 );
@@ -1392,7 +1371,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
                         color: Some(theme.extended_palette().primary.strong.color),
-                        ..Default::default()
                     }
                 })
             ]);

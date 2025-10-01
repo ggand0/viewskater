@@ -154,6 +154,7 @@ where
     ///     - The position of the divider. If none, the space will be split in half.
     ///     - The [`Axis`] to split at.
     ///     - The message that is send on moving the divider
+    #[allow(clippy::too_many_arguments)]
     pub fn new<A, B, F, G, H, I>(
         enable_pane_selection: bool,
         first: A,
@@ -187,7 +188,7 @@ where
             //     .width(Length::Fill)
             //     .height(Length::Fill)
             //     .into(),
-            is_selected: is_selected,
+            is_selected,
             divider_position,
             //divider_init_position: divider_position,
             axis,
@@ -202,7 +203,7 @@ where
             on_drop: Box::new(on_drop),
             on_select: Box::new(on_select),
             class: Theme::default(),
-            enable_pane_selection: enable_pane_selection,
+            enable_pane_selection,
             menu_bar_height,
             debug: false,
         }
@@ -253,8 +254,8 @@ where
 
     /// Sets the style of the [`Split`].
     #[must_use]
-    pub fn style(mut self, style: impl Fn(&Theme, Status) -> Style + 'a) -> Self 
-    where 
+    pub fn style(mut self, style: impl Fn(&Theme, Status) -> Style + 'a) -> Self
+    where
         Theme::Class<'a>: From<StyleFn<'a, Theme>>,
     {
         self.class = (Box::new(style) as StyleFn<'a, Theme>).into();
@@ -307,7 +308,7 @@ where
             .width(Length::Fill)
             .height(Length::Fill)
             .layout(tree, renderer, limits);
-        
+
         let config = SplitLayoutConfig {
             first: &self.first,
             second: &self.second,
@@ -367,7 +368,7 @@ where
             .next()
             .expect("Graphics: Layout should have a second layout");
 
-        
+
         match event.clone() {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
@@ -385,12 +386,12 @@ where
                         if elapsed < Duration::from_millis(CONFIG.double_click_threshold_ms as u64) {
                             // Double-click detected
                             split_state.last_click_time = None;
-    
+
                             let double_click_position = match self.axis {
                                 Axis::Horizontal => cursor.position().map(|p| p.y),
                                 Axis::Vertical => cursor.position().map(|p| p.x),
                             };
-                            
+
                             if let Some(position) = double_click_position {
                                 self.divider_position = None;
                                 split_state.dragging = false;
@@ -399,7 +400,7 @@ where
                         } else {
                             // Reset the timer for a new potential double-click
                             split_state.last_click_time = Some(Instant::now());
-                            
+
                         }
                     } else {
                         split_state.last_click_time = Some(Instant::now());
@@ -408,17 +409,17 @@ where
 
                 // Detect pane selection
                 if self.enable_pane_selection {
-                    let is_within_bounds_first = is_cursor_within_bounds::<Message>(first_layout, cursor, 0, split_state);
+                    let is_within_bounds_first = is_cursor_within_bounds(first_layout, cursor, 0, split_state);
                     if is_within_bounds_first {
                         split_state.panes_seleced[0] = !split_state.panes_seleced[0];
                         shell.publish((self.on_select)(0, split_state.panes_seleced[0]));
-                        
+
                     }
-                    let is_within_bounds_second = is_cursor_within_bounds::<Message>(second_layout, cursor, 1, split_state);
+                    let is_within_bounds_second = is_cursor_within_bounds(second_layout, cursor, 1, split_state);
                     if is_within_bounds_second {
                         split_state.panes_seleced[1] = !split_state.panes_seleced[1];
                         shell.publish((self.on_select)(1, split_state.panes_seleced[1]));
-                        
+
                     }
                 }
             }
@@ -443,15 +444,15 @@ where
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Event::Window(iced::window::Event::FileDropped(paths, position)) => {
                 debug!("FILEDROP POSITION: {:?}", position);
-                
+
                 let mut children = layout.children();
                 let first_layout = children.next().expect("Missing first layout");
                 let _divider_layout = children.next().expect("Missing divider layout");
                 let second_layout = children.next().expect("Missing second layout");
-                
+
                 // Convert position to Point for checking
                 let custom_position = Point::new(position.x as f32, position.y as f32);
-                
+
                 // Check which pane contains the position
                 if first_layout.bounds().contains(custom_position) {
                     shell.publish((self.on_drop)(0, paths[0].to_string_lossy().to_string()));
@@ -466,16 +467,16 @@ where
                 let first_layout = children.next().expect("Missing first layout");
                 let _divider_layout = children.next().expect("Missing divider layout");
                 let second_layout = children.next().expect("Missing second layout");
-                
+
                 debug!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
-                
+
                 // Check which pane the cursor is over and use the correct index
                 let cursor_pos = cursor.position().unwrap_or_default();
-                
+
                 // Check first pane (index 0)
                 if first_layout.bounds().contains(cursor_pos) {
                     shell.publish((self.on_drop)(0, path[0].to_string_lossy().to_string()));
-                } 
+                }
                 // Check second pane (index 1)
                 else if second_layout.bounds().contains(cursor_pos) {
                     shell.publish((self.on_drop)(1, path[0].to_string_lossy().to_string()));
@@ -543,7 +544,7 @@ where
         let divider_layout = children
             .next()
             .expect("Graphics: Layout should have a divider layout");
-        
+
         // Use the constant instead of hardcoded value
         let divider_mouse_interaction = if divider_layout
             .bounds().expand(DIVIDER_HITBOX_EXPANSION)
@@ -556,7 +557,7 @@ where
         } else {
             mouse::Interaction::default()
         };
-        
+
         let second_layout = children
             .next()
             .expect("Graphics: Layout should have a second layout");
@@ -757,7 +758,7 @@ where
             },
             Background::Color(Color::from_rgb(0.2, 0.2, 0.2)),
         );
-        
+
 
         let style = theme.style(&self.class, Status::Active);
         // Draw pane selection status; if selected, draw a border around the pane
@@ -775,7 +776,7 @@ where
                     },
                     Background::Color(Color::TRANSPARENT),
                 );
-                
+
             }
             if self.is_selected[1] {
                 renderer.fill_quad(
@@ -790,7 +791,7 @@ where
                     },
                     Background::Color(Color::TRANSPARENT),
                 );
-                
+
             }
         }
     }
@@ -856,7 +857,7 @@ where
 // Helper function to process a layout and check for cursor position
 // This function assumes that the first child of the container is the Image widget
 // TODO: Fix hardcoding
-fn is_cursor_within_bounds<Message>(
+fn is_cursor_within_bounds(
     layout: Layout<'_>,
     cursor: Cursor,
     _pane_index: usize,
@@ -870,7 +871,7 @@ fn is_cursor_within_bounds<Message>(
                 return true;
             }
         }
-        
+
     }
     false
 }
@@ -933,13 +934,13 @@ where
 
     // Calculate available content height (total minus spacing)
     let available_content_height = total_height - config.spacing;
-    
+
     // Calculate equal height for both panes
     let equal_pane_height = available_content_height / 2.0;
-    
+
     // Default divider position is set to create equal panes
-    let divider_position = config.divider_position.unwrap_or_else(|| equal_pane_height as u16);
-    
+    let divider_position = config.divider_position.unwrap_or(equal_pane_height as u16);
+
     // divider_position is always positive: measure from start (top)
     let effective_position = divider_position.max(((config.spacing / 2.0) as i16).try_into().unwrap()) as f32;
 
@@ -988,7 +989,7 @@ where
 
     // Debug logs to verify positions and heights
     if config.debug{
-        debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}", 
+        debug!("HORIZONTAL Split: equal_pane_height={}, first_y={}, divider_y={}, second_y={}, first_height={}, second_height={}",
             equal_pane_height,
             space.bounds().y + config.padding,
             clamped_position,
@@ -1016,7 +1017,7 @@ where
 {
     let bounds = space.bounds();
     if config.debug{ debug!("VERTICAL Split calculation - bounds: {:?}", bounds); }
-    
+
     if space.bounds().width
         < config.spacing + f32::from(config.min_size_first + config.min_size_second)
     {
@@ -1041,53 +1042,52 @@ where
 
     // Calculate the actual size available for content (excluding padding)
     let available_width = space.bounds().width - (2.0 * config.padding);
-    
+
     // Define spacing around the divider (on each side)
     let gap = config.spacing; // Gap between content and divider
     let divider_width = 1.0; // Width of the actual divider line
     //let total_spacing = 2.0 * gap + divider_width; // Total space needed for divider + gaps
-    
+
     // Calculate the divider position
     let divider_position = config
         .divider_position
         .unwrap_or_else(|| (available_width / 2.0) as u16);
-    
+
     // Explicitly calculate the actual minimum width constraints
     // Left minimum constraint (distance from left edge to divider center)
     let min_left_divider_position = config.min_size_first as f32 + gap;
-    
+
     // Right minimum constraint (distance from right edge to divider center)
     let min_right_divider_position = available_width - (config.min_size_second as f32) - gap;
-    
+
     // Ensure divider position respects both minimum constraints
     let divider_position_constrained = divider_position as f32;
     let divider_position_constrained = divider_position_constrained.max(min_left_divider_position);
     let divider_position_constrained = divider_position_constrained.min(min_right_divider_position);
-    
-    if config.debug { 
-        debug!("VERTICAL Split - min constraints: left min={}, right min={}, constrained pos={}", 
-            min_left_divider_position, min_right_divider_position, divider_position_constrained); 
+
+    if config.debug {
+        debug!("VERTICAL Split - min constraints: left min={}, right min={}, constrained pos={}",
+            min_left_divider_position, min_right_divider_position, divider_position_constrained);
     }
-    
+
     // Calculate positions of elements with original offset
     let divider_center_x = space.bounds().x + config.padding + divider_position_constrained;
-    
+
     // The first element should end before the left gap
     let first_end_x = divider_center_x - gap;
-    
+
     // The divider should be in the center of the gap
     let divider_left_x = divider_center_x - divider_width/2.0;
-    
+
     // The second element should start after the right gap
     let second_start_x = divider_center_x + gap;
 
     // Layout the first element with appropriate width
     let first_width = first_end_x - (space.bounds().x + config.padding);
     let first_limits = limits
-        .clone()
         .width(first_width)
         .shrink(Padding::from(config.padding as u16));
-    
+
     let mut first = config.first.as_widget().layout(
         &mut tree.children[0],
         renderer,
@@ -1105,10 +1105,9 @@ where
     // Layout the second element
     let second_width = space.bounds().width - second_start_x - config.padding;
     let second_limits = limits
-        .clone()
         .width(second_width)
         .shrink(Padding::from(config.padding as u16));
-    
+
     let mut second =
         config
             .second

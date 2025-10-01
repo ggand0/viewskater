@@ -148,7 +148,7 @@ fn nothing_button<'a>(label: &'a str, text_size: u16) -> button::Button<'a, Mess
     .style(default_style)
 }
 
-fn submenu_button(label: &str, text_size: u16) -> button::Button<Message, WinitTheme, Renderer> {
+fn submenu_button(label: &str, text_size: u16) -> button::Button<'_, Message, WinitTheme, Renderer> {
     base_button(
         row![
             text(label)
@@ -381,7 +381,7 @@ pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Rendere
 }
 
 
-pub fn build_menu(app: &DataViewer) -> MenuBar<Message, WinitTheme, Renderer> {
+pub fn build_menu(app: &DataViewer) -> MenuBar<'_, Message, WinitTheme, Renderer> {
     menu_bar!(
         (
             container(
@@ -427,8 +427,7 @@ pub fn build_menu(app: &DataViewer) -> MenuBar<Message, WinitTheme, Renderer> {
         menu_border: Border{
             color: theme.extended_palette().background.weak.color,
             width: 1.0,
-            radius: Radius::new(0.0),
-            ..Default::default()
+            radius: Radius::new(0.0)
         },
         menu_background_expand: Padding::from(0.0),
         path_border: Border{
