@@ -105,8 +105,7 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
                 text(footer_text)
                 .font(Font::MONOSPACE)
                 .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([0.8, 0.8, 0.8])), // Wrap Color in a style configuration
-                    ..Default::default()
+                    color: Some(Color::from([0.8, 0.8, 0.8])) // Wrap Color in a style configuration
                 })
                 .size(14)
             )
@@ -272,9 +271,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.synced_zoom
                 );
 
-                let footer_texts = vec![
+                let footer_texts = [
                     format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files),
-                    format!("{}/{}", app.panes[1].img_cache.current_index + 1, app.panes[1].img_cache.num_files),
+                    format!("{}/{}", app.panes[1].img_cache.current_index + 1, app.panes[1].img_cache.num_files)
                 ];
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
@@ -338,7 +337,7 @@ pub fn build_ui_dual_pane_slider1(
     is_slider_moving: bool,
     is_horizontal_split: bool,
     synced_zoom: bool
-) -> Element<Message, WinitTheme, Renderer> {
+) -> Element<'_, Message, WinitTheme, Renderer> {
     let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split);
     let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split);
 
@@ -373,8 +372,8 @@ pub fn build_ui_dual_pane_slider2(
     is_slider_moving: bool,
     is_horizontal_split: bool,
     _synced_zoom: bool
-) -> Element<Message, WinitTheme, Renderer> {
-    let footer_texts = vec![
+) -> Element<'_, Message, WinitTheme, Renderer> {
+    let footer_texts = [
         format!(
             "{}/{}",
             panes[0].img_cache.current_index + 1,
@@ -529,8 +528,7 @@ fn get_fps_container(app: &DataViewer) -> Container<'_, Message, WinitTheme, Ren
                          ui_fps, image_fps, memory_text))
                 .size(14)
                 .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([1.0, 1.0, 1.0])),
-                    ..Default::default()
+                    color: Some(Color::from([1.0, 1.0, 1.0]))
                 })
         )
         .padding(5)

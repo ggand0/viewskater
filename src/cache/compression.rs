@@ -11,15 +11,11 @@ pub type RgbaBlock = [[u8; 4]; 16];
 /// Defines available compression algorithms
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
+#[derive(Default)]
 pub enum CompressionAlgorithm {
     /// RangeFit algorithm - faster with good quality
+    #[default]
     RangeFit,
-}
-
-impl Default for CompressionAlgorithm {
-    fn default() -> Self {
-        CompressionAlgorithm::RangeFit
-    }
 }
 
 /// Converts RGB values to the RGB565 format.
@@ -79,7 +75,7 @@ fn compute_principal_axis(colors: &[(u8, u8, u8)]) -> (f32, f32, f32) {
         let x = cov[0][0] * axis.0 + cov[0][1] * axis.1 + cov[0][2] * axis.2;
         let y = cov[1][0] * axis.0 + cov[1][1] * axis.1 + cov[1][2] * axis.2;
         let z = cov[2][0] * axis.0 + cov[2][1] * axis.1 + cov[2][2] * axis.2;
-        
+
         let length = (x * x + y * y + z * z).sqrt();
         if length > 0.0 {
             axis = (x / length, y / length, z / length);
@@ -92,7 +88,7 @@ fn compute_principal_axis(colors: &[(u8, u8, u8)]) -> (f32, f32, f32) {
 /// Compresses a 4x4 block using the RangeFit algorithm
 fn compress_bc1_block_rangefit(block: &RgbaBlock) -> Bc1Block {
     let mut colors: Vec<(u8, u8, u8)> = Vec::new();
-    
+
     // Collect non-transparent pixels
     for &pixel in block.iter() {
         if pixel[3] > 128 {
@@ -115,7 +111,7 @@ fn compress_bc1_block_rangefit(block: &RgbaBlock) -> Bc1Block {
 
     for &(r, g, b) in &colors {
         let proj = (r as f32) * axis.0 + (g as f32) * axis.1 + (b as f32) * axis.2;
-        
+
         if proj < min_proj {
             min_proj = proj;
             min_color = (r, g, b);
@@ -132,7 +128,7 @@ fn compress_bc1_block_rangefit(block: &RgbaBlock) -> Bc1Block {
 
     // Create color palette
     let mut palette = [min_color, max_color, (0, 0, 0), (0, 0, 0)];
-    
+
     if color0 > color1 {
         palette[2] = (
             ((2 * (min_color.0 as u16) + max_color.0 as u16) / 3) as u8,
@@ -189,25 +185,25 @@ pub fn compress_bc1_block(block: &RgbaBlock, algorithm: CompressionAlgorithm) ->
 
 /// Compresses an entire image of RGBA pixels
 pub fn compress_image_bc1(
-    image: &[u8], 
-    width: usize, 
+    image: &[u8],
+    width: usize,
     height: usize,
     algorithm: CompressionAlgorithm
 ) -> Vec<Bc1Block> {
     use rayon::prelude::*;
-    
+
     // Calculate the positions of all blocks to process
-    let blocks_x = (width + 3) / 4;
-    let blocks_y = (height + 3) / 4;
+    let blocks_x = width.div_ceil(4);
+    let blocks_y = height.div_ceil(4);
     let total_blocks = blocks_x * blocks_y;
-    
+
     // Create a parallel iterator for all block positions
     (0..total_blocks)
         .into_par_iter()
         .map(|block_idx| {
             let block_x = (block_idx % blocks_x) * 4;
             let block_y = (block_idx / blocks_x) * 4;
-            
+
             // Build the 4x4 block
             let mut block = [[0u8; 4]; 16];
             for by in 0..4 {
@@ -225,7 +221,7 @@ pub fn compress_image_bc1(
                     }
                 }
             }
-            
+
             // Compress the block and return it
             compress_bc1_block(&block, algorithm)
         })

@@ -18,7 +18,6 @@ use macos::*;
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};
 
-use image;
 use image::codecs::png::PngEncoder;
 use image::ImageEncoder;
 use image::ExtendedColorType;
@@ -56,7 +55,7 @@ fn load_full_res_image(
     queue: &Arc<wgpu::Queue>,
     is_gpu_supported: bool,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     pane_index: isize,
     pos: usize,
 ) -> Task<Message> {
@@ -128,7 +127,7 @@ fn load_full_res_image(
                 }
 
                 // Store the full-resolution texture in the cache
-                let loaded_image = CachedData::Gpu(texture.clone().into());
+                let loaded_image = CachedData::Gpu(texture.clone());
                 img_cache.cached_data[target_index] = Some(loaded_image.clone());
                 img_cache.cached_image_indices[target_index] = pos as isize;
                 img_cache.current_index = pos;
@@ -183,13 +182,14 @@ fn load_full_res_image(
     Task::none()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn get_loading_tasks_slider(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     _is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
     pane_index: usize,
     pos: usize,
@@ -232,7 +232,7 @@ fn get_loading_tasks_slider(
                     target_indices_and_cache.push(Some((next_image_index as isize, center_index + i + 1)));
                 }
                 if prev_image_index >= 0 {
-                    target_indices_and_cache.push(Some((prev_image_index as isize, center_index - i - 1)));
+                    target_indices_and_cache.push(Some((prev_image_index, center_index - i - 1)));
                 }
             }
         }
@@ -262,14 +262,14 @@ fn get_loading_tasks_slider(
     tasks
 }
 
-
+#[allow(clippy::too_many_arguments)]
 pub fn load_remaining_images(
     device: &Arc<wgpu::Device>,
     queue: &Arc<wgpu::Queue>,
     is_gpu_supported: bool,
     cache_strategy: CacheStrategy,
     compression_strategy: CompressionStrategy,
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     loading_status: &mut LoadingStatus,
     pane_index: isize,
     pos: usize,
@@ -308,23 +308,21 @@ pub fn load_remaining_images(
             debug!("load_remaining_images - local_tasks.len(): {}", local_tasks.len());
             tasks.extend(local_tasks);
         }
-    } else {
-        if let Some(pane) = panes.get_mut(pane_index as usize) {
-            if pane.dir_loaded {
-                let local_tasks = get_loading_tasks_slider(
-                    device,
-                    queue,
-                    is_gpu_supported,
-                    cache_strategy,
-                    compression_strategy,
-                    panes,
-                    loading_status,
-                    pane_index as usize,
-                    pos);
-                tasks.extend(local_tasks);
-            } else {
-                tasks.push(Task::none());
-            }
+    } else if let Some(pane) = panes.get_mut(pane_index as usize) {
+        if pane.dir_loaded {
+            let local_tasks = get_loading_tasks_slider(
+                device,
+                queue,
+                is_gpu_supported,
+                cache_strategy,
+                compression_strategy,
+                panes,
+                loading_status,
+                pane_index as usize,
+                pos);
+            tasks.extend(local_tasks);
+        } else {
+            tasks.push(Task::none());
         }
     }
 
@@ -365,7 +363,7 @@ pub async fn create_async_image_widget_task(
                         crate::file_io::read_image_bytes(&img_path, Some(&mut *cache))
                     },
                     Err(_) => {
-                        Err(std::io::Error::new(std::io::ErrorKind::Other, "Archive cache lock failed"))
+                        Err(std::io::Error::other("Archive cache lock failed"))
                     },
                 }
             } else {
@@ -401,7 +399,7 @@ pub async fn create_async_image_widget_task(
 }
 
 pub fn update_pos(
-    panes: &mut Vec<pane::Pane>,
+    panes: &mut [pane::Pane],
     pane_index: isize,
     pos: usize,
     use_async: bool,
@@ -475,7 +473,7 @@ pub fn update_pos(
 
                     // Get only the single path we need from each pane
                     let img_path = pane.img_cache.image_paths[pos].clone();
-                    
+
                     // Check if the pane has compressed files and get the archive cache
                     let archive_cache = if pane.has_compressed_file {
                         Some(Arc::clone(&pane.archive_cache))
@@ -486,7 +484,7 @@ pub fn update_pos(
                     // Create task for this pane
                     let pane_task = Task::perform(
                         create_async_image_widget_task(img_path, pos, idx, archive_cache),
-                        move |result| Message::SliderImageWidgetLoaded(result)
+                        Message::SliderImageWidgetLoaded
                     );
 
                     tasks.push(pane_task);
@@ -500,45 +498,43 @@ pub fn update_pos(
         }
 
         Task::none()
-    } else {
-        if pane_index == -1 {
-            // Perform dynamic loading:
-            // Load the image at pos (center) synchronously,
-            // and then load the rest of the images within the cache window asynchronously
-            let mut tasks = Vec::new();
-            for (cache_index, pane) in panes.iter_mut().enumerate() {
-                if pane.dir_loaded {
-                    //match load_current_slider_image(pane, pos) {
-                    match load_current_slider_image_widget(pane, pos) {
-                        Ok(()) => {
-                            debug!("update_pos - Image loaded successfully for pane {}", cache_index);
-                        }
-                        Err(err) => {
-                            debug!("update_pos - Error loading image for pane {}: {}", cache_index, err);
-                        }
-                    }
-                } else {
-                    tasks.push(Task::none());
-                }
-            }
-            Task::batch(tasks)
-
-        } else {
-            let pane_index = pane_index as usize;
-            let pane = &mut panes[pane_index];
+    } else if pane_index == -1 {
+        // Perform dynamic loading:
+        // Load the image at pos (center) synchronously,
+        // and then load the rest of the images within the cache window asynchronously
+        let mut tasks = Vec::new();
+        for (cache_index, pane) in panes.iter_mut().enumerate() {
             if pane.dir_loaded {
                 //match load_current_slider_image(pane, pos) {
                 match load_current_slider_image_widget(pane, pos) {
                     Ok(()) => {
-                        debug!("update_pos - Image loaded successfully for pane {}", pane_index);
+                        debug!("update_pos - Image loaded successfully for pane {}", cache_index);
                     }
                     Err(err) => {
-                        debug!("update_pos - Error loading image for pane {}: {}", pane_index, err);
+                        debug!("update_pos - Error loading image for pane {}: {}", cache_index, err);
                     }
                 }
+            } else {
+                tasks.push(Task::none());
             }
-            Task::none()
         }
+        Task::batch(tasks)
+
+    } else {
+        let pane_index = pane_index as usize;
+        let pane = &mut panes[pane_index];
+        if pane.dir_loaded {
+            //match load_current_slider_image(pane, pos) {
+            match load_current_slider_image_widget(pane, pos) {
+                Ok(()) => {
+                    debug!("update_pos - Image loaded successfully for pane {}", pane_index);
+                }
+                Err(err) => {
+                    debug!("update_pos - Error loading image for pane {}: {}", pane_index, err);
+                }
+            }
+        }
+        Task::none()
     }
 }
 
@@ -602,7 +598,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
                 )
             } {
                 debug!("Failed to encode slider image: {}", err);
-                return Err(io::Error::new(io::ErrorKind::Other, "Failed to encode image"));
+                return Err(io::Error::other("Failed to encode image"));
             }
 
             // Update the current image to CPU data
@@ -613,7 +609,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
             if let Some(device) = &pane.device {
                 if let Some(queue) = &pane.queue {
                     if let Some(scene) = &mut pane.slider_scene {
-                        scene.ensure_texture(&device, &queue, pane.pane_id);
+                        scene.ensure_texture(device, queue, pane.pane_id);
                     }
                 }
             }
@@ -622,7 +618,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
         },
         Err(err) => {
             debug!("Failed to open image for slider: {}", err);
-            Err(io::Error::new(io::ErrorKind::Other, format!("Failed to open image: {}", err)))
+            Err(io::Error::other(format!("Failed to open image: {}", err)))
         }
     }
 }
@@ -639,7 +635,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
     } else {
         None
     };
-    match img_cache.load_image(pos as usize, archive_cache) {
+    match img_cache.load_image(pos, archive_cache) {
         Ok(image) => {
             let target_index: usize;
             if pos < img_cache.cache_count {
@@ -712,7 +708,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                                 crate::file_io::read_image_bytes(img_path, Some(&mut *archive_cache))
                             }
                         };
-                        
+
                         match bytes_result {
                             Ok(bytes) => {
                                 pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
@@ -744,9 +740,8 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
 
                                 Ok(())
                             },
-                            Err(err) => Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("Failed to read image file for slider: {}", err),
+                            Err(err) => Err(io::Error::other(
+                                format!("Failed to read image file for slider: {}", err)
                             ))
                         }
 
