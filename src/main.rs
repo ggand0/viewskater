@@ -148,6 +148,48 @@ fn load_icon() -> Option<winit::window::Icon> {
     winit::window::Icon::from_rgba(image.into_raw(), width, height).ok()
 }
 
+struct CliArgs {
+    settings_path: Option<String>,
+    #[cfg(not(target_os = "macos"))]
+    file_path: Option<String>,
+}
+
+fn parse_cli_args() -> CliArgs {
+    let args: Vec<String> = std::env::args().collect();
+    let mut settings_path: Option<String> = None;
+    #[cfg(not(target_os = "macos"))]
+    let mut file_path: Option<String> = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--settings" => {
+                if i + 1 < args.len() {
+                    settings_path = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    eprintln!("Error: --settings flag requires a path argument");
+                    i += 1;
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            arg if !arg.starts_with("--") => {
+                file_path = Some(arg.to_string());
+                i += 1;
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+
+    CliArgs {
+        settings_path,
+        #[cfg(not(target_os = "macos"))]
+        file_path,
+    }
+}
+
 fn register_font_manually(font_data: &'static [u8]) {
     use std::sync::RwLockWriteGuard;
 
@@ -260,6 +302,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     // Set up the file channel AFTER winit initialization
     let (file_sender, file_receiver) = mpsc::channel();
 
+    // Parse command line arguments
+    let cli_args = parse_cli_args();
+    let settings_path = cli_args.settings_path;
+    #[cfg(not(target_os = "macos"))]
+    let file_arg = cli_args.file_path;
+
     // Test crash debug logging immediately at startup
     crate::logging::write_crash_debug_log("========== VIEWSKATER STARTUP ==========");
     crate::logging::write_crash_debug_log("Testing crash debug logging system at startup");
@@ -305,9 +353,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     // This supports double-click and "Open With" functionality via .desktop files on Linux
     #[cfg(not(target_os = "macos"))]
     {
-        let args: Vec<String> = std::env::args().collect();
-        if args.len() > 1 {
-            let file_path = &args[1];
+        if let Some(ref file_path) = file_arg {
             println!("File path from command line: {}", file_path);
 
             // Validate that the path exists and is a file or directory
@@ -337,6 +383,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             event_sender: StdSender<Event<Action<Message>>>,
             control_receiver: StdReceiver<Control>,
             file_receiver: Receiver<String>,
+            settings_path: Option<String>,
         },
         Ready {
             window: Arc<winit::window::Window>,
@@ -888,7 +935,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     impl winit::application::ApplicationHandler<Action<Message>> for Runner {
         fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
             match self {
-                Self::Loading { proxy, event_sender, control_receiver, file_receiver } => {
+                Self::Loading { proxy, event_sender, control_receiver, file_receiver, settings_path } => {
                     info!("resumed()...");
 
                     let custom_theme = Theme::custom_with_fn(
@@ -1040,6 +1087,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         backend,
                         renderer_request_sender,
                         std::mem::replace(file_receiver, mpsc::channel().1),
+                        settings_path.as_deref(),
                     );
 
                     // Update state creation to lock renderer
@@ -1173,6 +1221,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         event_sender,
         control_receiver,
         file_receiver,
+        settings_path,
     };
 
     event_loop.run_app(&mut runner)

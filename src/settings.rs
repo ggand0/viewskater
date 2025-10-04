@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use log::{info, warn, error};
+use log::{debug, info, warn, error};
 use iced_wgpu::engine::CompressionStrategy;
 use crate::cache::img_cache::CacheStrategy;
 
@@ -86,8 +86,15 @@ impl UserSettings {
     }
 
     /// Load settings from the YAML file
-    pub fn load() -> Self {
-        let path = Self::settings_path();
+    /// If custom_path is provided, uses that path; otherwise uses the default settings path
+    pub fn load(custom_path: Option<&str>) -> Self {
+        let path = match custom_path {
+            Some(p) => {
+                info!("Using custom settings path: {}", p);
+                PathBuf::from(p)
+            }
+            None => Self::settings_path(),
+        };
 
         if !path.exists() {
             info!("Settings file not found at {:?}, using defaults", path);
@@ -99,6 +106,8 @@ impl UserSettings {
                 match serde_yaml::from_str::<UserSettings>(&contents) {
                     Ok(settings) => {
                         info!("Loaded settings from {:?}", path);
+                        debug!("Settings: show_fps={}, compression={}, cache={}, mouse_wheel_zoom={}",
+                            settings.show_fps, settings.compression_strategy, settings.cache_strategy, settings.mouse_wheel_zoom);
                         settings
                     }
                     Err(e) => {

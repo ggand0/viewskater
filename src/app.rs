@@ -157,9 +157,10 @@ impl DataViewer {
         backend: wgpu::Backend,
         renderer_request_sender: Sender<RendererRequest>,
         file_receiver: Receiver<String>,
+        settings_path: Option<&str>,
     ) -> Self {
         // Load user settings from YAML file
-        let settings = UserSettings::load();
+        let settings = UserSettings::load(settings_path);
         let cache_strategy = settings.get_cache_strategy();
         let compression_strategy = settings.get_compression_strategy();
 
