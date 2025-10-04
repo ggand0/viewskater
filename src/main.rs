@@ -541,11 +541,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::Focused(false) => {
                                     // In replay mode, keep polling even when unfocused to ensure continuous rendering
-                                    if state.program().replay_controller.as_ref().map_or(false, |rc| rc.is_active()) {
-                                        event_loop.set_control_flow(ControlFlow::Poll);
-                                    } else {
-                                        event_loop.set_control_flow(ControlFlow::Wait);
-                                    }
+                                    //if state.program().replay_controller.as_ref().map_or(false, |rc| rc.is_active()) {
+                                    //    event_loop.set_control_flow(ControlFlow::Poll);
+                                    //} else {
+                                    //    event_loop.set_control_flow(ControlFlow::Wait);
+                                    //}
                                 }
                                 WindowEvent::Resized(size) => {
                                     if size.width > 0 && size.height > 0 {
@@ -986,14 +986,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                             }
 
-                            // Request a redraw if needed, or if replay mode is active
-                            let replay_active = state.program().replay_controller.as_ref().map_or(false, |rc| rc.is_active());
-                            if *redraw || replay_active {
+                            // Request a redraw if needed
+                            if *redraw {
                                 window.request_redraw();
-                                // Ensure continuous polling during replay mode
-                                if replay_active {
-                                    event_loop.set_control_flow(ControlFlow::Poll);
-                                }
                             }
                         }
                         _ => {}
