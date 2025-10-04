@@ -4847,6 +4847,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa 1.0.15",
+ "ryu",
+ "serde 1.0.219",
+ "unsafe-libyaml",
+]
+
+[[package]]
 name = "sevenz-rust2"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5630,6 +5643,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
+
+[[package]]
 name = "url"
 version = "2.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5736,6 +5755,8 @@ dependencies = [
  "once_cell",
  "rayon",
  "rfd",
+ "serde 1.0.219",
+ "serde_yaml",
  "sevenz-rust2",
  "smol_str",
  "sysinfo",

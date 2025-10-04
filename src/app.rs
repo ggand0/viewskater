@@ -56,6 +56,7 @@ use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
 use crate::build_info::BuildInfo;
+use crate::settings::UserSettings;
 
 use std::sync::mpsc::{Sender, Receiver};
 
@@ -157,6 +158,21 @@ impl DataViewer {
         renderer_request_sender: Sender<RendererRequest>,
         file_receiver: Receiver<String>,
     ) -> Self {
+        // Load user settings from YAML file
+        let settings = UserSettings::load();
+        let cache_strategy = settings.get_cache_strategy();
+        let compression_strategy = settings.get_compression_strategy();
+
+        info!("Initializing DataViewer with settings:");
+        info!("  show_fps: {}", settings.show_fps);
+        info!("  show_footer: {}", settings.show_footer);
+        info!("  is_horizontal_split: {}", settings.is_horizontal_split);
+        info!("  synced_zoom: {}", settings.synced_zoom);
+        info!("  mouse_wheel_zoom: {}", settings.mouse_wheel_zoom);
+        info!("  cache_strategy: {:?}", cache_strategy);
+        info!("  compression_strategy: {:?}", compression_strategy);
+        info!("  is_slider_dual: {}", settings.is_slider_dual);
+
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -164,11 +180,11 @@ impl DataViewer {
             slider_value: 0,
             prev_slider_value: 0,
             divider_position: None,
-            is_slider_dual: false,
-            show_footer: true,
+            is_slider_dual: settings.is_slider_dual,
+            show_footer: settings.show_footer,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
-            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0, CompressionStrategy::Bc1)],
+            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0, compression_strategy)],
             loading_status: loading_status::LoadingStatus::default(),
             skate_right: false,
             skate_left: false,
@@ -181,18 +197,18 @@ impl DataViewer {
             last_slider_update: Instant::now(),
             is_slider_moving: false,
             backend,
-            cache_strategy: CacheStrategy::Gpu,
-            show_fps: false,
-            compression_strategy: CompressionStrategy::None,
+            cache_strategy,
+            show_fps: settings.show_fps,
+            compression_strategy,
             renderer_request_sender,
-            is_horizontal_split: false,
+            is_horizontal_split: settings.is_horizontal_split,
             file_receiver,
-            synced_zoom: true,
+            synced_zoom: settings.synced_zoom,
             is_fullscreen: false,
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,
-            mouse_wheel_zoom: false,
+            mouse_wheel_zoom: settings.mouse_wheel_zoom,
             ctrl_pressed: false,
         }
     }

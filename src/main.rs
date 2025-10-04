@@ -11,6 +11,7 @@ mod ui;
 mod loading_status;
 mod loading_handler;
 mod config;
+mod settings;
 mod app;
 mod utils;
 mod build_info;
