@@ -1560,18 +1560,15 @@ impl iced_winit::runtime::Program for DataViewer {
                     ]
                     .spacing(20),
 
-                    // Status message
-                    if let Some(status) = &self.settings_save_status {
-                        container(
-                            text(status).size(14)
-                        )
-                        .style(|theme: &WinitTheme| container::Style {
-                            text_color: Some(theme.extended_palette().success.strong.color),
-                            ..container::Style::default()
-                        })
-                    } else {
-                        container(text(""))
-                    },
+                    // Status message (always reserve space to prevent layout jump)
+                    container(
+                        text(self.settings_save_status.as_deref().unwrap_or(" ")).size(14)
+                    )
+                    .style(|theme: &WinitTheme| container::Style {
+                        text_color: Some(theme.extended_palette().success.strong.color),
+                        ..container::Style::default()
+                    })
+                    .height(Length::Fixed(20.0)),
 
                     // Save button
                     row![
