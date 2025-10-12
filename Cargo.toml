@@ -48,7 +48,7 @@ iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced
 iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["tokio"] }
 iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
 iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-0.11.0", features = [
-    "menu", "quad"
+    "menu", "quad", "tabs"
 ] }
 
 # Debug setup with local iced
