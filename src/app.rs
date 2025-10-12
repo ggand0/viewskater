@@ -75,6 +75,7 @@ pub enum Message {
     ShowOptions,
     HideOptions,
     SaveSettings,
+    ClearSettingsStatus,
     ShowLogs,
     ExportDebugLogs,
     ExportAllLogs,
@@ -133,6 +134,7 @@ pub struct DataViewer {
     pub update_counter: u32,
     pub show_about: bool,
     pub show_options: bool,
+    pub settings_save_status: Option<String>,
     pub device: Arc<wgpu::Device>,                     // Shared ownership using Arc
     pub queue: Arc<wgpu::Queue>,                       // Shared ownership using Arc
     pub is_gpu_supported: bool,
@@ -196,6 +198,7 @@ impl DataViewer {
             update_counter: 0,
             show_about: false,
             show_options: false,
+            settings_save_status: None,
             device,
             queue,
             is_gpu_supported: true,
@@ -936,11 +939,29 @@ impl iced_winit::runtime::Program for DataViewer {
                 };
 
                 // Save settings to file
-                if let Err(e) = settings.save() {
-                    error!("Failed to save settings: {}", e);
-                } else {
-                    info!("Settings saved successfully");
+                match settings.save() {
+                    Ok(_) => {
+                        info!("Settings saved successfully");
+                        self.settings_save_status = Some("Settings saved!".to_string());
+
+                        // Clear the status message after 2 seconds
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        error!("Failed to save settings: {}", e);
+                        self.settings_save_status = Some(format!("Error: {}", e));
+
+                        // Clear error message after 3 seconds
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
                 }
+            }
+            Message::ClearSettingsStatus => {
+                self.settings_save_status = None;
             }
             Message::OpenWebLink(url) => {
                 if let Err(e) = webbrowser::open(&url) {
@@ -1538,6 +1559,19 @@ impl iced_winit::runtime::Program for DataViewer {
                         right_column,
                     ]
                     .spacing(20),
+
+                    // Status message
+                    if let Some(status) = &self.settings_save_status {
+                        container(
+                            text(status).size(14)
+                        )
+                        .style(|theme: &WinitTheme| container::Style {
+                            text_color: Some(theme.extended_palette().success.strong.color),
+                            ..container::Style::default()
+                        })
+                    } else {
+                        container(text(""))
+                    },
 
                     // Save button
                     row![
