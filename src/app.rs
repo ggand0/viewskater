@@ -37,7 +37,7 @@ use iced_widget::{row, column, container, text};
 use iced_wgpu::{wgpu, Renderer};
 use iced_wgpu::engine::CompressionStrategy;
 use iced_winit::core::Theme as WinitTheme;
-use iced_winit::core::{Color, Element};
+use iced_winit::core::{Color, Element, Length};
 use iced_winit::runtime::Task;
 
 use crate::navigation_keyboard::{move_right_all, move_left_all};
@@ -72,6 +72,9 @@ pub enum Message {
     Nothing,
     ShowAbout,
     HideAbout,
+    ShowOptions,
+    HideOptions,
+    SaveSettings,
     ShowLogs,
     ExportDebugLogs,
     ExportAllLogs,
@@ -129,6 +132,7 @@ pub struct DataViewer {
     pub skate_left: bool,
     pub update_counter: u32,
     pub show_about: bool,
+    pub show_options: bool,
     pub device: Arc<wgpu::Device>,                     // Shared ownership using Arc
     pub queue: Arc<wgpu::Queue>,                       // Shared ownership using Arc
     pub is_gpu_supported: bool,
@@ -191,6 +195,7 @@ impl DataViewer {
             skate_left: false,
             update_counter: 0,
             show_about: false,
+            show_options: false,
             device,
             queue,
             is_gpu_supported: true,
@@ -900,6 +905,43 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::HideAbout => {
                 self.show_about = false;
             }
+            Message::ShowOptions => {
+                self.show_options = true;
+
+                // Schedule a follow-up redraw in the next frame
+                return Task::perform(async {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }, |_| Message::Nothing);
+            }
+            Message::HideOptions => {
+                self.show_options = false;
+            }
+            Message::SaveSettings => {
+                // Create settings from current app state
+                let settings = UserSettings {
+                    show_fps: self.show_fps,
+                    show_footer: self.show_footer,
+                    is_horizontal_split: self.is_horizontal_split,
+                    synced_zoom: self.synced_zoom,
+                    mouse_wheel_zoom: self.mouse_wheel_zoom,
+                    cache_strategy: match self.cache_strategy {
+                        CacheStrategy::Cpu => "cpu".to_string(),
+                        CacheStrategy::Gpu => "gpu".to_string(),
+                    },
+                    compression_strategy: match self.compression_strategy {
+                        CompressionStrategy::None => "none".to_string(),
+                        CompressionStrategy::Bc1 => "bc1".to_string(),
+                    },
+                    is_slider_dual: self.is_slider_dual,
+                };
+
+                // Save settings to file
+                if let Err(e) = settings.save() {
+                    error!("Failed to save settings: {}", e);
+                } else {
+                    info!("Settings saved successfully");
+                }
+            }
             Message::OpenWebLink(url) => {
                 if let Err(e) = webbrowser::open(&url) {
                     warn!("Failed to open link: {}, error: {:?}", url, e);
@@ -1345,7 +1387,190 @@ impl iced_winit::runtime::Program for DataViewer {
     fn view(&self) -> Element<'_, Message, WinitTheme, Renderer> {
         let content = ui::build_ui(self);
 
-        if self.show_about {
+        if self.show_options {
+            // Left column - Display & Performance
+            let left_column = column![
+                text("Display").size(18)
+                    .font(Font {
+                        family: iced_winit::core::font::Family::Name("Roboto"),
+                        weight: iced_winit::core::font::Weight::Medium,
+                        stretch: iced_winit::core::font::Stretch::Normal,
+                        style: iced_winit::core::font::Style::Normal,
+                    }),
+
+                container(
+                    widgets::toggler::Toggler::new(
+                        Some("Show FPS Display".into()),
+                        self.show_fps,
+                        Message::ToggleFpsDisplay,
+                    ).width(Length::Fill)
+                ).style(|_theme: &WinitTheme| container::Style {
+                    text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                    ..container::Style::default()
+                }),
+
+                container(
+                    widgets::toggler::Toggler::new(
+                        Some("Show Footer".into()),
+                        self.show_footer,
+                        Message::ToggleFooter,
+                    ).width(Length::Fill)
+                ).style(|_theme: &WinitTheme| container::Style {
+                    text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                    ..container::Style::default()
+                }),
+
+                container(
+                    widgets::toggler::Toggler::new(
+                        Some("Horizontal Split".into()),
+                        self.is_horizontal_split,
+                        Message::ToggleSplitOrientation,
+                    ).width(Length::Fill)
+                ).style(|_theme: &WinitTheme| container::Style {
+                    text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                    ..container::Style::default()
+                }),
+
+                text("Performance").size(18)
+                    .font(Font {
+                        family: iced_winit::core::font::Family::Name("Roboto"),
+                        weight: iced_winit::core::font::Weight::Medium,
+                        stretch: iced_winit::core::font::Stretch::Normal,
+                        style: iced_winit::core::font::Style::Normal,
+                    }),
+
+                container(
+                    widgets::toggler::Toggler::new(
+                        Some("BC1 Texture Compression".into()),
+                        self.compression_strategy == CompressionStrategy::Bc1,
+                        |enabled| {
+                            if enabled {
+                                Message::SetCompressionStrategy(CompressionStrategy::Bc1)
+                            } else {
+                                Message::SetCompressionStrategy(CompressionStrategy::None)
+                            }
+                        },
+                    ).width(Length::Fill)
+                ).style(|_theme: &WinitTheme| container::Style {
+                    text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                    ..container::Style::default()
+                }),
+
+                container(
+                    widgets::toggler::Toggler::new(
+                        Some("GPU Cache (vs CPU)".into()),
+                        self.cache_strategy == CacheStrategy::Gpu,
+                        |enabled| {
+                            if enabled {
+                                Message::SetCacheStrategy(CacheStrategy::Gpu)
+                            } else {
+                                Message::SetCacheStrategy(CacheStrategy::Cpu)
+                            }
+                        },
+                    ).width(Length::Fill)
+                ).style(|_theme: &WinitTheme| container::Style {
+                    text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                    ..container::Style::default()
+                }),
+            ]
+            .spacing(3)
+            .width(Length::Fill);
+
+            // Right column - Controls
+            let right_column = column![
+                text("Controls").size(18)
+                    .font(Font {
+                        family: iced_winit::core::font::Family::Name("Roboto"),
+                        weight: iced_winit::core::font::Weight::Medium,
+                        stretch: iced_winit::core::font::Stretch::Normal,
+                        style: iced_winit::core::font::Style::Normal,
+                    }),
+
+                container(
+                    widgets::toggler::Toggler::new(
+                        Some("Sync Zoom/Pan".into()),
+                        self.synced_zoom,
+                        Message::ToggleSyncedZoom,
+                    ).width(Length::Fill)
+                ).style(|_theme: &WinitTheme| container::Style {
+                    text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                    ..container::Style::default()
+                }),
+
+                container(
+                    widgets::toggler::Toggler::new(
+                        Some("Mouse Wheel Zoom".into()),
+                        self.mouse_wheel_zoom,
+                        Message::ToggleMouseWheelZoom,
+                    ).width(Length::Fill)
+                ).style(|_theme: &WinitTheme| container::Style {
+                    text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                    ..container::Style::default()
+                }),
+
+                container(
+                    widgets::toggler::Toggler::new(
+                        Some("Dual Slider".into()),
+                        self.is_slider_dual,
+                        Message::ToggleSliderType,
+                    ).width(Length::Fill)
+                ).style(|_theme: &WinitTheme| container::Style {
+                    text_color: Some(iced_core::Color::from_rgb(0.878, 0.878, 0.878)),
+                    ..container::Style::default()
+                }),
+            ]
+            .spacing(3)
+            .width(Length::Fill);
+
+            let options_content = container(
+                column![
+                    text("Settings").size(25)
+                    .font(Font {
+                        family: iced_winit::core::font::Family::Name("Roboto"),
+                        weight: iced_winit::core::font::Weight::Bold,
+                        stretch: iced_winit::core::font::Stretch::Normal,
+                        style: iced_winit::core::font::Style::Normal,
+                    }),
+
+                    // Two columns
+                    row![
+                        left_column,
+                        right_column,
+                    ]
+                    .spacing(20),
+
+                    // Save button
+                    row![
+                        button(text("Save Settings"))
+                            .padding(8)
+                            .on_press(Message::SaveSettings),
+                        button(text("Close"))
+                            .padding(8)
+                            .on_press(Message::HideOptions),
+                    ]
+                    .spacing(10)
+                    .align_y(iced_winit::core::Alignment::Center)
+                ]
+                .spacing(15)
+                .align_x(iced_winit::core::alignment::Horizontal::Left)
+                .width(Length::Fixed(600.0)),
+            )
+            .padding(20)
+            .style(|theme: &WinitTheme| {
+                iced_widget::container::Style {
+                    background: Some(theme.extended_palette().background.base.color.into()),
+                    text_color: Some(theme.extended_palette().primary.weak.text),
+                    border: iced_winit::core::Border {
+                        color: theme.extended_palette().background.strong.color,
+                        width: 1.0,
+                        radius: iced_winit::core::border::Radius::from(8.0),
+                    },
+                    ..Default::default()
+                }
+            });
+
+            widgets::modal::modal(content, options_content, Message::HideOptions)
+        } else if self.show_about {
             // Build the info column dynamically to avoid empty text widgets
             let mut info_column = column![
                 text(format!("Version {}", BuildInfo::display_version())).size(15),
