@@ -5754,6 +5754,7 @@ dependencies = [
  "objc2-foundation",
  "once_cell",
  "rayon",
+ "regex",
  "rfd",
  "serde 1.0.219",
  "serde_yaml",
