@@ -60,6 +60,7 @@ use crate::build_info::BuildInfo;
 use crate::settings::UserSettings;
 
 use std::sync::mpsc::{Sender, Receiver};
+use std::collections::HashMap;
 
 #[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
@@ -115,6 +116,8 @@ pub enum Message {
     CursorOnTop(bool),
     CursorOnMenu(bool),
     CursorOnFooter(bool),
+    // Advanced settings input
+    AdvancedSettingChanged(String, String),  // (field_name, value)
 }
 
 pub struct DataViewer {
@@ -138,6 +141,7 @@ pub struct DataViewer {
     pub show_options: bool,
     pub settings_save_status: Option<String>,
     pub active_settings_tab: usize,
+    pub advanced_settings_input: HashMap<String, String>,  // Text input state for advanced settings
     pub device: Arc<wgpu::Device>,                     // Shared ownership using Arc
     pub queue: Arc<wgpu::Queue>,                       // Shared ownership using Arc
     pub is_gpu_supported: bool,
@@ -183,6 +187,18 @@ impl DataViewer {
         info!("  compression_strategy: {:?}", compression_strategy);
         info!("  is_slider_dual: {}", settings.is_slider_dual);
 
+        // Initialize advanced settings input with current values
+        let mut advanced_settings_input = HashMap::new();
+        advanced_settings_input.insert("cache_size".to_string(), settings.cache_size.to_string());
+        advanced_settings_input.insert("max_loading_queue_size".to_string(), settings.max_loading_queue_size.to_string());
+        advanced_settings_input.insert("max_being_loaded_queue_size".to_string(), settings.max_being_loaded_queue_size.to_string());
+        advanced_settings_input.insert("window_width".to_string(), settings.window_width.to_string());
+        advanced_settings_input.insert("window_height".to_string(), settings.window_height.to_string());
+        advanced_settings_input.insert("atlas_size".to_string(), settings.atlas_size.to_string());
+        advanced_settings_input.insert("double_click_threshold_ms".to_string(), settings.double_click_threshold_ms.to_string());
+        advanced_settings_input.insert("archive_cache_size".to_string(), settings.archive_cache_size.to_string());
+        advanced_settings_input.insert("archive_warning_threshold_mb".to_string(), settings.archive_warning_threshold_mb.to_string());
+
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -203,6 +219,7 @@ impl DataViewer {
             show_options: false,
             settings_save_status: None,
             active_settings_tab: 0,
+            advanced_settings_input,
             device,
             queue,
             is_gpu_supported: true,
@@ -924,7 +941,161 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.show_options = false;
             }
             Message::SaveSettings => {
-                // Create settings from current app state
+                // Helper function to parse and validate a value
+                let parse_value = |key: &str, _default: u64| -> Result<u64, String> {
+                    self.advanced_settings_input
+                        .get(key)
+                        .ok_or_else(|| format!("Missing value for {}", key))?
+                        .parse::<u64>()
+                        .map_err(|_| format!("Invalid number for {}", key))
+                };
+
+                // Parse and validate all advanced settings
+                let cache_size = match parse_value("cache_size", 5) {
+                    Ok(v) if v > 0 && v <= 100 => v as usize,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Cache size must be between 1 and 100".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing cache_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let max_loading_queue_size = match parse_value("max_loading_queue_size", 3) {
+                    Ok(v) if v > 0 && v <= 50 => v as usize,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Max loading queue size must be between 1 and 50".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing max_loading_queue_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let max_being_loaded_queue_size = match parse_value("max_being_loaded_queue_size", 3) {
+                    Ok(v) if v > 0 && v <= 50 => v as usize,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Max being loaded queue size must be between 1 and 50".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing max_being_loaded_queue_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let window_width = match parse_value("window_width", 1200) {
+                    Ok(v) if v >= 400 && v <= 10000 => v as u32,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Window width must be between 400 and 10000".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing window_width: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let window_height = match parse_value("window_height", 800) {
+                    Ok(v) if v >= 300 && v <= 10000 => v as u32,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Window height must be between 300 and 10000".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing window_height: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let atlas_size = match parse_value("atlas_size", 2048) {
+                    Ok(v) if v >= 256 && v <= 8192 && v.is_power_of_two() => v as u32,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Atlas size must be a power of 2 between 256 and 8192".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing atlas_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let double_click_threshold_ms = match parse_value("double_click_threshold_ms", 250) {
+                    Ok(v) if v >= 50 && v <= 1000 => v as u16,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Double-click threshold must be between 50 and 1000 ms".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing double_click_threshold_ms: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let archive_cache_size = match parse_value("archive_cache_size", 209715200) {
+                    Ok(v) if v >= 10_485_760 && v <= 10_737_418_240 => v, // 10MB to 10GB
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Archive cache size must be between 10MB (10485760) and 10GB (10737418240)".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing archive_cache_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let archive_warning_threshold_mb = match parse_value("archive_warning_threshold_mb", 500) {
+                    Ok(v) if v >= 10 && v <= 10000 => v,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Archive warning threshold must be between 10 and 10000 MB".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing archive_warning_threshold_mb: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                // Create settings from current app state with validated advanced settings
                 let settings = UserSettings {
                     show_fps: self.show_fps,
                     show_footer: self.show_footer,
@@ -940,17 +1111,27 @@ impl iced_winit::runtime::Program for DataViewer {
                         CompressionStrategy::Bc1 => "bc1".to_string(),
                     },
                     is_slider_dual: self.is_slider_dual,
+                    // Use parsed and validated advanced settings
+                    cache_size,
+                    max_loading_queue_size,
+                    max_being_loaded_queue_size,
+                    window_width,
+                    window_height,
+                    atlas_size,
+                    double_click_threshold_ms,
+                    archive_cache_size,
+                    archive_warning_threshold_mb,
                 };
 
                 // Save settings to file
                 match settings.save() {
                     Ok(_) => {
                         info!("Settings saved successfully");
-                        self.settings_save_status = Some("Settings saved!".to_string());
+                        self.settings_save_status = Some("Settings saved! Restart the app for changes to take effect.".to_string());
 
-                        // Clear the status message after 2 seconds
+                        // Clear the status message after 3 seconds
                         return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                         }, |_| Message::ClearSettingsStatus);
                     }
                     Err(e) => {
@@ -969,6 +1150,9 @@ impl iced_winit::runtime::Program for DataViewer {
             }
             Message::SettingsTabSelected(index) => {
                 self.active_settings_tab = index;
+            }
+            Message::AdvancedSettingChanged(field_name, value) => {
+                self.advanced_settings_input.insert(field_name, value);
             }
             Message::OpenWebLink(url) => {
                 if let Err(e) = webbrowser::open(&url) {

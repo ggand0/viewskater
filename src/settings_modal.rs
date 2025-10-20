@@ -1,6 +1,6 @@
 use iced_winit::core::{Element, Length, Alignment, Color};
 use iced_winit::core::font::Font;
-use iced_widget::{row, column, container, text, button, Space, scrollable};
+use iced_widget::{row, column, container, text, button, Space, scrollable, text_input};
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::Renderer;
 use iced_wgpu::engine::CompressionStrategy;
@@ -258,28 +258,97 @@ fn view_general_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitThe
     .into()
 }
 
-/// Advanced tab content: Config constants (placeholder for now)
-fn view_advanced_tab<'a>(_viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme, Renderer> {
+/// Helper function to create a labeled text input row (editable)
+fn labeled_text_input_row<'a>(
+    label: &'a str,
+    field_name: &'a str,
+    value: String,
+) -> iced_widget::Row<'a, Message, WinitTheme, Renderer> {
+    let field_name_owned = field_name.to_string();
+    row![
+        text(label).size(14).width(Length::Fixed(250.0)),
+        text_input("", &value)
+            .size(14)
+            .width(Length::Fixed(150.0))
+            .on_input(move |new_value| {
+                Message::AdvancedSettingChanged(field_name_owned.clone(), new_value)
+            }),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+}
+
+/// Advanced tab content: Editable config constants
+fn view_advanced_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme, Renderer> {
+    // Helper to get value from HashMap with fallback
+    let get_value = |key: &str| -> String {
+        viewer.advanced_settings_input
+            .get(key)
+            .cloned()
+            .unwrap_or_default()
+    };
+
+    let content = column![
+        text("Advanced Settings").size(16)
+            .font(Font {
+                family: iced_winit::core::font::Family::Name("Roboto"),
+                weight: iced_winit::core::font::Weight::Medium,
+                stretch: iced_winit::core::font::Stretch::Normal,
+                style: iced_winit::core::font::Style::Normal,
+            }),
+        Space::with_height(5),
+        text("Note: Changes take effect after saving and restarting the application.").size(12)
+            .style(|theme: &WinitTheme| {
+                iced_widget::text::Style {
+                    color: Some(theme.extended_palette().background.weak.color)
+                }
+            }),
+        Space::with_height(10),
+
+        // Cache settings
+        text("Cache Settings").size(14)
+            .font(Font {
+                family: iced_winit::core::font::Family::Name("Roboto"),
+                weight: iced_winit::core::font::Weight::Medium,
+                stretch: iced_winit::core::font::Stretch::Normal,
+                style: iced_winit::core::font::Style::Normal,
+            }),
+        labeled_text_input_row("Cache Size:", "cache_size", get_value("cache_size")),
+        labeled_text_input_row("Max Loading Queue Size:", "max_loading_queue_size", get_value("max_loading_queue_size")),
+        labeled_text_input_row("Max Being Loaded Queue Size:", "max_being_loaded_queue_size", get_value("max_being_loaded_queue_size")),
+
+        Space::with_height(10),
+
+        // Window settings
+        text("Window Settings").size(14)
+            .font(Font {
+                family: iced_winit::core::font::Family::Name("Roboto"),
+                weight: iced_winit::core::font::Weight::Medium,
+                stretch: iced_winit::core::font::Stretch::Normal,
+                style: iced_winit::core::font::Style::Normal,
+            }),
+        labeled_text_input_row("Default Window Width (px):", "window_width", get_value("window_width")),
+        labeled_text_input_row("Default Window Height (px):", "window_height", get_value("window_height")),
+        labeled_text_input_row("Texture Atlas Size:", "atlas_size", get_value("atlas_size")),
+
+        Space::with_height(10),
+
+        // Other settings
+        text("Other Settings").size(14)
+            .font(Font {
+                family: iced_winit::core::font::Family::Name("Roboto"),
+                weight: iced_winit::core::font::Weight::Medium,
+                stretch: iced_winit::core::font::Stretch::Normal,
+                style: iced_winit::core::font::Style::Normal,
+            }),
+        labeled_text_input_row("Double-Click Threshold (ms):", "double_click_threshold_ms", get_value("double_click_threshold_ms")),
+        labeled_text_input_row("Archive Cache Size (bytes):", "archive_cache_size", get_value("archive_cache_size")),
+        labeled_text_input_row("Archive Warning Threshold (MB):", "archive_warning_threshold_mb", get_value("archive_warning_threshold_mb")),
+    ]
+    .spacing(3);
+
     scrollable(
-        container(
-            column![
-                text("Advanced Settings").size(16)
-                    .font(Font {
-                        family: iced_winit::core::font::Family::Name("Roboto"),
-                        weight: iced_winit::core::font::Weight::Medium,
-                        stretch: iced_winit::core::font::Stretch::Normal,
-                        style: iced_winit::core::font::Style::Normal,
-                    }),
-                Space::with_height(10),
-                text("Coming soon: Cache size, window dimensions, atlas size, etc.").size(14)
-                    .style(|theme: &WinitTheme| {
-                        iced_widget::text::Style {
-                            color: Some(theme.extended_palette().background.weak.color)
-                        }
-                    }),
-            ]
-            .spacing(8)
-        )
+        container(content)
         .padding([5, 10])
     )
     .height(Length::Fill)
