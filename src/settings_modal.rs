@@ -79,14 +79,25 @@ pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, W
             .padding(0),
 
         // Status message (always reserve space to prevent layout jump)
-        container(
-            text(viewer.settings_save_status.as_deref().unwrap_or(" ")).size(14)
-        )
-        .style(|theme: &WinitTheme| container::Style {
-            text_color: Some(theme.extended_palette().success.strong.color),
-            ..container::Style::default()
-        })
-        .height(Length::Fixed(18.0)),
+        // Use red for errors, green for success
+        {
+            let status_text = viewer.settings_save_status.as_deref().unwrap_or(" ");
+            // Catch both "Error:" and "Error parsing" messages
+            let is_error = status_text.contains("Error");
+
+            container(
+                text(status_text).size(14)
+            )
+            .style(move |theme: &WinitTheme| container::Style {
+                text_color: Some(if is_error {
+                    theme.extended_palette().danger.strong.color
+                } else {
+                    theme.extended_palette().success.strong.color
+                }),
+                ..container::Style::default()
+            })
+            .height(Length::Fixed(18.0))
+        },
 
         // Buttons row
         row![
