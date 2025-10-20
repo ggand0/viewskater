@@ -1001,7 +1001,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 };
 
                 let window_width = match parse_value("window_width", 1200) {
-                    Ok(v) if v >= 400 && v <= 10000 => v as u32,
+                    Ok(v) if (400..=10000).contains(&v) => v as u32,
                     Ok(_) => {
                         self.settings_save_status = Some("Error: Window width must be between 400 and 10000".to_string());
                         return Task::perform(async {
@@ -1017,7 +1017,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 };
 
                 let window_height = match parse_value("window_height", 800) {
-                    Ok(v) if v >= 300 && v <= 10000 => v as u32,
+                    Ok(v) if (300..=10000).contains(&v) => v as u32,
                     Ok(_) => {
                         self.settings_save_status = Some("Error: Window height must be between 300 and 10000".to_string());
                         return Task::perform(async {
@@ -1033,7 +1033,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 };
 
                 let atlas_size = match parse_value("atlas_size", 2048) {
-                    Ok(v) if v >= 256 && v <= 8192 && v.is_power_of_two() => v as u32,
+                    Ok(v) if (256..=8192).contains(&v) && v.is_power_of_two() => v as u32,
                     Ok(_) => {
                         self.settings_save_status = Some("Error: Atlas size must be a power of 2 between 256 and 8192".to_string());
                         return Task::perform(async {
@@ -1049,7 +1049,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 };
 
                 let double_click_threshold_ms = match parse_value("double_click_threshold_ms", 250) {
-                    Ok(v) if v >= 50 && v <= 1000 => v as u16,
+                    Ok(v) if (50..=1000).contains(&v) => v as u16,
                     Ok(_) => {
                         self.settings_save_status = Some("Error: Double-click threshold must be between 50 and 1000 ms".to_string());
                         return Task::perform(async {
@@ -1065,7 +1065,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 };
 
                 let archive_cache_size = match parse_value("archive_cache_size", 209715200) {
-                    Ok(v) if v >= 10_485_760 && v <= 10_737_418_240 => v, // 10MB to 10GB
+                    Ok(v) if (10_485_760..=10_737_418_240).contains(&v) => v, // 10MB to 10GB
                     Ok(_) => {
                         self.settings_save_status = Some("Error: Archive cache size must be between 10MB (10485760) and 10GB (10737418240)".to_string());
                         return Task::perform(async {
@@ -1081,7 +1081,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 };
 
                 let archive_warning_threshold_mb = match parse_value("archive_warning_threshold_mb", 500) {
-                    Ok(v) if v >= 10 && v <= 10000 => v,
+                    Ok(v) if (10..=10000).contains(&v) => v,
                     Ok(_) => {
                         self.settings_save_status = Some("Error: Archive warning threshold must be between 10 and 10000 MB".to_string());
                         return Task::perform(async {
