@@ -26,12 +26,25 @@ pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, W
             view_advanced_tab(viewer)  // Content
         )
         .set_active_tab(&viewer.active_settings_tab)
-        .tab_bar_style(|theme: &WinitTheme, _status| {
+        .tab_bar_style(|theme: &WinitTheme, status| {
+            use iced_aw::style::status::Status;
+
+            // Highlight active tab with a tinted background, show hover feedback
+            let tab_bg = match status {
+                Status::Active => iced_winit::core::Background::Color(
+                    theme.extended_palette().primary.weak.color
+                ),
+                Status::Hovered => iced_winit::core::Background::Color(
+                    theme.extended_palette().background.strong.color
+                ),
+                _ => iced_winit::core::Background::Color(Color::TRANSPARENT),
+            };
+
             iced_aw::style::tab_bar::Style {
                 background: Some(theme.extended_palette().background.weak.color.into()),
                 border_color: Some(theme.extended_palette().background.strong.color),
                 border_width: 0.0,
-                tab_label_background: iced_winit::core::Background::Color(Color::TRANSPARENT),
+                tab_label_background: tab_bg,
                 tab_label_border_color: theme.extended_palette().background.strong.color,
                 tab_label_border_width: 1.0,
                 icon_background: Some(iced_winit::core::Background::Color(Color::TRANSPARENT)),
@@ -350,10 +363,16 @@ fn view_advanced_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTh
     ]
     .spacing(3);
 
-    scrollable(
+    // Center the content with fixed width, scrollbar on right edge
+    let centered_content = container(
         container(content)
-        .padding([5, 10])
+            .width(Length::Fixed(480.0))  // Fixed width for content
+            .padding([5, 10])
     )
-    .height(Length::Fill)
-    .into()
+    .width(Length::Fill)
+    .center_x(Length::Fill);
+
+    scrollable(centered_content)
+        .height(Length::Fill)
+        .into()
 }
