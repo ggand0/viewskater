@@ -77,6 +77,9 @@ pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, W
 
         // Buttons row
         row![
+            button(text("Reset to Defaults"))
+                .padding([3, 10])
+                .on_press(Message::ResetAdvancedSettings),
             button(text("Save Settings"))
                 .padding([3, 10])
                 .on_press(Message::SaveSettings),

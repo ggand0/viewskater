@@ -118,6 +118,7 @@ pub enum Message {
     CursorOnFooter(bool),
     // Advanced settings input
     AdvancedSettingChanged(String, String),  // (field_name, value)
+    ResetAdvancedSettings,
 }
 
 pub struct DataViewer {
@@ -1153,6 +1154,30 @@ impl iced_winit::runtime::Program for DataViewer {
             }
             Message::AdvancedSettingChanged(field_name, value) => {
                 self.advanced_settings_input.insert(field_name, value);
+            }
+            Message::ResetAdvancedSettings => {
+                use crate::config;
+
+                // Reset General tab settings to defaults
+                self.show_fps = false;
+                self.show_footer = true;
+                self.is_horizontal_split = false;
+                self.synced_zoom = true;
+                self.mouse_wheel_zoom = false;
+                self.cache_strategy = CacheStrategy::Gpu;
+                self.compression_strategy = CompressionStrategy::None;
+                self.is_slider_dual = false;
+
+                // Reset Advanced tab settings to defaults (text inputs)
+                self.advanced_settings_input.insert("cache_size".to_string(), config::DEFAULT_CACHE_SIZE.to_string());
+                self.advanced_settings_input.insert("max_loading_queue_size".to_string(), config::DEFAULT_MAX_LOADING_QUEUE_SIZE.to_string());
+                self.advanced_settings_input.insert("max_being_loaded_queue_size".to_string(), config::DEFAULT_MAX_BEING_LOADED_QUEUE_SIZE.to_string());
+                self.advanced_settings_input.insert("window_width".to_string(), config::DEFAULT_WINDOW_WIDTH.to_string());
+                self.advanced_settings_input.insert("window_height".to_string(), config::DEFAULT_WINDOW_HEIGHT.to_string());
+                self.advanced_settings_input.insert("atlas_size".to_string(), config::DEFAULT_ATLAS_SIZE.to_string());
+                self.advanced_settings_input.insert("double_click_threshold_ms".to_string(), config::DEFAULT_DOUBLE_CLICK_THRESHOLD_MS.to_string());
+                self.advanced_settings_input.insert("archive_cache_size".to_string(), config::DEFAULT_ARCHIVE_CACHE_SIZE.to_string());
+                self.advanced_settings_input.insert("archive_warning_threshold_mb".to_string(), config::DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB.to_string());
             }
             Message::OpenWebLink(url) => {
                 if let Err(e) = webbrowser::open(&url) {
