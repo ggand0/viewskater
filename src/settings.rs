@@ -41,6 +41,10 @@ pub struct UserSettings {
     #[serde(default)]
     pub is_slider_dual: bool,
 
+    /// Show copy filename/filepath buttons in footer
+    #[serde(default = "default_show_copy_buttons")]
+    pub show_copy_buttons: bool,
+
     // Advanced settings (from config.rs)
     /// Cache window size
     #[serde(default = "default_cache_size")]
@@ -95,6 +99,10 @@ fn default_compression_strategy() -> String {
     "none".to_string()
 }
 
+fn default_show_copy_buttons() -> bool {
+    true
+}
+
 // Default functions for advanced settings (using config.rs constants)
 fn default_cache_size() -> usize {
     config::DEFAULT_CACHE_SIZE
@@ -143,6 +151,7 @@ impl Default for UserSettings {
             cache_strategy: "gpu".to_string(),
             compression_strategy: "none".to_string(),
             is_slider_dual: false,
+            show_copy_buttons: true,
             cache_size: config::DEFAULT_CACHE_SIZE,
             max_loading_queue_size: config::DEFAULT_MAX_LOADING_QUEUE_SIZE,
             max_being_loaded_queue_size: config::DEFAULT_MAX_BEING_LOADED_QUEUE_SIZE,
@@ -264,6 +273,7 @@ impl UserSettings {
         result = Self::replace_yaml_value_or_track(&result, "cache_strategy", &format!("\"{}\"", self.cache_strategy), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "compression_strategy", &format!("\"{}\"", self.compression_strategy), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "is_slider_dual", &self.is_slider_dual.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "show_copy_buttons", &self.show_copy_buttons.to_string(), &mut missing_keys);
 
         // Update advanced settings
         result = Self::replace_yaml_value_or_track(&result, "cache_size", &self.cache_size.to_string(), &mut missing_keys);
@@ -382,6 +392,9 @@ compression_strategy: "{}"
 # - false: Single slider (shared across panes)
 is_slider_dual: {}
 
+# Show copy filename/filepath buttons in footer
+show_copy_buttons: {}
+
 # --- Advanced Settings ---
 
 # Cache window size (number of images to keep in cache)
@@ -419,6 +432,7 @@ archive_warning_threshold_mb: {}
             self.cache_strategy,
             self.compression_strategy,
             self.is_slider_dual,
+            self.show_copy_buttons,
             self.cache_size,
             self.max_loading_queue_size,
             self.max_being_loaded_queue_size,

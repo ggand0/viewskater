@@ -172,6 +172,17 @@ fn view_general_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitThe
 
         container(
             widgets::toggler::Toggler::new(
+                Some("Show Copy Buttons".into()),
+                viewer.show_copy_buttons,
+                Message::ToggleCopyButtons,
+            ).width(Length::Fill)
+        ).style(|_theme: &WinitTheme| container::Style {
+            text_color: Some(Color::from_rgb(0.878, 0.878, 0.878)),
+            ..container::Style::default()
+        }),
+
+        container(
+            widgets::toggler::Toggler::new(
                 Some("Horizontal Split".into()),
                 viewer.is_horizontal_split,
                 Message::ToggleSplitOrientation,

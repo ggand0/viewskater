@@ -112,6 +112,7 @@ pub enum Message {
     ToggleSplitOrientation(bool),
     ToggleSyncedZoom(bool),
     ToggleMouseWheelZoom(bool),
+    ToggleCopyButtons(bool),
     ToggleFullScreen(bool),
     CursorOnTop(bool),
     CursorOnMenu(bool),
@@ -161,6 +162,7 @@ pub struct DataViewer {
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
+    pub show_copy_buttons: bool,                        // Show copy filename/filepath buttons in footer
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
 }
 
@@ -184,6 +186,7 @@ impl DataViewer {
         info!("  is_horizontal_split: {}", settings.is_horizontal_split);
         info!("  synced_zoom: {}", settings.synced_zoom);
         info!("  mouse_wheel_zoom: {}", settings.mouse_wheel_zoom);
+        info!("  show_copy_buttons: {}", settings.show_copy_buttons);
         info!("  cache_strategy: {:?}", cache_strategy);
         info!("  compression_strategy: {:?}", compression_strategy);
         info!("  is_slider_dual: {}", settings.is_slider_dual);
@@ -240,6 +243,7 @@ impl DataViewer {
             cursor_on_menu: false,
             cursor_on_footer: false,
             mouse_wheel_zoom: settings.mouse_wheel_zoom,
+            show_copy_buttons: settings.show_copy_buttons,
             ctrl_pressed: false,
         }
     }
@@ -1103,6 +1107,7 @@ impl iced_winit::runtime::Program for DataViewer {
                     is_horizontal_split: self.is_horizontal_split,
                     synced_zoom: self.synced_zoom,
                     mouse_wheel_zoom: self.mouse_wheel_zoom,
+                    show_copy_buttons: self.show_copy_buttons,
                     cache_strategy: match self.cache_strategy {
                         CacheStrategy::Cpu => "cpu".to_string(),
                         CacheStrategy::Gpu => "gpu".to_string(),
@@ -1266,6 +1271,9 @@ impl iced_winit::runtime::Program for DataViewer {
                 for pane in self.panes.iter_mut() {
                     pane.mouse_wheel_zoom = enabled;
                 }
+            }
+            Message::ToggleCopyButtons(enabled) => {
+                self.show_copy_buttons = enabled;
             }
             Message::ToggleFullScreen(enabled) => {
                 self.is_fullscreen = enabled;
