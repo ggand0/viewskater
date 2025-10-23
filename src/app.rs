@@ -1480,7 +1480,7 @@ impl iced_winit::runtime::Program for DataViewer {
 
             Message::Event(event) => match event {
                 Event::Mouse(iced_core::mouse::Event::WheelScrolled { delta }) => {
-                    if !self.ctrl_pressed && !self.mouse_wheel_zoom {
+                    if !self.ctrl_pressed && !self.mouse_wheel_zoom && !self.show_options && !self.show_about{
                         match delta {
                             iced_core::mouse::ScrollDelta::Lines { y, .. }
                             | iced_core::mouse::ScrollDelta::Pixels { y, .. } => {

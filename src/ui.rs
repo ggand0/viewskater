@@ -127,6 +127,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     let cursor_on_top = app.cursor_on_top;
     let cursor_on_menu = app.cursor_on_menu;
     let cursor_on_footer = app.cursor_on_footer;
+    let show_option = app.show_options;
 
     let top_bar = container(
         row![
@@ -216,7 +217,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             // Create the column WITHOUT converting to Element first
             center(
                 container(
-                    if is_fullscreen && (cursor_on_top || cursor_on_menu) {
+                    if is_fullscreen && !show_option &&(cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, first_img]
                     } else if is_fullscreen && cursor_on_footer {
                         column![fps_bar, first_img, slider_controls, footer]
@@ -304,7 +305,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 };
 
                 container(
-                    if is_fullscreen && (cursor_on_top || cursor_on_menu) {
+                    if is_fullscreen && !show_option &&(cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, panes]
                     } else if is_fullscreen && cursor_on_footer {
                         column![fps_bar, panes, slider, footer]
