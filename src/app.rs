@@ -1064,10 +1064,10 @@ impl iced_winit::runtime::Program for DataViewer {
                     }
                 };
 
-                let archive_cache_size = match parse_value("archive_cache_size", 209715200) {
-                    Ok(v) if (10_485_760..=10_737_418_240).contains(&v) => v, // 10MB to 10GB
+                let archive_cache_size = match parse_value("archive_cache_size", 200) {
+                    Ok(v) if (10..=10000).contains(&v) => v,
                     Ok(_) => {
-                        self.settings_save_status = Some("Error: Archive cache size must be between 10MB (10485760) and 10GB (10737418240)".to_string());
+                        self.settings_save_status = Some("Error: Archive cache size must be between 10 and 10000 MB".to_string());
                         return Task::perform(async {
                             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                         }, |_| Message::ClearSettingsStatus);

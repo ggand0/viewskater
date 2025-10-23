@@ -10,7 +10,7 @@ pub const DEFAULT_WINDOW_WIDTH: u32 = 1200;
 pub const DEFAULT_WINDOW_HEIGHT: u32 = 800;
 pub const DEFAULT_ATLAS_SIZE: u32 = 2048;
 pub const DEFAULT_DOUBLE_CLICK_THRESHOLD_MS: u16 = 250;
-pub const DEFAULT_ARCHIVE_CACHE_SIZE: u64 = 209_715_200;    // 200MB
+pub const DEFAULT_ARCHIVE_CACHE_SIZE: u64 = 200;            // 200MB
 pub const DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB: u64 = 500;  // 500MB threshold for warning dialog
 
 pub struct Config {
@@ -37,7 +37,7 @@ pub static CONFIG: Lazy<Config> = Lazy::new(|| {
         window_height: settings.window_height,
         atlas_size: settings.atlas_size,
         double_click_threshold_ms: settings.double_click_threshold_ms,
-        archive_cache_size: settings.archive_cache_size,
+        archive_cache_size: settings.archive_cache_size * 1_048_576,
         archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
     }
 });

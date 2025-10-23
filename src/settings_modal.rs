@@ -369,7 +369,7 @@ fn view_advanced_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTh
                 style: iced_winit::core::font::Style::Normal,
             }),
         labeled_text_input_row("Double-Click Threshold (ms):", "double_click_threshold_ms", get_value("double_click_threshold_ms")),
-        labeled_text_input_row("Archive Cache Size (bytes):", "archive_cache_size", get_value("archive_cache_size")),
+        labeled_text_input_row("Archive Cache Size (MB):", "archive_cache_size", get_value("archive_cache_size")),
         labeled_text_input_row("Archive Warning Threshold (MB):", "archive_warning_threshold_mb", get_value("archive_warning_threshold_mb")),
     ]
     .spacing(3);
