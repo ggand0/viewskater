@@ -158,14 +158,14 @@ impl Default for UserSettings {
 
 impl UserSettings {
     /// Get the path to the settings file
-    /// On macOS: ~/Library/Application Support/ViewSkater/settings.yaml
+    /// On macOS: ~/Library/Application Support/viewskater/settings.yaml
     /// On Linux: ~/.config/viewskater/settings.yaml
-    /// On Windows: C:\Users\<user>\AppData\Roaming\ViewSkater\settings.yaml
+    /// On Windows: C:\Users\<user>\AppData\Roaming\viewskater\settings.yaml
     pub fn settings_path() -> PathBuf {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."));
 
-        let app_config_dir = config_dir.join("ViewSkater");
+        let app_config_dir = config_dir.join("viewskater");
         app_config_dir.join("settings.yaml")
     }
 
