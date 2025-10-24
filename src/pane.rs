@@ -380,6 +380,8 @@ impl Pane {
         path: &PathBuf,
         is_slider_dual: bool,
         slider_value: &mut u16,
+        archive_cache_size: u64,
+        archive_warning_threshold_mb: u64,
     ) {
         mem::log_memory("Before pane initialization");
 
@@ -394,7 +396,7 @@ impl Pane {
             match path.extension().unwrap().to_ascii_lowercase().to_str() {
                 Some("zip") => {
                     let mut archive_cache = self.archive_cache.lock().unwrap();
-                    match read_zip_path(path, &mut file_paths, &mut archive_cache) {
+                    match read_zip_path(path, &mut file_paths, &mut archive_cache, archive_cache_size) {
                         Ok(_) => {
                             archive = ArchiveType::Zip;
                         },
@@ -406,7 +408,7 @@ impl Pane {
                 },
                 Some("rar") => {
                     let mut archive_cache = self.archive_cache.lock().unwrap();
-                    match read_rar_path(path, &mut file_paths, &mut archive_cache) {
+                    match read_rar_path(path, &mut file_paths, &mut archive_cache, archive_cache_size) {
                         Ok(_) => {
                             archive = ArchiveType::Rar;
                         },
@@ -418,7 +420,7 @@ impl Pane {
                 }
                 Some("7z") => {
                     let mut archive_cache = self.archive_cache.lock().unwrap();
-                    match read_7z_path(path, &mut file_paths, &mut archive_cache) {
+                    match read_7z_path(path, &mut file_paths, &mut archive_cache, archive_cache_size, archive_warning_threshold_mb) {
                         Ok(_) => {
                             archive = ArchiveType::SevenZ;
                         },
@@ -698,7 +700,7 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     pane.img_cache.current_index
 }
 
-fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache, archive_cache_size: u64) -> Result<(), Box<dyn Error>> {
     use std::io::Read;
     let mut files = Vec::new();
     let mut archive = zip::ZipArchive::new(std::io::BufReader::new(
@@ -719,7 +721,7 @@ fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache
     archive_cache.set_current_archive(path.clone(), ArchiveType::Zip);
 
     // Determine if we'll preload this archive (small archives get preloaded)
-    let will_preload = files.iter().sum::<u64>() < CONFIG.archive_cache_size;
+    let will_preload = files.iter().sum::<u64>() < archive_cache_size;
 
     // Second pass: create PathSource variants and optionally preload
     for name in &image_names {
@@ -740,7 +742,7 @@ fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache
     Ok(())
 }
 
-fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache, archive_cache_size: u64) -> Result<(), Box<dyn Error>> {
     let archive = unrar::Archive::new(path)
         .open_for_listing()?;
     let mut files = Vec::new();
@@ -761,7 +763,7 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache
     archive_cache.set_current_archive(path.clone(), ArchiveType::Rar);
 
     // Determine if we'll preload this archive (small archives get preloaded)
-    let will_preload = files.iter().sum::<u64>() < CONFIG.archive_cache_size;
+    let will_preload = files.iter().sum::<u64>() < archive_cache_size;
 
     // Second pass: create PathSource variants and optionally preload
     for name in &image_names {
@@ -791,7 +793,7 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache
     Ok(())
 }
 
-fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache, archive_cache_size: u64, archive_warning_threshold_mb: u64) -> Result<(), Box<dyn Error>> {
     use std::thread;
     use std::io::Read;
     let password = sevenz_rust2::Password::empty();
@@ -814,14 +816,14 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache:
     let image_size = files.iter().sum::<u64>();
     debug!("Total image size: {}mb", image_size / 1_000_000);
     // Determine if we'll preload this archive (small archives get preloaded)
-    let will_preload = is_solid || image_size < CONFIG.archive_cache_size;
+    let will_preload = is_solid || image_size < archive_cache_size;
 
     // Check for large solid archives and show warning dialog
     if will_preload && image_size > 0 {
         let archive_size_mb = image_size / 1_000_000;
 
         // Show warning dialog for archives larger than configured threshold
-        if archive_size_mb > CONFIG.archive_warning_threshold_mb {
+        if archive_size_mb > archive_warning_threshold_mb {
             let (available_gb, is_recommended) = mem::check_memory_for_archive(archive_size_mb);
 
             // Show the warning dialog and check user response

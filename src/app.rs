@@ -164,6 +164,8 @@ pub struct DataViewer {
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
     pub show_copy_buttons: bool,                        // Show copy filename/filepath buttons in footer
+    pub archive_cache_size: u64,                        // Archive cache size in bytes (for preload decision)
+    pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
 }
 
@@ -245,6 +247,8 @@ impl DataViewer {
             cursor_on_footer: false,
             mouse_wheel_zoom: settings.mouse_wheel_zoom,
             show_copy_buttons: settings.show_copy_buttons,
+            archive_cache_size: settings.archive_cache_size * 1_048_576,  // Convert MB to bytes
+            archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
             ctrl_pressed: false,
         }
     }
@@ -330,6 +334,8 @@ impl DataViewer {
             path,
             self.is_slider_dual,
             &mut self.slider_value,
+            self.archive_cache_size,
+            self.archive_warning_threshold_mb,
         );
 
         self.last_opened_pane = pane_index as isize;
@@ -796,6 +802,8 @@ impl DataViewer {
                         &path,
                         self.is_slider_dual,
                         &mut self.slider_value,
+                        self.archive_cache_size,
+                        self.archive_warning_threshold_mb,
                     );
                 }
             }
@@ -840,6 +848,8 @@ impl DataViewer {
                                 &path,
                                 self.is_slider_dual,
                                 &mut self.slider_value,
+                                self.archive_cache_size,
+                                self.archive_warning_threshold_mb,
                             );
                         }
                     }
@@ -1142,6 +1152,13 @@ impl iced_winit::runtime::Program for DataViewer {
                 match settings.save() {
                     Ok(_) => {
                         info!("Settings saved successfully");
+
+                        // Apply archive settings immediately (no restart required)
+                        self.archive_cache_size = archive_cache_size * 1_048_576;  // Convert MB to bytes
+                        self.archive_warning_threshold_mb = archive_warning_threshold_mb;
+                        info!("Archive settings applied immediately: cache_size={}MB, warning_threshold={}MB",
+                            archive_cache_size, archive_warning_threshold_mb);
+
                         self.settings_save_status = Some("Settings saved! Restart the app for changes to take effect.".to_string());
 
                         // Clear the status message after 3 seconds
