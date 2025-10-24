@@ -104,12 +104,16 @@ pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, W
             button(text("Reset to Defaults"))
                 .padding([3, 10])
                 .on_press(Message::ResetAdvancedSettings),
-            button(text("Save Settings"))
+            button(text("Save"))
                 .padding([3, 10])
                 .on_press(Message::SaveSettings),
             button(text("Close"))
                 .padding([3, 10])
                 .on_press(Message::HideOptions),
+            Space::with_width(Length::Fill),
+            button(text("Open Settings Dir"))
+                .padding([3, 10])
+                .on_press(Message::OpenSettingsDir),
         ]
         .spacing(10)
         .align_y(Alignment::Center)

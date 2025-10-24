@@ -80,6 +80,7 @@ pub enum Message {
     ClearSettingsStatus,
     SettingsTabSelected(usize),
     ShowLogs,
+    OpenSettingsDir,
     ExportDebugLogs,
     ExportAllLogs,
     OpenWebLink(String),
@@ -883,6 +884,14 @@ impl iced_winit::runtime::Program for DataViewer {
                 let log_dir_path = crate::logging::get_log_directory(app_name);
                 let _ = std::fs::create_dir_all(log_dir_path.clone());
                 crate::logging::open_in_file_explorer(log_dir_path.to_string_lossy().as_ref());
+            }
+            Message::OpenSettingsDir => {
+                // Get the settings directory from the settings file path
+                let settings_path = UserSettings::settings_path();
+                if let Some(settings_dir) = settings_path.parent() {
+                    let _ = std::fs::create_dir_all(settings_dir);
+                    crate::logging::open_in_file_explorer(settings_dir.to_string_lossy().as_ref());
+                }
             }
             Message::ExportDebugLogs => {
                 let app_name = "viewskater";
