@@ -56,67 +56,88 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
     icon('\u{E805}')
 }
 
-pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message, WinitTheme, Renderer> {
-    let copy_filename_button = tooltip(
-        button(file_copy_icon())
-            .padding(iced::padding::all(2))
-            .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
-            .on_press(Message::CopyFilename(pane_index)),
-        container(text("Copy filename").size(14))
-            .padding(5)
-            .style(|theme: &WinitTheme| container::Style {
-                text_color: Some(Color::from([1.0, 1.0, 1.0])),
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 0.0,
-                    color: Color::TRANSPARENT,
-                },
-                ..container::Style::default()
-            }),
-        tooltip::Position::Top,
-    );
+pub fn get_footer(footer_text: String, pane_index: usize, show_copy_buttons: bool) -> Container<'static, Message, WinitTheme, Renderer> {
+    if show_copy_buttons {
+        let copy_filename_button = tooltip(
+            button(file_copy_icon())
+                .padding(iced::padding::all(2))
+                .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
+                .on_press(Message::CopyFilename(pane_index)),
+            container(text("Copy filename").size(14))
+                .padding(5)
+                .style(|theme: &WinitTheme| container::Style {
+                    text_color: Some(Color::from([1.0, 1.0, 1.0])),
+                    background: Some(theme.extended_palette().background.strong.color.into()),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                    ..container::Style::default()
+                }),
+            tooltip::Position::Top,
+        );
 
-    let copy_filepath_button = tooltip(
-        button(folder_copy_icon())
-            .padding(iced::padding::all(2))
-            .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
-            .on_press(Message::CopyFilePath(pane_index)),
-        container(text("Copy file path").size(14))
-            .padding(5)
-            .style(|theme: &WinitTheme| container::Style {
-                text_color: Some(Color::from([1.0, 1.0, 1.0])),
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 0.0,
-                    color: Color::TRANSPARENT,
-                },
-                ..container::Style::default()
-            }),
-        tooltip::Position::Top,
-    );
+        let copy_filepath_button = tooltip(
+            button(folder_copy_icon())
+                .padding(iced::padding::all(2))
+                .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
+                .on_press(Message::CopyFilePath(pane_index)),
+            container(text("Copy file path").size(14))
+                .padding(5)
+                .style(|theme: &WinitTheme| container::Style {
+                    text_color: Some(Color::from([1.0, 1.0, 1.0])),
+                    background: Some(theme.extended_palette().background.strong.color.into()),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                    ..container::Style::default()
+                }),
+            tooltip::Position::Top,
+        );
 
-    container::<Message, WinitTheme, Renderer>(
-        row![
-            copy_filepath_button,
-            copy_filename_button,
-            Element::<'_, Message, WinitTheme, Renderer>::from(
-                text(footer_text)
-                .font(Font::MONOSPACE)
-                .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([0.8, 0.8, 0.8])) // Wrap Color in a style configuration
-                })
-                .size(14)
-            )
-        ]
-        .align_y(Alignment::Center)
-        .spacing(3),
-    )
-    .width(Length::Fill)
-    .height(32)
-    .padding(3)
-    .align_x(Horizontal::Right)
+        container::<Message, WinitTheme, Renderer>(
+            row![
+                copy_filepath_button,
+                copy_filename_button,
+                Element::<'_, Message, WinitTheme, Renderer>::from(
+                    text(footer_text)
+                    .font(Font::MONOSPACE)
+                    .style(|_theme| iced::widget::text::Style {
+                        color: Some(Color::from([0.8, 0.8, 0.8]))
+                    })
+                    .size(14)
+                )
+            ]
+            .align_y(Alignment::Center)
+            .spacing(3),
+        )
+        .width(Length::Fill)
+        .height(32)
+        .padding(3)
+        .align_x(Horizontal::Right)
+    } else {
+        container::<Message, WinitTheme, Renderer>(
+            row![
+                Element::<'_, Message, WinitTheme, Renderer>::from(
+                    text(footer_text)
+                    .font(Font::MONOSPACE)
+                    .style(|_theme| iced::widget::text::Style {
+                        color: Some(Color::from([0.8, 0.8, 0.8]))
+                    })
+                    .size(14)
+                )
+            ]
+            .align_y(Alignment::Center)
+            .spacing(3),
+        )
+        .width(Length::Fill)
+        .height(32)
+        .padding(3)
+        .align_x(Horizontal::Right)
+    }
 }
 
 
@@ -127,6 +148,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     let cursor_on_top = app.cursor_on_top;
     let cursor_on_menu = app.cursor_on_menu;
     let cursor_on_footer = app.cursor_on_footer;
+    let show_option = app.show_options;
 
     let top_bar = container(
         row![
@@ -190,7 +212,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             };
 
             let footer = if app.show_footer && app.panes[0].dir_loaded {
-                get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0)
+                get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0, app.show_copy_buttons)
             } else {
                 container(text("")).height(0)
             };
@@ -216,7 +238,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             // Create the column WITHOUT converting to Element first
             center(
                 container(
-                    if is_fullscreen && (cursor_on_top || cursor_on_menu) {
+                    if is_fullscreen && !show_option &&(cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, first_img]
                     } else if is_fullscreen && cursor_on_footer {
                         column![fps_bar, first_img, slider_controls, footer]
@@ -246,7 +268,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.show_footer,
                     app.is_slider_moving,
                     app.is_horizontal_split,
-                    app.synced_zoom
+                    app.synced_zoom,
+                    app.show_copy_buttons
                 );
 
                 container(
@@ -278,8 +301,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
                     row![
-                        get_footer(footer_texts[0].clone(), 0),
-                        get_footer(footer_texts[1].clone(), 1)
+                        get_footer(footer_texts[0].clone(), 0, app.show_copy_buttons),
+                        get_footer(footer_texts[1].clone(), 1, app.show_copy_buttons)
                     ]
                 } else {
                     row![]
@@ -304,7 +327,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 };
 
                 container(
-                    if is_fullscreen && (cursor_on_top || cursor_on_menu) {
+                    if is_fullscreen && !show_option &&(cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, panes]
                     } else if is_fullscreen && cursor_on_footer {
                         column![fps_bar, panes, slider, footer]
@@ -371,7 +394,8 @@ pub fn build_ui_dual_pane_slider2(
     show_footer: bool,
     is_slider_moving: bool,
     is_horizontal_split: bool,
-    _synced_zoom: bool
+    _synced_zoom: bool,
+    show_copy_buttons: bool
 ) -> Element<'_, Message, WinitTheme, Renderer> {
     let footer_texts = [
         format!(
@@ -399,7 +423,7 @@ pub fn build_ui_dual_pane_slider2(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), 0)
+                    get_footer(footer_texts[0].clone(), 0, show_copy_buttons)
                 ]
             } else {
                 column![
@@ -436,7 +460,7 @@ pub fn build_ui_dual_pane_slider2(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), 1)
+                    get_footer(footer_texts[1].clone(), 1, show_copy_buttons)
                 ]
             } else {
                 column![
