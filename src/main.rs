@@ -15,6 +15,7 @@ mod app;
 mod utils;
 mod build_info;
 mod logging;
+mod selection_manager;
 
 #[cfg(target_os = "macos")]
 mod macos_file_access;

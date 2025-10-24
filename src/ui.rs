@@ -37,6 +37,7 @@ use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
 use crate::widgets::synced_image_split::SyncedImageSplit;
+use crate::selection_manager::ImageMark;
 
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -56,7 +57,7 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
     icon('\u{E805}')
 }
 
-pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, Message, WinitTheme, Renderer> {
+pub fn get_footer(footer_text: String, pane_index: usize, mark: ImageMark) -> Container<'static, Message, WinitTheme, Renderer> {
     let copy_filename_button = tooltip(
         button(file_copy_icon())
             .padding(iced::padding::all(2))
@@ -97,10 +98,52 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
         tooltip::Position::Top,
     );
 
+    // Create mark indicator badge
+    let mark_badge = match mark {
+        ImageMark::Selected => container(
+            text("✓ SELECTED")
+                .size(12)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([1.0, 1.0, 1.0]))
+                })
+        )
+        .padding(iced::padding::all(4))
+        .style(|_theme: &WinitTheme| container::Style {
+            background: Some(Color::from([0.2, 0.8, 0.2]).into()), // Green
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+            ..container::Style::default()
+        }),
+        ImageMark::Excluded => container(
+            text("✗ EXCLUDED")
+                .size(12)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([1.0, 1.0, 1.0]))
+                })
+        )
+        .padding(iced::padding::all(4))
+        .style(|_theme: &WinitTheme| container::Style {
+            background: Some(Color::from([0.9, 0.2, 0.2]).into()), // Red
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+            ..container::Style::default()
+        }),
+        ImageMark::Unmarked => container(text(""))
+            .width(0)
+            .height(0),
+    };
+
     container::<Message, WinitTheme, Renderer>(
         row![
             copy_filepath_button,
             copy_filename_button,
+            mark_badge,
             Element::<'_, Message, WinitTheme, Renderer>::from(
                 text(footer_text)
                 .font(Font::MONOSPACE)
@@ -121,6 +164,18 @@ pub fn get_footer(footer_text: String, pane_index: usize) -> Container<'static, 
 
 
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
+    // Helper to get the current image mark for a pane
+    let get_mark_for_pane = |pane_index: usize| -> ImageMark {
+        if let Some(pane) = app.panes.get(pane_index) {
+            if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
+                let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
+                let filename = path.file_name().to_string();
+                return app.selection_manager.get_mark(&filename);
+            }
+        }
+        ImageMark::Unmarked
+    };
+
     let mb = app_menu::build_menu(app);
 
     let is_fullscreen = app.is_fullscreen;
@@ -190,7 +245,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             };
 
             let footer = if app.show_footer && app.panes[0].dir_loaded {
-                get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0)
+                let mark = get_mark_for_pane(0);
+                get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0, mark)
             } else {
                 container(text("")).height(0)
             };
@@ -246,7 +302,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.show_footer,
                     app.is_slider_moving,
                     app.is_horizontal_split,
-                    app.synced_zoom
+                    app.synced_zoom,
+                    &get_mark_for_pane
                 );
 
                 container(
@@ -277,9 +334,11 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 ];
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
+                    let mark0 = get_mark_for_pane(0);
+                    let mark1 = get_mark_for_pane(1);
                     row![
-                        get_footer(footer_texts[0].clone(), 0),
-                        get_footer(footer_texts[1].clone(), 1)
+                        get_footer(footer_texts[0].clone(), 0, mark0),
+                        get_footer(footer_texts[1].clone(), 1, mark1)
                     ]
                 } else {
                     row![]
@@ -365,14 +424,18 @@ pub fn build_ui_dual_pane_slider1(
 }
 
 
-pub fn build_ui_dual_pane_slider2(
-    panes: &[Pane],
+pub fn build_ui_dual_pane_slider2<'a, F>(
+    panes: &'a [Pane],
     divider_position: Option<u16>,
     show_footer: bool,
     is_slider_moving: bool,
     is_horizontal_split: bool,
-    _synced_zoom: bool
-) -> Element<'_, Message, WinitTheme, Renderer> {
+    _synced_zoom: bool,
+    get_mark_for_pane: &F
+) -> Element<'a, Message, WinitTheme, Renderer>
+where
+    F: Fn(usize) -> ImageMark,
+{
     let footer_texts = [
         format!(
             "{}/{}",
@@ -389,6 +452,7 @@ pub fn build_ui_dual_pane_slider2(
     let first_img = if panes[0].dir_loaded {
         container(
             if show_footer {
+                let mark0 = get_mark_for_pane(0);
                 column![
                     panes[0].build_ui_container(is_slider_moving, is_horizontal_split),
                     DualSlider::new(
@@ -399,7 +463,7 @@ pub fn build_ui_dual_pane_slider2(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), 0)
+                    get_footer(footer_texts[0].clone(), 0, mark0)
                 ]
             } else {
                 column![
@@ -426,6 +490,7 @@ pub fn build_ui_dual_pane_slider2(
     let second_img = if panes[1].dir_loaded {
         container(
             if show_footer {
+                let mark1 = get_mark_for_pane(1);
                 column![
                     panes[1].build_ui_container(is_slider_moving, is_horizontal_split),
                     DualSlider::new(
@@ -436,7 +501,7 @@ pub fn build_ui_dual_pane_slider2(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), 1)
+                    get_footer(footer_texts[1].clone(), 1, mark1)
                 ]
             } else {
                 column![

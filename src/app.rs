@@ -56,6 +56,7 @@ use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
 use crate::build_info::BuildInfo;
+use crate::selection_manager::SelectionManager;
 
 use std::sync::mpsc::{Sender, Receiver};
 
@@ -108,6 +109,11 @@ pub enum Message {
     CursorOnTop(bool),
     CursorOnMenu(bool),
     CursorOnFooter(bool),
+    MarkImageSelected(usize),    // pane_index
+    MarkImageExcluded(usize),    // pane_index
+    ClearImageMark(usize),       // pane_index
+    ExportSelectionJson,
+    ExportSelectionJsonToPath(PathBuf),
 }
 
 pub struct DataViewer {
@@ -147,6 +153,7 @@ pub struct DataViewer {
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
+    pub selection_manager: SelectionManager,            // Manages image selections/exclusions
 }
 
 impl DataViewer {
@@ -194,6 +201,7 @@ impl DataViewer {
             cursor_on_footer: false,
             mouse_wheel_zoom: false,
             ctrl_pressed: false,
+            selection_manager: SelectionManager::new(),
         }
     }
 
@@ -281,6 +289,13 @@ impl DataViewer {
         );
 
         self.last_opened_pane = pane_index as isize;
+
+        // Load selection state for the directory
+        if let Some(dir_path) = &pane.directory_path {
+            if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
+                warn!("Failed to load selection state for {}: {}", dir_path, e);
+            }
+        }
     }
 
     fn set_ctrl_pressed(&mut self, enabled: bool) {
@@ -574,6 +589,44 @@ impl DataViewer {
                 self.show_fps = !self.show_fps;
                 debug!("Toggled debug FPS display: {}", self.show_fps);
             }
+
+            Key::Character("s") | Key::Character("S") => {
+                // Mark current image as selected
+                let pane_index = if self.pane_layout == PaneLayout::SinglePane {
+                    0
+                } else {
+                    self.last_opened_pane as usize
+                };
+                tasks.push(Task::done(Message::MarkImageSelected(pane_index)));
+            }
+
+            Key::Character("x") | Key::Character("X") => {
+                // Mark current image as excluded
+                let pane_index = if self.pane_layout == PaneLayout::SinglePane {
+                    0
+                } else {
+                    self.last_opened_pane as usize
+                };
+                tasks.push(Task::done(Message::MarkImageExcluded(pane_index)));
+            }
+
+            Key::Character("u") | Key::Character("U") => {
+                // Clear mark for current image
+                let pane_index = if self.pane_layout == PaneLayout::SinglePane {
+                    0
+                } else {
+                    self.last_opened_pane as usize
+                };
+                tasks.push(Task::done(Message::ClearImageMark(pane_index)));
+            }
+
+            Key::Character("e") | Key::Character("E") => {
+                // Export selection JSON with Ctrl/Cmd+E
+                if is_platform_modifier(&modifiers) {
+                    tasks.push(Task::done(Message::ExportSelectionJson));
+                }
+            }
+
             Key::Named(Named::Super) => {
                 #[cfg(target_os = "macos")] {
                     self.set_ctrl_pressed(true);
@@ -1283,6 +1336,84 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.show_fps = value;
             }
             Message::ToggleSplitOrientation(_bool) => { self.toggle_split_orientation(); },
+
+            Message::MarkImageSelected(pane_index) => {
+                if let Some(pane) = self.panes.get(pane_index) {
+                    if pane.dir_loaded {
+                        let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
+                        let filename = path.file_name().to_string();
+                        self.selection_manager.toggle_selected(&filename);
+                        info!("Toggled selected: {}", filename);
+
+                        // Save immediately
+                        if let Err(e) = self.selection_manager.save() {
+                            error!("Failed to save selection state: {}", e);
+                        }
+                    }
+                }
+            }
+
+            Message::MarkImageExcluded(pane_index) => {
+                if let Some(pane) = self.panes.get(pane_index) {
+                    if pane.dir_loaded {
+                        let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
+                        let filename = path.file_name().to_string();
+                        self.selection_manager.toggle_excluded(&filename);
+                        info!("Toggled excluded: {}", filename);
+
+                        // Save immediately
+                        if let Err(e) = self.selection_manager.save() {
+                            error!("Failed to save selection state: {}", e);
+                        }
+                    }
+                }
+            }
+
+            Message::ClearImageMark(pane_index) => {
+                if let Some(pane) = self.panes.get(pane_index) {
+                    if pane.dir_loaded {
+                        let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
+                        let filename = path.file_name().to_string();
+                        self.selection_manager.clear_mark(&filename);
+                        info!("Cleared mark: {}", filename);
+
+                        // Save immediately
+                        if let Err(e) = self.selection_manager.save() {
+                            error!("Failed to save selection state: {}", e);
+                        }
+                    }
+                }
+            }
+
+            Message::ExportSelectionJson => {
+                // Use file picker to choose export location
+                return Task::perform(
+                    async {
+                        rfd::AsyncFileDialog::new()
+                            .set_file_name("selections.json")
+                            .add_filter("JSON", &["json"])
+                            .save_file()
+                            .await
+                    },
+                    |file_handle| {
+                        if let Some(file) = file_handle {
+                            let path = file.path().to_path_buf();
+                            Message::ExportSelectionJsonToPath(path)
+                        } else {
+                            Message::Nothing
+                        }
+                    }
+                );
+            }
+
+            Message::ExportSelectionJsonToPath(path) => {
+                info!("Exporting selection to: {}", path.display());
+                if let Err(e) = self.selection_manager.export_to_file(&path) {
+                    error!("Failed to export selection: {}", e);
+                } else {
+                    info!("Successfully exported selections to: {}", path.display());
+                }
+            }
         }
 
         if self.skate_right {
