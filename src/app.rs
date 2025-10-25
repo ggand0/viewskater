@@ -164,6 +164,7 @@ pub struct DataViewer {
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
     pub show_copy_buttons: bool,                        // Show copy filename/filepath buttons in footer
+    pub cache_size: usize,                              // Image cache window size (number of images to cache)
     pub archive_cache_size: u64,                        // Archive cache size in bytes (for preload decision)
     pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
@@ -247,6 +248,7 @@ impl DataViewer {
             cursor_on_footer: false,
             mouse_wheel_zoom: settings.mouse_wheel_zoom,
             show_copy_buttons: settings.show_copy_buttons,
+            cache_size: settings.cache_size,
             archive_cache_size: settings.archive_cache_size * 1_048_576,  // Convert MB to bytes
             archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
             ctrl_pressed: false,
@@ -334,6 +336,7 @@ impl DataViewer {
             path,
             self.is_slider_dual,
             &mut self.slider_value,
+            self.cache_size,
             self.archive_cache_size,
             self.archive_warning_threshold_mb,
         );
@@ -802,6 +805,7 @@ impl DataViewer {
                         &path,
                         self.is_slider_dual,
                         &mut self.slider_value,
+                        self.cache_size,
                         self.archive_cache_size,
                         self.archive_warning_threshold_mb,
                     );
@@ -848,6 +852,7 @@ impl DataViewer {
                                 &path,
                                 self.is_slider_dual,
                                 &mut self.slider_value,
+                                self.cache_size,
                                 self.archive_cache_size,
                                 self.archive_warning_threshold_mb,
                             );
@@ -1158,6 +1163,44 @@ impl iced_winit::runtime::Program for DataViewer {
                         self.archive_warning_threshold_mb = archive_warning_threshold_mb;
                         info!("Archive settings applied immediately: cache_size={}MB, warning_threshold={}MB",
                             archive_cache_size, archive_warning_threshold_mb);
+
+                        // Apply cache_size setting immediately by reloading all panes
+                        if cache_size != self.cache_size {
+                            info!("Cache size changed from {} to {}, reloading all panes", self.cache_size, cache_size);
+                            self.cache_size = cache_size;
+
+                            // Get current pane file lengths
+                            let pane_file_lengths: Vec<usize> = self.panes.iter()
+                                .map(|p| p.img_cache.num_files)
+                                .collect();
+
+                            // Reinitialize all loaded panes with the new cache size
+                            for (i, pane) in self.panes.iter_mut().enumerate() {
+                                if let Some(dir_path) = &pane.directory_path.clone() {
+                                    if pane.dir_loaded {
+                                        let path = PathBuf::from(dir_path);
+
+                                        // Reinitialize the pane with the current directory
+                                        pane.initialize_dir_path(
+                                            &Arc::clone(&self.device),
+                                            &Arc::clone(&self.queue),
+                                            self.is_gpu_supported,
+                                            self.cache_strategy,
+                                            self.compression_strategy,
+                                            &self.pane_layout,
+                                            &pane_file_lengths,
+                                            i,
+                                            &path,
+                                            self.is_slider_dual,
+                                            &mut self.slider_value,
+                                            self.cache_size,
+                                            self.archive_cache_size,
+                                            self.archive_warning_threshold_mb,
+                                        );
+                                    }
+                                }
+                            }
+                        }
 
                         self.settings_save_status = Some("Settings saved! Restart the app for changes to take effect.".to_string());
 

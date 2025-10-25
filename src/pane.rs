@@ -380,6 +380,7 @@ impl Pane {
         path: &PathBuf,
         is_slider_dual: bool,
         slider_value: &mut u16,
+        cache_size: usize,
         archive_cache_size: u64,
         archive_warning_threshold_mb: u64,
     ) {
@@ -547,7 +548,7 @@ impl Pane {
         // Instantiate a new image cache based on GPU support
         let mut img_cache = ImageCache::new(
             &file_paths,
-            CONFIG.cache_size,
+            cache_size,
             cache_strategy,
             compression_strategy,
             initial_index,
