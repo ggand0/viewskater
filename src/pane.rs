@@ -62,6 +62,8 @@ pub struct Pane {
     pub ctrl_pressed: bool,
     pub has_compressed_file: bool,
     pub archive_cache: Arc<Mutex<ArchiveCache>>,
+    pub max_loading_queue_size: usize,
+    pub max_being_loaded_queue_size: usize,
 }
 
 impl Default for Pane {
@@ -89,6 +91,8 @@ impl Default for Pane {
             ctrl_pressed: false,
             has_compressed_file: false,
             archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
+            max_loading_queue_size: CONFIG.max_loading_queue_size,
+            max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
         }
     }
 }
@@ -128,6 +132,8 @@ impl Pane {
             ctrl_pressed: false,
             has_compressed_file: false,
             archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
+            max_loading_queue_size: CONFIG.max_loading_queue_size,
+            max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
         }
     }
 
@@ -211,7 +217,7 @@ impl Pane {
 
         // May need to consider whether current_index reached the end of the list
         self.is_selected && self.dir_loaded && self.img_cache.is_next_cache_index_within_bounds() &&
-            self.img_cache.loading_queue.len() < CONFIG.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < CONFIG.max_being_loaded_queue_size
+            self.img_cache.loading_queue.len() < self.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < self.max_being_loaded_queue_size
     }
 
     pub fn is_pane_cached_prev(&self) -> bool {
@@ -219,7 +225,7 @@ impl Pane {
             self.is_selected, self.dir_loaded, self.is_prev_image_loaded, self.img_cache.is_prev_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
         self.is_selected && self.dir_loaded && self.img_cache.is_prev_cache_index_within_bounds() &&
-            self.img_cache.loading_queue.len() < CONFIG.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < CONFIG.max_being_loaded_queue_size
+            self.img_cache.loading_queue.len() < self.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < self.max_being_loaded_queue_size
     }
 
     pub fn render_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {

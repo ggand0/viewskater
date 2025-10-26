@@ -167,6 +167,8 @@ pub struct DataViewer {
     pub cache_size: usize,                              // Image cache window size (number of images to cache)
     pub archive_cache_size: u64,                        // Archive cache size in bytes (for preload decision)
     pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
+    pub max_loading_queue_size: usize,                  // Max size for loading queue
+    pub max_being_loaded_queue_size: usize,             // Max size for being loaded queue
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
 }
 
@@ -251,6 +253,8 @@ impl DataViewer {
             cache_size: settings.cache_size,
             archive_cache_size: settings.archive_cache_size * 1_048_576,  // Convert MB to bytes
             archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
+            max_loading_queue_size: settings.max_loading_queue_size,
+            max_being_loaded_queue_size: settings.max_being_loaded_queue_size,
             ctrl_pressed: false,
         }
     }
@@ -1199,6 +1203,19 @@ impl iced_winit::runtime::Program for DataViewer {
                                         );
                                     }
                                 }
+                            }
+                        }
+
+                        // Apply queue size settings immediately (no pane reload required)
+                        if max_loading_queue_size != self.max_loading_queue_size || max_being_loaded_queue_size != self.max_being_loaded_queue_size {
+                            info!("Queue size settings changed: max_loading_queue_size={}, max_being_loaded_queue_size={}", max_loading_queue_size, max_being_loaded_queue_size);
+                            self.max_loading_queue_size = max_loading_queue_size;
+                            self.max_being_loaded_queue_size = max_being_loaded_queue_size;
+
+                            // Update all panes with new queue sizes
+                            for pane in self.panes.iter_mut() {
+                                pane.max_loading_queue_size = max_loading_queue_size;
+                                pane.max_being_loaded_queue_size = max_being_loaded_queue_size;
                             }
                         }
 
