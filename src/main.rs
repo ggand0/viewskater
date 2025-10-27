@@ -16,6 +16,7 @@ mod app;
 mod utils;
 mod build_info;
 mod logging;
+#[cfg(feature = "ml")]
 mod selection_manager;
 mod settings_modal;
 

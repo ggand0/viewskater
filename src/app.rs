@@ -57,6 +57,7 @@ use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
 use crate::build_info::BuildInfo;
+#[cfg(feature = "ml")]
 use crate::selection_manager::SelectionManager;
 use crate::settings::UserSettings;
 
@@ -119,10 +120,15 @@ pub enum Message {
     CursorOnTop(bool),
     CursorOnMenu(bool),
     CursorOnFooter(bool),
+    #[cfg(feature = "ml")]
     MarkImageSelected(usize),    // pane_index
+    #[cfg(feature = "ml")]
     MarkImageExcluded(usize),    // pane_index
+    #[cfg(feature = "ml")]
     ClearImageMark(usize),       // pane_index
+    #[cfg(feature = "ml")]
     ExportSelectionJson,
+    #[cfg(feature = "ml")]
     ExportSelectionJsonToPath(PathBuf),
     // Advanced settings input
     AdvancedSettingChanged(String, String),  // (field_name, value)
@@ -197,6 +203,7 @@ pub struct DataViewer {
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub runtime_settings: RuntimeSettings,              // Runtime-configurable settings
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
+    #[cfg(feature = "ml")]
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
 }
 
@@ -294,6 +301,7 @@ impl DataViewer {
             cursor_on_footer: false,
             runtime_settings: RuntimeSettings::from_user_settings(&settings),
             ctrl_pressed: false,
+            #[cfg(feature = "ml")]
             selection_manager: SelectionManager::new(),
         }
     }
@@ -392,7 +400,8 @@ impl DataViewer {
 
         self.last_opened_pane = pane_index as isize;
 
-        // Load selection state for the directory
+        // Load selection state for the directory (ML tools only)
+        #[cfg(feature = "ml")]
         if let Some(dir_path) = &pane.directory_path {
             if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
                 warn!("Failed to load selection state for {}: {}", dir_path, e);
@@ -692,8 +701,9 @@ impl DataViewer {
                 debug!("Toggled debug FPS display: {}", self.show_fps);
             }
 
+            #[cfg(feature = "ml")]
             Key::Character("s") | Key::Character("S") => {
-                // Mark current image as selected
+                // Mark current image as selected (ML feature)
                 let pane_index = if self.pane_layout == PaneLayout::SinglePane {
                     0
                 } else {
@@ -702,8 +712,9 @@ impl DataViewer {
                 tasks.push(Task::done(Message::MarkImageSelected(pane_index)));
             }
 
+            #[cfg(feature = "ml")]
             Key::Character("x") | Key::Character("X") => {
-                // Mark current image as excluded
+                // Mark current image as excluded (ML feature)
                 let pane_index = if self.pane_layout == PaneLayout::SinglePane {
                     0
                 } else {
@@ -712,8 +723,9 @@ impl DataViewer {
                 tasks.push(Task::done(Message::MarkImageExcluded(pane_index)));
             }
 
+            #[cfg(feature = "ml")]
             Key::Character("u") | Key::Character("U") => {
-                // Clear mark for current image
+                // Clear mark for current image (ML feature)
                 let pane_index = if self.pane_layout == PaneLayout::SinglePane {
                     0
                 } else {
@@ -722,8 +734,9 @@ impl DataViewer {
                 tasks.push(Task::done(Message::ClearImageMark(pane_index)));
             }
 
+            #[cfg(feature = "ml")]
             Key::Character("e") | Key::Character("E") => {
-                // Export selection JSON with Ctrl/Cmd+E
+                // Export selection JSON with Ctrl/Cmd+E (ML feature)
                 if is_platform_modifier(&modifiers) {
                     tasks.push(Task::done(Message::ExportSelectionJson));
                 }
@@ -1795,6 +1808,7 @@ impl iced_winit::runtime::Program for DataViewer {
             }
             Message::ToggleSplitOrientation(_bool) => { self.toggle_split_orientation(); },
 
+            #[cfg(feature = "ml")]
             Message::MarkImageSelected(pane_index) => {
                 if let Some(pane) = self.panes.get(pane_index) {
                     if pane.dir_loaded {
@@ -1811,6 +1825,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
 
+            #[cfg(feature = "ml")]
             Message::MarkImageExcluded(pane_index) => {
                 if let Some(pane) = self.panes.get(pane_index) {
                     if pane.dir_loaded {
@@ -1827,6 +1842,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
 
+            #[cfg(feature = "ml")]
             Message::ClearImageMark(pane_index) => {
                 if let Some(pane) = self.panes.get(pane_index) {
                     if pane.dir_loaded {
@@ -1843,6 +1859,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 }
             }
 
+            #[cfg(feature = "ml")]
             Message::ExportSelectionJson => {
                 // Use file picker to choose export location
                 return Task::perform(
@@ -1864,6 +1881,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 );
             }
 
+            #[cfg(feature = "ml")]
             Message::ExportSelectionJsonToPath(path) => {
                 info!("Exporting selection to: {}", path.display());
                 if let Err(e) = self.selection_manager.export_to_file(&path) {

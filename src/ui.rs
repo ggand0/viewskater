@@ -37,6 +37,7 @@ use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
 use crate::widgets::synced_image_split::SyncedImageSplit;
+#[cfg(feature = "ml")]
 use crate::selection_manager::ImageMark;
 
 
@@ -58,7 +59,59 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
 }
 
 
-pub fn get_footer(footer_text: String, pane_index: usize, mark: ImageMark, show_copy_buttons: bool) -> Container<'static, Message, WinitTheme, Renderer> {
+pub fn get_footer(
+    footer_text: String,
+    pane_index: usize,
+    #[cfg(feature = "ml")]
+    mark: ImageMark,
+    show_copy_buttons: bool
+) -> Container<'static, Message, WinitTheme, Renderer> {
+    // Create mark indicator badge (used in both branches)
+    #[cfg(feature = "ml")]
+    let mark_badge = match mark {
+        ImageMark::Selected => container(
+            text("✓ SELECTED")
+                .size(12)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([1.0, 1.0, 1.0]))
+                })
+        )
+        .padding(iced::padding::all(4))
+        .style(|_theme: &WinitTheme| container::Style {
+            background: Some(Color::from([0.2, 0.8, 0.2]).into()), // Green
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+            ..container::Style::default()
+        }),
+        ImageMark::Excluded => container(
+            text("✗ EXCLUDED")
+                .size(12)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([1.0, 1.0, 1.0]))
+                })
+        )
+        .padding(iced::padding::all(4))
+        .style(|_theme: &WinitTheme| container::Style {
+            background: Some(Color::from([0.9, 0.2, 0.2]).into()), // Red
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+            ..container::Style::default()
+        }),
+        ImageMark::Unmarked => container(text(""))
+            .width(0)
+            .height(0),
+    };
+
+    // Empty badge when ML tools are disabled
+    #[cfg(not(feature = "ml"))]
+    let mark_badge = container(text("")).width(0).height(0);
+
     if show_copy_buttons {
         let copy_filename_button = tooltip(
             button(file_copy_icon())
@@ -99,47 +152,6 @@ pub fn get_footer(footer_text: String, pane_index: usize, mark: ImageMark, show_
                 }),
             tooltip::Position::Top,
         );
-
-        // Create mark indicator badge
-        let mark_badge = match mark {
-            ImageMark::Selected => container(
-                text("✓ SELECTED")
-                    .size(12)
-                    .style(|_theme| iced::widget::text::Style {
-                        color: Some(Color::from([1.0, 1.0, 1.0]))
-                    })
-            )
-            .padding(iced::padding::all(4))
-            .style(|_theme: &WinitTheme| container::Style {
-                background: Some(Color::from([0.2, 0.8, 0.2]).into()), // Green
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 0.0,
-                    color: Color::TRANSPARENT,
-                },
-                ..container::Style::default()
-            }),
-            ImageMark::Excluded => container(
-                text("✗ EXCLUDED")
-                    .size(12)
-                    .style(|_theme| iced::widget::text::Style {
-                        color: Some(Color::from([1.0, 1.0, 1.0]))
-                    })
-            )
-            .padding(iced::padding::all(4))
-            .style(|_theme: &WinitTheme| container::Style {
-                background: Some(Color::from([0.9, 0.2, 0.2]).into()), // Red
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 0.0,
-                    color: Color::TRANSPARENT,
-                },
-                ..container::Style::default()
-            }),
-            ImageMark::Unmarked => container(text(""))
-                .width(0)
-                .height(0),
-        };
 
         container::<Message, WinitTheme, Renderer>(
             row![
@@ -187,7 +199,8 @@ pub fn get_footer(footer_text: String, pane_index: usize, mark: ImageMark, show_
 
 
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
-    // Helper to get the current image mark for a pane
+    // Helper to get the current image mark for a pane (ML tools only)
+    #[cfg(feature = "ml")]
     let get_mark_for_pane = |pane_index: usize| -> ImageMark {
         if let Some(pane) = app.panes.get(pane_index) {
             if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
@@ -270,8 +283,15 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             };
 
             let footer = if app.show_footer && app.panes[0].dir_loaded {
-                let mark = get_mark_for_pane(0);
-                get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0, mark, app.show_copy_buttons)
+                #[cfg(feature = "ml")]
+                {
+                    let mark = get_mark_for_pane(0);
+                    get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0, mark, app.show_copy_buttons)
+                }
+                #[cfg(not(feature = "ml"))]
+                {
+                    get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0, app.show_copy_buttons)
+                }
             } else {
                 container(text("")).height(0)
             };
@@ -321,6 +341,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         PaneLayout::DualPane => {
             if app.is_slider_dual {
                 // Pass synced_zoom parameter
+                #[cfg(feature = "ml")]
                 let panes = build_ui_dual_pane_slider2(
                     &app.panes,
                     app.divider_position,
@@ -329,6 +350,18 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.is_horizontal_split,
                     app.synced_zoom,
                     &get_mark_for_pane,
+                    app.show_copy_buttons,
+                    app.double_click_threshold_ms
+                );
+
+                #[cfg(not(feature = "ml"))]
+                let panes = build_ui_dual_pane_slider2(
+                    &app.panes,
+                    app.divider_position,
+                    app.show_footer,
+                    app.is_slider_moving,
+                    app.is_horizontal_split,
+                    app.synced_zoom,
                     app.show_copy_buttons,
                     app.double_click_threshold_ms
                 );
@@ -362,12 +395,22 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 ];
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
-                    let mark0 = get_mark_for_pane(0);
-                    let mark1 = get_mark_for_pane(1);
-                    row![
-                        get_footer(footer_texts[0].clone(), 0, mark0, app.show_copy_buttons),
-                        get_footer(footer_texts[1].clone(), 1, mark1, app.show_copy_buttons)
-                    ]
+                    #[cfg(feature = "ml")]
+                    {
+                        let mark0 = get_mark_for_pane(0);
+                        let mark1 = get_mark_for_pane(1);
+                        row![
+                            get_footer(footer_texts[0].clone(), 0, mark0, app.show_copy_buttons),
+                            get_footer(footer_texts[1].clone(), 1, mark1, app.show_copy_buttons)
+                        ]
+                    }
+                    #[cfg(not(feature = "ml"))]
+                    {
+                        row![
+                            get_footer(footer_texts[0].clone(), 0, app.show_copy_buttons),
+                            get_footer(footer_texts[1].clone(), 1, app.show_copy_buttons)
+                        ]
+                    }
                 } else {
                     row![]
                 };
@@ -454,20 +497,18 @@ pub fn build_ui_dual_pane_slider1(
 }
 
 
-pub fn build_ui_dual_pane_slider2<'a, F>(
+pub fn build_ui_dual_pane_slider2<'a>(
     panes: &'a [Pane],
     divider_position: Option<u16>,
     show_footer: bool,
     is_slider_moving: bool,
     is_horizontal_split: bool,
     _synced_zoom: bool,
-    get_mark_for_pane: &F,
+    #[cfg(feature = "ml")]
+    get_mark_for_pane: &dyn Fn(usize) -> ImageMark,
     show_copy_buttons: bool,
     double_click_threshold_ms: u16
-) -> Element<'a, Message, WinitTheme, Renderer>
-where
-    F: Fn(usize) -> ImageMark,
-{
+) -> Element<'a, Message, WinitTheme, Renderer> {
     let footer_texts = [
         format!(
             "{}/{}",
@@ -484,19 +525,37 @@ where
     let first_img = if panes[0].dir_loaded {
         container(
             if show_footer {
-                let mark0 = get_mark_for_pane(0);
-                column![
-                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
-                    DualSlider::new(
-                        0..=(panes[0].img_cache.num_files - 1) as u16,
-                        panes[0].slider_value,
-                        0,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), 0, mark0, show_copy_buttons)
-                ]
+                #[cfg(feature = "ml")]
+                {
+                    let mark0 = get_mark_for_pane(0);
+                    column![
+                        panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
+                        DualSlider::new(
+                            0..=(panes[0].img_cache.num_files - 1) as u16,
+                            panes[0].slider_value,
+                            0,
+                            Message::SliderChanged,
+                            Message::SliderReleased
+                        )
+                        .width(Length::Fill),
+                        get_footer(footer_texts[0].clone(), 0, mark0, show_copy_buttons)
+                    ]
+                }
+                #[cfg(not(feature = "ml"))]
+                {
+                    column![
+                        panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
+                        DualSlider::new(
+                            0..=(panes[0].img_cache.num_files - 1) as u16,
+                            panes[0].slider_value,
+                            0,
+                            Message::SliderChanged,
+                            Message::SliderReleased
+                        )
+                        .width(Length::Fill),
+                        get_footer(footer_texts[0].clone(), 0, show_copy_buttons)
+                    ]
+                }
             } else {
                 column![
                     panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
@@ -522,19 +581,37 @@ where
     let second_img = if panes[1].dir_loaded {
         container(
             if show_footer {
-                let mark1 = get_mark_for_pane(1);
-                column![
-                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
-                    DualSlider::new(
-                        0..=(panes[1].img_cache.num_files - 1) as u16,
-                        panes[1].slider_value,
-                        1,
-                        Message::SliderChanged,
-                        Message::SliderReleased
-                    )
-                    .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), 1, mark1, show_copy_buttons)
-                ]
+                #[cfg(feature = "ml")]
+                {
+                    let mark1 = get_mark_for_pane(1);
+                    column![
+                        panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
+                        DualSlider::new(
+                            0..=(panes[1].img_cache.num_files - 1) as u16,
+                            panes[1].slider_value,
+                            1,
+                            Message::SliderChanged,
+                            Message::SliderReleased
+                        )
+                        .width(Length::Fill),
+                        get_footer(footer_texts[1].clone(), 1, mark1, show_copy_buttons)
+                    ]
+                }
+                #[cfg(not(feature = "ml"))]
+                {
+                    column![
+                        panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
+                        DualSlider::new(
+                            0..=(panes[1].img_cache.num_files - 1) as u16,
+                            panes[1].slider_value,
+                            1,
+                            Message::SliderChanged,
+                            Message::SliderReleased
+                        )
+                        .width(Length::Fill),
+                        get_footer(footer_texts[1].clone(), 1, show_copy_buttons)
+                    ]
+                }
             } else {
                 column![
                     panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),

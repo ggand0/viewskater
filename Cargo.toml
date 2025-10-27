@@ -62,6 +62,10 @@ iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", 
 #iced_futures = { path = "../iced/futures", features = ["tokio"] }
 #iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
 
+[features]
+# ML-related features for dataset curation (disabled by default)
+ml = []
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"
 objc2-foundation = { version = "0.2.2", default-features = false, features = [
