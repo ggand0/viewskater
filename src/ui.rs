@@ -165,6 +165,7 @@ pub fn get_footer(footer_text: String, pane_index: usize, mark: ImageMark, show_
     } else {
         container::<Message, WinitTheme, Renderer>(
             row![
+                mark_badge,
                 Element::<'_, Message, WinitTheme, Renderer>::from(
                     text(footer_text)
                     .font(Font::MONOSPACE)
