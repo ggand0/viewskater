@@ -21,8 +21,6 @@ pub struct Config {
     pub window_height: u32,                 // Default window height
     pub atlas_size: u32,                    // Size of the square texture atlas used in iced_wgpu (affects slider performance)
     pub double_click_threshold_ms: u16,     // Double-click detection threshold in milliseconds
-    pub archive_cache_size: u64,            // Max size for compressed file cache
-    pub archive_warning_threshold_mb: u64   // Show warning dialog for solid archives larger than this (MB)
 }
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| {
@@ -37,7 +35,5 @@ pub static CONFIG: Lazy<Config> = Lazy::new(|| {
         window_height: settings.window_height,
         atlas_size: settings.atlas_size,
         double_click_threshold_ms: settings.double_click_threshold_ms,
-        archive_cache_size: settings.archive_cache_size * 1_048_576,
-        archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
     }
 });

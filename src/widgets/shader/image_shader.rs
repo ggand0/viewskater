@@ -27,6 +27,7 @@ pub struct ImageShader<Message> {
     min_scale: f32,
     max_scale: f32,
     scale_step: f32,
+    double_click_threshold_ms: u16,
     _phantom: PhantomData<Message>,
     debug: bool,
     is_horizontal_split: bool,
@@ -63,6 +64,7 @@ impl<Message> ImageShader<Message> {
             min_scale: 0.25,
             max_scale: 10.0,
             scale_step: 0.10,
+            double_click_threshold_ms: CONFIG.double_click_threshold_ms,
             _phantom: PhantomData,
             debug,
             is_horizontal_split: false,
@@ -116,6 +118,14 @@ impl<Message> ImageShader<Message> {
     /// Default is `0.10`
     pub fn scale_step(mut self, scale_step: f32) -> Self {
         self.scale_step = scale_step;
+        self
+    }
+
+    /// Sets the double-click threshold in milliseconds.
+    ///
+    /// Default is `250`
+    pub fn double_click_threshold_ms(mut self, threshold_ms: u16) -> Self {
+        self.double_click_threshold_ms = threshold_ms;
         self
     }
 
@@ -608,7 +618,7 @@ where
                 // Check for double-click
                 if let Some(last_click_time) = state.last_click_time {
                     let elapsed = last_click_time.elapsed();
-                    if elapsed < std::time::Duration::from_millis(CONFIG.double_click_threshold_ms as u64) {
+                    if elapsed < std::time::Duration::from_millis(self.double_click_threshold_ms as u64) {
                         // Double-click detected - reset zoom and pan
                         state.scale = 1.0;
                         state.current_offset = Vector::default();

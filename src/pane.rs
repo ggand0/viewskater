@@ -62,6 +62,8 @@ pub struct Pane {
     pub ctrl_pressed: bool,
     pub has_compressed_file: bool,
     pub archive_cache: Arc<Mutex<ArchiveCache>>,
+    pub max_loading_queue_size: usize,
+    pub max_being_loaded_queue_size: usize,
 }
 
 impl Default for Pane {
@@ -89,6 +91,8 @@ impl Default for Pane {
             ctrl_pressed: false,
             has_compressed_file: false,
             archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
+            max_loading_queue_size: CONFIG.max_loading_queue_size,
+            max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
         }
     }
 }
@@ -128,6 +132,8 @@ impl Pane {
             ctrl_pressed: false,
             has_compressed_file: false,
             archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
+            max_loading_queue_size: CONFIG.max_loading_queue_size,
+            max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
         }
     }
 
@@ -211,7 +217,7 @@ impl Pane {
 
         // May need to consider whether current_index reached the end of the list
         self.is_selected && self.dir_loaded && self.img_cache.is_next_cache_index_within_bounds() &&
-            self.img_cache.loading_queue.len() < CONFIG.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < CONFIG.max_being_loaded_queue_size
+            self.img_cache.loading_queue.len() < self.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < self.max_being_loaded_queue_size
     }
 
     pub fn is_pane_cached_prev(&self) -> bool {
@@ -219,7 +225,7 @@ impl Pane {
             self.is_selected, self.dir_loaded, self.is_prev_image_loaded, self.img_cache.is_prev_cache_index_within_bounds(), self.img_cache.loading_queue.len(), self.img_cache.being_loaded_queue.len());
 
         self.is_selected && self.dir_loaded && self.img_cache.is_prev_cache_index_within_bounds() &&
-            self.img_cache.loading_queue.len() < CONFIG.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < CONFIG.max_being_loaded_queue_size
+            self.img_cache.loading_queue.len() < self.max_loading_queue_size && self.img_cache.being_loaded_queue.len() < self.max_being_loaded_queue_size
     }
 
     pub fn render_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
@@ -343,7 +349,7 @@ impl Pane {
 
                 img_cache.current_offset -= 1;
 
-                assert!(img_cache.current_offset >= -(CONFIG.cache_size as isize)); // e.g. >= -5
+                assert!(img_cache.current_offset >= -(img_cache.cache_count as isize)); // Check against actual cache size, not static CONFIG
 
                 // Since the prev image is loaded and rendered, mark the is_prev_image_loaded flag
                 self.is_prev_image_loaded = true;
@@ -380,6 +386,9 @@ impl Pane {
         path: &PathBuf,
         is_slider_dual: bool,
         slider_value: &mut u16,
+        cache_size: usize,
+        archive_cache_size: u64,
+        archive_warning_threshold_mb: u64,
     ) {
         mem::log_memory("Before pane initialization");
 
@@ -394,7 +403,7 @@ impl Pane {
             match path.extension().unwrap().to_ascii_lowercase().to_str() {
                 Some("zip") => {
                     let mut archive_cache = self.archive_cache.lock().unwrap();
-                    match read_zip_path(path, &mut file_paths, &mut archive_cache) {
+                    match read_zip_path(path, &mut file_paths, &mut archive_cache, archive_cache_size) {
                         Ok(_) => {
                             archive = ArchiveType::Zip;
                         },
@@ -406,7 +415,7 @@ impl Pane {
                 },
                 Some("rar") => {
                     let mut archive_cache = self.archive_cache.lock().unwrap();
-                    match read_rar_path(path, &mut file_paths, &mut archive_cache) {
+                    match read_rar_path(path, &mut file_paths, &mut archive_cache, archive_cache_size) {
                         Ok(_) => {
                             archive = ArchiveType::Rar;
                         },
@@ -418,7 +427,7 @@ impl Pane {
                 }
                 Some("7z") => {
                     let mut archive_cache = self.archive_cache.lock().unwrap();
-                    match read_7z_path(path, &mut file_paths, &mut archive_cache) {
+                    match read_7z_path(path, &mut file_paths, &mut archive_cache, archive_cache_size, archive_warning_threshold_mb) {
                         Ok(_) => {
                             archive = ArchiveType::SevenZ;
                         },
@@ -545,7 +554,7 @@ impl Pane {
         // Instantiate a new image cache based on GPU support
         let mut img_cache = ImageCache::new(
             &file_paths,
-            CONFIG.cache_size,
+            cache_size,
             cache_strategy,
             compression_strategy,
             initial_index,
@@ -632,7 +641,7 @@ impl Pane {
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
 
-    pub fn build_ui_container(&self, is_slider_moving: bool, is_horizontal_split: bool) -> Container<'_, Message, WinitTheme, Renderer> {
+    pub fn build_ui_container(&self, is_slider_moving: bool, is_horizontal_split: bool, double_click_threshold_ms: u16) -> Container<'_, Message, WinitTheme, Renderer> {
         if self.dir_loaded {
             if is_slider_moving && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
@@ -652,7 +661,8 @@ impl Pane {
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(is_horizontal_split)
-                        .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed);
+                        .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed)
+                        .double_click_threshold_ms(double_click_threshold_ms);
 
                 container(center(shader_widget))
                     .width(Length::Fill)
@@ -698,7 +708,7 @@ pub fn get_master_slider_value(panes: &[&mut Pane],
     pane.img_cache.current_index
 }
 
-fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache, archive_cache_size: u64) -> Result<(), Box<dyn Error>> {
     use std::io::Read;
     let mut files = Vec::new();
     let mut archive = zip::ZipArchive::new(std::io::BufReader::new(
@@ -719,7 +729,7 @@ fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache
     archive_cache.set_current_archive(path.clone(), ArchiveType::Zip);
 
     // Determine if we'll preload this archive (small archives get preloaded)
-    let will_preload = files.iter().sum::<u64>() < CONFIG.archive_cache_size;
+    let will_preload = files.iter().sum::<u64>() < archive_cache_size;
 
     // Second pass: create PathSource variants and optionally preload
     for name in &image_names {
@@ -740,7 +750,7 @@ fn read_zip_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache
     Ok(())
 }
 
-fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache, archive_cache_size: u64) -> Result<(), Box<dyn Error>> {
     let archive = unrar::Archive::new(path)
         .open_for_listing()?;
     let mut files = Vec::new();
@@ -761,7 +771,7 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache
     archive_cache.set_current_archive(path.clone(), ArchiveType::Rar);
 
     // Determine if we'll preload this archive (small archives get preloaded)
-    let will_preload = files.iter().sum::<u64>() < CONFIG.archive_cache_size;
+    let will_preload = files.iter().sum::<u64>() < archive_cache_size;
 
     // Second pass: create PathSource variants and optionally preload
     for name in &image_names {
@@ -791,7 +801,7 @@ fn read_rar_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache
     Ok(())
 }
 
-fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache) -> Result<(), Box<dyn Error>> {
+fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache: &mut ArchiveCache, archive_cache_size: u64, archive_warning_threshold_mb: u64) -> Result<(), Box<dyn Error>> {
     use std::thread;
     use std::io::Read;
     let password = sevenz_rust2::Password::empty();
@@ -814,14 +824,14 @@ fn read_7z_path(path: &PathBuf, file_paths: &mut Vec<PathSource>, archive_cache:
     let image_size = files.iter().sum::<u64>();
     debug!("Total image size: {}mb", image_size / 1_000_000);
     // Determine if we'll preload this archive (small archives get preloaded)
-    let will_preload = is_solid || image_size < CONFIG.archive_cache_size;
+    let will_preload = is_solid || image_size < archive_cache_size;
 
     // Check for large solid archives and show warning dialog
     if will_preload && image_size > 0 {
         let archive_size_mb = image_size / 1_000_000;
 
         // Show warning dialog for archives larger than configured threshold
-        if archive_size_mb > CONFIG.archive_warning_threshold_mb {
+        if archive_size_mb > archive_warning_threshold_mb {
             let (available_gb, is_recommended) = mem::check_memory_for_archive(archive_size_mb);
 
             // Show the warning dialog and check user response
