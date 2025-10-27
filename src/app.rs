@@ -121,15 +121,7 @@ pub enum Message {
     CursorOnMenu(bool),
     CursorOnFooter(bool),
     #[cfg(feature = "ml")]
-    MarkImageSelected(usize),    // pane_index
-    #[cfg(feature = "ml")]
-    MarkImageExcluded(usize),    // pane_index
-    #[cfg(feature = "ml")]
-    ClearImageMark(usize),       // pane_index
-    #[cfg(feature = "ml")]
-    ExportSelectionJson,
-    #[cfg(feature = "ml")]
-    ExportSelectionJsonToPath(PathBuf),
+    MlAction(crate::ml_widget::MlMessage),
     // Advanced settings input
     AdvancedSettingChanged(String, String),  // (field_name, value)
     ResetAdvancedSettings,
@@ -709,7 +701,9 @@ impl DataViewer {
                 } else {
                     self.last_opened_pane as usize
                 };
-                tasks.push(Task::done(Message::MarkImageSelected(pane_index)));
+                tasks.push(Task::done(Message::MlAction(
+                    crate::ml_widget::MlMessage::MarkImageSelected(pane_index)
+                )));
             }
 
             #[cfg(feature = "ml")]
@@ -720,7 +714,9 @@ impl DataViewer {
                 } else {
                     self.last_opened_pane as usize
                 };
-                tasks.push(Task::done(Message::MarkImageExcluded(pane_index)));
+                tasks.push(Task::done(Message::MlAction(
+                    crate::ml_widget::MlMessage::MarkImageExcluded(pane_index)
+                )));
             }
 
             #[cfg(feature = "ml")]
@@ -731,14 +727,18 @@ impl DataViewer {
                 } else {
                     self.last_opened_pane as usize
                 };
-                tasks.push(Task::done(Message::ClearImageMark(pane_index)));
+                tasks.push(Task::done(Message::MlAction(
+                    crate::ml_widget::MlMessage::ClearImageMark(pane_index)
+                )));
             }
 
             #[cfg(feature = "ml")]
             Key::Character("e") | Key::Character("E") => {
                 // Export selection JSON with Ctrl/Cmd+E (ML feature)
                 if is_platform_modifier(&modifiers) {
-                    tasks.push(Task::done(Message::ExportSelectionJson));
+                    tasks.push(Task::done(Message::MlAction(
+                        crate::ml_widget::MlMessage::ExportSelectionJson
+                    )));
                 }
             }
 
@@ -1809,86 +1809,12 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ToggleSplitOrientation(_bool) => { self.toggle_split_orientation(); },
 
             #[cfg(feature = "ml")]
-            Message::MarkImageSelected(pane_index) => {
-                if let Some(pane) = self.panes.get(pane_index) {
-                    if pane.dir_loaded {
-                        let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
-                        let filename = path.file_name().to_string();
-                        self.selection_manager.toggle_selected(&filename);
-                        info!("Toggled selected: {}", filename);
-
-                        // Save immediately
-                        if let Err(e) = self.selection_manager.save() {
-                            error!("Failed to save selection state: {}", e);
-                        }
-                    }
-                }
-            }
-
-            #[cfg(feature = "ml")]
-            Message::MarkImageExcluded(pane_index) => {
-                if let Some(pane) = self.panes.get(pane_index) {
-                    if pane.dir_loaded {
-                        let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
-                        let filename = path.file_name().to_string();
-                        self.selection_manager.toggle_excluded(&filename);
-                        info!("Toggled excluded: {}", filename);
-
-                        // Save immediately
-                        if let Err(e) = self.selection_manager.save() {
-                            error!("Failed to save selection state: {}", e);
-                        }
-                    }
-                }
-            }
-
-            #[cfg(feature = "ml")]
-            Message::ClearImageMark(pane_index) => {
-                if let Some(pane) = self.panes.get(pane_index) {
-                    if pane.dir_loaded {
-                        let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
-                        let filename = path.file_name().to_string();
-                        self.selection_manager.clear_mark(&filename);
-                        info!("Cleared mark: {}", filename);
-
-                        // Save immediately
-                        if let Err(e) = self.selection_manager.save() {
-                            error!("Failed to save selection state: {}", e);
-                        }
-                    }
-                }
-            }
-
-            #[cfg(feature = "ml")]
-            Message::ExportSelectionJson => {
-                // Use file picker to choose export location
-                return Task::perform(
-                    async {
-                        rfd::AsyncFileDialog::new()
-                            .set_file_name("selections.json")
-                            .add_filter("JSON", &["json"])
-                            .save_file()
-                            .await
-                    },
-                    |file_handle| {
-                        if let Some(file) = file_handle {
-                            let path = file.path().to_path_buf();
-                            Message::ExportSelectionJsonToPath(path)
-                        } else {
-                            Message::Nothing
-                        }
-                    }
+            Message::MlAction(ml_msg) => {
+                return crate::ml_widget::handle_ml_message(
+                    ml_msg,
+                    &self.panes,
+                    &mut self.selection_manager,
                 );
-            }
-
-            #[cfg(feature = "ml")]
-            Message::ExportSelectionJsonToPath(path) => {
-                info!("Exporting selection to: {}", path.display());
-                if let Err(e) = self.selection_manager.export_to_file(&path) {
-                    error!("Failed to export selection: {}", e);
-                } else {
-                    info!("Successfully exported selections to: {}", path.display());
-                }
             }
         }
 
