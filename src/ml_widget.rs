@@ -37,7 +37,7 @@ impl From<MlMessage> for Message {
 pub fn mark_badge(mark: ImageMark) -> Element<'static, Message, WinitTheme, Renderer> {
     match mark {
         ImageMark::Selected => container(
-            text("✓ SELECTED")
+            text("SELECTED")
                 .size(12)
                 .style(|_theme| iced_widget::text::Style {
                     color: Some(Color::from([1.0, 1.0, 1.0]))
@@ -55,7 +55,7 @@ pub fn mark_badge(mark: ImageMark) -> Element<'static, Message, WinitTheme, Rend
         })
         .into(),
         ImageMark::Excluded => container(
-            text("✗ EXCLUDED")
+            text("EXCLUDED")
                 .size(12)
                 .style(|_theme| iced_widget::text::Style {
                     color: Some(Color::from([1.0, 1.0, 1.0]))
