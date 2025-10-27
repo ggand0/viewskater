@@ -169,6 +169,7 @@ pub struct DataViewer {
     pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
     pub max_loading_queue_size: usize,                  // Max size for loading queue
     pub max_being_loaded_queue_size: usize,             // Max size for being loaded queue
+    pub double_click_threshold_ms: u16,                 // Double-click threshold in milliseconds
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
 }
 
@@ -255,6 +256,7 @@ impl DataViewer {
             archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
             max_loading_queue_size: settings.max_loading_queue_size,
             max_being_loaded_queue_size: settings.max_being_loaded_queue_size,
+            double_click_threshold_ms: settings.double_click_threshold_ms,
             ctrl_pressed: false,
         }
     }
@@ -1219,7 +1221,13 @@ impl iced_winit::runtime::Program for DataViewer {
                             }
                         }
 
-                        self.settings_save_status = Some("Settings saved! Restart the app for changes to take effect.".to_string());
+                        // Apply double-click threshold immediately
+                        if double_click_threshold_ms != self.double_click_threshold_ms {
+                            info!("Double-click threshold changed from {} to {} ms", self.double_click_threshold_ms, double_click_threshold_ms);
+                            self.double_click_threshold_ms = double_click_threshold_ms;
+                        }
+
+                        self.settings_save_status = Some("Settings saved! Some changes applied immediately, restart for others.".to_string());
 
                         // Clear the status message after 3 seconds
                         return Task::perform(async {

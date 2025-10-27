@@ -198,7 +198,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false)
-                        .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed);
+                        .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
+                        .double_click_threshold_ms(app.double_click_threshold_ms);
 
                     container(center(shader))
                         .width(Length::Fill)
@@ -269,7 +270,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.is_slider_moving,
                     app.is_horizontal_split,
                     app.synced_zoom,
-                    app.show_copy_buttons
+                    app.show_copy_buttons,
+                    app.double_click_threshold_ms
                 );
 
                 container(
@@ -291,7 +293,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.divider_position,
                     app.is_slider_moving,
                     app.is_horizontal_split,
-                    app.synced_zoom
+                    app.synced_zoom,
+                    app.double_click_threshold_ms
                 );
 
                 let footer_texts = [
@@ -359,10 +362,11 @@ pub fn build_ui_dual_pane_slider1(
     divider_position: Option<u16>,
     is_slider_moving: bool,
     is_horizontal_split: bool,
-    synced_zoom: bool
+    synced_zoom: bool,
+    double_click_threshold_ms: u16
 ) -> Element<'_, Message, WinitTheme, Renderer> {
-    let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split);
-    let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split);
+    let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms);
+    let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms);
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
 
@@ -384,6 +388,7 @@ pub fn build_ui_dual_pane_slider1(
     .min_scale(0.25)
     .max_scale(10.0)
     .scale_step(0.10)
+    .double_click_threshold_ms(double_click_threshold_ms)
     .into()
 }
 
@@ -395,7 +400,8 @@ pub fn build_ui_dual_pane_slider2(
     is_slider_moving: bool,
     is_horizontal_split: bool,
     _synced_zoom: bool,
-    show_copy_buttons: bool
+    show_copy_buttons: bool,
+    double_click_threshold_ms: u16
 ) -> Element<'_, Message, WinitTheme, Renderer> {
     let footer_texts = [
         format!(
@@ -414,7 +420,7 @@ pub fn build_ui_dual_pane_slider2(
         container(
             if show_footer {
                 column![
-                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split),
+                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -427,7 +433,7 @@ pub fn build_ui_dual_pane_slider2(
                 ]
             } else {
                 column![
-                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split),
+                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -451,7 +457,7 @@ pub fn build_ui_dual_pane_slider2(
         container(
             if show_footer {
                 column![
-                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split),
+                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -464,7 +470,7 @@ pub fn build_ui_dual_pane_slider2(
                 ]
             } else {
                 column![
-                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split),
+                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -504,6 +510,7 @@ pub fn build_ui_dual_pane_slider2(
     .min_scale(0.25)
     .max_scale(10.0)
     .scale_step(0.10)
+    .double_click_threshold_ms(double_click_threshold_ms)
     .into()
 }
 

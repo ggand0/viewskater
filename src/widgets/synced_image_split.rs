@@ -155,6 +155,9 @@ where
     min_scale: f32,
     max_scale: f32,
     scale_step: f32,
+
+    // Double-click threshold in milliseconds
+    double_click_threshold_ms: u16,
 }
 
 impl<'a, Message, Theme, Renderer> SyncedImageSplit<'a, Message, Theme, Renderer>
@@ -229,7 +232,15 @@ where
             min_scale: 0.25,
             max_scale: 10.0,
             scale_step: 0.10,
+            double_click_threshold_ms: CONFIG.double_click_threshold_ms,
         }
+    }
+
+    /// Sets the double-click threshold in milliseconds.
+    #[must_use]
+    pub fn double_click_threshold_ms(mut self, threshold_ms: u16) -> Self {
+        self.double_click_threshold_ms = threshold_ms;
+        self
     }
 
     /// Sets the padding of the [`Split`] around the inner elements.
@@ -602,7 +613,7 @@ where
                     // Handle double-click for divider reset
                     if let Some(last_click_time) = split_state.last_click_time {
                         let elapsed = last_click_time.elapsed();
-                        if elapsed < Duration::from_millis(CONFIG.double_click_threshold_ms as u64) {
+                        if elapsed < Duration::from_millis(self.double_click_threshold_ms as u64) {
                             // Double-click detected
                             split_state.last_click_time = None;
                             split_state.dragging = false;
@@ -628,7 +639,7 @@ where
                     if split_state.synced_zoom {
                         if let Some(last_click_time) = split_state.last_pane_click_time {
                             let elapsed = last_click_time.elapsed();
-                            if elapsed < Duration::from_millis(500) {
+                            if elapsed < Duration::from_millis(self.double_click_threshold_ms as u64) {
                                 // Double-click detected on pane - reset zoom for both panes
                                 debug_log!("Double-click detected in pane - resetting zoom");
                                 split_state.last_pane_click_time = None;
@@ -671,7 +682,7 @@ where
                     if split_state.synced_zoom {
                         if let Some(last_click_time) = split_state.last_pane_click_time {
                             let elapsed = last_click_time.elapsed();
-                            if elapsed < Duration::from_millis(500) {
+                            if elapsed < Duration::from_millis(self.double_click_threshold_ms as u64) {
                                 // Double-click detected on pane - reset zoom for both panes
                                 debug_log!("Double-click detected in pane - resetting zoom");
                                 split_state.last_pane_click_time = None;
@@ -718,7 +729,7 @@ where
                     // Handle double-click detection
                     if let Some(last_click_time) = split_state.last_click_time {
                         let elapsed = last_click_time.elapsed();
-                        if elapsed < Duration::from_millis(500) {
+                        if elapsed < Duration::from_millis(self.double_click_threshold_ms as u64) {
                             // Double-click detected
                             split_state.last_click_time = None;
 

@@ -641,7 +641,7 @@ impl Pane {
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
 
-    pub fn build_ui_container(&self, is_slider_moving: bool, is_horizontal_split: bool) -> Container<'_, Message, WinitTheme, Renderer> {
+    pub fn build_ui_container(&self, is_slider_moving: bool, is_horizontal_split: bool, double_click_threshold_ms: u16) -> Container<'_, Message, WinitTheme, Renderer> {
         if self.dir_loaded {
             if is_slider_moving && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
@@ -661,7 +661,8 @@ impl Pane {
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(is_horizontal_split)
-                        .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed);
+                        .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed)
+                        .double_click_threshold_ms(double_click_threshold_ms);
 
                 container(center(shader_widget))
                     .width(Length::Fill)
