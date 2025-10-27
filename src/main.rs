@@ -16,6 +16,10 @@ mod app;
 mod utils;
 mod build_info;
 mod logging;
+#[cfg(feature = "ml")]
+mod selection_manager;
+#[cfg(feature = "ml")]
+mod ml_widget;
 mod settings_modal;
 
 #[cfg(target_os = "macos")]

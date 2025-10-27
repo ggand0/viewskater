@@ -243,7 +243,7 @@ fn view_general_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitThe
     .spacing(3)
     .width(Length::FillPortion(1));
 
-    // Right column - Controls
+    // Right column - Controls and Features
     let right_column = column![
         text("Controls").size(16)
             .font(Font {
@@ -285,6 +285,7 @@ fn view_general_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitThe
             text_color: Some(Color::from_rgb(0.878, 0.878, 0.878)),
             ..container::Style::default()
         }),
+
     ]
     .spacing(3)
     .width(Length::FillPortion(1));

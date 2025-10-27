@@ -57,6 +57,8 @@ use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
 use crate::build_info::BuildInfo;
+#[cfg(feature = "ml")]
+use crate::selection_manager::SelectionManager;
 use crate::settings::UserSettings;
 
 use std::sync::mpsc::{Sender, Receiver};
@@ -118,6 +120,8 @@ pub enum Message {
     CursorOnTop(bool),
     CursorOnMenu(bool),
     CursorOnFooter(bool),
+    #[cfg(feature = "ml")]
+    MlAction(crate::ml_widget::MlMessage),
     // Advanced settings input
     AdvancedSettingChanged(String, String),  // (field_name, value)
     ResetAdvancedSettings,
@@ -191,6 +195,8 @@ pub struct DataViewer {
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub runtime_settings: RuntimeSettings,              // Runtime-configurable settings
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
+    #[cfg(feature = "ml")]
+    pub selection_manager: SelectionManager,            // Manages image selections/exclusions
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -287,6 +293,8 @@ impl DataViewer {
             cursor_on_footer: false,
             runtime_settings: RuntimeSettings::from_user_settings(&settings),
             ctrl_pressed: false,
+            #[cfg(feature = "ml")]
+            selection_manager: SelectionManager::new(),
         }
     }
 
@@ -383,6 +391,14 @@ impl DataViewer {
         );
 
         self.last_opened_pane = pane_index as isize;
+
+        // Load selection state for the directory (ML tools only)
+        #[cfg(feature = "ml")]
+        if let Some(dir_path) = &pane.directory_path {
+            if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
+                warn!("Failed to load selection state for {}: {}", dir_path, e);
+            }
+        }
     }
 
     fn set_ctrl_pressed(&mut self, enabled: bool) {
@@ -676,6 +692,7 @@ impl DataViewer {
                 self.show_fps = !self.show_fps;
                 debug!("Toggled debug FPS display: {}", self.show_fps);
             }
+
             Key::Named(Named::Super) => {
                 #[cfg(target_os = "macos")] {
                     self.set_ctrl_pressed(true);
@@ -686,7 +703,18 @@ impl DataViewer {
                     self.set_ctrl_pressed(true);
                 }
             }
-            _ => {}
+            _ => {
+                // Check if ML module wants to handle this key
+                #[cfg(feature = "ml")]
+                if let Some(task) = crate::ml_widget::handle_keyboard_event(
+                    key,
+                    modifiers,
+                    &self.pane_layout,
+                    self.last_opened_pane,
+                ) {
+                    tasks.push(task);
+                }
+            }
         }
 
         tasks
@@ -1741,6 +1769,15 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.show_fps = value;
             }
             Message::ToggleSplitOrientation(_bool) => { self.toggle_split_orientation(); },
+
+            #[cfg(feature = "ml")]
+            Message::MlAction(ml_msg) => {
+                return crate::ml_widget::handle_ml_message(
+                    ml_msg,
+                    &self.panes,
+                    &mut self.selection_manager,
+                );
+            }
         }
 
         if self.skate_right {
