@@ -10,11 +10,13 @@ use iced_winit::runtime::Task;
 use iced_wgpu::Renderer;
 use iced_widget::{container, text};
 use iced_core::padding;
+use iced_core::keyboard::{self, Key};
 use log::{info, error};
 
 use crate::app::Message;
 use crate::selection_manager::{ImageMark, SelectionManager};
 use crate::pane::Pane;
+use crate::menu::PaneLayout;
 
 /// ML-specific messages grouped into a single enum variant
 #[derive(Debug, Clone)]
@@ -175,5 +177,68 @@ pub fn handle_ml_message(
             }
             Task::none()
         }
+    }
+}
+
+/// Handle ML-related keyboard events
+///
+/// Returns Some(Task) if the key was handled, None if not an ML key
+pub fn handle_keyboard_event(
+    key: &keyboard::Key,
+    modifiers: keyboard::Modifiers,
+    pane_layout: &PaneLayout,
+    last_opened_pane: isize,
+) -> Option<Task<Message>> {
+    // Helper to determine current pane index
+    let get_pane_index = || {
+        if *pane_layout == PaneLayout::SinglePane {
+            0
+        } else {
+            last_opened_pane as usize
+        }
+    };
+
+    // Helper for platform-specific modifier key
+    let is_platform_modifier = || {
+        #[cfg(target_os = "macos")]
+        return modifiers.logo(); // Command key on macOS
+
+        #[cfg(not(target_os = "macos"))]
+        return modifiers.control(); // Control key on other platforms
+    };
+
+    match key.as_ref() {
+        Key::Character("s") | Key::Character("S") => {
+            let pane_index = get_pane_index();
+            Some(Task::done(Message::MlAction(
+                MlMessage::MarkImageSelected(pane_index)
+            )))
+        }
+
+        Key::Character("x") | Key::Character("X") => {
+            let pane_index = get_pane_index();
+            Some(Task::done(Message::MlAction(
+                MlMessage::MarkImageExcluded(pane_index)
+            )))
+        }
+
+        Key::Character("u") | Key::Character("U") => {
+            let pane_index = get_pane_index();
+            Some(Task::done(Message::MlAction(
+                MlMessage::ClearImageMark(pane_index)
+            )))
+        }
+
+        Key::Character("e") | Key::Character("E") => {
+            if is_platform_modifier() {
+                Some(Task::done(Message::MlAction(
+                    MlMessage::ExportSelectionJson
+                )))
+            } else {
+                None
+            }
+        }
+
+        _ => None
     }
 }

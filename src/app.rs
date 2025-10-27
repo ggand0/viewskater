@@ -693,55 +693,6 @@ impl DataViewer {
                 debug!("Toggled debug FPS display: {}", self.show_fps);
             }
 
-            #[cfg(feature = "ml")]
-            Key::Character("s") | Key::Character("S") => {
-                // Mark current image as selected (ML feature)
-                let pane_index = if self.pane_layout == PaneLayout::SinglePane {
-                    0
-                } else {
-                    self.last_opened_pane as usize
-                };
-                tasks.push(Task::done(Message::MlAction(
-                    crate::ml_widget::MlMessage::MarkImageSelected(pane_index)
-                )));
-            }
-
-            #[cfg(feature = "ml")]
-            Key::Character("x") | Key::Character("X") => {
-                // Mark current image as excluded (ML feature)
-                let pane_index = if self.pane_layout == PaneLayout::SinglePane {
-                    0
-                } else {
-                    self.last_opened_pane as usize
-                };
-                tasks.push(Task::done(Message::MlAction(
-                    crate::ml_widget::MlMessage::MarkImageExcluded(pane_index)
-                )));
-            }
-
-            #[cfg(feature = "ml")]
-            Key::Character("u") | Key::Character("U") => {
-                // Clear mark for current image (ML feature)
-                let pane_index = if self.pane_layout == PaneLayout::SinglePane {
-                    0
-                } else {
-                    self.last_opened_pane as usize
-                };
-                tasks.push(Task::done(Message::MlAction(
-                    crate::ml_widget::MlMessage::ClearImageMark(pane_index)
-                )));
-            }
-
-            #[cfg(feature = "ml")]
-            Key::Character("e") | Key::Character("E") => {
-                // Export selection JSON with Ctrl/Cmd+E (ML feature)
-                if is_platform_modifier(&modifiers) {
-                    tasks.push(Task::done(Message::MlAction(
-                        crate::ml_widget::MlMessage::ExportSelectionJson
-                    )));
-                }
-            }
-
             Key::Named(Named::Super) => {
                 #[cfg(target_os = "macos")] {
                     self.set_ctrl_pressed(true);
@@ -752,7 +703,18 @@ impl DataViewer {
                     self.set_ctrl_pressed(true);
                 }
             }
-            _ => {}
+            _ => {
+                // Check if ML module wants to handle this key
+                #[cfg(feature = "ml")]
+                if let Some(task) = crate::ml_widget::handle_keyboard_event(
+                    key,
+                    modifiers,
+                    &self.pane_layout,
+                    self.last_opened_pane,
+                ) {
+                    tasks.push(task);
+                }
+            }
         }
 
         tasks
