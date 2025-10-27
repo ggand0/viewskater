@@ -2,7 +2,6 @@
 ///
 /// This module is only compiled when the "ml" feature is enabled.
 /// It encapsulates all ML-related messages and UI components.
-
 use std::path::PathBuf;
 use iced_winit::core::{Element, Color};
 use iced_winit::core::Theme as WinitTheme;

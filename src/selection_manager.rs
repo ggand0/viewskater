@@ -8,17 +8,12 @@ use serde::{Deserialize, Serialize};
 use log::{debug, error, info, warn};
 
 /// Represents the marking state of an image
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ImageMark {
+    #[default]
     Unmarked,
     Selected,   // Will be included in "copy selected" export
     Excluded,   // Will be excluded in "copy non-excluded" export
-}
-
-impl Default for ImageMark {
-    fn default() -> Self {
-        ImageMark::Unmarked
-    }
 }
 
 /// Stores selection state for a directory
