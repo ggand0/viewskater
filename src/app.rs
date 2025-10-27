@@ -1204,6 +1204,12 @@ impl iced_winit::runtime::Program for DataViewer {
                     archive_warning_threshold_mb,
                 };
 
+                // Check if window settings changed (these require restart)
+                let old_settings = UserSettings::load(None);
+                let window_settings_changed = window_width != old_settings.window_width ||
+                                              window_height != old_settings.window_height ||
+                                              atlas_size != old_settings.atlas_size;
+
                 // Save settings to file
                 match settings.save() {
                     Ok(_) => {
@@ -1277,7 +1283,11 @@ impl iced_winit::runtime::Program for DataViewer {
                             self.double_click_threshold_ms = double_click_threshold_ms;
                         }
 
-                        self.settings_save_status = Some("Settings saved! Some changes applied immediately, restart for others.".to_string());
+                        self.settings_save_status = Some(if window_settings_changed {
+                            "Settings saved! Window settings require restart, other changes applied immediately.".to_string()
+                        } else {
+                            "Settings saved! All changes applied immediately.".to_string()
+                        });
 
                         // Clear the status message after 3 seconds
                         return Task::perform(async {
