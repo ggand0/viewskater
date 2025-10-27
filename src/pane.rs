@@ -349,7 +349,7 @@ impl Pane {
 
                 img_cache.current_offset -= 1;
 
-                assert!(img_cache.current_offset >= -(CONFIG.cache_size as isize)); // e.g. >= -5
+                assert!(img_cache.current_offset >= -(img_cache.cache_count as isize)); // Check against actual cache size, not static CONFIG
 
                 // Since the prev image is loaded and rendered, mark the is_prev_image_loaded flag
                 self.is_prev_image_loaded = true;
