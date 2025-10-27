@@ -87,16 +87,19 @@ impl SelectionState {
     }
 
     /// Get count of selected images
+    #[allow(dead_code)]
     pub fn selected_count(&self) -> usize {
         self.marks.values().filter(|&&m| m == ImageMark::Selected).count()
     }
 
     /// Get count of excluded images
+    #[allow(dead_code)]
     pub fn excluded_count(&self) -> usize {
         self.marks.values().filter(|&&m| m == ImageMark::Excluded).count()
     }
 
     /// Get count of marked images (selected or excluded)
+    #[allow(dead_code)]
     pub fn marked_count(&self) -> usize {
         self.marks.len()
     }
@@ -231,16 +234,19 @@ impl SelectionManager {
     }
 
     /// Get a mutable reference to the current state
+    #[allow(dead_code)]
     pub fn current_state_mut(&mut self) -> Option<&mut SelectionState> {
         self.current_state.as_mut()
     }
 
     /// Get a reference to the current state
+    #[allow(dead_code)]
     pub fn current_state(&self) -> Option<&SelectionState> {
         self.current_state.as_ref()
     }
 
     /// Mark an image in the current directory
+    #[allow(dead_code)]
     pub fn mark_image(&mut self, filename: &str, mark: ImageMark) {
         if let Some(ref mut state) = self.current_state {
             state.mark_image(filename, mark);

@@ -14,6 +14,7 @@ pub const DEFAULT_ARCHIVE_CACHE_SIZE: u64 = 200;            // 200MB
 pub const DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB: u64 = 500;  // 500MB threshold for warning dialog
 
 pub struct Config {
+    #[allow(dead_code)]
     pub cache_size: usize,                  // Cache window size
     pub max_loading_queue_size: usize,      // Max size for the loading queue to prevent overloading
     pub max_being_loaded_queue_size: usize,
