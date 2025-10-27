@@ -40,6 +40,7 @@ use iced_winit::core::Theme as WinitTheme;
 use iced_winit::core::{Color, Element};
 use iced_winit::runtime::Task;
 
+
 use crate::navigation_keyboard::{move_right_all, move_left_all};
 use crate::cache::img_cache::{CachedData, CacheStrategy, LoadOperation};
 use crate::menu::PaneLayout;
@@ -57,8 +58,10 @@ use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
 use crate::build_info::BuildInfo;
 use crate::selection_manager::SelectionManager;
+use crate::settings::UserSettings;
 
 use std::sync::mpsc::{Sender, Receiver};
+use std::collections::HashMap;
 
 #[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
@@ -72,7 +75,13 @@ pub enum Message {
     Nothing,
     ShowAbout,
     HideAbout,
+    ShowOptions,
+    HideOptions,
+    SaveSettings,
+    ClearSettingsStatus,
+    SettingsTabSelected(usize),
     ShowLogs,
+    OpenSettingsDir,
     ExportDebugLogs,
     ExportAllLogs,
     OpenWebLink(String),
@@ -105,6 +114,7 @@ pub enum Message {
     ToggleSplitOrientation(bool),
     ToggleSyncedZoom(bool),
     ToggleMouseWheelZoom(bool),
+    ToggleCopyButtons(bool),
     ToggleFullScreen(bool),
     CursorOnTop(bool),
     CursorOnMenu(bool),
@@ -114,6 +124,36 @@ pub enum Message {
     ClearImageMark(usize),       // pane_index
     ExportSelectionJson,
     ExportSelectionJsonToPath(PathBuf),
+    // Advanced settings input
+    AdvancedSettingChanged(String, String),  // (field_name, value)
+    ResetAdvancedSettings,
+}
+
+/// Runtime-configurable settings that can be applied immediately without restart
+pub struct RuntimeSettings {
+    pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
+    pub show_copy_buttons: bool,                        // Show copy filename/filepath buttons in footer
+    pub cache_size: usize,                              // Image cache window size (number of images to cache)
+    pub archive_cache_size: u64,                        // Archive cache size in bytes (for preload decision)
+    pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
+    pub max_loading_queue_size: usize,                  // Max size for loading queue
+    pub max_being_loaded_queue_size: usize,             // Max size for being loaded queue
+    pub double_click_threshold_ms: u16,                 // Double-click threshold in milliseconds
+}
+
+impl RuntimeSettings {
+    fn from_user_settings(settings: &UserSettings) -> Self {
+        Self {
+            mouse_wheel_zoom: settings.mouse_wheel_zoom,
+            show_copy_buttons: settings.show_copy_buttons,
+            cache_size: settings.cache_size,
+            archive_cache_size: settings.archive_cache_size * 1_048_576,  // Convert MB to bytes
+            archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
+            max_loading_queue_size: settings.max_loading_queue_size,
+            max_being_loaded_queue_size: settings.max_being_loaded_queue_size,
+            double_click_threshold_ms: settings.double_click_threshold_ms,
+        }
+    }
 }
 
 pub struct DataViewer {
@@ -134,6 +174,10 @@ pub struct DataViewer {
     pub skate_left: bool,
     pub update_counter: u32,
     pub show_about: bool,
+    pub show_options: bool,
+    pub settings_save_status: Option<String>,
+    pub active_settings_tab: usize,
+    pub advanced_settings_input: HashMap<String, String>,  // Text input state for advanced settings
     pub device: Arc<wgpu::Device>,                     // Shared ownership using Arc
     pub queue: Arc<wgpu::Queue>,                       // Shared ownership using Arc
     pub is_gpu_supported: bool,
@@ -151,9 +195,25 @@ pub struct DataViewer {
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
-    pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
+    pub runtime_settings: RuntimeSettings,              // Runtime-configurable settings
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
+}
+
+// Implement Deref to expose RuntimeSettings fields directly on DataViewer
+impl std::ops::Deref for DataViewer {
+    type Target = RuntimeSettings;
+
+    fn deref(&self) -> &Self::Target {
+        &self.runtime_settings
+    }
+}
+
+// Implement DerefMut to allow mutable access to RuntimeSettings fields
+impl std::ops::DerefMut for DataViewer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.runtime_settings
+    }
 }
 
 impl DataViewer {
@@ -163,7 +223,36 @@ impl DataViewer {
         backend: wgpu::Backend,
         renderer_request_sender: Sender<RendererRequest>,
         file_receiver: Receiver<String>,
+        settings_path: Option<&str>,
     ) -> Self {
+        // Load user settings from YAML file
+        let settings = UserSettings::load(settings_path);
+        let cache_strategy = settings.get_cache_strategy();
+        let compression_strategy = settings.get_compression_strategy();
+
+        info!("Initializing DataViewer with settings:");
+        info!("  show_fps: {}", settings.show_fps);
+        info!("  show_footer: {}", settings.show_footer);
+        info!("  is_horizontal_split: {}", settings.is_horizontal_split);
+        info!("  synced_zoom: {}", settings.synced_zoom);
+        info!("  mouse_wheel_zoom: {}", settings.mouse_wheel_zoom);
+        info!("  show_copy_buttons: {}", settings.show_copy_buttons);
+        info!("  cache_strategy: {:?}", cache_strategy);
+        info!("  compression_strategy: {:?}", compression_strategy);
+        info!("  is_slider_dual: {}", settings.is_slider_dual);
+
+        // Initialize advanced settings input with current values
+        let mut advanced_settings_input = HashMap::new();
+        advanced_settings_input.insert("cache_size".to_string(), settings.cache_size.to_string());
+        advanced_settings_input.insert("max_loading_queue_size".to_string(), settings.max_loading_queue_size.to_string());
+        advanced_settings_input.insert("max_being_loaded_queue_size".to_string(), settings.max_being_loaded_queue_size.to_string());
+        advanced_settings_input.insert("window_width".to_string(), settings.window_width.to_string());
+        advanced_settings_input.insert("window_height".to_string(), settings.window_height.to_string());
+        advanced_settings_input.insert("atlas_size".to_string(), settings.atlas_size.to_string());
+        advanced_settings_input.insert("double_click_threshold_ms".to_string(), settings.double_click_threshold_ms.to_string());
+        advanced_settings_input.insert("archive_cache_size".to_string(), settings.archive_cache_size.to_string());
+        advanced_settings_input.insert("archive_warning_threshold_mb".to_string(), settings.archive_warning_threshold_mb.to_string());
+
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -171,16 +260,20 @@ impl DataViewer {
             slider_value: 0,
             prev_slider_value: 0,
             divider_position: None,
-            is_slider_dual: false,
-            show_footer: true,
+            is_slider_dual: settings.is_slider_dual,
+            show_footer: settings.show_footer,
             pane_layout: PaneLayout::SinglePane,
             last_opened_pane: -1,
-            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0, CompressionStrategy::Bc1)],
+            panes: vec![pane::Pane::new(Arc::clone(&device), Arc::clone(&queue), backend, 0, compression_strategy)],
             loading_status: loading_status::LoadingStatus::default(),
             skate_right: false,
             skate_left: false,
             update_counter: 0,
             show_about: false,
+            show_options: false,
+            settings_save_status: None,
+            active_settings_tab: 0,
+            advanced_settings_input,
             device,
             queue,
             is_gpu_supported: true,
@@ -188,18 +281,18 @@ impl DataViewer {
             last_slider_update: Instant::now(),
             is_slider_moving: false,
             backend,
-            cache_strategy: CacheStrategy::Gpu,
-            show_fps: false,
-            compression_strategy: CompressionStrategy::None,
+            cache_strategy,
+            show_fps: settings.show_fps,
+            compression_strategy,
             renderer_request_sender,
-            is_horizontal_split: false,
+            is_horizontal_split: settings.is_horizontal_split,
             file_receiver,
-            synced_zoom: true,
+            synced_zoom: settings.synced_zoom,
             is_fullscreen: false,
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,
-            mouse_wheel_zoom: false,
+            runtime_settings: RuntimeSettings::from_user_settings(&settings),
             ctrl_pressed: false,
             selection_manager: SelectionManager::new(),
         }
@@ -271,6 +364,12 @@ impl DataViewer {
 
         let pane_file_lengths = self.panes  .iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
+
+        // Capture runtime settings before mutable borrow
+        let cache_size = self.cache_size;
+        let archive_cache_size = self.archive_cache_size;
+        let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
+
         let pane = &mut self.panes[pane_index];
         debug!("pane_file_lengths: {:?}", pane_file_lengths);
 
@@ -286,6 +385,9 @@ impl DataViewer {
             path,
             self.is_slider_dual,
             &mut self.slider_value,
+            cache_size,
+            archive_cache_size,
+            archive_warning_threshold_mb,
         );
 
         self.last_opened_pane = pane_index as isize;
@@ -778,6 +880,11 @@ impl DataViewer {
             .map(|p| p.img_cache.num_files)
             .collect();
 
+        // Capture runtime settings before mutable borrow
+        let cache_size = self.cache_size;
+        let archive_cache_size = self.archive_cache_size;
+        let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
+
         // Reinitialize all loaded panes with the new cache strategy
         for (i, pane) in self.panes.iter_mut().enumerate() {
             if let Some(dir_path) = &pane.directory_path.clone() {
@@ -797,6 +904,9 @@ impl DataViewer {
                         &path,
                         self.is_slider_dual,
                         &mut self.slider_value,
+                        cache_size,
+                        archive_cache_size,
+                        archive_warning_threshold_mb,
                     );
                 }
             }
@@ -822,6 +932,11 @@ impl DataViewer {
                 .map(|p| p.img_cache.num_files)
                 .collect();
 
+                // Capture runtime settings before mutable borrow
+                let cache_size = self.cache_size;
+                let archive_cache_size = self.archive_cache_size;
+                let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
+
                 // Recreate image cache
                 for (i, pane) in self.panes.iter_mut().enumerate() {
                     if let Some(dir_path) = &pane.directory_path.clone() {
@@ -841,6 +956,9 @@ impl DataViewer {
                                 &path,
                                 self.is_slider_dual,
                                 &mut self.slider_value,
+                                cache_size,
+                                archive_cache_size,
+                                archive_warning_threshold_mb,
                             );
                         }
                     }
@@ -885,6 +1003,14 @@ impl iced_winit::runtime::Program for DataViewer {
                 let log_dir_path = crate::logging::get_log_directory(app_name);
                 let _ = std::fs::create_dir_all(log_dir_path.clone());
                 crate::logging::open_in_file_explorer(log_dir_path.to_string_lossy().as_ref());
+            }
+            Message::OpenSettingsDir => {
+                // Get the settings directory from the settings file path
+                let settings_path = UserSettings::settings_path();
+                if let Some(settings_dir) = settings_path.parent() {
+                    let _ = std::fs::create_dir_all(settings_dir);
+                    crate::logging::open_in_file_explorer(settings_dir.to_string_lossy().as_ref());
+                }
             }
             Message::ExportDebugLogs => {
                 let app_name = "viewskater";
@@ -935,6 +1061,335 @@ impl iced_winit::runtime::Program for DataViewer {
             },
             Message::HideAbout => {
                 self.show_about = false;
+            }
+            Message::ShowOptions => {
+                self.show_options = true;
+
+                // Schedule a follow-up redraw in the next frame
+                return Task::perform(async {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }, |_| Message::Nothing);
+            }
+            Message::HideOptions => {
+                self.show_options = false;
+            }
+            Message::SaveSettings => {
+                // Helper function to parse and validate a value
+                let parse_value = |key: &str, _default: u64| -> Result<u64, String> {
+                    self.advanced_settings_input
+                        .get(key)
+                        .ok_or_else(|| format!("Missing value for {}", key))?
+                        .parse::<u64>()
+                        .map_err(|_| format!("Invalid number for {}", key))
+                };
+
+                // Parse and validate all advanced settings
+                let cache_size = match parse_value("cache_size", 5) {
+                    Ok(v) if v > 0 && v <= 100 => v as usize,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Cache size must be between 1 and 100".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing cache_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let max_loading_queue_size = match parse_value("max_loading_queue_size", 3) {
+                    Ok(v) if v > 0 && v <= 50 => v as usize,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Max loading queue size must be between 1 and 50".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing max_loading_queue_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let max_being_loaded_queue_size = match parse_value("max_being_loaded_queue_size", 3) {
+                    Ok(v) if v > 0 && v <= 50 => v as usize,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Max being loaded queue size must be between 1 and 50".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing max_being_loaded_queue_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let window_width = match parse_value("window_width", 1200) {
+                    Ok(v) if (400..=10000).contains(&v) => v as u32,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Window width must be between 400 and 10000".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing window_width: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let window_height = match parse_value("window_height", 800) {
+                    Ok(v) if (300..=10000).contains(&v) => v as u32,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Window height must be between 300 and 10000".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing window_height: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let atlas_size = match parse_value("atlas_size", 2048) {
+                    Ok(v) if (256..=8192).contains(&v) && v.is_power_of_two() => v as u32,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Atlas size must be a power of 2 between 256 and 8192".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing atlas_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let double_click_threshold_ms = match parse_value("double_click_threshold_ms", 250) {
+                    Ok(v) if (50..=1000).contains(&v) => v as u16,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Double-click threshold must be between 50 and 1000 ms".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing double_click_threshold_ms: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let archive_cache_size = match parse_value("archive_cache_size", 200) {
+                    Ok(v) if (10..=10000).contains(&v) => v,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Archive cache size must be between 10 and 10000 MB".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing archive_cache_size: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                let archive_warning_threshold_mb = match parse_value("archive_warning_threshold_mb", 500) {
+                    Ok(v) if (10..=10000).contains(&v) => v,
+                    Ok(_) => {
+                        self.settings_save_status = Some("Error: Archive warning threshold must be between 10 and 10000 MB".to_string());
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        self.settings_save_status = Some(format!("Error parsing archive_warning_threshold_mb: {}", e));
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                };
+
+                // Create settings from current app state with validated advanced settings
+                let settings = UserSettings {
+                    show_fps: self.show_fps,
+                    show_footer: self.show_footer,
+                    is_horizontal_split: self.is_horizontal_split,
+                    synced_zoom: self.synced_zoom,
+                    mouse_wheel_zoom: self.mouse_wheel_zoom,
+                    show_copy_buttons: self.show_copy_buttons,
+                    cache_strategy: match self.cache_strategy {
+                        CacheStrategy::Cpu => "cpu".to_string(),
+                        CacheStrategy::Gpu => "gpu".to_string(),
+                    },
+                    compression_strategy: match self.compression_strategy {
+                        CompressionStrategy::None => "none".to_string(),
+                        CompressionStrategy::Bc1 => "bc1".to_string(),
+                    },
+                    is_slider_dual: self.is_slider_dual,
+                    // Use parsed and validated advanced settings
+                    cache_size,
+                    max_loading_queue_size,
+                    max_being_loaded_queue_size,
+                    window_width,
+                    window_height,
+                    atlas_size,
+                    double_click_threshold_ms,
+                    archive_cache_size,
+                    archive_warning_threshold_mb,
+                };
+
+                // Check if window settings changed (these require restart)
+                let old_settings = UserSettings::load(None);
+                let window_settings_changed = window_width != old_settings.window_width ||
+                                              window_height != old_settings.window_height ||
+                                              atlas_size != old_settings.atlas_size;
+
+                // Save settings to file
+                match settings.save() {
+                    Ok(_) => {
+                        info!("Settings saved successfully");
+
+                        // Apply archive settings immediately (no restart required)
+                        self.archive_cache_size = archive_cache_size * 1_048_576;  // Convert MB to bytes
+                        self.archive_warning_threshold_mb = archive_warning_threshold_mb;
+                        info!("Archive settings applied immediately: cache_size={}MB, warning_threshold={}MB",
+                            archive_cache_size, archive_warning_threshold_mb);
+
+                        // Apply cache_size setting immediately by reloading all panes
+                        if cache_size != self.cache_size {
+                            info!("Cache size changed from {} to {}, reloading all panes", self.cache_size, cache_size);
+                            self.cache_size = cache_size;
+
+                            // Get current pane file lengths
+                            let pane_file_lengths: Vec<usize> = self.panes.iter()
+                                .map(|p| p.img_cache.num_files)
+                                .collect();
+
+                            // Capture runtime settings before mutable borrow
+                            let cache_size = self.cache_size;
+                            let archive_cache_size = self.archive_cache_size;
+                            let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
+
+                            // Reinitialize all loaded panes with the new cache size
+                            for (i, pane) in self.panes.iter_mut().enumerate() {
+                                if let Some(dir_path) = &pane.directory_path.clone() {
+                                    if pane.dir_loaded {
+                                        let path = PathBuf::from(dir_path);
+
+                                        // Reinitialize the pane with the current directory
+                                        pane.initialize_dir_path(
+                                            &Arc::clone(&self.device),
+                                            &Arc::clone(&self.queue),
+                                            self.is_gpu_supported,
+                                            self.cache_strategy,
+                                            self.compression_strategy,
+                                            &self.pane_layout,
+                                            &pane_file_lengths,
+                                            i,
+                                            &path,
+                                            self.is_slider_dual,
+                                            &mut self.slider_value,
+                                            cache_size,
+                                            archive_cache_size,
+                                            archive_warning_threshold_mb,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        // Apply queue size settings immediately (no pane reload required)
+                        if max_loading_queue_size != self.max_loading_queue_size || max_being_loaded_queue_size != self.max_being_loaded_queue_size {
+                            info!("Queue size settings changed: max_loading_queue_size={}, max_being_loaded_queue_size={}", max_loading_queue_size, max_being_loaded_queue_size);
+                            self.max_loading_queue_size = max_loading_queue_size;
+                            self.max_being_loaded_queue_size = max_being_loaded_queue_size;
+
+                            // Update all panes with new queue sizes
+                            for pane in self.panes.iter_mut() {
+                                pane.max_loading_queue_size = max_loading_queue_size;
+                                pane.max_being_loaded_queue_size = max_being_loaded_queue_size;
+                            }
+                        }
+
+                        // Apply double-click threshold immediately
+                        if double_click_threshold_ms != self.double_click_threshold_ms {
+                            info!("Double-click threshold changed from {} to {} ms", self.double_click_threshold_ms, double_click_threshold_ms);
+                            self.double_click_threshold_ms = double_click_threshold_ms;
+                        }
+
+                        self.settings_save_status = Some(if window_settings_changed {
+                            "Settings saved! Window settings require restart, other changes applied immediately.".to_string()
+                        } else {
+                            "Settings saved! All changes applied immediately.".to_string()
+                        });
+
+                        // Clear the status message after 3 seconds
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                    Err(e) => {
+                        error!("Failed to save settings: {}", e);
+                        self.settings_save_status = Some(format!("Error: {}", e));
+
+                        // Clear error message after 3 seconds
+                        return Task::perform(async {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                        }, |_| Message::ClearSettingsStatus);
+                    }
+                }
+            }
+            Message::ClearSettingsStatus => {
+                self.settings_save_status = None;
+            }
+            Message::SettingsTabSelected(index) => {
+                self.active_settings_tab = index;
+            }
+            Message::AdvancedSettingChanged(field_name, value) => {
+                self.advanced_settings_input.insert(field_name, value);
+            }
+            Message::ResetAdvancedSettings => {
+                use crate::config;
+
+                // Reset General tab settings to defaults
+                self.show_fps = false;
+                self.show_footer = true;
+                self.is_horizontal_split = false;
+                self.synced_zoom = true;
+                self.mouse_wheel_zoom = false;
+                self.cache_strategy = CacheStrategy::Gpu;
+                self.compression_strategy = CompressionStrategy::None;
+                self.is_slider_dual = false;
+
+                // Reset Advanced tab settings to defaults (text inputs)
+                self.advanced_settings_input.insert("cache_size".to_string(), config::DEFAULT_CACHE_SIZE.to_string());
+                self.advanced_settings_input.insert("max_loading_queue_size".to_string(), config::DEFAULT_MAX_LOADING_QUEUE_SIZE.to_string());
+                self.advanced_settings_input.insert("max_being_loaded_queue_size".to_string(), config::DEFAULT_MAX_BEING_LOADED_QUEUE_SIZE.to_string());
+                self.advanced_settings_input.insert("window_width".to_string(), config::DEFAULT_WINDOW_WIDTH.to_string());
+                self.advanced_settings_input.insert("window_height".to_string(), config::DEFAULT_WINDOW_HEIGHT.to_string());
+                self.advanced_settings_input.insert("atlas_size".to_string(), config::DEFAULT_ATLAS_SIZE.to_string());
+                self.advanced_settings_input.insert("double_click_threshold_ms".to_string(), config::DEFAULT_DOUBLE_CLICK_THRESHOLD_MS.to_string());
+                self.advanced_settings_input.insert("archive_cache_size".to_string(), config::DEFAULT_ARCHIVE_CACHE_SIZE.to_string());
+                self.advanced_settings_input.insert("archive_warning_threshold_mb".to_string(), config::DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB.to_string());
             }
             Message::OpenWebLink(url) => {
                 if let Err(e) = webbrowser::open(&url) {
@@ -1023,6 +1478,9 @@ impl iced_winit::runtime::Program for DataViewer {
                 for pane in self.panes.iter_mut() {
                     pane.mouse_wheel_zoom = enabled;
                 }
+            }
+            Message::ToggleCopyButtons(enabled) => {
+                self.show_copy_buttons = enabled;
             }
             Message::ToggleFullScreen(enabled) => {
                 self.is_fullscreen = enabled;
@@ -1237,7 +1695,7 @@ impl iced_winit::runtime::Program for DataViewer {
 
             Message::Event(event) => match event {
                 Event::Mouse(iced_core::mouse::Event::WheelScrolled { delta }) => {
-                    if !self.ctrl_pressed && !self.mouse_wheel_zoom {
+                    if !self.ctrl_pressed && !self.mouse_wheel_zoom && !self.show_options && !self.show_about{
                         match delta {
                             iced_core::mouse::ScrollDelta::Lines { y, .. }
                             | iced_core::mouse::ScrollDelta::Pixels { y, .. } => {
@@ -1456,10 +1914,14 @@ impl iced_winit::runtime::Program for DataViewer {
         }
     }
 
+
     fn view(&self) -> Element<'_, Message, WinitTheme, Renderer> {
         let content = ui::build_ui(self);
 
-        if self.show_about {
+        if self.show_options {
+            let options_content = crate::settings_modal::view_settings_modal(self);
+            widgets::modal::modal(content, options_content, Message::HideOptions)
+        } else if self.show_about {
             // Build the info column dynamically to avoid empty text widgets
             let mut info_column = column![
                 text(format!("Version {}", BuildInfo::display_version())).size(15),

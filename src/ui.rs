@@ -57,109 +57,131 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
     icon('\u{E805}')
 }
 
-pub fn get_footer(footer_text: String, pane_index: usize, mark: ImageMark) -> Container<'static, Message, WinitTheme, Renderer> {
-    let copy_filename_button = tooltip(
-        button(file_copy_icon())
-            .padding(iced::padding::all(2))
-            .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
-            .on_press(Message::CopyFilename(pane_index)),
-        container(text("Copy filename").size(14))
-            .padding(5)
-            .style(|theme: &WinitTheme| container::Style {
-                text_color: Some(Color::from([1.0, 1.0, 1.0])),
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 0.0,
-                    color: Color::TRANSPARENT,
-                },
-                ..container::Style::default()
-            }),
-        tooltip::Position::Top,
-    );
 
-    let copy_filepath_button = tooltip(
-        button(folder_copy_icon())
-            .padding(iced::padding::all(2))
-            .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
-            .on_press(Message::CopyFilePath(pane_index)),
-        container(text("Copy file path").size(14))
-            .padding(5)
-            .style(|theme: &WinitTheme| container::Style {
-                text_color: Some(Color::from([1.0, 1.0, 1.0])),
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 0.0,
-                    color: Color::TRANSPARENT,
-                },
-                ..container::Style::default()
-            }),
-        tooltip::Position::Top,
-    );
+pub fn get_footer(footer_text: String, pane_index: usize, mark: ImageMark, show_copy_buttons: bool) -> Container<'static, Message, WinitTheme, Renderer> {
+    if show_copy_buttons {
+        let copy_filename_button = tooltip(
+            button(file_copy_icon())
+                .padding(iced::padding::all(2))
+                .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
+                .on_press(Message::CopyFilename(pane_index)),
+            container(text("Copy filename").size(14))
+                .padding(5)
+                .style(|theme: &WinitTheme| container::Style {
+                    text_color: Some(Color::from([1.0, 1.0, 1.0])),
+                    background: Some(theme.extended_palette().background.strong.color.into()),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                    ..container::Style::default()
+                }),
+            tooltip::Position::Top,
+        );
 
-    // Create mark indicator badge
-    let mark_badge = match mark {
-        ImageMark::Selected => container(
-            text("✓ SELECTED")
-                .size(12)
-                .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([1.0, 1.0, 1.0]))
-                })
-        )
-        .padding(iced::padding::all(4))
-        .style(|_theme: &WinitTheme| container::Style {
-            background: Some(Color::from([0.2, 0.8, 0.2]).into()), // Green
-            border: iced::Border {
-                radius: 4.0.into(),
-                width: 0.0,
-                color: Color::TRANSPARENT,
-            },
-            ..container::Style::default()
-        }),
-        ImageMark::Excluded => container(
-            text("✗ EXCLUDED")
-                .size(12)
-                .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([1.0, 1.0, 1.0]))
-                })
-        )
-        .padding(iced::padding::all(4))
-        .style(|_theme: &WinitTheme| container::Style {
-            background: Some(Color::from([0.9, 0.2, 0.2]).into()), // Red
-            border: iced::Border {
-                radius: 4.0.into(),
-                width: 0.0,
-                color: Color::TRANSPARENT,
-            },
-            ..container::Style::default()
-        }),
-        ImageMark::Unmarked => container(text(""))
-            .width(0)
-            .height(0),
-    };
+        let copy_filepath_button = tooltip(
+            button(folder_copy_icon())
+                .padding(iced::padding::all(2))
+                .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
+                .on_press(Message::CopyFilePath(pane_index)),
+            container(text("Copy file path").size(14))
+                .padding(5)
+                .style(|theme: &WinitTheme| container::Style {
+                    text_color: Some(Color::from([1.0, 1.0, 1.0])),
+                    background: Some(theme.extended_palette().background.strong.color.into()),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                    ..container::Style::default()
+                }),
+            tooltip::Position::Top,
+        );
 
-    container::<Message, WinitTheme, Renderer>(
-        row![
-            copy_filepath_button,
-            copy_filename_button,
-            mark_badge,
-            Element::<'_, Message, WinitTheme, Renderer>::from(
-                text(footer_text)
-                .font(Font::MONOSPACE)
-                .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([0.8, 0.8, 0.8])) // Wrap Color in a style configuration
-                })
-                .size(14)
+        // Create mark indicator badge
+        let mark_badge = match mark {
+            ImageMark::Selected => container(
+                text("✓ SELECTED")
+                    .size(12)
+                    .style(|_theme| iced::widget::text::Style {
+                        color: Some(Color::from([1.0, 1.0, 1.0]))
+                    })
             )
-        ]
-        .align_y(Alignment::Center)
-        .spacing(3),
-    )
-    .width(Length::Fill)
-    .height(32)
-    .padding(3)
-    .align_x(Horizontal::Right)
+            .padding(iced::padding::all(4))
+            .style(|_theme: &WinitTheme| container::Style {
+                background: Some(Color::from([0.2, 0.8, 0.2]).into()), // Green
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 0.0,
+                    color: Color::TRANSPARENT,
+                },
+                ..container::Style::default()
+            }),
+            ImageMark::Excluded => container(
+                text("✗ EXCLUDED")
+                    .size(12)
+                    .style(|_theme| iced::widget::text::Style {
+                        color: Some(Color::from([1.0, 1.0, 1.0]))
+                    })
+            )
+            .padding(iced::padding::all(4))
+            .style(|_theme: &WinitTheme| container::Style {
+                background: Some(Color::from([0.9, 0.2, 0.2]).into()), // Red
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 0.0,
+                    color: Color::TRANSPARENT,
+                },
+                ..container::Style::default()
+            }),
+            ImageMark::Unmarked => container(text(""))
+                .width(0)
+                .height(0),
+        };
+
+        container::<Message, WinitTheme, Renderer>(
+            row![
+                copy_filepath_button,
+                copy_filename_button,
+                mark_badge,
+                Element::<'_, Message, WinitTheme, Renderer>::from(
+                    text(footer_text)
+                    .font(Font::MONOSPACE)
+                    .style(|_theme| iced::widget::text::Style {
+                        color: Some(Color::from([0.8, 0.8, 0.8]))
+                    })
+                    .size(14)
+                )
+            ]
+            .align_y(Alignment::Center)
+            .spacing(3),
+        )
+        .width(Length::Fill)
+        .height(32)
+        .padding(3)
+        .align_x(Horizontal::Right)
+    } else {
+        container::<Message, WinitTheme, Renderer>(
+            row![
+                Element::<'_, Message, WinitTheme, Renderer>::from(
+                    text(footer_text)
+                    .font(Font::MONOSPACE)
+                    .style(|_theme| iced::widget::text::Style {
+                        color: Some(Color::from([0.8, 0.8, 0.8]))
+                    })
+                    .size(14)
+                )
+            ]
+            .align_y(Alignment::Center)
+            .spacing(3),
+        )
+        .width(Length::Fill)
+        .height(32)
+        .padding(3)
+        .align_x(Horizontal::Right)
+    }
 }
 
 
@@ -182,6 +204,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     let cursor_on_top = app.cursor_on_top;
     let cursor_on_menu = app.cursor_on_menu;
     let cursor_on_footer = app.cursor_on_footer;
+    let show_option = app.show_options;
 
     let top_bar = container(
         row![
@@ -231,7 +254,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false)
-                        .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed);
+                        .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
+                        .double_click_threshold_ms(app.double_click_threshold_ms);
 
                     container(center(shader))
                         .width(Length::Fill)
@@ -246,7 +270,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
             let footer = if app.show_footer && app.panes[0].dir_loaded {
                 let mark = get_mark_for_pane(0);
-                get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0, mark)
+                get_footer(format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files), 0, mark, app.show_copy_buttons)
             } else {
                 container(text("")).height(0)
             };
@@ -272,7 +296,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             // Create the column WITHOUT converting to Element first
             center(
                 container(
-                    if is_fullscreen && (cursor_on_top || cursor_on_menu) {
+                    if is_fullscreen && !show_option &&(cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, first_img]
                     } else if is_fullscreen && cursor_on_footer {
                         column![fps_bar, first_img, slider_controls, footer]
@@ -303,7 +327,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.is_slider_moving,
                     app.is_horizontal_split,
                     app.synced_zoom,
-                    &get_mark_for_pane
+                    &get_mark_for_pane,
+                    app.show_copy_buttons,
+                    app.double_click_threshold_ms
                 );
 
                 container(
@@ -325,7 +351,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.divider_position,
                     app.is_slider_moving,
                     app.is_horizontal_split,
-                    app.synced_zoom
+                    app.synced_zoom,
+                    app.double_click_threshold_ms
                 );
 
                 let footer_texts = [
@@ -337,8 +364,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     let mark0 = get_mark_for_pane(0);
                     let mark1 = get_mark_for_pane(1);
                     row![
-                        get_footer(footer_texts[0].clone(), 0, mark0),
-                        get_footer(footer_texts[1].clone(), 1, mark1)
+                        get_footer(footer_texts[0].clone(), 0, mark0, app.show_copy_buttons),
+                        get_footer(footer_texts[1].clone(), 1, mark1, app.show_copy_buttons)
                     ]
                 } else {
                     row![]
@@ -363,7 +390,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 };
 
                 container(
-                    if is_fullscreen && (cursor_on_top || cursor_on_menu) {
+                    if is_fullscreen && !show_option &&(cursor_on_top || cursor_on_menu) {
                         column![top_bar, fps_bar, panes]
                     } else if is_fullscreen && cursor_on_footer {
                         column![fps_bar, panes, slider, footer]
@@ -395,10 +422,11 @@ pub fn build_ui_dual_pane_slider1(
     divider_position: Option<u16>,
     is_slider_moving: bool,
     is_horizontal_split: bool,
-    synced_zoom: bool
+    synced_zoom: bool,
+    double_click_threshold_ms: u16
 ) -> Element<'_, Message, WinitTheme, Renderer> {
-    let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split);
-    let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split);
+    let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms);
+    let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms);
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
 
@@ -420,6 +448,7 @@ pub fn build_ui_dual_pane_slider1(
     .min_scale(0.25)
     .max_scale(10.0)
     .scale_step(0.10)
+    .double_click_threshold_ms(double_click_threshold_ms)
     .into()
 }
 
@@ -431,7 +460,9 @@ pub fn build_ui_dual_pane_slider2<'a, F>(
     is_slider_moving: bool,
     is_horizontal_split: bool,
     _synced_zoom: bool,
-    get_mark_for_pane: &F
+    get_mark_for_pane: &F,
+    show_copy_buttons: bool,
+    double_click_threshold_ms: u16
 ) -> Element<'a, Message, WinitTheme, Renderer>
 where
     F: Fn(usize) -> ImageMark,
@@ -454,7 +485,7 @@ where
             if show_footer {
                 let mark0 = get_mark_for_pane(0);
                 column![
-                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split),
+                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -463,11 +494,11 @@ where
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), 0, mark0)
+                    get_footer(footer_texts[0].clone(), 0, mark0, show_copy_buttons)
                 ]
             } else {
                 column![
-                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split),
+                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -492,7 +523,7 @@ where
             if show_footer {
                 let mark1 = get_mark_for_pane(1);
                 column![
-                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split),
+                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -501,11 +532,11 @@ where
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), 1, mark1)
+                    get_footer(footer_texts[1].clone(), 1, mark1, show_copy_buttons)
                 ]
             } else {
                 column![
-                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split),
+                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -545,6 +576,7 @@ where
     .min_scale(0.25)
     .max_scale(10.0)
     .scale_step(0.10)
+    .double_click_threshold_ms(double_click_threshold_ms)
     .into()
 }
 

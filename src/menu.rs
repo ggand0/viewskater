@@ -372,6 +372,7 @@ pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Rendere
     let menu_tpl_2 = |items| Menu::new(items).max_width(200.0).offset(5.0);
     menu_tpl_2(
         menu_items!(
+            (labeled_button("Settings...", MENU_ITEM_FONT_SIZE, Message::ShowOptions))
             (labeled_button("About", MENU_ITEM_FONT_SIZE, Message::ShowAbout))
             (labeled_button("Show logs", MENU_ITEM_FONT_SIZE, Message::ShowLogs))
             (labeled_button("Export debug logs", MENU_ITEM_FONT_SIZE, Message::ExportDebugLogs))

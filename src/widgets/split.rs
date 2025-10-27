@@ -136,6 +136,9 @@ where
     // Field for the menu bar height
     menu_bar_height: f32,
 
+    // Double-click threshold in milliseconds
+    double_click_threshold_ms: u16,
+
     // Field for the debug flag
     debug: bool,
 }
@@ -205,8 +208,16 @@ where
             class: Theme::default(),
             enable_pane_selection,
             menu_bar_height,
+            double_click_threshold_ms: CONFIG.double_click_threshold_ms,
             debug: false,
         }
+    }
+
+    /// Sets the double-click threshold in milliseconds.
+    #[must_use]
+    pub fn double_click_threshold_ms(mut self, threshold_ms: u16) -> Self {
+        self.double_click_threshold_ms = threshold_ms;
+        self
     }
 
     /// Sets the padding of the [`Split`] around the inner elements.
@@ -383,7 +394,7 @@ where
                     // Save the current time
                     if let Some(last_click_time) = split_state.last_click_time {
                         let elapsed = last_click_time.elapsed();
-                        if elapsed < Duration::from_millis(CONFIG.double_click_threshold_ms as u64) {
+                        if elapsed < Duration::from_millis(self.double_click_threshold_ms as u64) {
                             // Double-click detected
                             split_state.last_click_time = None;
 
