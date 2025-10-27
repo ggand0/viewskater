@@ -123,6 +123,33 @@ pub enum Message {
     ResetAdvancedSettings,
 }
 
+/// Runtime-configurable settings that can be applied immediately without restart
+pub struct RuntimeSettings {
+    pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
+    pub show_copy_buttons: bool,                        // Show copy filename/filepath buttons in footer
+    pub cache_size: usize,                              // Image cache window size (number of images to cache)
+    pub archive_cache_size: u64,                        // Archive cache size in bytes (for preload decision)
+    pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
+    pub max_loading_queue_size: usize,                  // Max size for loading queue
+    pub max_being_loaded_queue_size: usize,             // Max size for being loaded queue
+    pub double_click_threshold_ms: u16,                 // Double-click threshold in milliseconds
+}
+
+impl RuntimeSettings {
+    fn from_user_settings(settings: &UserSettings) -> Self {
+        Self {
+            mouse_wheel_zoom: settings.mouse_wheel_zoom,
+            show_copy_buttons: settings.show_copy_buttons,
+            cache_size: settings.cache_size,
+            archive_cache_size: settings.archive_cache_size * 1_048_576,  // Convert MB to bytes
+            archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
+            max_loading_queue_size: settings.max_loading_queue_size,
+            max_being_loaded_queue_size: settings.max_being_loaded_queue_size,
+            double_click_threshold_ms: settings.double_click_threshold_ms,
+        }
+    }
+}
+
 pub struct DataViewer {
     pub background_color: Color,//debug
     pub title: String,
@@ -162,15 +189,24 @@ pub struct DataViewer {
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
-    pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
-    pub show_copy_buttons: bool,                        // Show copy filename/filepath buttons in footer
-    pub cache_size: usize,                              // Image cache window size (number of images to cache)
-    pub archive_cache_size: u64,                        // Archive cache size in bytes (for preload decision)
-    pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
-    pub max_loading_queue_size: usize,                  // Max size for loading queue
-    pub max_being_loaded_queue_size: usize,             // Max size for being loaded queue
-    pub double_click_threshold_ms: u16,                 // Double-click threshold in milliseconds
+    pub runtime_settings: RuntimeSettings,              // Runtime-configurable settings
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
+}
+
+// Implement Deref to expose RuntimeSettings fields directly on DataViewer
+impl std::ops::Deref for DataViewer {
+    type Target = RuntimeSettings;
+
+    fn deref(&self) -> &Self::Target {
+        &self.runtime_settings
+    }
+}
+
+// Implement DerefMut to allow mutable access to RuntimeSettings fields
+impl std::ops::DerefMut for DataViewer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.runtime_settings
+    }
 }
 
 impl DataViewer {
@@ -249,14 +285,7 @@ impl DataViewer {
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,
-            mouse_wheel_zoom: settings.mouse_wheel_zoom,
-            show_copy_buttons: settings.show_copy_buttons,
-            cache_size: settings.cache_size,
-            archive_cache_size: settings.archive_cache_size * 1_048_576,  // Convert MB to bytes
-            archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
-            max_loading_queue_size: settings.max_loading_queue_size,
-            max_being_loaded_queue_size: settings.max_being_loaded_queue_size,
-            double_click_threshold_ms: settings.double_click_threshold_ms,
+            runtime_settings: RuntimeSettings::from_user_settings(&settings),
             ctrl_pressed: false,
         }
     }
@@ -327,6 +356,12 @@ impl DataViewer {
 
         let pane_file_lengths = self.panes  .iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
+
+        // Capture runtime settings before mutable borrow
+        let cache_size = self.cache_size;
+        let archive_cache_size = self.archive_cache_size;
+        let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
+
         let pane = &mut self.panes[pane_index];
         debug!("pane_file_lengths: {:?}", pane_file_lengths);
 
@@ -342,9 +377,9 @@ impl DataViewer {
             path,
             self.is_slider_dual,
             &mut self.slider_value,
-            self.cache_size,
-            self.archive_cache_size,
-            self.archive_warning_threshold_mb,
+            cache_size,
+            archive_cache_size,
+            archive_warning_threshold_mb,
         );
 
         self.last_opened_pane = pane_index as isize;
@@ -792,6 +827,11 @@ impl DataViewer {
             .map(|p| p.img_cache.num_files)
             .collect();
 
+        // Capture runtime settings before mutable borrow
+        let cache_size = self.cache_size;
+        let archive_cache_size = self.archive_cache_size;
+        let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
+
         // Reinitialize all loaded panes with the new cache strategy
         for (i, pane) in self.panes.iter_mut().enumerate() {
             if let Some(dir_path) = &pane.directory_path.clone() {
@@ -811,9 +851,9 @@ impl DataViewer {
                         &path,
                         self.is_slider_dual,
                         &mut self.slider_value,
-                        self.cache_size,
-                        self.archive_cache_size,
-                        self.archive_warning_threshold_mb,
+                        cache_size,
+                        archive_cache_size,
+                        archive_warning_threshold_mb,
                     );
                 }
             }
@@ -839,6 +879,11 @@ impl DataViewer {
                 .map(|p| p.img_cache.num_files)
                 .collect();
 
+                // Capture runtime settings before mutable borrow
+                let cache_size = self.cache_size;
+                let archive_cache_size = self.archive_cache_size;
+                let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
+
                 // Recreate image cache
                 for (i, pane) in self.panes.iter_mut().enumerate() {
                     if let Some(dir_path) = &pane.directory_path.clone() {
@@ -858,9 +903,9 @@ impl DataViewer {
                                 &path,
                                 self.is_slider_dual,
                                 &mut self.slider_value,
-                                self.cache_size,
-                                self.archive_cache_size,
-                                self.archive_warning_threshold_mb,
+                                cache_size,
+                                archive_cache_size,
+                                archive_warning_threshold_mb,
                             );
                         }
                     }
@@ -1180,6 +1225,11 @@ impl iced_winit::runtime::Program for DataViewer {
                                 .map(|p| p.img_cache.num_files)
                                 .collect();
 
+                            // Capture runtime settings before mutable borrow
+                            let cache_size = self.cache_size;
+                            let archive_cache_size = self.archive_cache_size;
+                            let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
+
                             // Reinitialize all loaded panes with the new cache size
                             for (i, pane) in self.panes.iter_mut().enumerate() {
                                 if let Some(dir_path) = &pane.directory_path.clone() {
@@ -1199,9 +1249,9 @@ impl iced_winit::runtime::Program for DataViewer {
                                             &path,
                                             self.is_slider_dual,
                                             &mut self.slider_value,
-                                            self.cache_size,
-                                            self.archive_cache_size,
-                                            self.archive_warning_threshold_mb,
+                                            cache_size,
+                                            archive_cache_size,
+                                            archive_warning_threshold_mb,
                                         );
                                     }
                                 }
