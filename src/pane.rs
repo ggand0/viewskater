@@ -68,6 +68,8 @@ pub struct Pane {
     #[cfg(feature = "coco")]
     pub show_bboxes: bool,  // Toggle for showing COCO bounding boxes
     #[cfg(feature = "coco")]
+    pub show_masks: bool,  // Toggle for showing COCO segmentation masks
+    #[cfg(feature = "coco")]
     pub zoom_scale: f32,  // Current zoom scale for bbox rendering
     #[cfg(feature = "coco")]
     pub zoom_offset: Vector,  // Current pan offset for bbox rendering
@@ -102,6 +104,8 @@ impl Default for Pane {
             max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
             #[cfg(feature = "coco")]
             show_bboxes: false,
+            #[cfg(feature = "coco")]
+            show_masks: false,
             #[cfg(feature = "coco")]
             zoom_scale: 1.0,
             #[cfg(feature = "coco")]
@@ -149,6 +153,8 @@ impl Pane {
             max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
             #[cfg(feature = "coco")]
             show_bboxes: false,
+            #[cfg(feature = "coco")]
+            show_masks: false,
             #[cfg(feature = "coco")]
             zoom_scale: 1.0,
             #[cfg(feature = "coco")]

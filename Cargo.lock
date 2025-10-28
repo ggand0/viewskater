@@ -1478,6 +1478,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56899898ce76aaf4a0f24d914c97ea6ed976d42fec6ad33fcbb0a1103e07b2b0"
 
 [[package]]
+name = "earcutr"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79127ed59a85d7687c409e9978547cffb7dc79675355ed22da6b66fd5f6ead01"
+dependencies = [
+ "itertools 0.11.0",
+ "num-traits 0.2.19",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2285,7 +2295,7 @@ dependencies = [
  "chrono",
  "iced",
  "iced_fonts",
- "itertools",
+ "itertools 0.13.0",
  "num-format",
  "num-traits 0.2.19",
 ]
@@ -2724,6 +2734,15 @@ dependencies = [
  "hermit-abi 0.5.2",
  "libc",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+dependencies = [
+ "either",
 ]
 
 [[package]]
@@ -5733,6 +5752,7 @@ dependencies = [
  "chrono",
  "console_log",
  "dirs 5.0.1",
+ "earcutr",
  "env_logger",
  "futures",
  "iced",

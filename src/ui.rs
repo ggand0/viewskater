@@ -315,10 +315,10 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
                     let shader = shader;
 
-                    // Check if we should render bounding boxes
+                    // Check if we should render annotations (bboxes or masks)
                     #[cfg(feature = "coco")]
-                    let with_bboxes = {
-                        if app.panes[0].show_bboxes && app.annotation_manager.has_annotations() {
+                    let with_annotations = {
+                        if (app.panes[0].show_bboxes || app.panes[0].show_masks) && app.annotation_manager.has_annotations() {
                             // Get current image filename
                             let current_index = app.panes[0].img_cache.current_index;
                             if let Some(path_source) = app.panes[0].img_cache.image_paths.get(current_index) {
@@ -332,12 +332,14 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                         app.panes[0].current_image.height(),
                                     );
 
-                                    // Create bbox overlay
+                                    // Create bbox/mask overlay
                                     let bbox_overlay = crate::bbox_overlay::render_bbox_overlay(
                                         annotations,
                                         image_size,
                                         app.panes[0].zoom_scale,
                                         app.panes[0].zoom_offset,
+                                        app.panes[0].show_bboxes,
+                                        app.panes[0].show_masks,
                                     );
 
                                     // Stack image and bboxes
@@ -363,7 +365,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                     .padding(0)
                             }
                         } else {
-                            // Bboxes disabled or no annotations loaded
+                            // Annotations disabled or no annotations loaded
                             container(center(shader))
                                 .width(Length::Fill)
                                 .height(Length::Fill)
@@ -372,12 +374,12 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     };
 
                     #[cfg(not(feature = "coco"))]
-                    let with_bboxes = container(center(shader))
+                    let with_annotations = container(center(shader))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .padding(0);
 
-                    with_bboxes
+                    with_annotations
                 } else {
                     container(text("No image loaded"))
                 }

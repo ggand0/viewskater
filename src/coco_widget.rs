@@ -38,6 +38,12 @@ pub enum CocoMessage {
     /// Toggle bounding boxes for all panes
     ToggleAllBoundingBoxes,
 
+    /// Toggle segmentation masks for a pane
+    ToggleSegmentationMasks(usize),  // pane_index
+
+    /// Toggle segmentation masks for all panes
+    ToggleAllSegmentationMasks,
+
     /// Clear loaded annotations
     ClearAnnotations,
 
@@ -175,9 +181,10 @@ pub fn handle_coco_message(
                         } else {
                             info!("COCO annotations loaded successfully from directory: {}", dir.display());
 
-                            // Enable bbox rendering by default
+                            // Enable bbox and mask rendering by default
                             for pane in panes.iter_mut() {
                                 pane.show_bboxes = true;
+                                pane.show_masks = true;
                             }
 
                             // Now open the image directory to actually load and display images
@@ -245,12 +252,34 @@ pub fn handle_coco_message(
             Task::none()
         }
 
+        CocoMessage::ToggleSegmentationMasks(pane_index) => {
+            if let Some(pane) = panes.get_mut(pane_index) {
+                pane.show_masks = !pane.show_masks;
+                info!("Toggled segmentation masks for pane {}: {}", pane_index, pane.show_masks);
+            }
+            Task::none()
+        }
+
+        CocoMessage::ToggleAllSegmentationMasks => {
+            // Toggle all panes
+            let new_state = panes.get(0)
+                .map(|p| !p.show_masks)
+                .unwrap_or(true);
+
+            for pane in panes.iter_mut() {
+                pane.show_masks = new_state;
+            }
+            info!("Toggled all segmentation masks: {}", new_state);
+            Task::none()
+        }
+
         CocoMessage::ClearAnnotations => {
             annotation_manager.clear();
 
-            // Clear bbox visibility on all panes
+            // Clear bbox and mask visibility on all panes
             for pane in panes.iter_mut() {
                 pane.show_bboxes = false;
+                pane.show_masks = false;
             }
 
             info!("Cleared COCO annotations");
@@ -307,6 +336,13 @@ pub fn handle_keyboard_event(
             let pane_index = get_pane_index();
             Some(Task::done(Message::CocoAction(
                 CocoMessage::ToggleBoundingBoxes(pane_index)
+            )))
+        }
+        Key::Character("m") | Key::Character("M") => {
+            // Toggle segmentation masks for current pane
+            let pane_index = get_pane_index();
+            Some(Task::done(Message::CocoAction(
+                CocoMessage::ToggleSegmentationMasks(pane_index)
             )))
         }
         _ => None

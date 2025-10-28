@@ -6,3 +6,6 @@ pub mod image_shader;
 
 #[cfg(feature = "coco")]
 pub mod bbox_shader;
+
+#[cfg(feature = "coco")]
+pub mod polygon_shader;
