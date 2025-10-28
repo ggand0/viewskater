@@ -122,6 +122,8 @@ pub enum Message {
     CursorOnFooter(bool),
     #[cfg(feature = "ml")]
     MlAction(crate::ml_widget::MlMessage),
+    #[cfg(feature = "coco")]
+    CocoAction(crate::coco_widget::CocoMessage),
     // Advanced settings input
     AdvancedSettingChanged(String, String),  // (field_name, value)
     ResetAdvancedSettings,
@@ -197,6 +199,8 @@ pub struct DataViewer {
     ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
     #[cfg(feature = "ml")]
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
+    #[cfg(feature = "coco")]
+    pub annotation_manager: crate::annotation_manager::AnnotationManager,  // Manages COCO annotations
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -295,6 +299,8 @@ impl DataViewer {
             ctrl_pressed: false,
             #[cfg(feature = "ml")]
             selection_manager: SelectionManager::new(),
+            #[cfg(feature = "coco")]
+            annotation_manager: crate::annotation_manager::AnnotationManager::new(),
         }
     }
 
@@ -707,6 +713,17 @@ impl DataViewer {
                 // Check if ML module wants to handle this key
                 #[cfg(feature = "ml")]
                 if let Some(task) = crate::ml_widget::handle_keyboard_event(
+                    key,
+                    modifiers,
+                    &self.pane_layout,
+                    self.last_opened_pane,
+                ) {
+                    tasks.push(task);
+                }
+
+                // Check if COCO module wants to handle this key
+                #[cfg(feature = "coco")]
+                if let Some(task) = crate::coco_widget::handle_keyboard_event(
                     key,
                     modifiers,
                     &self.pane_layout,
@@ -1383,6 +1400,36 @@ impl iced_winit::runtime::Program for DataViewer {
                 });
             }
             Message::FileDropped(pane_index, dropped_path) => {
+                let path = PathBuf::from(&dropped_path);
+
+                #[cfg(feature = "coco")]
+                debug!("COCO FEATURE IS ENABLED");
+
+                #[cfg(not(feature = "coco"))]
+                debug!("COCO FEATURE IS DISABLED");
+
+                // Check if it's a JSON file that might be COCO format
+                #[cfg(feature = "coco")]
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    debug!("JSON file detected, checking if it's COCO format: {}", path.display());
+                    // Try to read and detect COCO format
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => {
+                            if crate::coco_parser::CocoDataset::is_coco_format(&content) {
+                                info!("✓ Detected COCO JSON file: {}", path.display());
+                                return Task::done(Message::CocoAction(
+                                    crate::coco_widget::CocoMessage::LoadCocoFile(path)
+                                ));
+                            } else {
+                                debug!("JSON file is not COCO format, treating as regular file");
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to read JSON file: {}", e);
+                        }
+                    }
+                }
+
                 // Reset state first
                 debug!("Message::FileDropped - Resetting state");
                 self.reset_state(pane_index);
@@ -1390,7 +1437,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 // Loads the dropped file/directory
                 debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
                 debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}", self.panes[pane_index as usize].dir_loaded, pane_index, self.last_opened_pane);
-                self.initialize_dir_path(&PathBuf::from(dropped_path), pane_index as usize);
+                self.initialize_dir_path(&path, pane_index as usize);
             }
             Message::Close => {
                 self.reset_state(-1);
@@ -1727,11 +1774,35 @@ impl iced_winit::runtime::Program for DataViewer {
                 Event::Window(iced::window::Event::FileDropped(dropped_paths, _position)) => {
                     match self.pane_layout {
                         PaneLayout::SinglePane => {
+                            let path = &dropped_paths[0];
+
+                            // Check if it's a JSON file that might be COCO format
+                            #[cfg(feature = "coco")]
+                            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                                debug!("JSON file detected in window event, checking if it's COCO format: {}", path.display());
+                                // Try to read and detect COCO format
+                                match std::fs::read_to_string(path) {
+                                    Ok(content) => {
+                                        if crate::coco_parser::CocoDataset::is_coco_format(&content) {
+                                            info!("✓ Detected COCO JSON file: {}", path.display());
+                                            return Task::done(Message::CocoAction(
+                                                crate::coco_widget::CocoMessage::LoadCocoFile(path.clone())
+                                            ));
+                                        } else {
+                                            debug!("JSON file is not COCO format, treating as regular file");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to read JSON file: {}", e);
+                                    }
+                                }
+                            }
+
                             // Reset state first
                             self.reset_state(-1);
 
                             debug!("File dropped: {:?}", dropped_paths);
-                            self.initialize_dir_path(&dropped_paths[0].clone(), 0);
+                            self.initialize_dir_path(path, 0);
                         },
                         PaneLayout::DualPane => {
                         }
@@ -1741,12 +1812,36 @@ impl iced_winit::runtime::Program for DataViewer {
                 Event::Window(iced::window::Event::FileDropped(dropped_path, _)) => {
                     match self.pane_layout {
                         PaneLayout::SinglePane => {
+                            let path = &dropped_path[0];
+
+                            // Check if it's a JSON file that might be COCO format
+                            #[cfg(feature = "coco")]
+                            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                                debug!("JSON file detected in window event, checking if it's COCO format: {}", path.display());
+                                // Try to read and detect COCO format
+                                match std::fs::read_to_string(path) {
+                                    Ok(content) => {
+                                        if crate::coco_parser::CocoDataset::is_coco_format(&content) {
+                                            info!("✓ Detected COCO JSON file: {}", path.display());
+                                            return Task::done(Message::CocoAction(
+                                                crate::coco_widget::CocoMessage::LoadCocoFile(path.clone())
+                                            ));
+                                        } else {
+                                            debug!("JSON file is not COCO format, treating as regular file");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to read JSON file: {}", e);
+                                    }
+                                }
+                            }
+
                             // Reset state first
                             debug!("window::Event::FileDropped - Resetting state");
                             self.reset_state(-1);
 
                             debug!("File dropped: {:?}", dropped_path);
-                            self.initialize_dir_path(&dropped_path[0], 0);
+                            self.initialize_dir_path(path, 0);
                         },
                         PaneLayout::DualPane => {}
                     }
@@ -1776,6 +1871,15 @@ impl iced_winit::runtime::Program for DataViewer {
                     ml_msg,
                     &self.panes,
                     &mut self.selection_manager,
+                );
+            }
+
+            #[cfg(feature = "coco")]
+            Message::CocoAction(coco_msg) => {
+                return crate::coco_widget::handle_coco_message(
+                    coco_msg,
+                    &mut self.panes,
+                    &mut self.annotation_manager,
                 );
             }
         }

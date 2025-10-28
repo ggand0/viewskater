@@ -64,6 +64,8 @@ pub struct Pane {
     pub archive_cache: Arc<Mutex<ArchiveCache>>,
     pub max_loading_queue_size: usize,
     pub max_being_loaded_queue_size: usize,
+    #[cfg(feature = "coco")]
+    pub show_bboxes: bool,  // Toggle for showing COCO bounding boxes
 }
 
 impl Default for Pane {
@@ -93,6 +95,8 @@ impl Default for Pane {
             archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
             max_loading_queue_size: CONFIG.max_loading_queue_size,
             max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
+            #[cfg(feature = "coco")]
+            show_bboxes: false,
         }
     }
 }
@@ -134,6 +138,8 @@ impl Pane {
             archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
             max_loading_queue_size: CONFIG.max_loading_queue_size,
             max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
+            #[cfg(feature = "coco")]
+            show_bboxes: false,
         }
     }
 

@@ -65,6 +65,8 @@ iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", 
 [features]
 # ML-related features for dataset curation (disabled by default)
 ml = []
+# COCO dataset visualization (disabled by default)
+coco = []
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"
