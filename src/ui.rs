@@ -18,7 +18,7 @@ use macos::*;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
+use iced_widget::{container, Container, row, column, horizontal_space, text, button, center, Stack};
 use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
 use iced_winit::core::alignment::Horizontal;
@@ -59,19 +59,29 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
 }
 
 
-/// Helper struct to pass ML mark badge into footer function
+/// Helper struct to pass ML mark badge and COCO badge into footer function
 pub struct FooterOptions {
     pub mark_badge: Option<Element<'static, Message, WinitTheme, Renderer>>,
+    pub coco_badge: Option<Element<'static, Message, WinitTheme, Renderer>>,
 }
 
 impl FooterOptions {
     pub fn new() -> Self {
-        Self { mark_badge: None }
+        Self {
+            mark_badge: None,
+            coco_badge: None,
+        }
     }
 
     #[cfg(feature = "ml")]
     pub fn with_mark(mut self, mark: crate::selection_manager::ImageMark) -> Self {
         self.mark_badge = Some(crate::ml_widget::mark_badge(mark));
+        self
+    }
+
+    #[cfg(feature = "coco")]
+    pub fn with_coco(mut self, has_annotations: bool, num_annotations: usize) -> Self {
+        self.coco_badge = Some(crate::coco_widget::coco_badge(has_annotations, num_annotations));
         self
     }
 
@@ -87,6 +97,19 @@ impl FooterOptions {
             }
         })
     }
+
+    pub fn get_coco_badge(self) -> Element<'static, Message, WinitTheme, Renderer> {
+        self.coco_badge.unwrap_or_else(|| {
+            #[cfg(feature = "coco")]
+            {
+                crate::coco_widget::empty_badge()
+            }
+            #[cfg(not(feature = "coco"))]
+            {
+                container(text("")).width(0).height(0).into()
+            }
+        })
+    }
 }
 
 pub fn get_footer(
@@ -95,7 +118,27 @@ pub fn get_footer(
     show_copy_buttons: bool,
     options: FooterOptions,
 ) -> Container<'static, Message, WinitTheme, Renderer> {
-    let mark_badge = options.get_mark_badge();
+    // Extract badges from options
+    let mark_badge = options.mark_badge.unwrap_or_else(|| {
+        #[cfg(feature = "ml")]
+        {
+            crate::ml_widget::empty_badge()
+        }
+        #[cfg(not(feature = "ml"))]
+        {
+            container(text("")).width(0).height(0).into()
+        }
+    });
+    let coco_badge = options.coco_badge.unwrap_or_else(|| {
+        #[cfg(feature = "coco")]
+        {
+            crate::coco_widget::empty_badge()
+        }
+        #[cfg(not(feature = "coco"))]
+        {
+            container(text("")).width(0).height(0).into()
+        }
+    });
 
     if show_copy_buttons {
         let copy_filename_button = tooltip(
@@ -143,6 +186,7 @@ pub fn get_footer(
                 copy_filepath_button,
                 copy_filename_button,
                 mark_badge,
+                coco_badge,
                 Element::<'_, Message, WinitTheme, Renderer>::from(
                     text(footer_text)
                     .font(Font::MONOSPACE)
@@ -163,6 +207,7 @@ pub fn get_footer(
         container::<Message, WinitTheme, Renderer>(
             row![
                 mark_badge,
+                coco_badge,
                 Element::<'_, Message, WinitTheme, Renderer>::from(
                     text(footer_text)
                     .font(Font::MONOSPACE)
@@ -256,10 +301,67 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
                         .double_click_threshold_ms(app.double_click_threshold_ms);
 
-                    container(center(shader))
+                    // Check if we should render bounding boxes
+                    #[cfg(feature = "coco")]
+                    let with_bboxes = {
+                        if app.panes[0].show_bboxes && app.annotation_manager.has_annotations() {
+                            // Get current image filename
+                            let current_index = app.panes[0].img_cache.current_index;
+                            if let Some(path_source) = app.panes[0].img_cache.image_paths.get(current_index) {
+                                let filename = path_source.file_name();
+
+                                // Look up annotations for this image
+                                if let Some(annotations) = app.annotation_manager.get_annotations(&filename) {
+                                    // Get image dimensions from the current image data
+                                    let image_size = (
+                                        app.panes[0].current_image.width(),
+                                        app.panes[0].current_image.height(),
+                                    );
+
+                                    // Create bbox overlay
+                                    let bbox_overlay = crate::bbox_overlay::render_bbox_overlay(
+                                        annotations,
+                                        image_size,
+                                    );
+
+                                    // Stack image and bboxes
+                                    container(center(
+                                        Stack::new()
+                                            .push(shader)
+                                            .push(bbox_overlay)
+                                    ))
+                                    .width(Length::Fill)
+                                    .height(Length::Fill)
+                                    .padding(0)
+                                } else {
+                                    // No annotations for this image, just show the shader
+                                    container(center(shader))
+                                        .width(Length::Fill)
+                                        .height(Length::Fill)
+                                        .padding(0)
+                                }
+                            } else {
+                                container(center(shader))
+                                    .width(Length::Fill)
+                                    .height(Length::Fill)
+                                    .padding(0)
+                            }
+                        } else {
+                            // Bboxes disabled or no annotations loaded
+                            container(center(shader))
+                                .width(Length::Fill)
+                                .height(Length::Fill)
+                                .padding(0)
+                        }
+                    };
+
+                    #[cfg(not(feature = "coco"))]
+                    let with_bboxes = container(center(shader))
                         .width(Length::Fill)
                         .height(Length::Fill)
-                        .padding(0)
+                        .padding(0);
+
+                    with_bboxes
                 } else {
                     container(text("No image loaded"))
                 }
