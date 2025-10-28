@@ -119,8 +119,8 @@ impl shader::Primitive for BBoxPrimitive {
 
         let mut buffers = Vec::new();
 
-        for (idx, annotation) in self.annotations.iter().enumerate() {
-            let color = get_category_color(idx);
+        for annotation in self.annotations.iter() {
+            let color = get_category_color(annotation.category_id);
 
             let x = (annotation.bbox.x * scale + offset_x + self.bounds.x) * scale_factor;
             let y = (annotation.bbox.y * scale + offset_y + self.bounds.y) * scale_factor;
@@ -292,21 +292,43 @@ impl BBoxPipeline {
     }
 }
 
-/// Get color for category by index
-fn get_category_color(index: usize) -> Color {
+/// Get color for category using YOLO/YOLOX color scheme
+/// Based on https://github.com/Megvii-BaseDetection/YOLOX/blob/main/yolox/utils/visualize.py
+fn get_category_color(category_id: u64) -> Color {
+    // YOLO color palette for 80 COCO classes
     let colors = [
-        Color::from_rgb(1.0, 0.0, 0.0),     // Red
-        Color::from_rgb(0.0, 1.0, 0.0),     // Green
-        Color::from_rgb(0.0, 0.0, 1.0),     // Blue
-        Color::from_rgb(1.0, 1.0, 0.0),     // Yellow
-        Color::from_rgb(1.0, 0.0, 1.0),     // Magenta
-        Color::from_rgb(0.0, 1.0, 1.0),     // Cyan
-        Color::from_rgb(1.0, 0.5, 0.0),     // Orange
-        Color::from_rgb(0.5, 0.0, 1.0),     // Purple
-        Color::from_rgb(0.0, 1.0, 0.5),     // Spring green
-        Color::from_rgb(1.0, 0.0, 0.5),     // Rose
+        [0.000, 0.447, 0.741], [0.850, 0.325, 0.098], [0.929, 0.694, 0.125],
+        [0.494, 0.184, 0.556], [0.466, 0.674, 0.188], [0.301, 0.745, 0.933],
+        [0.635, 0.078, 0.184], [0.300, 0.300, 0.300], [0.600, 0.600, 0.600],
+        [1.000, 0.000, 0.000], [1.000, 0.500, 0.000], [0.749, 0.749, 0.000],
+        [0.000, 1.000, 0.000], [0.000, 0.000, 1.000], [0.667, 0.000, 1.000],
+        [0.333, 0.333, 0.000], [0.333, 0.667, 0.000], [0.333, 1.000, 0.000],
+        [0.667, 0.333, 0.000], [0.667, 0.667, 0.000], [0.667, 1.000, 0.000],
+        [1.000, 0.333, 0.000], [1.000, 0.667, 0.000], [1.000, 1.000, 0.000],
+        [0.000, 0.333, 0.500], [0.000, 0.667, 0.500], [0.000, 1.000, 0.500],
+        [0.333, 0.000, 0.500], [0.333, 0.333, 0.500], [0.333, 0.667, 0.500],
+        [0.333, 1.000, 0.500], [0.667, 0.000, 0.500], [0.667, 0.333, 0.500],
+        [0.667, 0.667, 0.500], [0.667, 1.000, 0.500], [1.000, 0.000, 0.500],
+        [1.000, 0.333, 0.500], [1.000, 0.667, 0.500], [1.000, 1.000, 0.500],
+        [0.000, 0.333, 1.000], [0.000, 0.667, 1.000], [0.000, 1.000, 1.000],
+        [0.333, 0.000, 1.000], [0.333, 0.333, 1.000], [0.333, 0.667, 1.000],
+        [0.333, 1.000, 1.000], [0.667, 0.000, 1.000], [0.667, 0.333, 1.000],
+        [0.667, 0.667, 1.000], [0.667, 1.000, 1.000], [1.000, 0.000, 1.000],
+        [1.000, 0.333, 1.000], [1.000, 0.667, 1.000], [0.333, 0.000, 0.000],
+        [0.500, 0.000, 0.000], [0.667, 0.000, 0.000], [0.833, 0.000, 0.000],
+        [1.000, 0.000, 0.000], [0.000, 0.167, 0.000], [0.000, 0.333, 0.000],
+        [0.000, 0.500, 0.000], [0.000, 0.667, 0.000], [0.000, 0.833, 0.000],
+        [0.000, 1.000, 0.000], [0.000, 0.000, 0.167], [0.000, 0.000, 0.333],
+        [0.000, 0.000, 0.500], [0.000, 0.000, 0.667], [0.000, 0.000, 0.833],
+        [0.000, 0.000, 1.000], [0.000, 0.000, 0.000], [0.143, 0.143, 0.143],
+        [0.286, 0.286, 0.286], [0.429, 0.429, 0.429], [0.571, 0.571, 0.571],
+        [0.714, 0.714, 0.714], [0.857, 0.857, 0.857], [0.000, 0.447, 0.741],
+        [0.314, 0.717, 0.741], [0.500, 0.500, 0.000],
     ];
-    colors[index % colors.len()]
+
+    let idx = (category_id - 1) as usize % colors.len(); // COCO category_id starts at 1
+    let rgb = colors[idx];
+    Color::from_rgb(rgb[0], rgb[1], rgb[2])
 }
 
 // Implement Widget trait

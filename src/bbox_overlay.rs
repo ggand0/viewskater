@@ -12,6 +12,42 @@ use crate::app::Message;
 use crate::coco_parser::ImageAnnotation;
 use crate::widgets::shader::bbox_shader::BBoxShader;
 
+/// Get YOLO color for category ID (same as bbox_shader)
+fn get_category_color(category_id: u64) -> Color {
+    let colors = [
+        [0.000, 0.447, 0.741], [0.850, 0.325, 0.098], [0.929, 0.694, 0.125],
+        [0.494, 0.184, 0.556], [0.466, 0.674, 0.188], [0.301, 0.745, 0.933],
+        [0.635, 0.078, 0.184], [0.300, 0.300, 0.300], [0.600, 0.600, 0.600],
+        [1.000, 0.000, 0.000], [1.000, 0.500, 0.000], [0.749, 0.749, 0.000],
+        [0.000, 1.000, 0.000], [0.000, 0.000, 1.000], [0.667, 0.000, 1.000],
+        [0.333, 0.333, 0.000], [0.333, 0.667, 0.000], [0.333, 1.000, 0.000],
+        [0.667, 0.333, 0.000], [0.667, 0.667, 0.000], [0.667, 1.000, 0.000],
+        [1.000, 0.333, 0.000], [1.000, 0.667, 0.000], [1.000, 1.000, 0.000],
+        [0.000, 0.333, 0.500], [0.000, 0.667, 0.500], [0.000, 1.000, 0.500],
+        [0.333, 0.000, 0.500], [0.333, 0.333, 0.500], [0.333, 0.667, 0.500],
+        [0.333, 1.000, 0.500], [0.667, 0.000, 0.500], [0.667, 0.333, 0.500],
+        [0.667, 0.667, 0.500], [0.667, 1.000, 0.500], [1.000, 0.000, 0.500],
+        [1.000, 0.333, 0.500], [1.000, 0.667, 0.500], [1.000, 1.000, 0.500],
+        [0.000, 0.333, 1.000], [0.000, 0.667, 1.000], [0.000, 1.000, 1.000],
+        [0.333, 0.000, 1.000], [0.333, 0.333, 1.000], [0.333, 0.667, 1.000],
+        [0.333, 1.000, 1.000], [0.667, 0.000, 1.000], [0.667, 0.333, 1.000],
+        [0.667, 0.667, 1.000], [0.667, 1.000, 1.000], [1.000, 0.000, 1.000],
+        [1.000, 0.333, 1.000], [1.000, 0.667, 1.000], [0.333, 0.000, 0.000],
+        [0.500, 0.000, 0.000], [0.667, 0.000, 0.000], [0.833, 0.000, 0.000],
+        [1.000, 0.000, 0.000], [0.000, 0.167, 0.000], [0.000, 0.333, 0.000],
+        [0.000, 0.500, 0.000], [0.000, 0.667, 0.000], [0.000, 0.833, 0.000],
+        [0.000, 1.000, 0.000], [0.000, 0.000, 0.167], [0.000, 0.000, 0.333],
+        [0.000, 0.000, 0.500], [0.000, 0.000, 0.667], [0.000, 0.000, 0.833],
+        [0.000, 0.000, 1.000], [0.000, 0.000, 0.000], [0.143, 0.143, 0.143],
+        [0.286, 0.286, 0.286], [0.429, 0.429, 0.429], [0.571, 0.571, 0.571],
+        [0.714, 0.714, 0.714], [0.857, 0.857, 0.857], [0.000, 0.447, 0.741],
+        [0.314, 0.717, 0.741], [0.500, 0.500, 0.000],
+    ];
+    let idx = (category_id - 1) as usize % colors.len();
+    let rgb = colors[idx];
+    Color::from_rgb(rgb[0], rgb[1], rgb[2])
+}
+
 /// Render bounding box overlays for a list of annotations
 ///
 /// Uses custom WGPU shader for rendering actual bbox rectangles with text labels.
@@ -149,15 +185,42 @@ where
             let x = annotation.bbox.x * scale + offset_x + bounds.x;
             let y = annotation.bbox.y * scale + offset_y + bounds.y;
 
-            // Position label just above the bbox
-            let label_position = Point::new(x, y - 16.0);
+            // Get color for this category
+            let bg_color = get_category_color(annotation.category_id);
 
-            // Draw text
+            // Estimate text width (rough approximation)
+            let text_width = annotation.category_name.len() as f32 * 7.5;
+            let label_height = 18.0;
+            let padding = 4.0;
+
+            // Position label just above the bbox
+            let label_y = y - label_height - 2.0;
+
+            // Draw colored background rectangle
+            renderer.fill_quad(
+                iced_core::renderer::Quad {
+                    bounds: Rectangle {
+                        x,
+                        y: label_y,
+                        width: text_width + padding * 2.0,
+                        height: label_height,
+                    },
+                    border: Border {
+                        radius: 2.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                    shadow: iced_core::Shadow::default(),
+                },
+                bg_color,
+            );
+
+            // Draw white text on colored background
             renderer.fill_text(
                 Text {
                     content: annotation.category_name.clone(),
-                    bounds: iced_core::Size::new(f32::INFINITY, 20.0),
-                    size: 14.0.into(),
+                    bounds: iced_core::Size::new(f32::INFINITY, label_height),
+                    size: 13.0.into(),
                     line_height: iced_core::text::LineHeight::default(),
                     font: renderer.default_font(),
                     horizontal_alignment: iced_core::alignment::Horizontal::Left,
@@ -165,8 +228,8 @@ where
                     shaping: iced_core::text::Shaping::Basic,
                     wrapping: iced_core::text::Wrapping::default(),
                 },
-                label_position,
-                Color::from([1.0, 1.0, 0.0, 1.0]),
+                Point::new(x + padding, label_y + 2.0),
+                Color::WHITE,
                 bounds,
             );
         }
