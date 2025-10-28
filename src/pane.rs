@@ -12,6 +12,7 @@ use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
+use iced_core::Vector;
 use iced_widget::{center, Container};
 
 use crate::cache::img_cache::PathSource;
@@ -66,6 +67,10 @@ pub struct Pane {
     pub max_being_loaded_queue_size: usize,
     #[cfg(feature = "coco")]
     pub show_bboxes: bool,  // Toggle for showing COCO bounding boxes
+    #[cfg(feature = "coco")]
+    pub zoom_scale: f32,  // Current zoom scale for bbox rendering
+    #[cfg(feature = "coco")]
+    pub zoom_offset: Vector,  // Current pan offset for bbox rendering
 }
 
 impl Default for Pane {
@@ -97,6 +102,10 @@ impl Default for Pane {
             max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
             #[cfg(feature = "coco")]
             show_bboxes: false,
+            #[cfg(feature = "coco")]
+            zoom_scale: 1.0,
+            #[cfg(feature = "coco")]
+            zoom_offset: Vector::default(),
         }
     }
 }
@@ -140,6 +149,10 @@ impl Pane {
             max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
             #[cfg(feature = "coco")]
             show_bboxes: false,
+            #[cfg(feature = "coco")]
+            zoom_scale: 1.0,
+            #[cfg(feature = "coco")]
+            zoom_offset: Vector::default(),
         }
     }
 
@@ -662,13 +675,27 @@ impl Pane {
                 .width(Length::Fill)
                 .height(Length::Fill)
             } else if let Some(scene) = &self.scene {
-                let shader_widget = ImageShader::new(Some(scene))
+                let mut shader_widget = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(is_horizontal_split)
                         .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed)
                         .double_click_threshold_ms(double_click_threshold_ms);
+
+                // Set up zoom change callback for COCO bbox rendering
+                #[cfg(feature = "coco")]
+                {
+                    shader_widget = shader_widget
+                        .pane_index(self.pane_id)
+                        .on_zoom_change(|pane_idx, scale, offset| {
+                            Message::CocoAction(crate::coco_widget::CocoMessage::ZoomChanged(
+                                pane_idx, scale, offset
+                            ))
+                        });
+                }
+
+                let shader_widget = shader_widget;
 
                 container(center(shader_widget))
                     .width(Length::Fill)

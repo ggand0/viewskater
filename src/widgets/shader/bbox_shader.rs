@@ -3,7 +3,7 @@
 /// Uses WGPU to draw colored rectangles with labels over images.
 
 use std::marker::PhantomData;
-use iced_core::{Color, Rectangle, Size, Length};
+use iced_core::{Color, Rectangle, Size, Length, Vector};
 use iced_core::layout::{self, Layout};
 use iced_core::mouse;
 use iced_core::renderer;
@@ -20,16 +20,20 @@ pub struct BBoxShader<Message> {
     height: Length,
     annotations: Vec<ImageAnnotation>,
     image_size: (u32, u32),
+    zoom_scale: f32,
+    zoom_offset: Vector,
     _phantom: PhantomData<Message>,
 }
 
 impl<Message> BBoxShader<Message> {
-    pub fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32)) -> Self {
+    pub fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32), zoom_scale: f32, zoom_offset: Vector) -> Self {
         Self {
             width: Length::Fill,
             height: Length::Fill,
             annotations,
             image_size,
+            zoom_scale,
+            zoom_offset,
             _phantom: PhantomData,
         }
     }
@@ -73,6 +77,8 @@ pub struct BBoxPrimitive {
     bounds: Rectangle,
     annotations: Vec<ImageAnnotation>,
     image_size: (u32, u32),
+    zoom_scale: f32,
+    zoom_offset: Vector,
 }
 
 // Cache for vertex buffers created in prepare()
@@ -108,24 +114,33 @@ impl shader::Primitive for BBoxPrimitive {
         let display_width = self.bounds.width;
         let display_height = self.bounds.height;
 
+        // Base scale from ContentFit::Contain
         let width_ratio = display_width / image_width;
         let height_ratio = display_height / image_height;
-        let scale = width_ratio.min(height_ratio);
+        let base_scale = width_ratio.min(height_ratio);
 
-        let scaled_width = image_width * scale;
-        let scaled_height = image_height * scale;
-        let offset_x = (display_width - scaled_width) / 2.0;
-        let offset_y = (display_height - scaled_height) / 2.0;
+        // Calculate zoomed image dimensions (changes with zoom)
+        let zoomed_image_width = image_width * base_scale * self.zoom_scale;
+        let zoomed_image_height = image_height * base_scale * self.zoom_scale;
+
+        // Centering offset after zoom (changes as image grows/shrinks)
+        let center_offset_x = (display_width - zoomed_image_width) / 2.0;
+        let center_offset_y = (display_height - zoomed_image_height) / 2.0;
 
         let mut buffers = Vec::new();
 
         for annotation in self.annotations.iter() {
             let color = get_category_color(annotation.category_id);
 
-            let x = (annotation.bbox.x * scale + offset_x + self.bounds.x) * scale_factor;
-            let y = (annotation.bbox.y * scale + offset_y + self.bounds.y) * scale_factor;
-            let width = annotation.bbox.width * scale * scale_factor;
-            let height = annotation.bbox.height * scale * scale_factor;
+            // Scale bbox coordinates by base_scale and zoom_scale
+            let scaled_bbox_x = annotation.bbox.x * base_scale * self.zoom_scale;
+            let scaled_bbox_y = annotation.bbox.y * base_scale * self.zoom_scale;
+
+            // Apply centering offset and pan offset (subtract offset like ImageShader does)
+            let x = (scaled_bbox_x + center_offset_x - self.zoom_offset.x + self.bounds.x) * scale_factor;
+            let y = (scaled_bbox_y + center_offset_y - self.zoom_offset.y + self.bounds.y) * scale_factor;
+            let width = annotation.bbox.width * base_scale * self.zoom_scale * scale_factor;
+            let height = annotation.bbox.height * base_scale * self.zoom_scale * scale_factor;
 
             // Create 5 vertices for rectangle outline in NDC
             // Note: Invert y-axis because NDC has y=-1 at top, y=1 at bottom (opposite of screen coords)
@@ -369,6 +384,8 @@ where
                 bounds,
                 annotations: self.annotations.clone(),
                 image_size: self.image_size,
+                zoom_scale: self.zoom_scale,
+                zoom_offset: self.zoom_offset,
             };
 
             renderer.draw_primitive(bounds, primitive);

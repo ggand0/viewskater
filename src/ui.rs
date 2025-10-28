@@ -293,13 +293,27 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     .padding(0)
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Fixed: Pass Arc<Scene> reference correctly
-                    let shader = ImageShader::new(Some(scene))
+                    let mut shader = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false)
                         .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
                         .double_click_threshold_ms(app.double_click_threshold_ms);
+
+                    // Set up zoom change callback for COCO bbox rendering
+                    #[cfg(feature = "coco")]
+                    {
+                        shader = shader
+                            .pane_index(0)
+                            .on_zoom_change(|pane_idx, scale, offset| {
+                                Message::CocoAction(crate::coco_widget::CocoMessage::ZoomChanged(
+                                    pane_idx, scale, offset
+                                ))
+                            });
+                    }
+
+                    let shader = shader;
 
                     // Check if we should render bounding boxes
                     #[cfg(feature = "coco")]
@@ -322,6 +336,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                     let bbox_overlay = crate::bbox_overlay::render_bbox_overlay(
                                         annotations,
                                         image_size,
+                                        app.panes[0].zoom_scale,
+                                        app.panes[0].zoom_offset,
                                     );
 
                                     // Stack image and bboxes

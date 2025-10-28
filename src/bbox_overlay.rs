@@ -2,7 +2,7 @@
 ///
 /// This module renders bounding boxes using a custom WGPU shader.
 
-use iced_winit::core::{Element, Length, Color, Rectangle, Point};
+use iced_winit::core::{Element, Length, Color, Rectangle, Point, Vector};
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::Renderer;
 use iced_widget::{Stack, container, text, column};
@@ -51,9 +51,12 @@ fn get_category_color(category_id: u64) -> Color {
 /// Render bounding box overlays for a list of annotations
 ///
 /// Uses custom WGPU shader for rendering actual bbox rectangles with text labels.
+/// Applies zoom transformation based on scale and offset parameters.
 pub fn render_bbox_overlay<'a>(
     annotations: &'a [ImageAnnotation],
     image_size: (u32, u32),
+    zoom_scale: f32,
+    zoom_offset: Vector,
 ) -> Element<'a, Message, WinitTheme, Renderer> {
     if annotations.is_empty() {
         return container(iced_widget::Space::new(Length::Fill, Length::Fill))
@@ -63,12 +66,12 @@ pub fn render_bbox_overlay<'a>(
     }
 
     // Bbox rectangles
-    let bbox_shader = BBoxShader::new(annotations.to_vec(), image_size)
+    let bbox_shader = BBoxShader::new(annotations.to_vec(), image_size, zoom_scale, zoom_offset)
         .width(Length::Fill)
         .height(Length::Fill);
 
     // Create per-bbox label overlay
-    let labels_overlay = BBoxLabels::new(annotations.to_vec(), image_size);
+    let labels_overlay = BBoxLabels::new(annotations.to_vec(), image_size, zoom_scale, zoom_offset);
 
     // Category summary: count occurrences of each category
     let mut category_counts = std::collections::HashMap::new();
@@ -119,13 +122,17 @@ pub fn render_bbox_overlay<'a>(
 struct BBoxLabels {
     annotations: Vec<ImageAnnotation>,
     image_size: (u32, u32),
+    zoom_scale: f32,
+    zoom_offset: Vector,
 }
 
 impl BBoxLabels {
-    fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32)) -> Element<'static, Message, WinitTheme, Renderer> {
+    fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32), zoom_scale: f32, zoom_offset: Vector) -> Element<'static, Message, WinitTheme, Renderer> {
         let widget = Self {
             annotations,
             image_size,
+            zoom_scale,
+            zoom_offset,
         };
         Element::new(widget)
     }
@@ -171,30 +178,41 @@ where
         let display_width = bounds.width;
         let display_height = bounds.height;
 
+        // Base scale from ContentFit::Contain
         let width_ratio = display_width / image_width;
         let height_ratio = display_height / image_height;
-        let scale = width_ratio.min(height_ratio);
+        let base_scale = width_ratio.min(height_ratio);
 
-        let scaled_width = image_width * scale;
-        let scaled_height = image_height * scale;
-        let offset_x = (display_width - scaled_width) / 2.0;
-        let offset_y = (display_height - scaled_height) / 2.0;
+        // Calculate zoomed image dimensions (changes with zoom)
+        let zoomed_image_width = image_width * base_scale * self.zoom_scale;
+        let zoomed_image_height = image_height * base_scale * self.zoom_scale;
+
+        // Centering offset after zoom (changes as image grows/shrinks)
+        let center_offset_x = (display_width - zoomed_image_width) / 2.0;
+        let center_offset_y = (display_height - zoomed_image_height) / 2.0;
 
         // Draw label for each bbox
         for annotation in &self.annotations {
-            let x = annotation.bbox.x * scale + offset_x + bounds.x;
-            let y = annotation.bbox.y * scale + offset_y + bounds.y;
+            // Scale bbox coordinates by base_scale and zoom_scale
+            let scaled_bbox_x = annotation.bbox.x * base_scale * self.zoom_scale;
+            let scaled_bbox_y = annotation.bbox.y * base_scale * self.zoom_scale;
+
+            // Apply centering offset and pan offset (subtract offset like ImageShader does)
+            let x = scaled_bbox_x + center_offset_x - self.zoom_offset.x + bounds.x;
+            let y = scaled_bbox_y + center_offset_y - self.zoom_offset.y + bounds.y;
 
             // Get color for this category
             let bg_color = get_category_color(annotation.category_id);
 
-            // Estimate text width (rough approximation)
-            let text_width = annotation.category_name.len() as f32 * 7.5;
-            let label_height = 18.0;
-            let padding = 4.0;
+            // Estimate text width (rough approximation) and scale with zoom
+            let base_text_width = annotation.category_name.len() as f32 * 7.5;
+            let text_width = base_text_width * self.zoom_scale;
+            let base_label_height = 18.0;
+            let label_height = base_label_height * self.zoom_scale;
+            let padding = 4.0 * self.zoom_scale;
 
             // Position label just above the bbox
-            let label_y = y - label_height - 2.0;
+            let label_y = y - label_height - 2.0 * self.zoom_scale;
 
             // Draw colored background rectangle
             renderer.fill_quad(
@@ -220,7 +238,7 @@ where
                 Text {
                     content: annotation.category_name.clone(),
                     bounds: iced_core::Size::new(f32::INFINITY, label_height),
-                    size: 13.0.into(),
+                    size: (13.0 * self.zoom_scale).into(),
                     line_height: iced_core::text::LineHeight::default(),
                     font: renderer.default_font(),
                     horizontal_alignment: iced_core::alignment::Horizontal::Left,
@@ -228,7 +246,7 @@ where
                     shaping: iced_core::text::Shaping::Basic,
                     wrapping: iced_core::text::Wrapping::default(),
                 },
-                Point::new(x + padding, label_y + 2.0),
+                Point::new(x + padding, label_y + 2.0 * self.zoom_scale),
                 Color::WHITE,
                 bounds,
             );

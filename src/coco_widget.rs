@@ -11,6 +11,7 @@ use iced_wgpu::Renderer;
 use iced_widget::{container, text};
 use iced_core::padding;
 use iced_core::keyboard::{self, Key};
+use iced_core::Vector;
 use log::{info, error, warn};
 
 use crate::app::Message;
@@ -42,6 +43,9 @@ pub enum CocoMessage {
 
     /// Prompt user to select image directory
     PromptImageDirectory,
+
+    /// Image zoom/pan changed (pane_index, scale, offset)
+    ZoomChanged(usize, f32, Vector),
 }
 
 /// Convert CocoMessage to the main Message type
@@ -266,6 +270,15 @@ pub fn handle_coco_message(
                     Message::CocoAction(CocoMessage::ImageDirectorySelected(path))
                 }
             )
+        }
+
+        CocoMessage::ZoomChanged(pane_index, scale, offset) => {
+            // Update zoom state in the corresponding pane
+            if let Some(pane) = panes.get_mut(pane_index) {
+                pane.zoom_scale = scale;
+                pane.zoom_offset = offset;
+            }
+            Task::none()
         }
     }
 }
