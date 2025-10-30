@@ -302,6 +302,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     {
                         shader = shader
                             .pane_index(0)
+                            .image_index(app.panes[0].img_cache.current_index)
                             .on_zoom_change(|pane_idx, scale, offset| {
                                 Message::CocoAction(crate::coco_widget::CocoMessage::ZoomChanged(
                                     pane_idx, scale, offset

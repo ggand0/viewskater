@@ -37,6 +37,8 @@ pub struct ImageShader<Message> {
     pane_index: usize,
     #[cfg(feature = "coco")]
     on_zoom_change: Option<Box<dyn Fn(usize, f32, Vector) -> Message>>,
+    #[cfg(feature = "coco")]
+    image_index: usize,
 }
 
 impl<Message> ImageShader<Message> {
@@ -78,6 +80,8 @@ impl<Message> ImageShader<Message> {
             pane_index: 0,
             #[cfg(feature = "coco")]
             on_zoom_change: None,
+            #[cfg(feature = "coco")]
+            image_index: 0,
         }
     }
 
@@ -219,6 +223,7 @@ pub struct ImageShaderState {
     pub current_offset: Vector,
     pub cursor_grabbed_at: Option<Point>,
     pub last_click_time: Option<std::time::Instant>,
+    pub last_image_index: usize,  // Track image index to detect image changes
 }
 
 impl ImageShaderState {
@@ -229,6 +234,7 @@ impl ImageShaderState {
             current_offset: Vector::default(),
             cursor_grabbed_at: None,
             last_click_time: None,
+            last_image_index: 0,
         }
     }
 
@@ -555,6 +561,21 @@ where
             }
         };
 
+        // Detect image change and sync zoom state to Pane
+        #[cfg(feature = "coco")]
+        {
+            let state = tree.state.downcast_mut::<ImageShaderState>();
+            if state.last_image_index != self.image_index {
+                // Image changed - sync current zoom state to Pane (don't reset)
+                state.last_image_index = self.image_index;
+
+                // Emit zoom sync message with CURRENT state to keep zoom persistent
+                if let Some(ref callback) = self.on_zoom_change {
+                    let message = callback(self.pane_index, state.scale, state.current_offset);
+                    shell.publish(message);
+                }
+            }
+        }
 
         match event {
             core::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
@@ -908,6 +929,12 @@ impl<Message> ImageShader<Message> {
         F: 'static + Fn(usize, f32, Vector) -> Message,
     {
         self.on_zoom_change = Some(Box::new(callback));
+        self
+    }
+
+    #[cfg(feature = "coco")]
+    pub fn image_index(mut self, image_index: usize) -> Self {
+        self.image_index = image_index;
         self
     }
 }
