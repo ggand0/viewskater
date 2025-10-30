@@ -195,18 +195,29 @@ pub fn handle_coco_message(
                         // Need to prompt user for directory
                         warn!("Could not auto-detect image directory, prompting user");
 
-                        // Store the dataset temporarily and prompt for directory
+                        // Use native-dialog which has better Linux support
+                        let initial_dir = json_path.parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "~".to_string());
+
                         Task::perform(
                             async move {
-                                let folder_handle = rfd::AsyncFileDialog::new()
-                                    .set_title("Select Image Directory for COCO Dataset")
-                                    .pick_folder()
-                                    .await;
-                                (folder_handle, dataset, json_path)
+                                let result = tokio::task::spawn_blocking(move || {
+                                    native_dialog::FileDialog::new()
+                                        .set_title("Select image directory for COCO dataset")
+                                        .set_location(&initial_dir)
+                                        .show_open_single_dir()
+                                }).await;
+
+                                let dir_path = match result {
+                                    Ok(Ok(Some(path))) => Some(path),
+                                    _ => None,
+                                };
+
+                                (dir_path, dataset, json_path)
                             },
-                            |(folder_handle, dataset, json_path)| {
-                                let path = folder_handle.map(|f| f.path().to_path_buf());
-                                Message::CocoAction(CocoMessage::ImageDirectorySelected(path, dataset, json_path))
+                            |(dir_path, dataset, json_path)| {
+                                Message::CocoAction(CocoMessage::ImageDirectorySelected(dir_path, dataset, json_path))
                             }
                         )
                     }
