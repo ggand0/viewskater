@@ -73,14 +73,17 @@ impl CocoDataset {
             .map_err(|e| format!("Failed to parse COCO JSON: {}", e))
     }
 
-    /// Validate that this looks like a COCO dataset
-    pub fn validate(&self) -> Result<(), String> {
+    /// Validate that this looks like a COCO dataset and filter out invalid annotations
+    /// Returns number of skipped annotations and warnings
+    pub fn validate_and_clean(&mut self) -> (usize, Vec<String>) {
+        let mut warnings = Vec::new();
+
         if self.images.is_empty() {
-            return Err("COCO dataset has no images".to_string());
+            warnings.push("COCO dataset has no images".to_string());
         }
 
         if self.categories.is_empty() {
-            return Err("COCO dataset has no categories".to_string());
+            warnings.push("COCO dataset has no categories".to_string());
         }
 
         // Check that annotations reference valid image_ids and category_ids
@@ -89,28 +92,36 @@ impl CocoDataset {
         let category_ids: std::collections::HashSet<_> =
             self.categories.iter().map(|cat| cat.id).collect();
 
-        for ann in &self.annotations {
+        let original_count = self.annotations.len();
+
+        // Filter out invalid annotations
+        self.annotations.retain(|ann| {
             if !image_ids.contains(&ann.image_id) {
-                return Err(format!(
-                    "Annotation {} references non-existent image_id {}",
+                warnings.push(format!(
+                    "Skipping annotation {}: references non-existent image_id {}",
                     ann.id, ann.image_id
                 ));
+                return false;
             }
             if !category_ids.contains(&ann.category_id) {
-                return Err(format!(
-                    "Annotation {} references non-existent category_id {}",
+                warnings.push(format!(
+                    "Skipping annotation {}: references non-existent category_id {}",
                     ann.id, ann.category_id
                 ));
+                return false;
             }
             if ann.bbox.len() != 4 {
-                return Err(format!(
-                    "Annotation {} has invalid bbox format (expected 4 values)",
-                    ann.id
+                warnings.push(format!(
+                    "Skipping annotation {}: invalid bbox format (expected 4 values, got {})",
+                    ann.id, ann.bbox.len()
                 ));
+                return false;
             }
-        }
+            true
+        });
 
-        Ok(())
+        let skipped_count = original_count - self.annotations.len();
+        (skipped_count, warnings)
     }
 
     /// Check if JSON content looks like a COCO dataset (quick detection)
@@ -235,8 +246,9 @@ mod tests {
             ]
         }"#;
 
-        let dataset = CocoDataset::from_str(coco_json).unwrap();
-        assert!(dataset.validate().is_ok());
+        let mut dataset = CocoDataset::from_str(coco_json).unwrap();
+        let (skipped_count, _warnings) = dataset.validate_and_clean();
+        assert_eq!(skipped_count, 0);
         assert_eq!(dataset.images.len(), 1);
         assert_eq!(dataset.annotations.len(), 1);
         assert_eq!(dataset.categories.len(), 1);

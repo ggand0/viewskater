@@ -26,8 +26,8 @@ pub enum CocoMessage {
     /// Load COCO JSON file from path
     LoadCocoFile(PathBuf),
 
-    /// COCO file loaded (with result)
-    CocoFileLoaded(Result<(CocoDataset, PathBuf), String>),
+    /// COCO file loaded (with result: dataset, path, skipped_count, warnings)
+    CocoFileLoaded(Result<(CocoDataset, PathBuf, usize, Vec<String>), String>),
 
     /// User selected image directory (with pending dataset and json path)
     ImageDirectorySelected(Option<PathBuf>, CocoDataset, PathBuf),
@@ -110,12 +110,10 @@ pub fn handle_coco_message(
                 async move {
                     // Parse the COCO file
                     match CocoDataset::from_file(&path) {
-                        Ok(dataset) => {
-                            // Validate the dataset
-                            match dataset.validate() {
-                                Ok(_) => Ok((dataset, path)),
-                                Err(e) => Err(e),
-                            }
+                        Ok(mut dataset) => {
+                            // Validate and clean the dataset (filter invalid annotations)
+                            let (skipped_count, warnings) = dataset.validate_and_clean();
+                            Ok((dataset, path, skipped_count, warnings))
                         }
                         Err(e) => Err(e),
                     }
@@ -126,9 +124,16 @@ pub fn handle_coco_message(
 
         CocoMessage::CocoFileLoaded(result) => {
             match result {
-                Ok((dataset, json_path)) => {
+                Ok((dataset, json_path, skipped_count, warnings)) => {
                     info!("COCO dataset loaded: {} images, {} annotations",
                           dataset.images.len(), dataset.annotations.len());
+
+                    if skipped_count > 0 {
+                        warn!("Skipped {} invalid annotation(s)", skipped_count);
+                        for warning in &warnings {
+                            warn!("{}", warning);
+                        }
+                    }
 
                     // Try to find image directory automatically
                     let json_dir = json_path.parent()

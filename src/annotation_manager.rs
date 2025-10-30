@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use log::info;
+use log::{info, warn};
 
 use crate::coco_parser::{CocoDataset, ImageAnnotation};
 
@@ -48,10 +48,16 @@ impl AnnotationManager {
         info!("Loading COCO file: {}", json_path.display());
 
         // Parse the COCO JSON
-        let dataset = CocoDataset::from_file(&json_path)?;
+        let mut dataset = CocoDataset::from_file(&json_path)?;
 
-        // Validate the dataset
-        dataset.validate()?;
+        // Validate and clean the dataset
+        let (skipped_count, warnings) = dataset.validate_and_clean();
+        if skipped_count > 0 {
+            warn!("Skipped {} invalid annotation(s)", skipped_count);
+            for warning in &warnings {
+                warn!("{}", warning);
+            }
+        }
 
         info!("COCO dataset parsed: {} images, {} annotations, {} categories",
               dataset.images.len(), dataset.annotations.len(), dataset.categories.len());
