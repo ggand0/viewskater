@@ -199,7 +199,7 @@ impl shader::Primitive for BBoxPrimitive {
         encoder: &mut wgpu::CommandEncoder,
         storage: &Storage,
         target: &wgpu::TextureView,
-        _clip_bounds: &Rectangle<u32>,
+        clip_bounds: &Rectangle<u32>,
     ) {
         if self.annotations.is_empty() {
             return;
@@ -222,6 +222,14 @@ impl shader::Primitive for BBoxPrimitive {
                         timestamp_writes: None,
                         occlusion_query_set: None,
                     });
+
+                    // Set scissor rectangle to clip rendering to bounds
+                    render_pass.set_scissor_rect(
+                        clip_bounds.x,
+                        clip_bounds.y,
+                        clip_bounds.width,
+                        clip_bounds.height,
+                    );
 
                     render_pass.set_pipeline(&pipeline.render_pipeline);
                     render_pass.set_vertex_buffer(0, buffer.slice(..));
