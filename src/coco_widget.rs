@@ -29,8 +29,8 @@ pub enum CocoMessage {
     /// COCO file loaded (with result)
     CocoFileLoaded(Result<(CocoDataset, PathBuf), String>),
 
-    /// User selected image directory
-    ImageDirectorySelected(Option<PathBuf>),
+    /// User selected image directory (with pending dataset and json path)
+    ImageDirectorySelected(Option<PathBuf>, CocoDataset, PathBuf),
 
     /// Toggle bounding box visibility for a pane
     ToggleBoundingBoxes(usize),  // pane_index
@@ -46,9 +46,6 @@ pub enum CocoMessage {
 
     /// Clear loaded annotations
     ClearAnnotations,
-
-    /// Prompt user to select image directory
-    PromptImageDirectory,
 
     /// Image zoom/pan changed (pane_index, scale, offset)
     ZoomChanged(usize, f32, Vector),
@@ -201,14 +198,15 @@ pub fn handle_coco_message(
                         // Store the dataset temporarily and prompt for directory
                         Task::perform(
                             async move {
-                                rfd::AsyncFileDialog::new()
+                                let folder_handle = rfd::AsyncFileDialog::new()
                                     .set_title("Select Image Directory for COCO Dataset")
                                     .pick_folder()
-                                    .await
+                                    .await;
+                                (folder_handle, dataset, json_path)
                             },
-                            |folder_handle| {
+                            |(folder_handle, dataset, json_path)| {
                                 let path = folder_handle.map(|f| f.path().to_path_buf());
-                                Message::CocoAction(CocoMessage::ImageDirectorySelected(path))
+                                Message::CocoAction(CocoMessage::ImageDirectorySelected(path, dataset, json_path))
                             }
                         )
                     }
@@ -220,15 +218,37 @@ pub fn handle_coco_message(
             }
         }
 
-        CocoMessage::ImageDirectorySelected(maybe_path) => {
+        CocoMessage::ImageDirectorySelected(maybe_path, dataset, json_path) => {
             if let Some(dir_path) = maybe_path {
                 info!("User selected image directory: {}", dir_path.display());
-                // TODO: Store the dataset and set directory
-                // This requires refactoring to pass the pending dataset through messages
+
+                // Set the image directory with the dataset
+                if let Err(e) = annotation_manager.set_image_directory(
+                    dataset,
+                    json_path,
+                    dir_path.clone(),
+                ) {
+                    error!("Failed to set image directory: {}", e);
+                    Task::none()
+                } else {
+                    info!("COCO annotations loaded successfully from directory: {}", dir_path.display());
+
+                    // Enable bbox and mask rendering by default
+                    for pane in panes.iter_mut() {
+                        pane.show_bboxes = true;
+                        pane.show_masks = true;
+                    }
+
+                    // Now open the image directory to actually load and display images
+                    Task::done(Message::FolderOpened(
+                        Ok(dir_path.to_string_lossy().to_string()),
+                        0  // pane_index
+                    ))
+                }
             } else {
                 warn!("User cancelled directory selection");
+                Task::none()
             }
-            Task::none()
         }
 
         CocoMessage::ToggleBoundingBoxes(pane_index) => {
@@ -284,21 +304,6 @@ pub fn handle_coco_message(
 
             info!("Cleared COCO annotations");
             Task::none()
-        }
-
-        CocoMessage::PromptImageDirectory => {
-            Task::perform(
-                async move {
-                    rfd::AsyncFileDialog::new()
-                        .set_title("Select Image Directory for COCO Dataset")
-                        .pick_folder()
-                        .await
-                },
-                |folder_handle| {
-                    let path = folder_handle.map(|f| f.path().to_path_buf());
-                    Message::CocoAction(CocoMessage::ImageDirectorySelected(path))
-                }
-            )
         }
 
         CocoMessage::ZoomChanged(pane_index, scale, offset) => {
