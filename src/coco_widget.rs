@@ -160,7 +160,28 @@ pub fn handle_coco_message(
 
                         if dirs.len() == 1 {
                             info!("Found single directory in JSON parent: {:?}", dirs[0]);
-                            candidates.insert(0, dirs[0].clone());
+                            let single_dir = &dirs[0];
+                            candidates.insert(0, single_dir.clone());
+
+                            // Also check nested single subdirectory (depth 1)
+                            // Handles structures like default/images or default/whatever_name
+                            if let Ok(nested_entries) = std::fs::read_dir(single_dir) {
+                                let nested_dirs: Vec<PathBuf> = nested_entries
+                                    .flatten()
+                                    .filter_map(|entry| {
+                                        if entry.file_type().ok()?.is_dir() {
+                                            Some(entry.path())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+
+                                if nested_dirs.len() == 1 {
+                                    info!("Found single nested directory: {:?}", nested_dirs[0]);
+                                    candidates.insert(0, nested_dirs[0].clone());
+                                }
+                            }
                         }
                     }
 
