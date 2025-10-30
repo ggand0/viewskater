@@ -278,19 +278,15 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         PaneLayout::SinglePane => {
             // Choose the appropriate widget based on slider movement state
             let first_img = if app.panes[0].dir_loaded {
-                if app.is_slider_moving && app.panes[0].slider_image.is_some() {
+                // First, create the base image widget (either slider or shader)
+                let base_image_widget = if app.is_slider_moving && app.panes[0].slider_image.is_some() {
                     // Use regular Image widget during slider movement (much faster)
                     let image_handle = app.panes[0].slider_image.clone().unwrap();
 
-                    container(
-                        center(
-                            viewer::Viewer::new(image_handle)
-                                .content_fit(iced_winit::core::ContentFit::Contain)
-                        )
+                    center(
+                        viewer::Viewer::new(image_handle)
+                            .content_fit(iced_winit::core::ContentFit::Contain)
                     )
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .padding(0)
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Fixed: Pass Arc<Scene> reference correctly
                     let mut shader = ImageShader::new(Some(scene))
@@ -313,76 +309,76 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                             });
                     }
 
-                    let shader = shader;
+                    center(shader)
+                } else {
+                    return container(text("No image loaded"));
+                };
 
-                    // Check if we should render annotations (bboxes or masks)
-                    #[cfg(feature = "coco")]
-                    let with_annotations = {
-                        if (app.panes[0].show_bboxes || app.panes[0].show_masks) && app.annotation_manager.has_annotations() {
-                            // Get current image filename
-                            let current_index = app.panes[0].img_cache.current_index;
-                            if let Some(path_source) = app.panes[0].img_cache.image_paths.get(current_index) {
-                                let filename = path_source.file_name();
+                // Then, optionally add annotations overlay on top
+                #[cfg(feature = "coco")]
+                let with_annotations = {
+                    if (app.panes[0].show_bboxes || app.panes[0].show_masks) && app.annotation_manager.has_annotations() {
+                        // Get current image filename
+                        let current_index = app.panes[0].img_cache.current_index;
+                        if let Some(path_source) = app.panes[0].img_cache.image_paths.get(current_index) {
+                            let filename = path_source.file_name();
 
-                                // Look up annotations for this image
-                                if let Some(annotations) = app.annotation_manager.get_annotations(&filename) {
-                                    // Get image dimensions from the current image data
-                                    let image_size = (
-                                        app.panes[0].current_image.width(),
-                                        app.panes[0].current_image.height(),
-                                    );
+                            // Look up annotations for this image
+                            if let Some(annotations) = app.annotation_manager.get_annotations(&filename) {
+                                // Get image dimensions from the current image data
+                                let image_size = (
+                                    app.panes[0].current_image.width(),
+                                    app.panes[0].current_image.height(),
+                                );
 
-                                    // Create bbox/mask overlay
-                                    let bbox_overlay = crate::bbox_overlay::render_bbox_overlay(
-                                        annotations,
-                                        image_size,
-                                        app.panes[0].zoom_scale,
-                                        app.panes[0].zoom_offset,
-                                        app.panes[0].show_bboxes,
-                                        app.panes[0].show_masks,
-                                    );
+                                // Create bbox/mask overlay
+                                let bbox_overlay = crate::bbox_overlay::render_bbox_overlay(
+                                    annotations,
+                                    image_size,
+                                    app.panes[0].zoom_scale,
+                                    app.panes[0].zoom_offset,
+                                    app.panes[0].show_bboxes,
+                                    app.panes[0].show_masks,
+                                );
 
-                                    // Stack image and bboxes
-                                    container(center(
-                                        Stack::new()
-                                            .push(shader)
-                                            .push(bbox_overlay)
-                                    ))
-                                    .width(Length::Fill)
-                                    .height(Length::Fill)
-                                    .padding(0)
-                                } else {
-                                    // No annotations for this image, just show the shader
-                                    container(center(shader))
-                                        .width(Length::Fill)
-                                        .height(Length::Fill)
-                                        .padding(0)
-                                }
+                                // Stack image and annotations
+                                container(
+                                    Stack::new()
+                                        .push(base_image_widget)
+                                        .push(bbox_overlay)
+                                )
+                                .width(Length::Fill)
+                                .height(Length::Fill)
+                                .padding(0)
                             } else {
-                                container(center(shader))
+                                // No annotations for this image
+                                container(base_image_widget)
                                     .width(Length::Fill)
                                     .height(Length::Fill)
                                     .padding(0)
                             }
                         } else {
-                            // Annotations disabled or no annotations loaded
-                            container(center(shader))
+                            container(base_image_widget)
                                 .width(Length::Fill)
                                 .height(Length::Fill)
                                 .padding(0)
                         }
-                    };
+                    } else {
+                        // Annotations disabled or no annotations loaded
+                        container(base_image_widget)
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .padding(0)
+                    }
+                };
 
-                    #[cfg(not(feature = "coco"))]
-                    let with_annotations = container(center(shader))
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .padding(0);
+                #[cfg(not(feature = "coco"))]
+                let with_annotations = container(base_image_widget)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(0);
 
-                    with_annotations
-                } else {
-                    container(text("No image loaded"))
-                }
+                with_annotations
             } else {
                 container(text("")).height(Length::Fill)
             };
