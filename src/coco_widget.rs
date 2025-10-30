@@ -136,13 +136,33 @@ pub fn handle_coco_message(
                         .unwrap_or_else(|| PathBuf::from("."));
 
                     // Try common directory patterns
-                    let candidates = vec![
+                    let mut candidates = vec![
                         json_dir.join("images"),
                         json_dir.join("img"),
                         json_dir.join("val2017"),
                         json_dir.join("train2017"),
                         json_dir.clone(),
                     ];
+
+                    // If there's only a single directory in the JSON's parent directory,
+                    // add it as a candidate (handles arbitrary directory names)
+                    if let Ok(entries) = std::fs::read_dir(&json_dir) {
+                        let dirs: Vec<PathBuf> = entries
+                            .flatten()
+                            .filter_map(|entry| {
+                                if entry.file_type().ok()?.is_dir() {
+                                    Some(entry.path())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        if dirs.len() == 1 {
+                            info!("Found single directory in JSON parent: {:?}", dirs[0]);
+                            candidates.insert(0, dirs[0].clone());
+                        }
+                    }
 
                     // Check if we can find images
                     let test_filenames: Vec<_> = dataset.get_image_filenames()
