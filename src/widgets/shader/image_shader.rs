@@ -724,6 +724,13 @@ where
                         debug!("ImageShader::on_event - Panning, new offset: {:?}", state.current_offset);
                     }
 
+                    // Emit zoom change message during pan for real-time annotation updates
+                    #[cfg(feature = "coco")]
+                    if let Some(ref callback) = self.on_zoom_change {
+                        let message = callback(self.pane_index, state.scale, state.current_offset);
+                        shell.publish(message);
+                    }
+
                     event::Status::Captured
                 } else {
                     event::Status::Ignored
