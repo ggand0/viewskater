@@ -19,6 +19,7 @@ mod macos {
     pub use iced_custom as iced;
 }
 
+use iced_winit::winit::dpi::{ PhysicalPosition, PhysicalSize };
 #[cfg(target_os = "linux")]
 use other_os::*;
 
@@ -114,8 +115,9 @@ pub struct DataViewer {
     pub coco_disable_simplification: bool,              // COCO: Disable polygon simplification for RLE masks
     #[cfg(feature = "coco")]
     pub coco_mask_render_mode: crate::settings::CocoMaskRenderMode,  // COCO: Mask rendering mode (Polygon or Pixel)
+    pub window_size: PhysicalSize<u32>,
+    pub window_position: PhysicalPosition<i32>,
 }
-
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
 impl std::ops::Deref for DataViewer {
     type Target = RuntimeSettings;
@@ -198,11 +200,13 @@ impl DataViewer {
             #[cfg(feature = "selection")]
             selection_manager: SelectionManager::new(),
             #[cfg(feature = "coco")]
-            annotation_manager: crate::coco::annotation_manager::AnnotationManager::new(),
             #[cfg(feature = "coco")]
             coco_disable_simplification: settings.coco_disable_simplification,
             #[cfg(feature = "coco")]
             coco_mask_render_mode: settings.coco_mask_render_mode,
+            window_position: PhysicalPosition { x: 0, y: 0 },
+            window_size: PhysicalSize { width: settings.window_width,
+                height: settings.window_height },
         }
     }
 

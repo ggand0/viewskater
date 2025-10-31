@@ -1,6 +1,7 @@
 use iced_core::Event;
 use iced_core::image::Handle;
 use iced_core::Color;
+use iced_winit::winit::dpi::{PhysicalPosition, PhysicalSize};
 
 use crate::cache::img_cache::{CachedData, CacheStrategy, LoadOperation};
 use crate::menu::PaneLayout;
@@ -73,4 +74,6 @@ pub enum Message {
     // Advanced settings input
     AdvancedSettingChanged(String, String),  // (field_name, value)
     ResetAdvancedSettings,
+    SizeChanged(PhysicalSize<u32>),
+    PositionChanged(PhysicalPosition<i32>),
 }
