@@ -41,7 +41,7 @@ pub struct CocoAnnotation {
 #[serde(untagged)]
 pub enum CocoSegmentation {
     Polygon(Vec<Vec<f32>>),      // List of polygons
-    RLE(CocoRLE),                 // Run-length encoding
+    Rle(CocoRLE),                 // Run-length encoding
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -174,7 +174,7 @@ impl CocoDataset {
                 };
 
                 map.entry(image.file_name.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(image_ann);
             }
         }
@@ -207,7 +207,7 @@ pub struct BoundingBox {
 
 impl BoundingBox {
     /// Convert COCO bbox (x, y, w, h) to top-left and bottom-right corners
-    pub fn to_corners(&self) -> (f32, f32, f32, f32) {
+    pub fn to_corners(self) -> (f32, f32, f32, f32) {
         (self.x, self.y, self.x + self.width, self.y + self.height)
     }
 }

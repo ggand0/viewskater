@@ -80,11 +80,13 @@ impl FooterOptions {
     }
 
     #[cfg(feature = "coco")]
+    #[allow(dead_code)]
     pub fn with_coco(mut self, has_annotations: bool, num_annotations: usize) -> Self {
         self.coco_badge = Some(crate::coco_widget::coco_badge(has_annotations, num_annotations));
         self
     }
 
+    #[allow(dead_code)]
     pub fn get_mark_badge(self) -> Element<'static, Message, WinitTheme, Renderer> {
         self.mark_badge.unwrap_or_else(|| {
             #[cfg(feature = "ml")]
@@ -98,6 +100,7 @@ impl FooterOptions {
         })
     }
 
+    #[allow(dead_code)]
     pub fn get_coco_badge(self) -> Element<'static, Message, WinitTheme, Renderer> {
         self.coco_badge.unwrap_or_else(|| {
             #[cfg(feature = "coco")]

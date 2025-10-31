@@ -2,7 +2,6 @@
 ///
 /// This module is only compiled when the "coco" feature is enabled.
 /// It encapsulates all COCO-related messages and UI components.
-
 use std::path::PathBuf;
 use iced_winit::core::{Element, Color};
 use iced_winit::core::Theme as WinitTheme;
@@ -20,6 +19,9 @@ use crate::pane::Pane;
 use crate::menu::PaneLayout;
 use crate::coco_parser::CocoDataset;
 
+/// Result type for COCO file loading: (dataset, path, skipped_count, warnings, invalid_image_ids)
+type CocoLoadResult = Result<(CocoDataset, PathBuf, usize, Vec<String>, std::collections::HashSet<u64>), String>;
+
 /// COCO-specific messages grouped into a single enum variant
 #[derive(Debug, Clone)]
 pub enum CocoMessage {
@@ -27,7 +29,7 @@ pub enum CocoMessage {
     LoadCocoFile(PathBuf),
 
     /// COCO file loaded (with result: dataset, path, skipped_count, warnings, images_with_invalid)
-    CocoFileLoaded(Result<(CocoDataset, PathBuf, usize, Vec<String>, std::collections::HashSet<u64>), String>),
+    CocoFileLoaded(CocoLoadResult),
 
     /// User selected image directory (with pending dataset, json path, and invalid images)
     ImageDirectorySelected(Option<PathBuf>, CocoDataset, PathBuf, std::collections::HashSet<u64>),
@@ -59,6 +61,7 @@ impl From<CocoMessage> for Message {
 }
 
 /// Creates a badge widget showing COCO annotation status
+#[allow(dead_code)]
 pub fn coco_badge(has_annotations: bool, num_annotations: usize) -> Element<'static, Message, WinitTheme, Renderer> {
     if !has_annotations {
         return container(text(""))
@@ -320,7 +323,7 @@ pub fn handle_coco_message(
 
         CocoMessage::ToggleAllBoundingBoxes => {
             // Toggle all panes
-            let new_state = panes.get(0)
+            let new_state = panes.first()
                 .map(|p| !p.show_bboxes)
                 .unwrap_or(true);
 
@@ -341,7 +344,7 @@ pub fn handle_coco_message(
 
         CocoMessage::ToggleAllSegmentationMasks => {
             // Toggle all panes
-            let new_state = panes.get(0)
+            let new_state = panes.first()
                 .map(|p| !p.show_masks)
                 .unwrap_or(true);
 

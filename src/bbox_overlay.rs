@@ -1,7 +1,6 @@
 /// Bounding box overlay rendering for COCO annotations
 ///
 /// This module renders bounding boxes using a custom WGPU shader.
-
 use iced_winit::core::{Element, Length, Color, Rectangle, Point, Vector};
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::Renderer;
@@ -89,7 +88,7 @@ pub fn render_bbox_overlay<'a>(
         stack = stack.push(bbox_shader);
 
         // Create per-bbox label overlay
-        let labels_overlay = BBoxLabels::new(annotations.to_vec(), image_size, zoom_scale, zoom_offset);
+        let labels_overlay = BBoxLabels::into_element(annotations.to_vec(), image_size, zoom_scale, zoom_offset);
         stack = stack.push(labels_overlay);
     }
 
@@ -157,7 +156,7 @@ struct BBoxLabels {
 }
 
 impl BBoxLabels {
-    fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32), zoom_scale: f32, zoom_offset: Vector) -> Element<'static, Message, WinitTheme, Renderer> {
+    fn into_element(annotations: Vec<ImageAnnotation>, image_size: (u32, u32), zoom_scale: f32, zoom_offset: Vector) -> Element<'static, Message, WinitTheme, Renderer> {
         let widget = Self {
             annotations,
             image_size,
@@ -302,6 +301,7 @@ struct SegmentationMasks {
 }
 
 impl SegmentationMasks {
+    #[allow(dead_code, clippy::new_ret_no_self)]
     fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32), zoom_scale: f32, zoom_offset: Vector) -> Element<'static, Message, WinitTheme, Renderer> {
         let widget = Self {
             annotations,
@@ -385,7 +385,7 @@ where
                             );
                         }
                     }
-                    CocoSegmentation::RLE(_rle) => {
+                    CocoSegmentation::Rle(_rle) => {
                         // RLE rendering not yet implemented
                         // Could decode RLE to polygon or render as pixel mask
                     }
@@ -396,6 +396,7 @@ where
 }
 
 impl SegmentationMasks {
+    #[allow(clippy::too_many_arguments)]
     fn draw_polygon<R: iced_core::Renderer>(
         &self,
         renderer: &mut R,

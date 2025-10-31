@@ -2,7 +2,6 @@
 ///
 /// Manages loading, caching, and accessing COCO annotations.
 /// Associates annotation files with image directories.
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 use log::{info, warn};
@@ -24,6 +23,7 @@ struct LoadedDataset {
     dataset: CocoDataset,
 
     /// Image directory associated with this dataset
+    #[allow(dead_code)]
     image_directory: PathBuf,
 
     /// Cached lookup map: filename -> annotations
@@ -47,6 +47,7 @@ impl AnnotationManager {
     /// Returns Ok(true) if image directory was found automatically,
     /// Ok(false) if caller needs to prompt for image directory,
     /// Err if parsing failed
+    #[allow(dead_code)]
     pub fn load_coco_file(&mut self, json_path: PathBuf) -> Result<bool, String> {
         info!("Loading COCO file: {}", json_path.display());
 
@@ -123,13 +124,14 @@ impl AnnotationManager {
     /// 1. Same directory as JSON file
     /// 2. "images" subdirectory
     /// 3. Common COCO directory names
+    #[allow(dead_code)]
     fn find_image_directory(
         &self,
         dataset: &CocoDataset,
-        json_dir: &PathBuf,
+        json_dir: &std::path::Path,
     ) -> Result<Option<PathBuf>, String> {
         let candidates = vec![
-            json_dir.clone(),
+            json_dir.to_path_buf(),
             json_dir.join("images"),
             json_dir.join("img"),
             json_dir.join("data"),
@@ -175,7 +177,7 @@ impl AnnotationManager {
     fn verify_images_in_directory(
         &self,
         dataset: &CocoDataset,
-        directory: &PathBuf,
+        directory: &std::path::Path,
     ) -> Result<usize, String> {
         let mut found = 0;
         let filenames = dataset.get_image_filenames();
@@ -205,17 +207,20 @@ impl AnnotationManager {
     }
 
     /// Get the current image directory (if loaded)
+    #[allow(dead_code)]
     pub fn get_image_directory(&self) -> Option<&PathBuf> {
         self.current_dataset.as_ref()
             .map(|ds| &ds.image_directory)
     }
 
     /// Get the current JSON path (if loaded)
+    #[allow(dead_code)]
     pub fn get_json_path(&self) -> Option<&PathBuf> {
         self.current_json_path.as_ref()
     }
 
     /// Get dataset statistics
+    #[allow(dead_code)]
     pub fn get_stats(&self) -> Option<DatasetStats> {
         self.current_dataset.as_ref().map(|ds| DatasetStats {
             num_images: ds.dataset.images.len(),
@@ -251,6 +256,7 @@ impl Default for AnnotationManager {
 
 /// Statistics about the loaded dataset
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DatasetStats {
     pub num_images: usize,
     pub num_annotations: usize,

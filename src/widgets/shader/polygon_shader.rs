@@ -1,14 +1,13 @@
 /// Polygon mask shader widget for rendering COCO segmentation masks
 ///
 /// Uses WGPU to draw filled polygons with proper triangulation.
-
 use std::marker::PhantomData;
 use iced_core::{Color, Rectangle, Size, Length, Vector};
 use iced_core::layout::{self, Layout};
 use iced_core::mouse;
 use iced_core::renderer;
-use iced_core::widget::tree::{self, Tree};
-use iced_winit::core::{self, Element, Shell, Widget};
+use iced_core::widget::tree::Tree;
+use iced_winit::core::{Element, Widget};
 use iced_widget::shader::{self, Viewport, Storage};
 use iced_wgpu::{wgpu, primitive};
 use wgpu::util::DeviceExt;
@@ -194,7 +193,7 @@ impl shader::Primitive for PolygonPrimitive {
                             }
                         }
                     }
-                    CocoSegmentation::RLE(_rle) => {
+                    CocoSegmentation::Rle(_rle) => {
                         // RLE not yet implemented
                     }
                 }
