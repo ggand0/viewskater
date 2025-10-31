@@ -28,6 +28,9 @@ struct LoadedDataset {
 
     /// Cached lookup map: filename -> annotations
     annotation_map: HashMap<String, Vec<ImageAnnotation>>,
+
+    /// Set of image IDs that had invalid annotations
+    images_with_invalid_annos: std::collections::HashSet<u64>,
 }
 
 impl AnnotationManager {
@@ -51,7 +54,7 @@ impl AnnotationManager {
         let mut dataset = CocoDataset::from_file(&json_path)?;
 
         // Validate and clean the dataset
-        let (skipped_count, warnings) = dataset.validate_and_clean();
+        let (skipped_count, warnings, images_with_invalid) = dataset.validate_and_clean();
         if skipped_count > 0 {
             warn!("Skipped {} invalid annotation(s)", skipped_count);
             for warning in &warnings {
@@ -71,7 +74,7 @@ impl AnnotationManager {
 
         if let Some(dir) = image_dir {
             // Found the directory automatically
-            self.set_image_directory(dataset, json_path, dir)?;
+            self.set_image_directory(dataset, json_path, dir, images_with_invalid)?;
             Ok(true)
         } else {
             // Need to prompt user for directory
@@ -86,6 +89,7 @@ impl AnnotationManager {
         dataset: CocoDataset,
         json_path: PathBuf,
         image_directory: PathBuf,
+        images_with_invalid: std::collections::HashSet<u64>,
     ) -> Result<(), String> {
         // Verify that at least some images exist in this directory
         let found = self.verify_images_in_directory(&dataset, &image_directory)?;
@@ -106,6 +110,7 @@ impl AnnotationManager {
             dataset,
             image_directory,
             annotation_map,
+            images_with_invalid_annos: images_with_invalid,
         });
         self.current_json_path = Some(json_path);
 
@@ -217,6 +222,17 @@ impl AnnotationManager {
             num_annotations: ds.dataset.annotations.len(),
             num_categories: ds.dataset.categories.len(),
         })
+    }
+
+    /// Check if the current image (by filename) had any invalid annotations
+    pub fn has_invalid_annotations(&self, filename: &str) -> bool {
+        if let Some(ds) = &self.current_dataset {
+            // Find the image_id for this filename
+            if let Some(image) = ds.dataset.images.iter().find(|img| img.file_name == filename) {
+                return ds.images_with_invalid_annos.contains(&image.id);
+            }
+        }
+        false
     }
 
     /// Clear the currently loaded dataset

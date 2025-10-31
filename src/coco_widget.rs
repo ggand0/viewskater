@@ -26,11 +26,11 @@ pub enum CocoMessage {
     /// Load COCO JSON file from path
     LoadCocoFile(PathBuf),
 
-    /// COCO file loaded (with result: dataset, path, skipped_count, warnings)
-    CocoFileLoaded(Result<(CocoDataset, PathBuf, usize, Vec<String>), String>),
+    /// COCO file loaded (with result: dataset, path, skipped_count, warnings, images_with_invalid)
+    CocoFileLoaded(Result<(CocoDataset, PathBuf, usize, Vec<String>, std::collections::HashSet<u64>), String>),
 
-    /// User selected image directory (with pending dataset and json path)
-    ImageDirectorySelected(Option<PathBuf>, CocoDataset, PathBuf),
+    /// User selected image directory (with pending dataset, json path, and invalid images)
+    ImageDirectorySelected(Option<PathBuf>, CocoDataset, PathBuf, std::collections::HashSet<u64>),
 
     /// Toggle bounding box visibility for a pane
     ToggleBoundingBoxes(usize),  // pane_index
@@ -112,8 +112,8 @@ pub fn handle_coco_message(
                     match CocoDataset::from_file(&path) {
                         Ok(mut dataset) => {
                             // Validate and clean the dataset (filter invalid annotations)
-                            let (skipped_count, warnings) = dataset.validate_and_clean();
-                            Ok((dataset, path, skipped_count, warnings))
+                            let (skipped_count, warnings, images_with_invalid) = dataset.validate_and_clean();
+                            Ok((dataset, path, skipped_count, warnings, images_with_invalid))
                         }
                         Err(e) => Err(e),
                     }
@@ -124,7 +124,7 @@ pub fn handle_coco_message(
 
         CocoMessage::CocoFileLoaded(result) => {
             match result {
-                Ok((dataset, json_path, skipped_count, warnings)) => {
+                Ok((dataset, json_path, skipped_count, warnings, images_with_invalid)) => {
                     info!("COCO dataset loaded: {} images, {} annotations",
                           dataset.images.len(), dataset.annotations.len());
 
@@ -218,6 +218,7 @@ pub fn handle_coco_message(
                             dataset,
                             json_path,
                             dir.clone(),
+                            images_with_invalid,
                         ) {
                             error!("Failed to set image directory: {}", e);
                             Task::none()
@@ -260,10 +261,10 @@ pub fn handle_coco_message(
                                     _ => None,
                                 };
 
-                                (dir_path, dataset, json_path)
+                                (dir_path, dataset, json_path, images_with_invalid)
                             },
-                            |(dir_path, dataset, json_path)| {
-                                Message::CocoAction(CocoMessage::ImageDirectorySelected(dir_path, dataset, json_path))
+                            |(dir_path, dataset, json_path, images_with_invalid)| {
+                                Message::CocoAction(CocoMessage::ImageDirectorySelected(dir_path, dataset, json_path, images_with_invalid))
                             }
                         )
                     }
@@ -275,7 +276,7 @@ pub fn handle_coco_message(
             }
         }
 
-        CocoMessage::ImageDirectorySelected(maybe_path, dataset, json_path) => {
+        CocoMessage::ImageDirectorySelected(maybe_path, dataset, json_path, images_with_invalid) => {
             if let Some(dir_path) = maybe_path {
                 info!("User selected image directory: {}", dir_path.display());
 
@@ -284,6 +285,7 @@ pub fn handle_coco_message(
                     dataset,
                     json_path,
                     dir_path.clone(),
+                    images_with_invalid,
                 ) {
                     error!("Failed to set image directory: {}", e);
                     Task::none()

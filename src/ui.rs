@@ -332,6 +332,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                     app.panes[0].current_image.height(),
                                 );
 
+                                // Check if this image has invalid annotations
+                                let has_invalid = app.annotation_manager.has_invalid_annotations(&filename);
+
                                 // Create bbox/mask overlay
                                 let bbox_overlay = crate::bbox_overlay::render_bbox_overlay(
                                     annotations,
@@ -340,6 +343,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                     app.panes[0].zoom_offset,
                                     app.panes[0].show_bboxes,
                                     app.panes[0].show_masks,
+                                    has_invalid,
                                 );
 
                                 // Stack image and annotations

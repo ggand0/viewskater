@@ -61,6 +61,7 @@ pub fn render_bbox_overlay<'a>(
     zoom_offset: Vector,
     show_bboxes: bool,
     show_masks: bool,
+    has_invalid_annotations: bool,
 ) -> Element<'a, Message, WinitTheme, Renderer> {
     if annotations.is_empty() {
         return container(iced_widget::Space::new(Length::Fill, Length::Fill))
@@ -106,6 +107,18 @@ pub fn render_bbox_overlay<'a>(
 
     // Build category summary text
     let mut summary = column![];
+
+    // Add invalid annotation warning at the top if needed
+    if has_invalid_annotations {
+        summary = summary.push(
+            text("WARNING: Invalid annotations skipped")
+                .size(14)
+                .style(|_theme| iced_widget::text::Style {
+                    color: Some(Color::from([1.0, 0.5, 0.0, 1.0]))  // Orange warning
+                })
+        );
+    }
+
     for (category, count) in sorted_categories {
         let label_text = format!("{} {}", count, category);
         summary = summary.push(

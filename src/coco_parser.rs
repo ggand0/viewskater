@@ -74,9 +74,10 @@ impl CocoDataset {
     }
 
     /// Validate that this looks like a COCO dataset and filter out invalid annotations
-    /// Returns number of skipped annotations and warnings
-    pub fn validate_and_clean(&mut self) -> (usize, Vec<String>) {
+    /// Returns (skipped_count, warnings, images_with_invalid_annos)
+    pub fn validate_and_clean(&mut self) -> (usize, Vec<String>, std::collections::HashSet<u64>) {
         let mut warnings = Vec::new();
+        let mut images_with_invalid = std::collections::HashSet::new();
 
         if self.images.is_empty() {
             warnings.push("COCO dataset has no images".to_string());
@@ -101,6 +102,7 @@ impl CocoDataset {
                     "Skipping annotation {}: references non-existent image_id {}",
                     ann.id, ann.image_id
                 ));
+                images_with_invalid.insert(ann.image_id);
                 return false;
             }
             if !category_ids.contains(&ann.category_id) {
@@ -108,6 +110,7 @@ impl CocoDataset {
                     "Skipping annotation {}: references non-existent category_id {}",
                     ann.id, ann.category_id
                 ));
+                images_with_invalid.insert(ann.image_id);
                 return false;
             }
             if ann.bbox.len() != 4 {
@@ -115,13 +118,14 @@ impl CocoDataset {
                     "Skipping annotation {}: invalid bbox format (expected 4 values, got {})",
                     ann.id, ann.bbox.len()
                 ));
+                images_with_invalid.insert(ann.image_id);
                 return false;
             }
             true
         });
 
         let skipped_count = original_count - self.annotations.len();
-        (skipped_count, warnings)
+        (skipped_count, warnings, images_with_invalid)
     }
 
     /// Check if JSON content looks like a COCO dataset (quick detection)
@@ -247,8 +251,9 @@ mod tests {
         }"#;
 
         let mut dataset = CocoDataset::from_str(coco_json).unwrap();
-        let (skipped_count, _warnings) = dataset.validate_and_clean();
+        let (skipped_count, _warnings, images_with_invalid) = dataset.validate_and_clean();
         assert_eq!(skipped_count, 0);
+        assert!(images_with_invalid.is_empty());
         assert_eq!(dataset.images.len(), 1);
         assert_eq!(dataset.annotations.len(), 1);
         assert_eq!(dataset.categories.len(), 1);
