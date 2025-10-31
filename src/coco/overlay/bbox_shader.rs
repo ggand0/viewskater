@@ -1,6 +1,6 @@
-/// Polygon mask shader widget for rendering COCO segmentation masks
+/// BBox shader widget for rendering COCO bounding boxes
 ///
-/// Uses WGPU to draw filled polygons with proper triangulation.
+/// Uses WGPU to draw colored rectangles with labels over images.
 use std::marker::PhantomData;
 use iced_core::{Color, Rectangle, Size, Length, Vector};
 use iced_core::layout::{self, Layout};
@@ -11,10 +11,10 @@ use iced_winit::core::{Element, Widget};
 use iced_widget::shader::{self, Viewport, Storage};
 use iced_wgpu::{wgpu, primitive};
 use wgpu::util::DeviceExt;
-use crate::coco_parser::{ImageAnnotation, CocoSegmentation};
+use crate::coco::parser::ImageAnnotation;
 
-/// A shader widget for rendering segmentation masks
-pub struct PolygonShader<Message> {
+/// A shader widget for rendering bounding boxes
+pub struct BBoxShader<Message> {
     width: Length,
     height: Length,
     annotations: Vec<ImageAnnotation>,
@@ -24,7 +24,7 @@ pub struct PolygonShader<Message> {
     _phantom: PhantomData<Message>,
 }
 
-impl<Message> PolygonShader<Message> {
+impl<Message> BBoxShader<Message> {
     pub fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32), zoom_scale: f32, zoom_offset: Vector) -> Self {
         Self {
             width: Length::Fill,
@@ -46,11 +46,34 @@ impl<Message> PolygonShader<Message> {
         self.height = height.into();
         self
     }
+
+    /// Calculate scaling from image coordinates to display coordinates
+    #[allow(dead_code)]
+    fn calculate_scale(&self, bounds: Rectangle) -> (f32, f32, f32, f32) {
+        let image_width = self.image_size.0 as f32;
+        let image_height = self.image_size.1 as f32;
+        let display_width = bounds.width;
+        let display_height = bounds.height;
+
+        // ContentFit::Contain scaling
+        let width_ratio = display_width / image_width;
+        let height_ratio = display_height / image_height;
+        let scale = width_ratio.min(height_ratio);
+
+        let scaled_width = image_width * scale;
+        let scaled_height = image_height * scale;
+
+        // Center the image
+        let offset_x = (display_width - scaled_width) / 2.0;
+        let offset_y = (display_height - scaled_height) / 2.0;
+
+        (scale, scale, offset_x, offset_y)
+    }
 }
 
-/// Primitive for polygon rendering
+/// Primitive for bbox rendering
 #[derive(Debug)]
-pub struct PolygonPrimitive {
+pub struct BBoxPrimitive {
     bounds: Rectangle,
     annotations: Vec<ImageAnnotation>,
     image_size: (u32, u32),
@@ -59,11 +82,11 @@ pub struct PolygonPrimitive {
 }
 
 // Cache for vertex buffers created in prepare()
-struct PolygonBufferCache {
-    buffers: Vec<(wgpu::Buffer, u32)>, // (buffer, vertex_count)
+struct BBoxBufferCache {
+    buffers: Vec<wgpu::Buffer>,
 }
 
-impl shader::Primitive for PolygonPrimitive {
+impl shader::Primitive for BBoxPrimitive {
     fn prepare(
         &self,
         device: &wgpu::Device,
@@ -73,15 +96,16 @@ impl shader::Primitive for PolygonPrimitive {
         _bounds: &Rectangle,
         viewport: &Viewport,
     ) {
+        // Store viewport for use in render
         storage.store(viewport.clone());
 
         // Create pipeline if needed
-        if !storage.has::<PolygonPipeline>() {
-            let pipeline = PolygonPipeline::new(device, format);
+        if !storage.has::<BBoxPipeline>() {
+            let pipeline = BBoxPipeline::new(device, format);
             storage.store(pipeline);
         }
 
-        // Pre-create all vertex buffers for polygons
+        // Pre-create all vertex buffers for bboxes
         let viewport_size = viewport.physical_size();
         let scale_factor = viewport.scale_factor() as f32;
 
@@ -95,112 +119,79 @@ impl shader::Primitive for PolygonPrimitive {
         let height_ratio = display_height / image_height;
         let base_scale = width_ratio.min(height_ratio);
 
-        // Calculate zoomed image dimensions
+        // Calculate zoomed image dimensions (changes with zoom)
         let zoomed_image_width = image_width * base_scale * self.zoom_scale;
         let zoomed_image_height = image_height * base_scale * self.zoom_scale;
 
-        // Centering offset after zoom
+        // Centering offset after zoom (changes as image grows/shrinks)
         let center_offset_x = (display_width - zoomed_image_width) / 2.0;
         let center_offset_y = (display_height - zoomed_image_height) / 2.0;
 
         let mut buffers = Vec::new();
 
         for annotation in self.annotations.iter() {
-            if let Some(ref segmentation) = annotation.segmentation {
-                let color = get_category_color(annotation.category_id);
-                let mask_color = Color::from_rgba(color.r, color.g, color.b, 0.4); // 40% opacity
+            let color = get_category_color(annotation.category_id);
 
-                match segmentation {
-                    CocoSegmentation::Polygon(polygons) => {
-                        for polygon in polygons {
-                            if polygon.len() < 6 {
-                                continue; // Need at least 3 points
-                            }
+            // Scale bbox coordinates by base_scale and zoom_scale
+            let scaled_bbox_x = annotation.bbox.x * base_scale * self.zoom_scale;
+            let scaled_bbox_y = annotation.bbox.y * base_scale * self.zoom_scale;
 
-                            // Transform polygon vertices to screen coordinates
-                            let mut screen_points = Vec::new();
-                            for i in (0..polygon.len()).step_by(2) {
-                                if i + 1 >= polygon.len() {
-                                    break;
-                                }
+            // Apply centering offset and pan offset (subtract offset like ImageShader does)
+            let x = (scaled_bbox_x + center_offset_x - self.zoom_offset.x + self.bounds.x) * scale_factor;
+            let y = (scaled_bbox_y + center_offset_y - self.zoom_offset.y + self.bounds.y) * scale_factor;
+            let width = annotation.bbox.width * base_scale * self.zoom_scale * scale_factor;
+            let height = annotation.bbox.height * base_scale * self.zoom_scale * scale_factor;
 
-                                let x = polygon[i];
-                                let y = polygon[i + 1];
+            // Create 5 vertices for rectangle outline in NDC
+            // Note: Invert y-axis because NDC has y=-1 at top, y=1 at bottom (opposite of screen coords)
+            let vertices = [
+                BBoxVertex {
+                    position: [
+                        (x / viewport_size.width as f32) * 2.0 - 1.0,
+                        1.0 - (y / viewport_size.height as f32) * 2.0,  // Inverted
+                    ],
+                    color: [color.r, color.g, color.b, color.a],
+                },
+                BBoxVertex {
+                    position: [
+                        ((x + width) / viewport_size.width as f32) * 2.0 - 1.0,
+                        1.0 - (y / viewport_size.height as f32) * 2.0,  // Inverted
+                    ],
+                    color: [color.r, color.g, color.b, color.a],
+                },
+                BBoxVertex {
+                    position: [
+                        ((x + width) / viewport_size.width as f32) * 2.0 - 1.0,
+                        1.0 - ((y + height) / viewport_size.height as f32) * 2.0,  // Inverted
+                    ],
+                    color: [color.r, color.g, color.b, color.a],
+                },
+                BBoxVertex {
+                    position: [
+                        (x / viewport_size.width as f32) * 2.0 - 1.0,
+                        1.0 - ((y + height) / viewport_size.height as f32) * 2.0,  // Inverted
+                    ],
+                    color: [color.r, color.g, color.b, color.a],
+                },
+                BBoxVertex {
+                    position: [
+                        (x / viewport_size.width as f32) * 2.0 - 1.0,
+                        1.0 - (y / viewport_size.height as f32) * 2.0,  // Inverted
+                    ],
+                    color: [color.r, color.g, color.b, color.a],
+                },
+            ];
 
-                                // Apply same transformation as bboxes
-                                let scaled_x = x * base_scale * self.zoom_scale;
-                                let scaled_y = y * base_scale * self.zoom_scale;
+            let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("BBox Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
 
-                                let screen_x = (scaled_x + center_offset_x - self.zoom_offset.x + self.bounds.x) * scale_factor;
-                                let screen_y = (scaled_y + center_offset_y - self.zoom_offset.y + self.bounds.y) * scale_factor;
-
-                                screen_points.push((screen_x, screen_y));
-                            }
-
-                            // Triangulate polygon using ear clipping
-                            if screen_points.len() >= 3 {
-                                // Convert to flat array for earcutr
-                                let mut coords: Vec<f64> = Vec::with_capacity(screen_points.len() * 2);
-                                for (x, y) in &screen_points {
-                                    coords.push(*x as f64);
-                                    coords.push(*y as f64);
-                                }
-
-                                // Perform ear clipping triangulation
-                                let triangles = earcutr::earcut(&coords, &[], 2);
-
-                                if let Ok(indices) = triangles {
-                                    let mut vertices = Vec::new();
-
-                                    // Create vertices from triangulated indices
-                                    for idx in indices.chunks(3) {
-                                        if idx.len() == 3 {
-                                            let p0 = screen_points[idx[0]];
-                                            let p1 = screen_points[idx[1]];
-                                            let p2 = screen_points[idx[2]];
-
-                                            // Convert to NDC
-                                            let ndc0 = self.to_ndc(p0, viewport_size);
-                                            let ndc1 = self.to_ndc(p1, viewport_size);
-                                            let ndc2 = self.to_ndc(p2, viewport_size);
-
-                                            vertices.push(PolygonVertex {
-                                                position: ndc0,
-                                                color: [mask_color.r, mask_color.g, mask_color.b, mask_color.a],
-                                            });
-                                            vertices.push(PolygonVertex {
-                                                position: ndc1,
-                                                color: [mask_color.r, mask_color.g, mask_color.b, mask_color.a],
-                                            });
-                                            vertices.push(PolygonVertex {
-                                                position: ndc2,
-                                                color: [mask_color.r, mask_color.g, mask_color.b, mask_color.a],
-                                            });
-                                        }
-                                    }
-
-                                    if !vertices.is_empty() {
-                                        let vertex_count = vertices.len() as u32;
-                                        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                            label: Some("Polygon Vertex Buffer"),
-                                            contents: bytemuck::cast_slice(&vertices),
-                                            usage: wgpu::BufferUsages::VERTEX,
-                                        });
-
-                                        buffers.push((buffer, vertex_count));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    CocoSegmentation::Rle(_rle) => {
-                        // RLE not yet implemented
-                    }
-                }
-            }
+            buffers.push(buffer);
         }
 
-        storage.store(PolygonBufferCache { buffers });
+        storage.store(BBoxBufferCache { buffers });
     }
 
     fn render(
@@ -210,11 +201,15 @@ impl shader::Primitive for PolygonPrimitive {
         target: &wgpu::TextureView,
         clip_bounds: &Rectangle<u32>,
     ) {
-        if let Some(pipeline) = storage.get::<PolygonPipeline>() {
-            if let Some(cache) = storage.get::<PolygonBufferCache>() {
-                for (buffer, vertex_count) in &cache.buffers {
+        if self.annotations.is_empty() {
+            return;
+        }
+
+        if let Some(pipeline) = storage.get::<BBoxPipeline>() {
+            if let Some(cache) = storage.get::<BBoxBufferCache>() {
+                for buffer in &cache.buffers {
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Polygon Render Pass"),
+                        label: Some("BBox Render Pass"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: target,
                             resolve_target: None,
@@ -238,69 +233,60 @@ impl shader::Primitive for PolygonPrimitive {
 
                     render_pass.set_pipeline(&pipeline.render_pipeline);
                     render_pass.set_vertex_buffer(0, buffer.slice(..));
-                    render_pass.draw(0..*vertex_count, 0..1);
+                    render_pass.draw(0..5, 0..1);
                 }
             }
         }
     }
 }
 
-impl PolygonPrimitive {
-    fn to_ndc(&self, point: (f32, f32), viewport_size: iced_core::Size<u32>) -> [f32; 2] {
-        [
-            (point.0 / viewport_size.width as f32) * 2.0 - 1.0,
-            1.0 - (point.1 / viewport_size.height as f32) * 2.0, // Inverted Y
-        ]
-    }
-}
-
-/// Vertex data for polygon rendering
+/// Vertex data for bbox rendering
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct PolygonVertex {
+struct BBoxVertex {
     position: [f32; 2],
     color: [f32; 4],
 }
 
-impl PolygonVertex {
+impl BBoxVertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
         wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x4];
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<PolygonVertex>() as wgpu::BufferAddress,
+            array_stride: std::mem::size_of::<BBoxVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &Self::ATTRIBS,
         }
     }
 }
 
-/// WGPU pipeline for drawing filled polygons
+/// Simple WGPU pipeline for drawing rectangles
 #[derive(Debug)]
-struct PolygonPipeline {
+struct BBoxPipeline {
     render_pipeline: wgpu::RenderPipeline,
 }
 
-impl PolygonPipeline {
+impl BBoxPipeline {
     fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Polygon Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("polygon_shader.wgsl").into()),
+            label: Some("BBox Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("bbox_shader.wgsl").into()),
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Polygon Pipeline Layout"),
+            label: Some("BBox Pipeline Layout"),
             bind_group_layouts: &[],
             push_constant_ranges: &[],
         });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Polygon Render Pipeline"),
+            label: Some("BBox Render Pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[PolygonVertex::desc()],
+                buffers: &[BBoxVertex::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -312,7 +298,7 @@ impl PolygonPipeline {
                 })],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                topology: wgpu::PrimitiveTopology::LineStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: None,
@@ -330,7 +316,9 @@ impl PolygonPipeline {
 }
 
 /// Get color for category using YOLO/YOLOX color scheme
+/// Based on https://github.com/Megvii-BaseDetection/YOLOX/blob/main/yolox/utils/visualize.py
 fn get_category_color(category_id: u64) -> Color {
+    // YOLO color palette for 80 COCO classes
     let colors = [
         [0.000, 0.447, 0.741], [0.850, 0.325, 0.098], [0.929, 0.694, 0.125],
         [0.494, 0.184, 0.556], [0.466, 0.674, 0.188], [0.301, 0.745, 0.933],
@@ -361,13 +349,13 @@ fn get_category_color(category_id: u64) -> Color {
         [0.314, 0.717, 0.741], [0.500, 0.500, 0.000],
     ];
 
-    let idx = (category_id - 1) as usize % colors.len();
+    let idx = (category_id - 1) as usize % colors.len(); // COCO category_id starts at 1
     let rgb = colors[idx];
     Color::from_rgb(rgb[0], rgb[1], rgb[2])
 }
 
 // Implement Widget trait
-impl<Message, Theme, R> Widget<Message, Theme, R> for PolygonShader<Message>
+impl<Message, Theme, R> Widget<Message, Theme, R> for BBoxShader<Message>
 where
     R: primitive::Renderer,
 {
@@ -399,24 +387,26 @@ where
     ) {
         let bounds = layout.bounds();
 
-        let primitive = PolygonPrimitive {
-            bounds,
-            annotations: self.annotations.clone(),
-            image_size: self.image_size,
-            zoom_scale: self.zoom_scale,
-            zoom_offset: self.zoom_offset,
-        };
+        if !self.annotations.is_empty() {
+            let primitive = BBoxPrimitive {
+                bounds,
+                annotations: self.annotations.clone(),
+                image_size: self.image_size,
+                zoom_scale: self.zoom_scale,
+                zoom_offset: self.zoom_offset,
+            };
 
-        renderer.draw_primitive(bounds, primitive);
+            renderer.draw_primitive(bounds, primitive);
+        }
     }
 }
 
-impl<'a, Message, Theme, R> From<PolygonShader<Message>> for Element<'a, Message, Theme, R>
+impl<'a, Message, Theme, R> From<BBoxShader<Message>> for Element<'a, Message, Theme, R>
 where
     Message: 'a,
     R: primitive::Renderer + 'a,
 {
-    fn from(shader: PolygonShader<Message>) -> Self {
+    fn from(shader: BBoxShader<Message>) -> Self {
         Element::new(shader)
     }
 }

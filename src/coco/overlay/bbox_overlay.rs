@@ -8,9 +8,9 @@ use iced_widget::{Stack, container, text, column};
 use iced_core::Border;
 
 use crate::app::Message;
-use crate::coco_parser::{ImageAnnotation, CocoSegmentation};
-use crate::widgets::shader::bbox_shader::BBoxShader;
-use crate::widgets::shader::polygon_shader::PolygonShader;
+use crate::coco::parser::{ImageAnnotation, CocoSegmentation};
+use super::bbox_shader::BBoxShader;
+use super::polygon_shader::PolygonShader;
 
 /// Get YOLO color for category ID (same as bbox_shader)
 fn get_category_color(category_id: u64) -> Color {

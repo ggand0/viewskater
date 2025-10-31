@@ -123,7 +123,7 @@ pub enum Message {
     #[cfg(feature = "ml")]
     MlAction(crate::ml_widget::MlMessage),
     #[cfg(feature = "coco")]
-    CocoAction(crate::coco_widget::CocoMessage),
+    CocoAction(crate::coco::widget::CocoMessage),
     // Advanced settings input
     AdvancedSettingChanged(String, String),  // (field_name, value)
     ResetAdvancedSettings,
@@ -200,7 +200,7 @@ pub struct DataViewer {
     #[cfg(feature = "ml")]
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
     #[cfg(feature = "coco")]
-    pub annotation_manager: crate::annotation_manager::AnnotationManager,  // Manages COCO annotations
+    pub annotation_manager: crate::coco::annotation_manager::AnnotationManager,  // Manages COCO annotations
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -300,7 +300,7 @@ impl DataViewer {
             #[cfg(feature = "ml")]
             selection_manager: SelectionManager::new(),
             #[cfg(feature = "coco")]
-            annotation_manager: crate::annotation_manager::AnnotationManager::new(),
+            annotation_manager: crate::coco::annotation_manager::AnnotationManager::new(),
         }
     }
 
@@ -723,7 +723,7 @@ impl DataViewer {
 
                 // Check if COCO module wants to handle this key
                 #[cfg(feature = "coco")]
-                if let Some(task) = crate::coco_widget::handle_keyboard_event(
+                if let Some(task) = crate::coco::widget::handle_keyboard_event(
                     key,
                     modifiers,
                     &self.pane_layout,
@@ -1415,10 +1415,10 @@ impl iced_winit::runtime::Program for DataViewer {
                     // Try to read and detect COCO format
                     match std::fs::read_to_string(&path) {
                         Ok(content) => {
-                            if crate::coco_parser::CocoDataset::is_coco_format(&content) {
+                            if crate::coco::parser::CocoDataset::is_coco_format(&content) {
                                 info!("✓ Detected COCO JSON file: {}", path.display());
                                 return Task::done(Message::CocoAction(
-                                    crate::coco_widget::CocoMessage::LoadCocoFile(path)
+                                    crate::coco::widget::CocoMessage::LoadCocoFile(path)
                                 ));
                             } else {
                                 debug!("JSON file is not COCO format, treating as regular file");
@@ -1783,10 +1783,10 @@ impl iced_winit::runtime::Program for DataViewer {
                                 // Try to read and detect COCO format
                                 match std::fs::read_to_string(path) {
                                     Ok(content) => {
-                                        if crate::coco_parser::CocoDataset::is_coco_format(&content) {
+                                        if crate::coco::parser::CocoDataset::is_coco_format(&content) {
                                             info!("✓ Detected COCO JSON file: {}", path.display());
                                             return Task::done(Message::CocoAction(
-                                                crate::coco_widget::CocoMessage::LoadCocoFile(path.clone())
+                                                crate::coco::widget::CocoMessage::LoadCocoFile(path.clone())
                                             ));
                                         } else {
                                             debug!("JSON file is not COCO format, treating as regular file");
@@ -1821,10 +1821,10 @@ impl iced_winit::runtime::Program for DataViewer {
                                 // Try to read and detect COCO format
                                 match std::fs::read_to_string(path) {
                                     Ok(content) => {
-                                        if crate::coco_parser::CocoDataset::is_coco_format(&content) {
+                                        if crate::coco::parser::CocoDataset::is_coco_format(&content) {
                                             info!("✓ Detected COCO JSON file: {}", path.display());
                                             return Task::done(Message::CocoAction(
-                                                crate::coco_widget::CocoMessage::LoadCocoFile(path.clone())
+                                                crate::coco::widget::CocoMessage::LoadCocoFile(path.clone())
                                             ));
                                         } else {
                                             debug!("JSON file is not COCO format, treating as regular file");
@@ -1876,7 +1876,7 @@ impl iced_winit::runtime::Program for DataViewer {
 
             #[cfg(feature = "coco")]
             Message::CocoAction(coco_msg) => {
-                return crate::coco_widget::handle_coco_message(
+                return crate::coco::widget::handle_coco_message(
                     coco_msg,
                     &mut self.panes,
                     &mut self.annotation_manager,

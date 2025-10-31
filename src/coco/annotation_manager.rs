@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use log::{info, warn};
 
-use crate::coco_parser::{CocoDataset, ImageAnnotation};
+use super::parser::{CocoDataset, ImageAnnotation};
 
 /// Manages COCO annotations for the current session
 pub struct AnnotationManager {

@@ -14,10 +14,10 @@ use iced_core::Vector;
 use log::{info, error, warn};
 
 use crate::app::Message;
-use crate::annotation_manager::AnnotationManager;
+use super::annotation_manager::AnnotationManager;
 use crate::pane::Pane;
 use crate::menu::PaneLayout;
-use crate::coco_parser::CocoDataset;
+use super::parser::CocoDataset;
 
 /// Result type for COCO file loading: (dataset, path, skipped_count, warnings, invalid_image_ids)
 type CocoLoadResult = Result<(CocoDataset, PathBuf, usize, Vec<String>, std::collections::HashSet<u64>), String>;

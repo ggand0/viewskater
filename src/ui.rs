@@ -82,7 +82,7 @@ impl FooterOptions {
     #[cfg(feature = "coco")]
     #[allow(dead_code)]
     pub fn with_coco(mut self, has_annotations: bool, num_annotations: usize) -> Self {
-        self.coco_badge = Some(crate::coco_widget::coco_badge(has_annotations, num_annotations));
+        self.coco_badge = Some(crate::coco::widget::coco_badge(has_annotations, num_annotations));
         self
     }
 
@@ -105,7 +105,7 @@ impl FooterOptions {
         self.coco_badge.unwrap_or_else(|| {
             #[cfg(feature = "coco")]
             {
-                crate::coco_widget::empty_badge()
+                crate::coco::widget::empty_badge()
             }
             #[cfg(not(feature = "coco"))]
             {
@@ -135,7 +135,7 @@ pub fn get_footer(
     let coco_badge = options.coco_badge.unwrap_or_else(|| {
         #[cfg(feature = "coco")]
         {
-            crate::coco_widget::empty_badge()
+            crate::coco::widget::empty_badge()
         }
         #[cfg(not(feature = "coco"))]
         {
@@ -307,7 +307,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                             .pane_index(0)
                             .image_index(app.panes[0].img_cache.current_index)
                             .on_zoom_change(|pane_idx, scale, offset| {
-                                Message::CocoAction(crate::coco_widget::CocoMessage::ZoomChanged(
+                                Message::CocoAction(crate::coco::widget::CocoMessage::ZoomChanged(
                                     pane_idx, scale, offset
                                 ))
                             });
@@ -339,7 +339,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                 let has_invalid = app.annotation_manager.has_invalid_annotations(&filename);
 
                                 // Create bbox/mask overlay
-                                let bbox_overlay = crate::bbox_overlay::render_bbox_overlay(
+                                let bbox_overlay = crate::coco::overlay::render_bbox_overlay(
                                     annotations,
                                     image_size,
                                     app.panes[0].zoom_scale,

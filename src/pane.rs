@@ -695,7 +695,7 @@ impl Pane {
                     shader_widget = shader_widget
                         .pane_index(self.pane_id)
                         .on_zoom_change(|pane_idx, scale, offset| {
-                            Message::CocoAction(crate::coco_widget::CocoMessage::ZoomChanged(
+                            Message::CocoAction(crate::coco::widget::CocoMessage::ZoomChanged(
                                 pane_idx, scale, offset
                             ))
                         });

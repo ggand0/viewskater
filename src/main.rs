@@ -21,13 +21,7 @@ mod selection_manager;
 #[cfg(feature = "ml")]
 mod ml_widget;
 #[cfg(feature = "coco")]
-mod coco_parser;
-#[cfg(feature = "coco")]
-mod annotation_manager;
-#[cfg(feature = "coco")]
-mod coco_widget;
-#[cfg(feature = "coco")]
-mod bbox_overlay;
+mod coco;
 mod settings_modal;
 
 #[cfg(target_os = "macos")]
