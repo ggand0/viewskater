@@ -12,6 +12,7 @@ use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
+use iced_core::Vector;
 use iced_widget::{center, Container};
 
 use crate::cache::img_cache::PathSource;
@@ -53,6 +54,7 @@ pub struct Pane {
     pub scene: Option<Scene>,
     pub slider_scene: Option<Scene>, // Make sure this is Scene, not CpuScene
     pub slider_image: Option<Handle>,
+    pub slider_image_dimensions: Option<(u32, u32)>, // Store dimensions for annotation rendering
     pub backend: wgpu::Backend,
     pub device: Option<Arc<wgpu::Device>>,
     pub queue: Option<Arc<wgpu::Queue>>,
@@ -64,6 +66,14 @@ pub struct Pane {
     pub archive_cache: Arc<Mutex<ArchiveCache>>,
     pub max_loading_queue_size: usize,
     pub max_being_loaded_queue_size: usize,
+    #[cfg(feature = "coco")]
+    pub show_bboxes: bool,  // Toggle for showing COCO bounding boxes
+    #[cfg(feature = "coco")]
+    pub show_masks: bool,  // Toggle for showing COCO segmentation masks
+    #[cfg(feature = "coco")]
+    pub zoom_scale: f32,  // Current zoom scale for bbox rendering
+    #[cfg(feature = "coco")]
+    pub zoom_offset: Vector,  // Current pan offset for bbox rendering
 }
 
 impl Default for Pane {
@@ -85,6 +95,7 @@ impl Default for Pane {
             device: None,
             queue: None,
             slider_image: None,
+            slider_image_dimensions: None,
             pane_id: 0, // Default to pane 0
             compression_strategy: CompressionStrategy::None,
             mouse_wheel_zoom: false,
@@ -93,6 +104,14 @@ impl Default for Pane {
             archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
             max_loading_queue_size: CONFIG.max_loading_queue_size,
             max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
+            #[cfg(feature = "coco")]
+            show_bboxes: false,
+            #[cfg(feature = "coco")]
+            show_masks: false,
+            #[cfg(feature = "coco")]
+            zoom_scale: 1.0,
+            #[cfg(feature = "coco")]
+            zoom_offset: Vector::default(),
         }
     }
 }
@@ -126,6 +145,7 @@ impl Pane {
             device: Some(device),
             queue: Some(queue),
             slider_image: None,
+            slider_image_dimensions: None,
             pane_id, // Use the provided pane_id
             compression_strategy,
             mouse_wheel_zoom: false,
@@ -134,6 +154,14 @@ impl Pane {
             archive_cache: Arc::new(Mutex::new(ArchiveCache::new())),
             max_loading_queue_size: CONFIG.max_loading_queue_size,
             max_being_loaded_queue_size: CONFIG.max_being_loaded_queue_size,
+            #[cfg(feature = "coco")]
+            show_bboxes: false,
+            #[cfg(feature = "coco")]
+            show_masks: false,
+            #[cfg(feature = "coco")]
+            zoom_scale: 1.0,
+            #[cfg(feature = "coco")]
+            zoom_offset: Vector::default(),
         }
     }
 
@@ -656,13 +684,27 @@ impl Pane {
                 .width(Length::Fill)
                 .height(Length::Fill)
             } else if let Some(scene) = &self.scene {
-                let shader_widget = ImageShader::new(Some(scene))
+                let mut shader_widget = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(is_horizontal_split)
                         .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed)
                         .double_click_threshold_ms(double_click_threshold_ms);
+
+                // Set up zoom change callback for COCO bbox rendering
+                #[cfg(feature = "coco")]
+                {
+                    shader_widget = shader_widget
+                        .pane_index(self.pane_id)
+                        .on_zoom_change(|pane_idx, scale, offset| {
+                            Message::CocoAction(crate::coco::widget::CocoMessage::ZoomChanged(
+                                pane_idx, scale, offset
+                            ))
+                        });
+                }
+
+                let shader_widget = shader_widget;
 
                 container(center(shader_widget))
                     .width(Length::Fill)

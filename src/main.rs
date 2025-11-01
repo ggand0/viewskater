@@ -20,6 +20,8 @@ mod logging;
 mod selection_manager;
 #[cfg(feature = "ml")]
 mod ml_widget;
+#[cfg(feature = "coco")]
+mod coco;
 mod settings_modal;
 
 #[cfg(target_os = "macos")]

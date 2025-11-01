@@ -11,6 +11,7 @@ console_log = "1.0"
 log = "0.4.20"
 tokio = { version = "1.32", features = ["rt", "sync", "macros", "time", "io-util", "fs"] }
 rfd = { version = "0.12", default-features = false, features = ["xdg-portal"] }
+native-dialog = "0.7"
 num-traits = "0.2"
 alphanumeric-sort = "1.5.3"
 image = { version = "0.25", default-features = false, features = [
@@ -23,6 +24,7 @@ backtrace = "0.3"
 dirs = "5.0"
 webbrowser = "0.7"
 bytemuck = { version = "1.0", features = ["derive"] }
+earcutr = "0.4"
 chrono = { version = "0.4", features = ["clock"] }
 memmap2 = "0.9.5"
 rayon = "1.8"
@@ -65,6 +67,8 @@ iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", 
 [features]
 # ML-related features for dataset curation (disabled by default)
 ml = []
+# COCO dataset visualization (disabled by default)
+coco = []
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"
