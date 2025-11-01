@@ -301,7 +301,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false)
                         .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
-                        .double_click_threshold_ms(app.double_click_threshold_ms);
+                        .double_click_threshold_ms(app.double_click_threshold_ms)
+                        .with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset);
 
                     // Set up zoom change callback for COCO bbox rendering
                     #[cfg(feature = "coco")]

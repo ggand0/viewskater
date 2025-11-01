@@ -39,6 +39,8 @@ pub struct ImageShader<Message> {
     on_zoom_change: Option<Box<dyn Fn(usize, f32, Vector) -> Message>>,
     #[cfg(feature = "coco")]
     image_index: usize,
+    initial_scale: Option<f32>,
+    initial_offset: Option<Vector>,
 }
 
 impl<Message> ImageShader<Message> {
@@ -82,7 +84,17 @@ impl<Message> ImageShader<Message> {
             on_zoom_change: None,
             #[cfg(feature = "coco")]
             image_index: 0,
+            initial_scale: None,
+            initial_offset: None,
         }
+    }
+
+    /// Sets the initial zoom scale and pan offset for the [`ImageShader`].
+    /// This is useful for preserving zoom state during navigation.
+    pub fn with_zoom_state(mut self, scale: f32, offset: Vector) -> Self {
+        self.initial_scale = Some(scale);
+        self.initial_offset = Some(offset);
+        self
     }
 
     /// Set the width of the widget
@@ -510,7 +522,25 @@ where
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(ImageShaderState::new())
+        let mut state = ImageShaderState::new();
+        if let Some(scale) = self.initial_scale {
+            state.scale = scale;
+        }
+        if let Some(offset) = self.initial_offset {
+            state.current_offset = offset;
+        }
+        tree::State::new(state)
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        // Update the state with new zoom values if they were provided
+        let state = tree.state.downcast_mut::<ImageShaderState>();
+        if let Some(scale) = self.initial_scale {
+            state.scale = scale;
+        }
+        if let Some(offset) = self.initial_offset {
+            state.current_offset = offset;
+        }
     }
 
     fn size(&self) -> Size<Length> {
