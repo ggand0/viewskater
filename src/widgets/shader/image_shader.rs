@@ -33,6 +33,14 @@ pub struct ImageShader<Message> {
     is_horizontal_split: bool,
     mouse_wheel_zoom: bool,
     ctrl_pressed: bool,
+    #[cfg(feature = "coco")]
+    pane_index: usize,
+    #[cfg(feature = "coco")]
+    on_zoom_change: Option<Box<dyn Fn(usize, f32, Vector) -> Message>>,
+    #[cfg(feature = "coco")]
+    image_index: usize,
+    initial_scale: Option<f32>,
+    initial_offset: Option<Vector>,
 }
 
 impl<Message> ImageShader<Message> {
@@ -70,7 +78,23 @@ impl<Message> ImageShader<Message> {
             is_horizontal_split: false,
             mouse_wheel_zoom: false,
             ctrl_pressed: false,
+            #[cfg(feature = "coco")]
+            pane_index: 0,
+            #[cfg(feature = "coco")]
+            on_zoom_change: None,
+            #[cfg(feature = "coco")]
+            image_index: 0,
+            initial_scale: None,
+            initial_offset: None,
         }
+    }
+
+    /// Sets the initial zoom scale and pan offset for the [`ImageShader`].
+    /// This is useful for preserving zoom state during navigation.
+    pub fn with_zoom_state(mut self, scale: f32, offset: Vector) -> Self {
+        self.initial_scale = Some(scale);
+        self.initial_offset = Some(offset);
+        self
     }
 
     /// Set the width of the widget
@@ -211,6 +235,7 @@ pub struct ImageShaderState {
     pub current_offset: Vector,
     pub cursor_grabbed_at: Option<Point>,
     pub last_click_time: Option<std::time::Instant>,
+    pub last_image_index: usize,  // Track image index to detect image changes
 }
 
 impl ImageShaderState {
@@ -221,6 +246,7 @@ impl ImageShaderState {
             current_offset: Vector::default(),
             cursor_grabbed_at: None,
             last_click_time: None,
+            last_image_index: 0,
         }
     }
 
@@ -496,7 +522,25 @@ where
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(ImageShaderState::new())
+        let mut state = ImageShaderState::new();
+        if let Some(scale) = self.initial_scale {
+            state.scale = scale;
+        }
+        if let Some(offset) = self.initial_offset {
+            state.current_offset = offset;
+        }
+        tree::State::new(state)
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        // Update the state with new zoom values if they were provided
+        let state = tree.state.downcast_mut::<ImageShaderState>();
+        if let Some(scale) = self.initial_scale {
+            state.scale = scale;
+        }
+        if let Some(offset) = self.initial_offset {
+            state.current_offset = offset;
+        }
     }
 
     fn size(&self) -> Size<Length> {
@@ -523,7 +567,7 @@ where
         cursor: mouse::Cursor,
         _renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
-        _shell: &mut Shell<'_, Message>,
+        shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> event::Status {
         let bounds = layout.bounds();
@@ -547,6 +591,21 @@ where
             }
         };
 
+        // Detect image change and sync zoom state to Pane
+        #[cfg(feature = "coco")]
+        {
+            let state = tree.state.downcast_mut::<ImageShaderState>();
+            if state.last_image_index != self.image_index {
+                // Image changed - sync current zoom state to Pane (don't reset)
+                state.last_image_index = self.image_index;
+
+                // Emit zoom sync message with CURRENT state to keep zoom persistent
+                if let Some(ref callback) = self.on_zoom_change {
+                    let message = callback(self.pane_index, state.scale, state.current_offset);
+                    shell.publish(message);
+                }
+            }
+        }
 
         match event {
             core::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
@@ -602,6 +661,13 @@ where
                                 debug!("ImageShader::on_event - New scale: {}", state.scale);
                                 debug!("ImageShader::on_event - New offset: {:?}", state.current_offset);
                             }
+
+                            // Emit zoom change message if callback is set
+                            #[cfg(feature = "coco")]
+                            if let Some(ref callback) = self.on_zoom_change {
+                                let message = callback(self.pane_index, state.scale, state.current_offset);
+                                shell.publish(message);
+                            }
                         }
                     }
                 }
@@ -632,6 +698,13 @@ where
                             debug!("ImageShader::on_event - Double-click detected, resetting zoom and pan");
                         }
 
+                        // Emit zoom reset message if callback is set
+                        #[cfg(feature = "coco")]
+                        if let Some(ref callback) = self.on_zoom_change {
+                            let message = callback(self.pane_index, 1.0, Vector::default());
+                            shell.publish(message);
+                        }
+
                         return event::Status::Captured;
                     }
                 }
@@ -654,6 +727,13 @@ where
 
                 if state.cursor_grabbed_at.is_some() {
                     state.cursor_grabbed_at = None;
+
+                    // Emit zoom change message if callback is set (pan operation complete)
+                    #[cfg(feature = "coco")]
+                    if let Some(ref callback) = self.on_zoom_change {
+                        let message = callback(self.pane_index, state.scale, state.current_offset);
+                        shell.publish(message);
+                    }
 
                     event::Status::Captured
                 } else {
@@ -693,6 +773,13 @@ where
                     state.current_offset = Vector::new(x, y);
                     if self.debug {
                         debug!("ImageShader::on_event - Panning, new offset: {:?}", state.current_offset);
+                    }
+
+                    // Emit zoom change message during pan for real-time annotation updates
+                    #[cfg(feature = "coco")]
+                    if let Some(ref callback) = self.on_zoom_change {
+                        let message = callback(self.pane_index, state.scale, state.current_offset);
+                        shell.publish(message);
                     }
 
                     event::Status::Captured
@@ -855,6 +942,29 @@ impl<Message> ImageShader<Message> {
     pub fn with_interaction_state(mut self, mouse_wheel_zoom: bool, ctrl_pressed: bool) -> Self {
         self.mouse_wheel_zoom = mouse_wheel_zoom;
         self.ctrl_pressed = ctrl_pressed;
+        self
+    }
+
+    /// Set the pane index for COCO zoom message emission
+    #[cfg(feature = "coco")]
+    pub fn pane_index(mut self, pane_index: usize) -> Self {
+        self.pane_index = pane_index;
+        self
+    }
+
+    /// Set callback for zoom/pan changes
+    #[cfg(feature = "coco")]
+    pub fn on_zoom_change<F>(mut self, callback: F) -> Self
+    where
+        F: 'static + Fn(usize, f32, Vector) -> Message,
+    {
+        self.on_zoom_change = Some(Box::new(callback));
+        self
+    }
+
+    #[cfg(feature = "coco")]
+    pub fn image_index(mut self, image_index: usize) -> Self {
+        self.image_index = image_index;
         self
     }
 }

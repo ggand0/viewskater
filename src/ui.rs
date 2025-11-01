@@ -18,7 +18,7 @@ use macos::*;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
+use iced_widget::{container, Container, row, column, horizontal_space, text, button, center, Stack};
 use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
 use iced_winit::core::alignment::Horizontal;
@@ -59,14 +59,18 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
 }
 
 
-/// Helper struct to pass ML mark badge into footer function
+/// Helper struct to pass ML mark badge and COCO badge into footer function
 pub struct FooterOptions {
     pub mark_badge: Option<Element<'static, Message, WinitTheme, Renderer>>,
+    pub coco_badge: Option<Element<'static, Message, WinitTheme, Renderer>>,
 }
 
 impl FooterOptions {
     pub fn new() -> Self {
-        Self { mark_badge: None }
+        Self {
+            mark_badge: None,
+            coco_badge: None,
+        }
     }
 
     #[cfg(feature = "ml")]
@@ -75,6 +79,14 @@ impl FooterOptions {
         self
     }
 
+    #[cfg(feature = "coco")]
+    #[allow(dead_code)]
+    pub fn with_coco(mut self, has_annotations: bool, num_annotations: usize) -> Self {
+        self.coco_badge = Some(crate::coco::widget::coco_badge(has_annotations, num_annotations));
+        self
+    }
+
+    #[allow(dead_code)]
     pub fn get_mark_badge(self) -> Element<'static, Message, WinitTheme, Renderer> {
         self.mark_badge.unwrap_or_else(|| {
             #[cfg(feature = "ml")]
@@ -82,6 +94,20 @@ impl FooterOptions {
                 crate::ml_widget::empty_badge()
             }
             #[cfg(not(feature = "ml"))]
+            {
+                container(text("")).width(0).height(0).into()
+            }
+        })
+    }
+
+    #[allow(dead_code)]
+    pub fn get_coco_badge(self) -> Element<'static, Message, WinitTheme, Renderer> {
+        self.coco_badge.unwrap_or_else(|| {
+            #[cfg(feature = "coco")]
+            {
+                crate::coco::widget::empty_badge()
+            }
+            #[cfg(not(feature = "coco"))]
             {
                 container(text("")).width(0).height(0).into()
             }
@@ -95,7 +121,27 @@ pub fn get_footer(
     show_copy_buttons: bool,
     options: FooterOptions,
 ) -> Container<'static, Message, WinitTheme, Renderer> {
-    let mark_badge = options.get_mark_badge();
+    // Extract badges from options
+    let mark_badge = options.mark_badge.unwrap_or_else(|| {
+        #[cfg(feature = "ml")]
+        {
+            crate::ml_widget::empty_badge()
+        }
+        #[cfg(not(feature = "ml"))]
+        {
+            container(text("")).width(0).height(0).into()
+        }
+    });
+    let coco_badge = options.coco_badge.unwrap_or_else(|| {
+        #[cfg(feature = "coco")]
+        {
+            crate::coco::widget::empty_badge()
+        }
+        #[cfg(not(feature = "coco"))]
+        {
+            container(text("")).width(0).height(0).into()
+        }
+    });
 
     if show_copy_buttons {
         let copy_filename_button = tooltip(
@@ -143,6 +189,7 @@ pub fn get_footer(
                 copy_filepath_button,
                 copy_filename_button,
                 mark_badge,
+                coco_badge,
                 Element::<'_, Message, WinitTheme, Renderer>::from(
                     text(footer_text)
                     .font(Font::MONOSPACE)
@@ -163,6 +210,7 @@ pub fn get_footer(
         container::<Message, WinitTheme, Renderer>(
             row![
                 mark_badge,
+                coco_badge,
                 Element::<'_, Message, WinitTheme, Renderer>::from(
                     text(footer_text)
                     .font(Font::MONOSPACE)
@@ -233,36 +281,147 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         PaneLayout::SinglePane => {
             // Choose the appropriate widget based on slider movement state
             let first_img = if app.panes[0].dir_loaded {
-                if app.is_slider_moving && app.panes[0].slider_image.is_some() {
+                // First, create the base image widget (either slider or shader)
+                let base_image_widget = if app.is_slider_moving && app.panes[0].slider_image.is_some() {
                     // Use regular Image widget during slider movement (much faster)
                     let image_handle = app.panes[0].slider_image.clone().unwrap();
 
-                    container(
-                        center(
-                            viewer::Viewer::new(image_handle)
-                                .content_fit(iced_winit::core::ContentFit::Contain)
-                        )
+                    center(
+                        viewer::Viewer::new(image_handle)
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .content_fit(iced_winit::core::ContentFit::Contain)
+                            .with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset)
                     )
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .padding(0)
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Fixed: Pass Arc<Scene> reference correctly
-                    let shader = ImageShader::new(Some(scene))
+                    let mut shader = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false)
                         .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
-                        .double_click_threshold_ms(app.double_click_threshold_ms);
+                        .double_click_threshold_ms(app.double_click_threshold_ms)
+                        .with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset);
 
-                    container(center(shader))
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .padding(0)
+                    // Set up zoom change callback for COCO bbox rendering
+                    #[cfg(feature = "coco")]
+                    {
+                        shader = shader
+                            .pane_index(0)
+                            .image_index(app.panes[0].img_cache.current_index)
+                            .on_zoom_change(|pane_idx, scale, offset| {
+                                Message::CocoAction(crate::coco::widget::CocoMessage::ZoomChanged(
+                                    pane_idx, scale, offset
+                                ))
+                            });
+                    }
+
+                    center(shader)
                 } else {
-                    container(text("No image loaded"))
-                }
+                    return container(text("No image loaded"));
+                };
+
+                // Then, optionally add annotations overlay on top
+                #[cfg(feature = "coco")]
+                let with_annotations = {
+                    if (app.panes[0].show_bboxes || app.panes[0].show_masks) && app.annotation_manager.has_annotations() {
+                        // Use current_index (which gets updated by slider image loading)
+                        let current_index = app.panes[0].img_cache.current_index;
+
+                        if let Some(path_source) = app.panes[0].img_cache.image_paths.get(current_index) {
+                            let filename = path_source.file_name();
+
+                            // Look up annotations for this image
+                            if let Some(annotations) = app.annotation_manager.get_annotations(&filename) {
+                                // Get image dimensions
+                                // During slider movement, use dimensions from slider_image_dimensions which
+                                // are extracted from the same image bytes that created the slider_image handle.
+                                // This ensures BBoxShader uses the SAME dimensions as the Viewer widget renders.
+                                let image_size = if app.is_slider_moving && app.panes[0].slider_image.is_some() {
+                                    // Slider mode: use dimensions extracted when slider_image handle was created
+                                    if let Some(dims) = app.panes[0].slider_image_dimensions {
+                                        log::debug!("UI: Using slider_image_dimensions: {:?}", dims);
+                                        dims
+                                    } else {
+                                        // Fallback if dimensions not available yet
+                                        let dims = (
+                                            app.panes[0].current_image.width(),
+                                            app.panes[0].current_image.height()
+                                        );
+                                        log::debug!("UI: Fallback to current_image dimensions (slider mode): {:?}", dims);
+                                        dims
+                                    }
+                                } else {
+                                    // Normal mode: look up from cache
+                                    log::debug!("UI: Looking up image size from cache for current_index={}", current_index);
+                                    app.panes[0].img_cache.cached_image_indices.iter()
+                                        .position(|&idx| idx == current_index as isize)
+                                        .and_then(|cache_idx| app.panes[0].img_cache.cached_data.get(cache_idx))
+                                        .and_then(|opt| opt.as_ref())
+                                        .map(|cached_data| (cached_data.width(), cached_data.height()))
+                                        .unwrap_or_else(|| {
+                                            let fallback = (
+                                                app.panes[0].current_image.width(),
+                                                app.panes[0].current_image.height()
+                                            );
+                                            log::debug!("UI: Using fallback dimensions from current_image: {:?}", fallback);
+                                            fallback
+                                        })
+                                };
+
+                                // Check if this image has invalid annotations
+                                let has_invalid = app.annotation_manager.has_invalid_annotations(&filename);
+
+                                // Create bbox/mask overlay
+                                let bbox_overlay = crate::coco::overlay::render_bbox_overlay(
+                                    annotations,
+                                    image_size,
+                                    app.panes[0].zoom_scale,
+                                    app.panes[0].zoom_offset,
+                                    app.panes[0].show_bboxes,
+                                    app.panes[0].show_masks,
+                                    has_invalid,
+                                );
+
+                                // Stack image and annotations
+                                container(
+                                    Stack::new()
+                                        .push(base_image_widget)
+                                        .push(bbox_overlay)
+                                )
+                                .width(Length::Fill)
+                                .height(Length::Fill)
+                                .padding(0)
+                            } else {
+                                // No annotations for this image
+                                container(base_image_widget)
+                                    .width(Length::Fill)
+                                    .height(Length::Fill)
+                                    .padding(0)
+                            }
+                        } else {
+                            container(base_image_widget)
+                                .width(Length::Fill)
+                                .height(Length::Fill)
+                                .padding(0)
+                        }
+                    } else {
+                        // Annotations disabled or no annotations loaded
+                        container(base_image_widget)
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .padding(0)
+                    }
+                };
+
+                #[cfg(not(feature = "coco"))]
+                let with_annotations = container(base_image_widget)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(0);
+
+                with_annotations
             } else {
                 container(text("")).height(Length::Fill)
             };
