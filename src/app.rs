@@ -96,7 +96,7 @@ pub enum Message {
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     SliderImageLoaded(Result<(usize, CachedData), usize>),
-    SliderImageWidgetLoaded(Result<(usize, usize, Handle), (usize, usize)>),
+    SliderImageWidgetLoaded(Result<(usize, usize, Handle, (u32, u32)), (usize, usize)>),
     Event(Event),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
     OnSplitResize(u16),
@@ -1566,7 +1566,7 @@ impl iced_winit::runtime::Program for DataViewer {
 
             Message::SliderImageWidgetLoaded(result) => {
                 match result {
-                    Ok((pane_idx, pos, handle)) => {
+                    Ok((pane_idx, pos, handle, dimensions)) => {
                         // Track each async image delivery
                         crate::track_async_delivery();
 
@@ -1575,10 +1575,13 @@ impl iced_winit::runtime::Program for DataViewer {
                             // Update the image widget handle directly
                             pane.slider_image = Some(handle);
 
+                            // Store the dimensions for annotation rendering
+                            pane.slider_image_dimensions = Some(dimensions);
+
                             // Also update the cache state to keep everything in sync
                             pane.img_cache.current_index = pos;
 
-                            debug!("Slider image loaded for pane {} at position {}", pane_idx, pos);
+                            debug!("Slider image loaded for pane {} at position {} with dimensions {:?}", pane_idx, pos, dimensions);
                         } else {
                             warn!("SliderImageWidgetLoaded: Invalid pane index {}", pane_idx);
                         }

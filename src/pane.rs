@@ -54,6 +54,7 @@ pub struct Pane {
     pub scene: Option<Scene>,
     pub slider_scene: Option<Scene>, // Make sure this is Scene, not CpuScene
     pub slider_image: Option<Handle>,
+    pub slider_image_dimensions: Option<(u32, u32)>, // Store dimensions for annotation rendering
     pub backend: wgpu::Backend,
     pub device: Option<Arc<wgpu::Device>>,
     pub queue: Option<Arc<wgpu::Queue>>,
@@ -94,6 +95,7 @@ impl Default for Pane {
             device: None,
             queue: None,
             slider_image: None,
+            slider_image_dimensions: None,
             pane_id: 0, // Default to pane 0
             compression_strategy: CompressionStrategy::None,
             mouse_wheel_zoom: false,
@@ -143,6 +145,7 @@ impl Pane {
             device: Some(device),
             queue: Some(queue),
             slider_image: None,
+            slider_image_dimensions: None,
             pane_id, // Use the provided pane_id
             compression_strategy,
             mouse_wheel_zoom: false,

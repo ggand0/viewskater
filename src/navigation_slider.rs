@@ -341,7 +341,7 @@ pub async fn create_async_image_widget_task(
     pos: usize,
     pane_idx: usize,
     archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
-) -> Result<(usize, usize, Handle), (usize, usize)> {
+) -> Result<(usize, usize, Handle, (u32, u32)), (usize, usize)> {
     // Start overall timer
     let task_start = std::time::Instant::now();
 
@@ -381,6 +381,15 @@ pub async fn create_async_image_widget_task(
             // Start handle creation timer
             let handle_start = std::time::Instant::now();
 
+            // Extract image dimensions from bytes before creating handle
+            let dimensions = match image::load_from_memory(&bytes) {
+                Ok(img) => (img.width(), img.height()),
+                Err(_) => {
+                    // If we can't decode, return error
+                    return Err((pane_idx, pos));
+                }
+            };
+
             // Convert directly to Handle without resizing
             let handle = iced::widget::image::Handle::from_bytes(bytes.clone());
 
@@ -392,7 +401,7 @@ pub async fn create_async_image_widget_task(
             let total_time = task_start.elapsed();
             trace!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
 
-            Ok((pane_idx, pos, handle))
+            Ok((pane_idx, pos, handle, dimensions))
         },
         Err(_) => Err((pane_idx, pos)),
     }

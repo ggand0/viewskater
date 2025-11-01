@@ -288,7 +288,10 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
                     center(
                         viewer::Viewer::new(image_handle)
+                            .width(Length::Fill)
+                            .height(Length::Fill)
                             .content_fit(iced_winit::core::ContentFit::Contain)
+                            .with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset)
                     )
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Fixed: Pass Arc<Scene> reference correctly
@@ -322,18 +325,49 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 #[cfg(feature = "coco")]
                 let with_annotations = {
                     if (app.panes[0].show_bboxes || app.panes[0].show_masks) && app.annotation_manager.has_annotations() {
-                        // Get current image filename
+                        // Use current_index (which gets updated by slider image loading)
                         let current_index = app.panes[0].img_cache.current_index;
+
                         if let Some(path_source) = app.panes[0].img_cache.image_paths.get(current_index) {
                             let filename = path_source.file_name();
 
                             // Look up annotations for this image
                             if let Some(annotations) = app.annotation_manager.get_annotations(&filename) {
-                                // Get image dimensions from the current image data
-                                let image_size = (
-                                    app.panes[0].current_image.width(),
-                                    app.panes[0].current_image.height(),
-                                );
+                                // Get image dimensions
+                                // During slider movement, use dimensions from slider_image_dimensions which
+                                // are extracted from the same image bytes that created the slider_image handle.
+                                // This ensures BBoxShader uses the SAME dimensions as the Viewer widget renders.
+                                let image_size = if app.is_slider_moving && app.panes[0].slider_image.is_some() {
+                                    // Slider mode: use dimensions extracted when slider_image handle was created
+                                    if let Some(dims) = app.panes[0].slider_image_dimensions {
+                                        log::debug!("UI: Using slider_image_dimensions: {:?}", dims);
+                                        dims
+                                    } else {
+                                        // Fallback if dimensions not available yet
+                                        let dims = (
+                                            app.panes[0].current_image.width(),
+                                            app.panes[0].current_image.height()
+                                        );
+                                        log::debug!("UI: Fallback to current_image dimensions (slider mode): {:?}", dims);
+                                        dims
+                                    }
+                                } else {
+                                    // Normal mode: look up from cache
+                                    log::debug!("UI: Looking up image size from cache for current_index={}", current_index);
+                                    app.panes[0].img_cache.cached_image_indices.iter()
+                                        .position(|&idx| idx == current_index as isize)
+                                        .and_then(|cache_idx| app.panes[0].img_cache.cached_data.get(cache_idx))
+                                        .and_then(|opt| opt.as_ref())
+                                        .map(|cached_data| (cached_data.width(), cached_data.height()))
+                                        .unwrap_or_else(|| {
+                                            let fallback = (
+                                                app.panes[0].current_image.width(),
+                                                app.panes[0].current_image.height()
+                                            );
+                                            log::debug!("UI: Using fallback dimensions from current_image: {:?}", fallback);
+                                            fallback
+                                        })
+                                };
 
                                 // Check if this image has invalid annotations
                                 let has_invalid = app.annotation_manager.has_invalid_annotations(&filename);

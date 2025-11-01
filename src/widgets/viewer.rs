@@ -43,6 +43,8 @@ pub struct Viewer<Handle> {
     handle: Handle,
     filter_method: FilterMethod,
     content_fit: ContentFit,
+    initial_scale: Option<f32>,
+    initial_offset: Option<Vector>,
 }
 
 impl<Handle> Viewer<Handle> {
@@ -58,6 +60,8 @@ impl<Handle> Viewer<Handle> {
             scale_step: 0.10,
             filter_method: FilterMethod::default(),
             content_fit: ContentFit::default(),
+            initial_scale: None,
+            initial_offset: None,
         }
     }
 
@@ -115,6 +119,14 @@ impl<Handle> Viewer<Handle> {
         self.scale_step = scale_step;
         self
     }
+
+    /// Sets the initial zoom scale and pan offset for the [`Viewer`].
+    /// This is useful for syncing the viewer state with external zoom/pan state.
+    pub fn with_zoom_state(mut self, scale: f32, offset: Vector) -> Self {
+        self.initial_scale = Some(scale);
+        self.initial_offset = Some(offset);
+        self
+    }
 }
 
 impl<Message, Theme, Renderer, Handle> Widget<Message, Theme, Renderer>
@@ -128,7 +140,25 @@ where
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(State::new())
+        let mut state = State::new();
+        if let Some(scale) = self.initial_scale {
+            state.scale = scale;
+        }
+        if let Some(offset) = self.initial_offset {
+            state.current_offset = offset;
+        }
+        tree::State::new(state)
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        // Update the state with new zoom values if they were provided
+        let state = tree.state.downcast_mut::<State>();
+        if let Some(scale) = self.initial_scale {
+            state.scale = scale;
+        }
+        if let Some(offset) = self.initial_offset {
+            state.current_offset = offset;
+        }
     }
 
     fn size(&self) -> Size<Length> {
@@ -351,6 +381,16 @@ where
             self.content_fit,
         );
 
+        let image_size = renderer.measure_image(&self.handle);
+        log::debug!(
+            "Viewer draw: measured_image=({},{}), bounds=({:.1},{:.1}), final_size=({:.1},{:.1}), state.scale={:.3}, state.offset=({:.1},{:.1})",
+            image_size.width, image_size.height,
+            bounds.width, bounds.height,
+            final_size.width, final_size.height,
+            state.scale,
+            state.current_offset.x, state.current_offset.y
+        );
+
         // Adjust bounds size and position for padding
         let padding = 1.0; // Adjust the padding value as needed
         let padded_bounds = Rectangle {
@@ -372,7 +412,17 @@ where
                 _ => Vector::new(diff_w / 2.0, diff_h / 2.0),
             } + Vector::new(padding, padding);
 
-            image_top_left - state.offset(bounds, final_size)
+            let result = image_top_left - state.offset(bounds, final_size);
+
+            log::debug!(
+                "Viewer translation: diff=({:.1},{:.1}), image_top_left=({:.1},{:.1}), state.offset=({:.1},{:.1}), final_translation=({:.1},{:.1})",
+                diff_w, diff_h,
+                image_top_left.x, image_top_left.y,
+                state.offset(bounds, final_size).x, state.offset(bounds, final_size).y,
+                result.x, result.y
+            );
+
+            result
         };
 
         let drawing_bounds = Rectangle {

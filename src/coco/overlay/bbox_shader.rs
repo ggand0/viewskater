@@ -127,6 +127,16 @@ impl shader::Primitive for BBoxPrimitive {
         let center_offset_x = (display_width - zoomed_image_width) / 2.0;
         let center_offset_y = (display_height - zoomed_image_height) / 2.0;
 
+        log::debug!(
+            "BBox prepare: image=({},{}), bounds=({},{}) at ({:.1},{:.1}), base_scale={:.3}, zoom={:.3}, offset=({:.1},{:.1}), center=({:.1},{:.1})",
+            image_width, image_height,
+            display_width, display_height,
+            self.bounds.x, self.bounds.y,
+            base_scale, self.zoom_scale,
+            self.zoom_offset.x, self.zoom_offset.y,
+            center_offset_x, center_offset_y
+        );
+
         let mut buffers = Vec::new();
 
         for annotation in self.annotations.iter() {
@@ -136,9 +146,13 @@ impl shader::Primitive for BBoxPrimitive {
             let scaled_bbox_x = annotation.bbox.x * base_scale * self.zoom_scale;
             let scaled_bbox_y = annotation.bbox.y * base_scale * self.zoom_scale;
 
-            // Apply centering offset and pan offset (subtract offset like ImageShader does)
-            let x = (scaled_bbox_x + center_offset_x - self.zoom_offset.x + self.bounds.x) * scale_factor;
-            let y = (scaled_bbox_y + center_offset_y - self.zoom_offset.y + self.bounds.y) * scale_factor;
+            // Apply centering offset and pan offset
+            // NOTE: Do NOT add self.bounds.x/y - those are the widget's position in the layout.
+            // GPU rendering handles that automatically. We only apply the image centering offset.
+            // Add padding to match Viewer widget's internal padding (1.0 pixel)
+            let padding = 1.0;
+            let x = (scaled_bbox_x + center_offset_x + padding - self.zoom_offset.x) * scale_factor;
+            let y = (scaled_bbox_y + center_offset_y + padding - self.zoom_offset.y) * scale_factor;
             let width = annotation.bbox.width * base_scale * self.zoom_scale * scale_factor;
             let height = annotation.bbox.height * base_scale * self.zoom_scale * scale_factor;
 
