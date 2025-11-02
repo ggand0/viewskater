@@ -18,7 +18,7 @@ use macos::*;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
+use iced_widget::{container, Container, row, column, horizontal_space, text, button, center, Stack};
 use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
 use iced_winit::core::alignment::Horizontal;
