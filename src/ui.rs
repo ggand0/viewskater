@@ -18,7 +18,9 @@ use macos::*;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use iced_widget::{container, Container, row, column, horizontal_space, text, button, center, Stack};
+use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
+#[cfg(feature = "coco")]
+use iced_widget::Stack;
 use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
 use iced_winit::core::alignment::Horizontal;
@@ -287,7 +289,14 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     let image_handle = app.panes[0].slider_image.clone().unwrap();
 
                     center({
+                        #[cfg(feature = "coco")]
                         let mut viewer = viewer::Viewer::new(image_handle)
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .content_fit(iced_winit::core::ContentFit::Contain);
+
+                        #[cfg(not(feature = "coco"))]
+                        let viewer = viewer::Viewer::new(image_handle)
                             .width(Length::Fill)
                             .height(Length::Fill)
                             .content_fit(iced_winit::core::ContentFit::Contain);
@@ -301,7 +310,17 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     })
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Fixed: Pass Arc<Scene> reference correctly
+                    #[cfg(feature = "coco")]
                     let mut shader = ImageShader::new(Some(scene))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .content_fit(iced_winit::core::ContentFit::Contain)
+                        .horizontal_split(false)
+                        .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
+                        .double_click_threshold_ms(app.double_click_threshold_ms);
+
+                    #[cfg(not(feature = "coco"))]
+                    let shader = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)

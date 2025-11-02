@@ -235,6 +235,7 @@ pub struct ImageShaderState {
     pub current_offset: Vector,
     pub cursor_grabbed_at: Option<Point>,
     pub last_click_time: Option<std::time::Instant>,
+    #[allow(dead_code)]
     pub last_image_index: usize,  // Track image index to detect image changes
 }
 
@@ -567,6 +568,7 @@ where
         cursor: mouse::Cursor,
         _renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
+        #[allow(unused_variables)]
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) -> event::Status {

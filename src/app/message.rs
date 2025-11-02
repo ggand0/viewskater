@@ -24,6 +24,7 @@ pub enum Message {
     ExportAllLogs,
     OpenWebLink(String),
     // Note: Changed from font::Error to () since the error is never used
+    #[allow(dead_code)]
     FontLoaded(Result<(), ()>),
     OpenFolder(usize),
     OpenFile(usize),
@@ -33,6 +34,7 @@ pub enum Message {
     FolderOpened(Result<String, file_io::Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
+    #[allow(dead_code)]
     SliderImageLoaded(Result<(usize, CachedData), usize>),
     SliderImageWidgetLoaded(Result<(usize, usize, Handle, (u32, u32)), (usize, usize)>),
     Event(Event),
@@ -45,7 +47,9 @@ pub enum Message {
     PaneSelected(usize, bool),
     CopyFilename(usize),
     CopyFilePath(usize),
+    #[allow(dead_code)]
     BackgroundColorChanged(Color),
+    #[allow(dead_code)]
     TimerTick,
     SetCacheStrategy(CacheStrategy),
     SetCompressionStrategy(CompressionStrategy),

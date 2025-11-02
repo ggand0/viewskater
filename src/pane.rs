@@ -12,6 +12,7 @@ use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
+#[cfg(feature = "coco")]
 use iced_core::Vector;
 use iced_widget::{center, Container};
 
@@ -684,7 +685,17 @@ impl Pane {
                 .width(Length::Fill)
                 .height(Length::Fill)
             } else if let Some(scene) = &self.scene {
+                #[cfg(feature = "coco")]
                 let mut shader_widget = ImageShader::new(Some(scene))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .content_fit(iced_winit::core::ContentFit::Contain)
+                        .horizontal_split(is_horizontal_split)
+                        .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed)
+                        .double_click_threshold_ms(double_click_threshold_ms);
+
+                #[cfg(not(feature = "coco"))]
+                let shader_widget = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
