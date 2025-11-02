@@ -25,7 +25,7 @@ pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, W
             TabLabel::Text("Advanced".to_string()),  // Label
             view_advanced_tab(viewer)  // Content
         )
-        .set_active_tab(&viewer.active_settings_tab)
+        .set_active_tab(&viewer.settings.active_tab)
         .tab_bar_style(|theme: &WinitTheme, status| {
             use iced_aw::style::status::Status;
 
@@ -81,7 +81,7 @@ pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, W
         // Status message (always reserve space to prevent layout jump)
         // Use red for errors, green for success
         {
-            let status_text = viewer.settings_save_status.as_deref().unwrap_or(" ");
+            let status_text = viewer.settings.save_status.as_deref().unwrap_or(" ");
             // Catch both "Error:" and "Error parsing" messages
             let is_error = status_text.contains("Error");
 
@@ -325,7 +325,7 @@ fn labeled_text_input_row<'a>(
 fn view_advanced_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme, Renderer> {
     // Helper to get value from HashMap with fallback
     let get_value = |key: &str| -> String {
-        viewer.advanced_settings_input
+        viewer.settings.advanced_input
             .get(key)
             .cloned()
             .unwrap_or_default()

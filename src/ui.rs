@@ -251,7 +251,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     let cursor_on_top = app.cursor_on_top;
     let cursor_on_menu = app.cursor_on_menu;
     let cursor_on_footer = app.cursor_on_footer;
-    let show_option = app.show_options;
+    let show_option = app.settings.is_visible();
 
     let top_bar = container(
         row![
@@ -286,13 +286,19 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     // Use regular Image widget during slider movement (much faster)
                     let image_handle = app.panes[0].slider_image.clone().unwrap();
 
-                    center(
-                        viewer::Viewer::new(image_handle)
+                    center({
+                        let mut viewer = viewer::Viewer::new(image_handle)
                             .width(Length::Fill)
                             .height(Length::Fill)
-                            .content_fit(iced_winit::core::ContentFit::Contain)
-                            .with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset)
-                    )
+                            .content_fit(iced_winit::core::ContentFit::Contain);
+
+                        #[cfg(feature = "coco")]
+                        {
+                            viewer = viewer.with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset);
+                        }
+
+                        viewer
+                    })
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Fixed: Pass Arc<Scene> reference correctly
                     let mut shader = ImageShader::new(Some(scene))
@@ -301,8 +307,12 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false)
                         .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
-                        .double_click_threshold_ms(app.double_click_threshold_ms)
-                        .with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset);
+                        .double_click_threshold_ms(app.double_click_threshold_ms);
+
+                    #[cfg(feature = "coco")]
+                    {
+                        shader = shader.with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset);
+                    }
 
                     // Set up zoom change callback for COCO bbox rendering
                     #[cfg(feature = "coco")]
