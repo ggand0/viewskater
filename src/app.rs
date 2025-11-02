@@ -2,9 +2,11 @@
 mod message;
 mod message_handlers;
 mod keyboard_handlers;
+mod settings_widget;
 
 // Re-exports
 pub use message::Message;
+pub use settings_widget::{RuntimeSettings, SettingsWidget};
 
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
@@ -60,40 +62,11 @@ use crate::selection_manager::SelectionManager;
 use crate::settings::UserSettings;
 
 use std::sync::mpsc::{Sender, Receiver};
-use std::collections::HashMap;
 
 #[allow(dead_code)]
 static APP_UPDATE_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
     Mutex::new(TimingStats::new("App Update"))
 });
-
-#[allow(dead_code)]
-/// Runtime-configurable settings that can be applied immediately without restart
-pub struct RuntimeSettings {
-    pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
-    pub show_copy_buttons: bool,                        // Show copy filename/filepath buttons in footer
-    pub cache_size: usize,                              // Image cache window size (number of images to cache)
-    pub archive_cache_size: u64,                        // Archive cache size in bytes (for preload decision)
-    pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
-    pub max_loading_queue_size: usize,                  // Max size for loading queue
-    pub max_being_loaded_queue_size: usize,             // Max size for being loaded queue
-    pub double_click_threshold_ms: u16,                 // Double-click threshold in milliseconds
-}
-
-impl RuntimeSettings {
-    fn from_user_settings(settings: &UserSettings) -> Self {
-        Self {
-            mouse_wheel_zoom: settings.mouse_wheel_zoom,
-            show_copy_buttons: settings.show_copy_buttons,
-            cache_size: settings.cache_size,
-            archive_cache_size: settings.archive_cache_size * 1_048_576,  // Convert MB to bytes
-            archive_warning_threshold_mb: settings.archive_warning_threshold_mb,
-            max_loading_queue_size: settings.max_loading_queue_size,
-            max_being_loaded_queue_size: settings.max_being_loaded_queue_size,
-            double_click_threshold_ms: settings.double_click_threshold_ms,
-        }
-    }
-}
 
 pub struct DataViewer {
     pub background_color: Color,//debug
@@ -113,10 +86,7 @@ pub struct DataViewer {
     pub skate_left: bool,
     pub update_counter: u32,
     pub show_about: bool,
-    pub show_options: bool,
-    pub settings_save_status: Option<String>,
-    pub active_settings_tab: usize,
-    pub advanced_settings_input: HashMap<String, String>,  // Text input state for advanced settings
+    pub settings: SettingsWidget,                       // Settings widget (modal, tabs, runtime settings)
     pub device: Arc<wgpu::Device>,                     // Shared ownership using Arc
     pub queue: Arc<wgpu::Queue>,                       // Shared ownership using Arc
     pub is_gpu_supported: bool,
@@ -134,7 +104,6 @@ pub struct DataViewer {
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
-    pub runtime_settings: RuntimeSettings,              // Runtime-configurable settings
     pub(crate) ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
     #[cfg(feature = "ml")]
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
@@ -147,14 +116,14 @@ impl std::ops::Deref for DataViewer {
     type Target = RuntimeSettings;
 
     fn deref(&self) -> &Self::Target {
-        &self.runtime_settings
+        &self.settings.runtime_settings
     }
 }
 
 // Implement DerefMut to allow mutable access to RuntimeSettings fields
 impl std::ops::DerefMut for DataViewer {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.runtime_settings
+        &mut self.settings.runtime_settings
     }
 }
 
@@ -183,18 +152,6 @@ impl DataViewer {
         info!("  compression_strategy: {:?}", compression_strategy);
         info!("  is_slider_dual: {}", settings.is_slider_dual);
 
-        // Initialize advanced settings input with current values
-        let mut advanced_settings_input = HashMap::new();
-        advanced_settings_input.insert("cache_size".to_string(), settings.cache_size.to_string());
-        advanced_settings_input.insert("max_loading_queue_size".to_string(), settings.max_loading_queue_size.to_string());
-        advanced_settings_input.insert("max_being_loaded_queue_size".to_string(), settings.max_being_loaded_queue_size.to_string());
-        advanced_settings_input.insert("window_width".to_string(), settings.window_width.to_string());
-        advanced_settings_input.insert("window_height".to_string(), settings.window_height.to_string());
-        advanced_settings_input.insert("atlas_size".to_string(), settings.atlas_size.to_string());
-        advanced_settings_input.insert("double_click_threshold_ms".to_string(), settings.double_click_threshold_ms.to_string());
-        advanced_settings_input.insert("archive_cache_size".to_string(), settings.archive_cache_size.to_string());
-        advanced_settings_input.insert("archive_warning_threshold_mb".to_string(), settings.archive_warning_threshold_mb.to_string());
-
         Self {
             title: String::from("ViewSkater"),
             directory_path: None,
@@ -212,10 +169,7 @@ impl DataViewer {
             skate_left: false,
             update_counter: 0,
             show_about: false,
-            show_options: false,
-            settings_save_status: None,
-            active_settings_tab: 0,
-            advanced_settings_input,
+            settings: SettingsWidget::new(&settings),
             device,
             queue,
             is_gpu_supported: true,
@@ -234,7 +188,6 @@ impl DataViewer {
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,
-            runtime_settings: RuntimeSettings::from_user_settings(&settings),
             ctrl_pressed: false,
             #[cfg(feature = "ml")]
             selection_manager: SelectionManager::new(),
@@ -623,7 +576,7 @@ impl iced_winit::runtime::Program for DataViewer {
     fn view(&self) -> Element<'_, Message, WinitTheme, Renderer> {
         let content = ui::build_ui(self);
 
-        if self.show_options {
+        if self.settings.is_visible() {
             let options_content = crate::settings_modal::view_settings_modal(self);
             widgets::modal::modal(content, options_content, Message::HideOptions)
         } else if self.show_about {

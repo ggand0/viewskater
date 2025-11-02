@@ -251,7 +251,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     let cursor_on_top = app.cursor_on_top;
     let cursor_on_menu = app.cursor_on_menu;
     let cursor_on_footer = app.cursor_on_footer;
-    let show_option = app.show_options;
+    let show_option = app.settings.is_visible();
 
     let top_bar = container(
         row![
