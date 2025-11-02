@@ -12,7 +12,6 @@ use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::wgpu;
 use iced_core::image::Handle;
-use iced_core::Vector;
 use iced_widget::{center, Container};
 
 use crate::cache::img_cache::PathSource;
@@ -684,7 +683,7 @@ impl Pane {
                 .width(Length::Fill)
                 .height(Length::Fill)
             } else if let Some(scene) = &self.scene {
-                let mut shader_widget = ImageShader::new(Some(scene))
+                let shader_widget = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)

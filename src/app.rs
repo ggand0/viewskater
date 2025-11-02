@@ -48,16 +48,11 @@ use crate::navigation_keyboard::{move_right_all, move_left_all};
 use crate::cache::img_cache::{CachedData, CacheStrategy, LoadOperation};
 use crate::menu::PaneLayout;
 use crate::pane::{self, Pane};
-use crate::widgets::shader::{scene::Scene, cpu_scene::CpuScene};
 use crate::ui;
 use crate::widgets;
 use crate::file_io;
 use crate::loading_status;
-use crate::loading_handler;
-use crate::navigation_slider;
 use crate::utils::timing::TimingStats;
-use crate::pane::IMAGE_RENDER_TIMES;
-use crate::pane::IMAGE_RENDER_FPS;
 use crate::RendererRequest;
 use crate::build_info::BuildInfo;
 #[cfg(feature = "ml")]
