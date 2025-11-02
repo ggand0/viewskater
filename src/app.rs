@@ -1,3 +1,6 @@
+// Submodules
+mod message_handlers;
+
 #[warn(unused_imports)]
 #[cfg(target_os = "linux")]
 mod other_os {
@@ -1008,29 +1011,29 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ShowLogs | Message::OpenSettingsDir | Message::ExportDebugLogs |
             Message::ExportAllLogs | Message::ShowAbout | Message::HideAbout |
             Message::ShowOptions | Message::HideOptions | Message::OpenWebLink(_) => {
-                crate::app_module::message_handlers::handle_ui_messages(self, message)
+                crate::app::message_handlers::handle_ui_messages(self, message)
             }
 
             // Settings messages
             Message::SaveSettings | Message::ClearSettingsStatus | Message::SettingsTabSelected(_) |
             Message::AdvancedSettingChanged(_, _) | Message::ResetAdvancedSettings => {
-                crate::app_module::message_handlers::handle_settings_messages(self, message)
+                crate::app::message_handlers::handle_settings_messages(self, message)
             }
 
             // File operation messages
             Message::OpenFolder(_) | Message::OpenFile(_) | Message::FileDropped(_, _) |
             Message::Close | Message::FolderOpened(_, _) | Message::CopyFilename(_) | Message::CopyFilePath(_) => {
-                crate::app_module::message_handlers::handle_file_messages(self, message)
+                crate::app::message_handlers::handle_file_messages(self, message)
             }
 
             // Image loading messages
             Message::ImagesLoaded(_) | Message::SliderImageWidgetLoaded(_) | Message::SliderImageLoaded(_) => {
-                crate::app_module::message_handlers::handle_image_loading_messages(self, message)
+                crate::app::message_handlers::handle_image_loading_messages(self, message)
             }
 
             // Slider and navigation messages
             Message::SliderChanged(_, _) | Message::SliderReleased(_, _) => {
-                crate::app_module::message_handlers::handle_slider_messages(self, message)
+                crate::app::message_handlers::handle_slider_messages(self, message)
             }
 
             // Toggle and UI control messages
@@ -1040,12 +1043,12 @@ impl iced_winit::runtime::Program for DataViewer {
             Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
             Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
             Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
-                crate::app_module::message_handlers::handle_toggle_messages(self, message)
+                crate::app::message_handlers::handle_toggle_messages(self, message)
             }
 
             // Event messages (mouse, keyboard, file drops)
             Message::Event(event) => {
-                crate::app_module::message_handlers::handle_event_messages(self, event)
+                crate::app::message_handlers::handle_event_messages(self, event)
             }
 
             // Feature-specific messages
