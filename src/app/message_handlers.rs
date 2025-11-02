@@ -22,6 +22,94 @@ use crate::widgets::shader::{scene::Scene, cpu_scene::CpuScene};
 #[allow(unused_imports)]
 use std::time::Instant;
 
+/// Main entry point for handling all messages
+/// Routes messages to appropriate handler functions
+pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
+    match message {
+        // Simple inline messages
+        Message::Nothing => Task::none(),
+        Message::Debug(s) => {
+            app.title = s;
+            Task::none()
+        }
+        Message::BackgroundColorChanged(color) => {
+            app.background_color = color;
+            Task::none()
+        }
+        Message::FontLoaded(_) => Task::none(),
+        Message::TimerTick => {
+            debug!("TimerTick received");
+            Task::none()
+        }
+        Message::Quit => {
+            std::process::exit(0);
+        }
+
+        // UI state messages (About, Options, Logs)
+        Message::ShowLogs | Message::OpenSettingsDir | Message::ExportDebugLogs |
+        Message::ExportAllLogs | Message::ShowAbout | Message::HideAbout |
+        Message::ShowOptions | Message::HideOptions | Message::OpenWebLink(_) => {
+            handle_ui_messages(app, message)
+        }
+
+        // Settings messages
+        Message::SaveSettings | Message::ClearSettingsStatus | Message::SettingsTabSelected(_) |
+        Message::AdvancedSettingChanged(_, _) | Message::ResetAdvancedSettings => {
+            handle_settings_messages(app, message)
+        }
+
+        // File operation messages
+        Message::OpenFolder(_) | Message::OpenFile(_) | Message::FileDropped(_, _) |
+        Message::Close | Message::FolderOpened(_, _) | Message::CopyFilename(_) | Message::CopyFilePath(_) => {
+            handle_file_messages(app, message)
+        }
+
+        // Image loading messages
+        Message::ImagesLoaded(_) | Message::SliderImageWidgetLoaded(_) | Message::SliderImageLoaded(_) => {
+            handle_image_loading_messages(app, message)
+        }
+
+        // Slider and navigation messages
+        Message::SliderChanged(_, _) | Message::SliderReleased(_, _) => {
+            handle_slider_messages(app, message)
+        }
+
+        // Toggle and UI control messages
+        Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
+        Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
+        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleFullScreen(_) |
+        Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
+        Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
+        Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
+            handle_toggle_messages(app, message)
+        }
+
+        // Event messages (mouse, keyboard, file drops)
+        Message::Event(event) => {
+            handle_event_messages(app, event)
+        }
+
+        // Feature-specific messages
+        #[cfg(feature = "ml")]
+        Message::MlAction(ml_msg) => {
+            return crate::ml_widget::handle_ml_message(
+                ml_msg,
+                &app.panes,
+                &mut app.selection_manager,
+            );
+        }
+
+        #[cfg(feature = "coco")]
+        Message::CocoAction(coco_msg) => {
+            return crate::coco::widget::handle_coco_message(
+                coco_msg,
+                &mut app.panes,
+                &mut app.annotation_manager,
+            );
+        }
+    }
+}
+
 /// Routes UI state messages (About, Options, Logs, etc.)
 pub fn handle_ui_messages(app: &mut DataViewer, message: Message) -> Task<Message> {
     match message {

@@ -43,7 +43,6 @@ use iced_wgpu::{wgpu, Renderer};
 use iced_wgpu::engine::CompressionStrategy;
 use iced_winit::core::Theme as WinitTheme;
 use iced_winit::core::{Color, Element};
-use iced_winit::runtime::Task;
 
 
 use crate::navigation_keyboard::{move_right_all, move_left_all};
@@ -561,90 +560,8 @@ impl iced_winit::runtime::Program for DataViewer {
 
         let _update_start = Instant::now();
 
-        // Route messages to appropriate handler functions
-        let task = match message {
-            // Misc messages (simple ones handled inline)
-            Message::Nothing => Task::none(),
-            Message::Debug(s) => {
-                self.title = s;
-                Task::none()
-            }
-            Message::BackgroundColorChanged(color) => {
-                self.background_color = color;
-                Task::none()
-            }
-            Message::FontLoaded(_) => Task::none(),
-            Message::TimerTick => {
-                debug!("TimerTick received");
-                Task::none()
-            }
-            Message::Quit => {
-                std::process::exit(0);
-            }
-
-            // UI state messages (About, Options, Logs)
-            Message::ShowLogs | Message::OpenSettingsDir | Message::ExportDebugLogs |
-            Message::ExportAllLogs | Message::ShowAbout | Message::HideAbout |
-            Message::ShowOptions | Message::HideOptions | Message::OpenWebLink(_) => {
-                crate::app::message_handlers::handle_ui_messages(self, message)
-            }
-
-            // Settings messages
-            Message::SaveSettings | Message::ClearSettingsStatus | Message::SettingsTabSelected(_) |
-            Message::AdvancedSettingChanged(_, _) | Message::ResetAdvancedSettings => {
-                crate::app::message_handlers::handle_settings_messages(self, message)
-            }
-
-            // File operation messages
-            Message::OpenFolder(_) | Message::OpenFile(_) | Message::FileDropped(_, _) |
-            Message::Close | Message::FolderOpened(_, _) | Message::CopyFilename(_) | Message::CopyFilePath(_) => {
-                crate::app::message_handlers::handle_file_messages(self, message)
-            }
-
-            // Image loading messages
-            Message::ImagesLoaded(_) | Message::SliderImageWidgetLoaded(_) | Message::SliderImageLoaded(_) => {
-                crate::app::message_handlers::handle_image_loading_messages(self, message)
-            }
-
-            // Slider and navigation messages
-            Message::SliderChanged(_, _) | Message::SliderReleased(_, _) => {
-                crate::app::message_handlers::handle_slider_messages(self, message)
-            }
-
-            // Toggle and UI control messages
-            Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
-            Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
-            Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleFullScreen(_) |
-            Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
-            Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
-            Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
-                crate::app::message_handlers::handle_toggle_messages(self, message)
-            }
-
-            // Event messages (mouse, keyboard, file drops)
-            Message::Event(event) => {
-                crate::app::message_handlers::handle_event_messages(self, event)
-            }
-
-            // Feature-specific messages
-            #[cfg(feature = "ml")]
-            Message::MlAction(ml_msg) => {
-                return crate::ml_widget::handle_ml_message(
-                    ml_msg,
-                    &self.panes,
-                    &mut self.selection_manager,
-                );
-            }
-
-            #[cfg(feature = "coco")]
-            Message::CocoAction(coco_msg) => {
-                return crate::coco::widget::handle_coco_message(
-                    coco_msg,
-                    &mut self.panes,
-                    &mut self.annotation_manager,
-                );
-            }
-        };
+        // Route message to handler
+        let task = message_handlers::handle_message(self, message);
 
         // Return the task if it's not skate mode
         // Skate mode overrides normal task handling for continuous navigation
