@@ -27,7 +27,7 @@ use std::time::Instant;
 use log::{Level, debug, info, warn, error};
 
 use iced::{
-    clipboard, event::Event,
+    event::Event,
     widget::button,
     font::{self, Font},
 };
@@ -196,7 +196,7 @@ pub struct DataViewer {
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub runtime_settings: RuntimeSettings,              // Runtime-configurable settings
-    ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
+    pub(crate) ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
     #[cfg(feature = "ml")]
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
     #[cfg(feature = "coco")]
@@ -343,7 +343,7 @@ impl DataViewer {
         self.clear_primitive_storage();
     }
 
-    fn initialize_dir_path(&mut self, path: &PathBuf, pane_index: usize) {
+    pub(crate) fn initialize_dir_path(&mut self, path: &PathBuf, pane_index: usize) {
         debug!("last_opened_pane: {}", self.last_opened_pane);
 
         // Make sure we have enough panes
@@ -414,7 +414,7 @@ impl DataViewer {
         }
     }
 
-    fn handle_key_pressed_event(&mut self, key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+    pub(crate) fn handle_key_pressed_event(&mut self, key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
 
         // Helper function to check for the platform-appropriate modifier key
@@ -737,7 +737,7 @@ impl DataViewer {
         tasks
     }
 
-    fn handle_key_released_event(&mut self, key_code: &keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
+    pub(crate) fn handle_key_released_event(&mut self, key_code: &keyboard::Key, _modifiers: keyboard::Modifiers) -> Vec<Task<Message>> {
         #[allow(unused_mut)]
         let mut tasks = Vec::new();
 
@@ -777,7 +777,7 @@ impl DataViewer {
         tasks
     }
 
-    fn toggle_slider_type(&mut self) {
+    pub(crate) fn toggle_slider_type(&mut self) {
         // When toggling from dual to single, reset pane.is_selected to true
         if self.is_slider_dual {
             for pane in self.panes.iter_mut() {
@@ -799,7 +799,7 @@ impl DataViewer {
         self.is_slider_dual = !self.is_slider_dual;
     }
 
-    fn toggle_pane_layout(&mut self, pane_layout: PaneLayout) {
+    pub(crate) fn toggle_pane_layout(&mut self, pane_layout: PaneLayout) {
         match pane_layout {
             PaneLayout::SinglePane => {
                 Pane::resize_panes(&mut self.panes, 1);
@@ -821,7 +821,7 @@ impl DataViewer {
         self.pane_layout = pane_layout;
     }
 
-    fn toggle_footer(&mut self) {
+    pub(crate) fn toggle_footer(&mut self) {
         self.show_footer = !self.show_footer;
     }
 
@@ -863,7 +863,7 @@ impl DataViewer {
     }
 
 
-    fn update_cache_strategy(&mut self, strategy: CacheStrategy) {
+    pub(crate) fn update_cache_strategy(&mut self, strategy: CacheStrategy) {
         debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
         self.cache_strategy = strategy;
 
@@ -905,7 +905,7 @@ impl DataViewer {
         }
     }
 
-    fn update_compression_strategy(&mut self, strategy: CompressionStrategy) {
+    pub(crate) fn update_compression_strategy(&mut self, strategy: CompressionStrategy) {
         if self.compression_strategy != strategy {
             self.compression_strategy = strategy;
 
@@ -959,7 +959,7 @@ impl DataViewer {
         }
     }
 
-    fn toggle_split_orientation(&mut self) {
+    pub(crate) fn toggle_split_orientation(&mut self) {
         self.is_horizontal_split = !self.is_horizontal_split;
     }
 }
@@ -982,892 +982,73 @@ impl iced_winit::runtime::Program for DataViewer {
         }
 
         let _update_start = Instant::now();
-        match message {
-            Message::BackgroundColorChanged(color) => {
-                self.background_color = color;
-            }
-            Message::Nothing => {}
+
+        // Route messages to appropriate handler functions
+        let task = match message {
+            // Misc messages (simple ones handled inline)
+            Message::Nothing => Task::none(),
             Message::Debug(s) => {
                 self.title = s;
+                Task::none()
             }
-            Message::ShowLogs => {
-                let app_name = "viewskater";
-                let log_dir_path = crate::logging::get_log_directory(app_name);
-                let _ = std::fs::create_dir_all(log_dir_path.clone());
-                crate::logging::open_in_file_explorer(log_dir_path.to_string_lossy().as_ref());
+            Message::BackgroundColorChanged(color) => {
+                self.background_color = color;
+                Task::none()
             }
-            Message::OpenSettingsDir => {
-                // Get the settings directory from the settings file path
-                let settings_path = UserSettings::settings_path();
-                if let Some(settings_dir) = settings_path.parent() {
-                    let _ = std::fs::create_dir_all(settings_dir);
-                    crate::logging::open_in_file_explorer(settings_dir.to_string_lossy().as_ref());
-                }
-            }
-            Message::ExportDebugLogs => {
-                let app_name = "viewskater";
-                if let Some(log_buffer) = crate::get_shared_log_buffer() {
-                    crate::logging::export_and_open_debug_logs(app_name, log_buffer);
-                } else {
-                    warn!("Log buffer not available for export");
-                }
-            }
-            Message::ExportAllLogs => {
-                println!("DEBUG: ExportAllLogs message received");
-                let app_name = "viewskater";
-                if let Some(log_buffer) = crate::get_shared_log_buffer() {
-                    println!("DEBUG: Got log buffer, starting export...");
-                    if let Some(stdout_buffer) = crate::get_shared_stdout_buffer() {
-                        println!("DEBUG: Got stdout buffer, calling export_and_open_all_logs...");
-                        crate::logging::export_and_open_all_logs(app_name, log_buffer, stdout_buffer);
-                        println!("DEBUG: export_and_open_all_logs completed");
-                    } else {
-                        println!("DEBUG: Stdout buffer not available, exporting debug logs only");
-                        match crate::logging::export_debug_logs(app_name, log_buffer) {
-                            Ok(debug_log_path) => {
-                                println!("DEBUG: Export successful to: {}", debug_log_path.display());
-                                info!("Debug logs successfully exported to: {}", debug_log_path.display());
-                            }
-                            Err(e) => {
-                                println!("DEBUG: Export failed: {}", e);
-                                error!("Failed to export debug logs: {}", e);
-                                eprintln!("Failed to export debug logs: {}", e);
-                            }
-                        }
-                    }
-                    println!("DEBUG: Export operation completed");
-                } else {
-                    println!("DEBUG: Log buffer not available");
-                    warn!("Log buffer not available for export");
-                }
-                println!("DEBUG: ExportAllLogs handler finished");
-            }
-            Message::ShowAbout => {
-                self.show_about = true;
-
-                // Schedule a follow-up redraw in the next frame
-                return Task::perform(async {
-                    // Small delay to ensure state has been updated
-                    std::thread::sleep(std::time::Duration::from_millis(5));
-                }, |_| Message::Nothing);
-            },
-            Message::HideAbout => {
-                self.show_about = false;
-            }
-            Message::ShowOptions => {
-                self.show_options = true;
-
-                // Schedule a follow-up redraw in the next frame
-                return Task::perform(async {
-                    std::thread::sleep(std::time::Duration::from_millis(5));
-                }, |_| Message::Nothing);
-            }
-            Message::HideOptions => {
-                self.show_options = false;
-            }
-            Message::SaveSettings => {
-                // Helper function to parse and validate a value
-                let parse_value = |key: &str, _default: u64| -> Result<u64, String> {
-                    self.advanced_settings_input
-                        .get(key)
-                        .ok_or_else(|| format!("Missing value for {}", key))?
-                        .parse::<u64>()
-                        .map_err(|_| format!("Invalid number for {}", key))
-                };
-
-                // Parse and validate all advanced settings
-                let cache_size = match parse_value("cache_size", 5) {
-                    Ok(v) if v > 0 && v <= 100 => v as usize,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Cache size must be between 1 and 100".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing cache_size: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                let max_loading_queue_size = match parse_value("max_loading_queue_size", 3) {
-                    Ok(v) if v > 0 && v <= 50 => v as usize,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Max loading queue size must be between 1 and 50".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing max_loading_queue_size: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                let max_being_loaded_queue_size = match parse_value("max_being_loaded_queue_size", 3) {
-                    Ok(v) if v > 0 && v <= 50 => v as usize,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Max being loaded queue size must be between 1 and 50".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing max_being_loaded_queue_size: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                let window_width = match parse_value("window_width", 1200) {
-                    Ok(v) if (400..=10000).contains(&v) => v as u32,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Window width must be between 400 and 10000".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing window_width: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                let window_height = match parse_value("window_height", 800) {
-                    Ok(v) if (300..=10000).contains(&v) => v as u32,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Window height must be between 300 and 10000".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing window_height: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                let atlas_size = match parse_value("atlas_size", 2048) {
-                    Ok(v) if (256..=8192).contains(&v) && v.is_power_of_two() => v as u32,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Atlas size must be a power of 2 between 256 and 8192".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing atlas_size: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                let double_click_threshold_ms = match parse_value("double_click_threshold_ms", 250) {
-                    Ok(v) if (50..=1000).contains(&v) => v as u16,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Double-click threshold must be between 50 and 1000 ms".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing double_click_threshold_ms: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                let archive_cache_size = match parse_value("archive_cache_size", 200) {
-                    Ok(v) if (10..=10000).contains(&v) => v,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Archive cache size must be between 10 and 10000 MB".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing archive_cache_size: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                let archive_warning_threshold_mb = match parse_value("archive_warning_threshold_mb", 500) {
-                    Ok(v) if (10..=10000).contains(&v) => v,
-                    Ok(_) => {
-                        self.settings_save_status = Some("Error: Archive warning threshold must be between 10 and 10000 MB".to_string());
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        self.settings_save_status = Some(format!("Error parsing archive_warning_threshold_mb: {}", e));
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                };
-
-                // Create settings from current app state with validated advanced settings
-                let settings = UserSettings {
-                    show_fps: self.show_fps,
-                    show_footer: self.show_footer,
-                    is_horizontal_split: self.is_horizontal_split,
-                    synced_zoom: self.synced_zoom,
-                    mouse_wheel_zoom: self.mouse_wheel_zoom,
-                    show_copy_buttons: self.show_copy_buttons,
-                    cache_strategy: match self.cache_strategy {
-                        CacheStrategy::Cpu => "cpu".to_string(),
-                        CacheStrategy::Gpu => "gpu".to_string(),
-                    },
-                    compression_strategy: match self.compression_strategy {
-                        CompressionStrategy::None => "none".to_string(),
-                        CompressionStrategy::Bc1 => "bc1".to_string(),
-                    },
-                    is_slider_dual: self.is_slider_dual,
-                    // Use parsed and validated advanced settings
-                    cache_size,
-                    max_loading_queue_size,
-                    max_being_loaded_queue_size,
-                    window_width,
-                    window_height,
-                    atlas_size,
-                    double_click_threshold_ms,
-                    archive_cache_size,
-                    archive_warning_threshold_mb,
-                };
-
-                // Check if window settings changed (these require restart)
-                let old_settings = UserSettings::load(None);
-                let window_settings_changed = window_width != old_settings.window_width ||
-                                              window_height != old_settings.window_height ||
-                                              atlas_size != old_settings.atlas_size;
-
-                // Save settings to file
-                match settings.save() {
-                    Ok(_) => {
-                        info!("Settings saved successfully");
-
-                        // Apply archive settings immediately (no restart required)
-                        self.archive_cache_size = archive_cache_size * 1_048_576;  // Convert MB to bytes
-                        self.archive_warning_threshold_mb = archive_warning_threshold_mb;
-                        info!("Archive settings applied immediately: cache_size={}MB, warning_threshold={}MB",
-                            archive_cache_size, archive_warning_threshold_mb);
-
-                        // Apply cache_size setting immediately by reloading all panes
-                        if cache_size != self.cache_size {
-                            info!("Cache size changed from {} to {}, reloading all panes", self.cache_size, cache_size);
-                            self.cache_size = cache_size;
-
-                            // Get current pane file lengths
-                            let pane_file_lengths: Vec<usize> = self.panes.iter()
-                                .map(|p| p.img_cache.num_files)
-                                .collect();
-
-                            // Capture runtime settings before mutable borrow
-                            let cache_size = self.cache_size;
-                            let archive_cache_size = self.archive_cache_size;
-                            let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
-
-                            // Reinitialize all loaded panes with the new cache size
-                            for (i, pane) in self.panes.iter_mut().enumerate() {
-                                if let Some(dir_path) = &pane.directory_path.clone() {
-                                    if pane.dir_loaded {
-                                        let path = PathBuf::from(dir_path);
-
-                                        // Reinitialize the pane with the current directory
-                                        pane.initialize_dir_path(
-                                            &Arc::clone(&self.device),
-                                            &Arc::clone(&self.queue),
-                                            self.is_gpu_supported,
-                                            self.cache_strategy,
-                                            self.compression_strategy,
-                                            &self.pane_layout,
-                                            &pane_file_lengths,
-                                            i,
-                                            &path,
-                                            self.is_slider_dual,
-                                            &mut self.slider_value,
-                                            cache_size,
-                                            archive_cache_size,
-                                            archive_warning_threshold_mb,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-
-                        // Apply queue size settings immediately (no pane reload required)
-                        if max_loading_queue_size != self.max_loading_queue_size || max_being_loaded_queue_size != self.max_being_loaded_queue_size {
-                            info!("Queue size settings changed: max_loading_queue_size={}, max_being_loaded_queue_size={}", max_loading_queue_size, max_being_loaded_queue_size);
-                            self.max_loading_queue_size = max_loading_queue_size;
-                            self.max_being_loaded_queue_size = max_being_loaded_queue_size;
-
-                            // Update all panes with new queue sizes
-                            for pane in self.panes.iter_mut() {
-                                pane.max_loading_queue_size = max_loading_queue_size;
-                                pane.max_being_loaded_queue_size = max_being_loaded_queue_size;
-                            }
-                        }
-
-                        // Apply double-click threshold immediately
-                        if double_click_threshold_ms != self.double_click_threshold_ms {
-                            info!("Double-click threshold changed from {} to {} ms", self.double_click_threshold_ms, double_click_threshold_ms);
-                            self.double_click_threshold_ms = double_click_threshold_ms;
-                        }
-
-                        self.settings_save_status = Some(if window_settings_changed {
-                            "Settings saved! Window settings require restart, other changes applied immediately.".to_string()
-                        } else {
-                            "Settings saved! All changes applied immediately.".to_string()
-                        });
-
-                        // Clear the status message after 3 seconds
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                    Err(e) => {
-                        error!("Failed to save settings: {}", e);
-                        self.settings_save_status = Some(format!("Error: {}", e));
-
-                        // Clear error message after 3 seconds
-                        return Task::perform(async {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                        }, |_| Message::ClearSettingsStatus);
-                    }
-                }
-            }
-            Message::ClearSettingsStatus => {
-                self.settings_save_status = None;
-            }
-            Message::SettingsTabSelected(index) => {
-                self.active_settings_tab = index;
-            }
-            Message::AdvancedSettingChanged(field_name, value) => {
-                self.advanced_settings_input.insert(field_name, value);
-            }
-            Message::ResetAdvancedSettings => {
-                use crate::config;
-
-                // Reset General tab settings to defaults
-                self.show_fps = false;
-                self.show_footer = true;
-                self.is_horizontal_split = false;
-                self.synced_zoom = true;
-                self.mouse_wheel_zoom = false;
-                self.cache_strategy = CacheStrategy::Gpu;
-                self.compression_strategy = CompressionStrategy::None;
-                self.is_slider_dual = false;
-
-                // Reset Advanced tab settings to defaults (text inputs)
-                self.advanced_settings_input.insert("cache_size".to_string(), config::DEFAULT_CACHE_SIZE.to_string());
-                self.advanced_settings_input.insert("max_loading_queue_size".to_string(), config::DEFAULT_MAX_LOADING_QUEUE_SIZE.to_string());
-                self.advanced_settings_input.insert("max_being_loaded_queue_size".to_string(), config::DEFAULT_MAX_BEING_LOADED_QUEUE_SIZE.to_string());
-                self.advanced_settings_input.insert("window_width".to_string(), config::DEFAULT_WINDOW_WIDTH.to_string());
-                self.advanced_settings_input.insert("window_height".to_string(), config::DEFAULT_WINDOW_HEIGHT.to_string());
-                self.advanced_settings_input.insert("atlas_size".to_string(), config::DEFAULT_ATLAS_SIZE.to_string());
-                self.advanced_settings_input.insert("double_click_threshold_ms".to_string(), config::DEFAULT_DOUBLE_CLICK_THRESHOLD_MS.to_string());
-                self.advanced_settings_input.insert("archive_cache_size".to_string(), config::DEFAULT_ARCHIVE_CACHE_SIZE.to_string());
-                self.advanced_settings_input.insert("archive_warning_threshold_mb".to_string(), config::DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB.to_string());
-            }
-            Message::OpenWebLink(url) => {
-                if let Err(e) = webbrowser::open(&url) {
-                    warn!("Failed to open link: {}, error: {:?}", url, e);
-                }
-            }
-            Message::FontLoaded(_) => {}
-            Message::OpenFolder(pane_index) => {
-                return Task::perform(file_io::pick_folder(), move |result| {
-                    Message::FolderOpened(result, pane_index)
-                });
-            }
-            Message::OpenFile(pane_index) => {
-                return Task::perform(file_io::pick_file(), move |result| {
-                    Message::FolderOpened(result, pane_index)
-                });
-            }
-            Message::FileDropped(pane_index, dropped_path) => {
-                let path = PathBuf::from(&dropped_path);
-
-                #[cfg(feature = "coco")]
-                debug!("COCO FEATURE IS ENABLED");
-
-                #[cfg(not(feature = "coco"))]
-                debug!("COCO FEATURE IS DISABLED");
-
-                // Check if it's a JSON file that might be COCO format
-                #[cfg(feature = "coco")]
-                if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                    debug!("JSON file detected, checking if it's COCO format: {}", path.display());
-                    // Try to read and detect COCO format
-                    match std::fs::read_to_string(&path) {
-                        Ok(content) => {
-                            if crate::coco::parser::CocoDataset::is_coco_format(&content) {
-                                info!("✓ Detected COCO JSON file: {}", path.display());
-                                return Task::done(Message::CocoAction(
-                                    crate::coco::widget::CocoMessage::LoadCocoFile(path)
-                                ));
-                            } else {
-                                debug!("JSON file is not COCO format, treating as regular file");
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Failed to read JSON file: {}", e);
-                        }
-                    }
-                }
-
-                // Reset state first
-                debug!("Message::FileDropped - Resetting state");
-                self.reset_state(pane_index);
-
-                // Loads the dropped file/directory
-                debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
-                debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}", self.panes[pane_index as usize].dir_loaded, pane_index, self.last_opened_pane);
-                self.initialize_dir_path(&path, pane_index as usize);
-            }
-            Message::Close => {
-                self.reset_state(-1);
-                debug!("directory_path: {:?}", self.directory_path);
-                debug!("self.current_image_index: {}", self.current_image_index);
-                for pane in self.panes.iter_mut() {
-                    let img_cache = &mut pane.img_cache;
-                    debug!("img_cache.current_index: {}", img_cache.current_index);
-                    debug!("img_cache.image_paths.len(): {}", img_cache.image_paths.len());
-                }
+            Message::FontLoaded(_) => Task::none(),
+            Message::TimerTick => {
+                debug!("TimerTick received");
+                Task::none()
             }
             Message::Quit => {
                 std::process::exit(0);
             }
-            Message::FolderOpened(result, pane_index) => {
-                match result {
-                    Ok(dir) => {
-                        debug!("Folder opened: {}", dir);
-                        // Only allow opening in pane_index > 0 if we're in dual pane mode
-                        if pane_index > 0 && self.pane_layout == PaneLayout::SinglePane {
-                            debug!("Ignoring request to open folder in pane {} while in single-pane mode", pane_index);
-                        } else {
-                            self.initialize_dir_path(&PathBuf::from(dir), pane_index);
-                        }
-                    }
-                    Err(err) => {
-                        debug!("Folder open failed: {:?}", err);
-                    }
-                }
-            },
-            Message::CopyFilename(pane_index) => {
-                // Get the image path of the specified pane
-                let path = &self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index];
-                let filename_str = path.file_name().to_string();
-                if let Some(filename) = file_io::get_filename(&filename_str) {
-                    debug!("Filename: {}", filename);
-                    return clipboard::write::<Message>(filename);
-                }
-            }
-            Message::CopyFilePath(pane_index) => {
-                // Get the image path of the specified pane
-                let path = &self.panes[pane_index].img_cache.image_paths[self.panes[pane_index].img_cache.current_index];
-                let img_path = path.file_name().to_string();
-                if let Some(dir_path) = self.panes[pane_index].directory_path.as_ref() {
-                    let full_path = format!("{}/{}", dir_path, img_path);
-                    debug!("Full Path: {}", full_path);
-                    return clipboard::write::<Message>(full_path);
-                }
-            }
-            Message::OnSplitResize(position) => { self.divider_position = Some(position); },
-            Message::ResetSplit(_position) => { self.divider_position = None; },
-            Message::ToggleSliderType(_bool) => { self.toggle_slider_type(); },
-            Message::TogglePaneLayout(pane_layout) => { self.toggle_pane_layout(pane_layout); },
-            Message::ToggleFooter(_bool) => { self.toggle_footer(); },
-            Message::ToggleSyncedZoom(enabled) => {
-                self.synced_zoom = enabled;
-            }
-            Message::ToggleMouseWheelZoom(enabled) => {
-                self.mouse_wheel_zoom = enabled;
-                for pane in self.panes.iter_mut() {
-                    pane.mouse_wheel_zoom = enabled;
-                }
-            }
-            Message::ToggleCopyButtons(enabled) => {
-                self.show_copy_buttons = enabled;
-            }
-            Message::ToggleFullScreen(enabled) => {
-                self.is_fullscreen = enabled;
-            }
-            Message::CursorOnTop(value) => {
-                self.cursor_on_top = value;
-            }
-            Message::CursorOnMenu(value) => {
-                self.cursor_on_menu = value;
-            }
-            Message::CursorOnFooter(value) => {
-                self.cursor_on_footer = value;
-            }
-            Message::PaneSelected(pane_index, is_selected) => {
-                self.panes[pane_index].is_selected = is_selected;
-                for (index, pane) in self.panes.iter_mut().enumerate() {
-                    debug!("pane_index: {}, is_selected: {}", index, pane.is_selected);
-                }
+
+            // UI state messages (About, Options, Logs)
+            Message::ShowLogs | Message::OpenSettingsDir | Message::ExportDebugLogs |
+            Message::ExportAllLogs | Message::ShowAbout | Message::HideAbout |
+            Message::ShowOptions | Message::HideOptions | Message::OpenWebLink(_) => {
+                crate::app_module::message_handlers::handle_ui_messages(self, message)
             }
 
-            Message::ImagesLoaded(result) => {
-                debug!("ImagesLoaded");
-                match result {
-                    Ok((image_data, operation)) => {
-                        if let Some(op) = operation {
-                            let cloned_op = op.clone();
-                            match op {
-                                LoadOperation::LoadNext((ref pane_indices, ref target_indices))
-                                | LoadOperation::LoadPrevious((ref pane_indices, ref target_indices))
-                                | LoadOperation::ShiftNext((ref pane_indices, ref target_indices))
-                                | LoadOperation::ShiftPrevious((ref pane_indices, ref target_indices)) => {
-                                    let operation_type = cloned_op.operation_type();
-
-                                    loading_handler::handle_load_operation_all(
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        pane_indices,
-                                        target_indices,
-                                        &image_data,  // Now using Vec<Option<CachedData>>
-                                        &cloned_op,
-                                        operation_type,
-                                    );
-                                }
-                                LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
-                                    loading_handler::handle_load_pos_operation(
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        pane_index,
-                                        &target_indices_and_cache,
-                                        &image_data,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        debug!("Image load failed: {:?}", err);
-                    }
-                }
+            // Settings messages
+            Message::SaveSettings | Message::ClearSettingsStatus | Message::SettingsTabSelected(_) |
+            Message::AdvancedSettingChanged(_, _) | Message::ResetAdvancedSettings => {
+                crate::app_module::message_handlers::handle_settings_messages(self, message)
             }
 
-            Message::SliderImageWidgetLoaded(result) => {
-                match result {
-                    Ok((pane_idx, pos, handle, dimensions)) => {
-                        // Track each async image delivery
-                        crate::track_async_delivery();
-
-                        // Use the specified pane index instead of hardcoded 0
-                        if let Some(pane) = self.panes.get_mut(pane_idx) {
-                            // Update the image widget handle directly
-                            pane.slider_image = Some(handle);
-
-                            // Store the dimensions for annotation rendering
-                            pane.slider_image_dimensions = Some(dimensions);
-
-                            // Also update the cache state to keep everything in sync
-                            pane.img_cache.current_index = pos;
-
-                            debug!("Slider image loaded for pane {} at position {} with dimensions {:?}", pane_idx, pos, dimensions);
-                        } else {
-                            warn!("SliderImageWidgetLoaded: Invalid pane index {}", pane_idx);
-                        }
-                    },
-                    Err((pane_idx, pos)) => {
-                        warn!("SLIDER: Failed to load image widget for pane {} at position {}", pane_idx, pos);
-                    }
-                }
-            },
-
-            Message::SliderImageLoaded(result) => {
-                match result {
-                    Ok((_pos, cached_data)) => {
-                        let pane = &mut self.panes[0]; // For single-pane slider
-
-                        // Update the scene based on data type
-                        if let CachedData::Cpu(bytes) = &cached_data {
-                            debug!("SliderImageLoaded: loaded data: {:?}", bytes.len());
-
-                            // Create or update the slider scene
-                            pane.current_image = CachedData::Cpu(bytes.clone());
-                            pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(
-                                bytes.clone(), true)));
-
-                            // Ensure texture is created for CPU images
-                            if let Some(device) = &pane.device {
-                                if let Some(queue) = &pane.queue {
-                                    if let Some(scene) = &mut pane.slider_scene {
-                                        scene.ensure_texture(device, queue, pane.pane_id);
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    Err(pos) => {
-                        warn!("SLIDER: Failed to load image for position {}", pos);
-                    }
-                }
+            // File operation messages
+            Message::OpenFolder(_) | Message::OpenFile(_) | Message::FileDropped(_, _) |
+            Message::Close | Message::FolderOpened(_, _) | Message::CopyFilename(_) | Message::CopyFilePath(_) => {
+                crate::app_module::message_handlers::handle_file_messages(self, message)
             }
 
-
-            Message::SliderChanged(pane_index, value) => {
-                self.is_slider_moving = true;
-                self.last_slider_update = Instant::now();
-
-                // Always use async on Linux for better responsiveness
-                let use_async = true;
-
-                // Use throttle for Linux
-                #[cfg(target_os = "linux")]
-                let use_throttle = true;
-
-                #[cfg(not(target_os = "linux"))]
-                let use_throttle = false;
-
-
-                if pane_index == -1 {
-                    // Master slider - only relevant when is_slider_dual is false
-                    self.prev_slider_value = self.slider_value;
-                    self.slider_value = value;
-
-                    // Clear any stale slider image if this is the first slider movement after loading a new directory
-                    if self.panes[0].slider_image.is_none() {
-                        for pane in self.panes.iter_mut() {
-                            pane.slider_scene = None;
-                        }
-                    }
-                } else {
-                    let pane_index_usize = pane_index as usize;
-
-                    // In dual slider mode, clear the slider image for the other pane
-                    // to ensure it keeps showing its normal scene
-                    if self.is_slider_dual && self.pane_layout == PaneLayout::DualPane {
-                        // Clear slider images for all panes except the active one
-                        for idx in 0..self.panes.len() {
-                            if idx != pane_index_usize {
-                                self.panes[idx].slider_image = None;
-                            }
-                        }
-                    }
-
-                    // Now update the slider value for the active pane
-                    let pane = &mut self.panes[pane_index_usize];
-                    pane.prev_slider_value = pane.slider_value;
-                    pane.slider_value = value;
-
-                    // Clear any stale slider image if this is the first slider movement after loading a new directory
-                    if pane.slider_image.is_none() {
-                        pane.slider_scene = None;
-                    }
-                }
-
-                return navigation_slider::update_pos(
-                    &mut self.panes,
-                    pane_index,
-                    value as usize,
-                    use_async,
-                    use_throttle,
-                );
+            // Image loading messages
+            Message::ImagesLoaded(_) | Message::SliderImageWidgetLoaded(_) | Message::SliderImageLoaded(_) => {
+                crate::app_module::message_handlers::handle_image_loading_messages(self, message)
             }
 
-            Message::SliderReleased(pane_index, value) => {
-                debug!("SLIDER_DEBUG: SliderReleased event received");
-                self.is_slider_moving = false;
-
-                // Get the final image FPS AND the timestamps
-                let final_image_fps = iced_wgpu::get_image_fps();
-                let upload_timestamps = iced_wgpu::get_image_upload_timestamps();
-
-                // Sync our application's image render times with the ones from iced_wgpu
-                if !upload_timestamps.is_empty() {
-                    if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
-                        // Convert VecDeque to Vec for our storage
-                        *render_times = upload_timestamps.into_iter().collect();
-
-                        // Update FPS based on the final calculated value
-                        if let Ok(mut fps) = IMAGE_RENDER_FPS.lock() {
-                            *fps = final_image_fps as f32;
-                            debug!("SLIDER_DEBUG: Synced image fps tracking, final FPS: {:.1}", final_image_fps);
-                        }
-                    }
-                }
-
-                // Continue with loading remaining images
-                return navigation_slider::load_remaining_images(
-                    &self.device,
-                    &self.queue,
-                    self.is_gpu_supported,
-                    self.cache_strategy,
-                    self.compression_strategy,
-                    &mut self.panes,
-                    &mut self.loading_status,
-                    pane_index,
-                    value as usize);
+            // Slider and navigation messages
+            Message::SliderChanged(_, _) | Message::SliderReleased(_, _) => {
+                crate::app_module::message_handlers::handle_slider_messages(self, message)
             }
 
-            Message::Event(event) => match event {
-                Event::Mouse(iced_core::mouse::Event::WheelScrolled { delta }) => {
-                    if !self.ctrl_pressed && !self.mouse_wheel_zoom && !self.show_options && !self.show_about{
-                        match delta {
-                            iced_core::mouse::ScrollDelta::Lines { y, .. }
-                            | iced_core::mouse::ScrollDelta::Pixels { y, .. } => {
-                                if y > 0.0 {
-                                    return move_left_all(
-                                        &self.device,
-                                        &self.queue,
-                                        self.cache_strategy,
-                                        self.compression_strategy,
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        &mut self.slider_value,
-                                        &self.pane_layout,
-                                        self.is_slider_dual,
-                                        self.last_opened_pane as usize);
-                                } else if y < 0.0 {
-                                    return move_right_all(
-                                        &self.device,
-                                        &self.queue,
-                                        self.cache_strategy,
-                                        self.compression_strategy,
-                                        &mut self.panes,
-                                        &mut self.loading_status,
-                                        &mut self.slider_value,
-                                        &self.pane_layout,
-                                        self.is_slider_dual,
-                                        self.last_opened_pane as usize
-                                    );
-                                }
-                            }
-                        };
-                    }
-                }
-
-                Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-                    debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
-                    debug!("modifiers.shift(): {}", modifiers.shift());
-                    let tasks = self.handle_key_pressed_event(&key, modifiers);
-
-                    if !tasks.is_empty() {
-                        return Task::batch(tasks);
-                    }
-                }
-
-                Event::Keyboard(iced_core::keyboard::Event::KeyReleased { key, modifiers, .. }) => {
-                    let tasks = self.handle_key_released_event(&key, modifiers);
-                    if !tasks.is_empty() {
-                        return Task::batch(tasks);
-                    }
-                }
-
-                // Only using for single pane layout
-                #[cfg(any(target_os = "macos", target_os = "windows"))]
-                Event::Window(iced::window::Event::FileDropped(dropped_paths, _position)) => {
-                    match self.pane_layout {
-                        PaneLayout::SinglePane => {
-                            let path = &dropped_paths[0];
-
-                            // Check if it's a JSON file that might be COCO format
-                            #[cfg(feature = "coco")]
-                            if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                                debug!("JSON file detected in window event, checking if it's COCO format: {}", path.display());
-                                // Try to read and detect COCO format
-                                match std::fs::read_to_string(path) {
-                                    Ok(content) => {
-                                        if crate::coco::parser::CocoDataset::is_coco_format(&content) {
-                                            info!("✓ Detected COCO JSON file: {}", path.display());
-                                            return Task::done(Message::CocoAction(
-                                                crate::coco::widget::CocoMessage::LoadCocoFile(path.clone())
-                                            ));
-                                        } else {
-                                            debug!("JSON file is not COCO format, treating as regular file");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        warn!("Failed to read JSON file: {}", e);
-                                    }
-                                }
-                            }
-
-                            // Reset state first
-                            self.reset_state(-1);
-
-                            debug!("File dropped: {:?}", dropped_paths);
-                            self.initialize_dir_path(path, 0);
-                        },
-                        PaneLayout::DualPane => {
-                        }
-                    }
-                }
-                #[cfg(target_os = "linux")]
-                Event::Window(iced::window::Event::FileDropped(dropped_path, _)) => {
-                    match self.pane_layout {
-                        PaneLayout::SinglePane => {
-                            let path = &dropped_path[0];
-
-                            // Check if it's a JSON file that might be COCO format
-                            #[cfg(feature = "coco")]
-                            if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                                debug!("JSON file detected in window event, checking if it's COCO format: {}", path.display());
-                                // Try to read and detect COCO format
-                                match std::fs::read_to_string(path) {
-                                    Ok(content) => {
-                                        if crate::coco::parser::CocoDataset::is_coco_format(&content) {
-                                            info!("✓ Detected COCO JSON file: {}", path.display());
-                                            return Task::done(Message::CocoAction(
-                                                crate::coco::widget::CocoMessage::LoadCocoFile(path.clone())
-                                            ));
-                                        } else {
-                                            debug!("JSON file is not COCO format, treating as regular file");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        warn!("Failed to read JSON file: {}", e);
-                                    }
-                                }
-                            }
-
-                            // Reset state first
-                            debug!("window::Event::FileDropped - Resetting state");
-                            self.reset_state(-1);
-
-                            debug!("File dropped: {:?}", dropped_path);
-                            self.initialize_dir_path(path, 0);
-                        },
-                        PaneLayout::DualPane => {}
-                    }
-                }
-
-                _ => {}
-            },
-            Message::TimerTick => {
-                // Implementation of TimerTick message
-                // This is a placeholder and should be replaced with the actual implementation
-                debug!("TimerTick received");
+            // Toggle and UI control messages
+            Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
+            Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
+            Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleFullScreen(_) |
+            Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
+            Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
+            Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
+                crate::app_module::message_handlers::handle_toggle_messages(self, message)
             }
-            Message::SetCacheStrategy(strategy) => {
-                self.update_cache_strategy(strategy);
-            }
-            Message::SetCompressionStrategy(strategy) => {
-                self.update_compression_strategy(strategy);
-            }
-            Message::ToggleFpsDisplay(value) => {
-                self.show_fps = value;
-            }
-            Message::ToggleSplitOrientation(_bool) => { self.toggle_split_orientation(); },
 
+            // Event messages (mouse, keyboard, file drops)
+            Message::Event(event) => {
+                crate::app_module::message_handlers::handle_event_messages(self, event)
+            }
+
+            // Feature-specific messages
             #[cfg(feature = "ml")]
             Message::MlAction(ml_msg) => {
                 return crate::ml_widget::handle_ml_message(
@@ -1885,8 +1066,10 @@ impl iced_winit::runtime::Program for DataViewer {
                     &mut self.annotation_manager,
                 );
             }
-        }
+        };
 
+        // Return the task if it's not skate mode
+        // Skate mode overrides normal task handling for continuous navigation
         if self.skate_right {
             self.update_counter = 0;
             move_right_all(
@@ -1916,14 +1099,28 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             )
+        } else if self.skate_left {
+            self.update_counter = 0;
+            debug!("move_left_all from self.skate_left block");
+            move_left_all(
+                &self.device,
+                &self.queue,
+                self.cache_strategy,
+                self.compression_strategy,
+                &mut self.panes,
+                &mut self.loading_status,
+                &mut self.slider_value,
+                &self.pane_layout,
+                self.is_slider_dual,
+                self.last_opened_pane as usize
+            )
         } else {
-            // Log that there's no task to perform once
+            // No skate mode, return the task from message handler
             if self.update_counter == 0 {
                 debug!("No skate mode detected, update_counter: {}", self.update_counter);
                 self.update_counter += 1;
             }
-
-            iced_winit::runtime::Task::none()
+            task
         }
     }
 

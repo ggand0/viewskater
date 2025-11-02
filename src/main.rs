@@ -13,6 +13,7 @@ mod loading_handler;
 mod config;
 mod settings;
 mod app;
+mod app_module;
 mod utils;
 mod build_info;
 mod logging;
