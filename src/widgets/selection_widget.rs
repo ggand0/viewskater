@@ -1,7 +1,7 @@
-/// ML (Machine Learning) dataset curation widget and message handling
+/// Image selection and curation widget for dataset preparation
 ///
-/// This module is only compiled when the "ml" feature is enabled.
-/// It encapsulates all ML-related messages and UI components.
+/// This module is only compiled when the "selection" feature is enabled.
+/// It encapsulates all selection-related messages and UI components.
 use std::path::PathBuf;
 use iced_winit::core::{Element, Color};
 use iced_winit::core::Theme as WinitTheme;
@@ -17,9 +17,9 @@ use crate::selection_manager::{ImageMark, SelectionManager};
 use crate::pane::Pane;
 use crate::menu::PaneLayout;
 
-/// ML-specific messages grouped into a single enum variant
+/// Selection-specific messages grouped into a single enum variant
 #[derive(Debug, Clone)]
-pub enum MlMessage {
+pub enum SelectionMessage {
     MarkImageSelected(usize),      // pane_index
     MarkImageExcluded(usize),      // pane_index
     ClearImageMark(usize),         // pane_index
@@ -27,10 +27,10 @@ pub enum MlMessage {
     ExportSelectionJsonToPath(PathBuf),
 }
 
-/// Convert MlMessage to the main Message type
-impl From<MlMessage> for Message {
-    fn from(ml_msg: MlMessage) -> Self {
-        Message::MlAction(ml_msg)
+/// Convert SelectionMessage to the main Message type
+impl From<SelectionMessage> for Message {
+    fn from(msg: SelectionMessage) -> Self {
+        Message::SelectionAction(msg)
     }
 }
 
@@ -85,17 +85,17 @@ pub fn empty_badge() -> Element<'static, Message, WinitTheme, Renderer> {
     container(text("")).width(0).height(0).into()
 }
 
-/// Handle ML messages by delegating to the selection manager
+/// Handle selection messages by delegating to the selection manager
 ///
-/// This function encapsulates all ML-related message handling logic,
+/// This function encapsulates all selection-related message handling logic,
 /// keeping it separate from the main app.rs update loop.
-pub fn handle_ml_message(
-    ml_msg: MlMessage,
+pub fn handle_selection_message(
+    msg: SelectionMessage,
     panes: &[Pane],
     selection_manager: &mut SelectionManager,
 ) -> Task<Message> {
-    match ml_msg {
-        MlMessage::MarkImageSelected(pane_index) => {
+    match msg {
+        SelectionMessage::MarkImageSelected(pane_index) => {
             if let Some(pane) = panes.get(pane_index) {
                 if pane.dir_loaded {
                     let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
@@ -112,7 +112,7 @@ pub fn handle_ml_message(
             Task::none()
         }
 
-        MlMessage::MarkImageExcluded(pane_index) => {
+        SelectionMessage::MarkImageExcluded(pane_index) => {
             if let Some(pane) = panes.get(pane_index) {
                 if pane.dir_loaded {
                     let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
@@ -129,7 +129,7 @@ pub fn handle_ml_message(
             Task::none()
         }
 
-        MlMessage::ClearImageMark(pane_index) => {
+        SelectionMessage::ClearImageMark(pane_index) => {
             if let Some(pane) = panes.get(pane_index) {
                 if pane.dir_loaded {
                     let path = &pane.img_cache.image_paths[pane.img_cache.current_index];
@@ -146,7 +146,7 @@ pub fn handle_ml_message(
             Task::none()
         }
 
-        MlMessage::ExportSelectionJson => {
+        SelectionMessage::ExportSelectionJson => {
             // Use file picker to choose export location
             Task::perform(
                 async {
@@ -159,7 +159,7 @@ pub fn handle_ml_message(
                 |file_handle| {
                     if let Some(file) = file_handle {
                         let path = file.path().to_path_buf();
-                        Message::MlAction(MlMessage::ExportSelectionJsonToPath(path))
+                        Message::SelectionAction(SelectionMessage::ExportSelectionJsonToPath(path))
                     } else {
                         Message::Nothing
                     }
@@ -167,7 +167,7 @@ pub fn handle_ml_message(
             )
         }
 
-        MlMessage::ExportSelectionJsonToPath(path) => {
+        SelectionMessage::ExportSelectionJsonToPath(path) => {
             info!("Exporting selection to: {}", path.display());
             if let Err(e) = selection_manager.export_to_file(&path) {
                 error!("Failed to export selection: {}", e);
@@ -179,9 +179,9 @@ pub fn handle_ml_message(
     }
 }
 
-/// Handle ML-related keyboard events
+/// Handle selection-related keyboard events
 ///
-/// Returns Some(Task) if the key was handled, None if not an ML key
+/// Returns Some(Task) if the key was handled, None if not a selection key
 pub fn handle_keyboard_event(
     key: &keyboard::Key,
     modifiers: keyboard::Modifiers,
@@ -209,29 +209,29 @@ pub fn handle_keyboard_event(
     match key.as_ref() {
         Key::Character("s") | Key::Character("S") => {
             let pane_index = get_pane_index();
-            Some(Task::done(Message::MlAction(
-                MlMessage::MarkImageSelected(pane_index)
+            Some(Task::done(Message::SelectionAction(
+                SelectionMessage::MarkImageSelected(pane_index)
             )))
         }
 
         Key::Character("x") | Key::Character("X") => {
             let pane_index = get_pane_index();
-            Some(Task::done(Message::MlAction(
-                MlMessage::MarkImageExcluded(pane_index)
+            Some(Task::done(Message::SelectionAction(
+                SelectionMessage::MarkImageExcluded(pane_index)
             )))
         }
 
         Key::Character("u") | Key::Character("U") => {
             let pane_index = get_pane_index();
-            Some(Task::done(Message::MlAction(
-                MlMessage::ClearImageMark(pane_index)
+            Some(Task::done(Message::SelectionAction(
+                SelectionMessage::ClearImageMark(pane_index)
             )))
         }
 
         Key::Character("e") | Key::Character("E") => {
             if is_platform_modifier() {
-                Some(Task::done(Message::MlAction(
-                    MlMessage::ExportSelectionJson
+                Some(Task::done(Message::SelectionAction(
+                    SelectionMessage::ExportSelectionJson
                 )))
             } else {
                 None

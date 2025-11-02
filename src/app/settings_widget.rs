@@ -1,5 +1,5 @@
-/// Settings widget module
-/// Manages all settings-related state and UI for the application
+//! Settings widget module
+//! Manages all settings-related state and UI for the application
 
 use std::collections::HashMap;
 use crate::settings::UserSettings;

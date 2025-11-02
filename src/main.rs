@@ -16,10 +16,8 @@ mod app;
 mod utils;
 mod build_info;
 mod logging;
-#[cfg(feature = "ml")]
+#[cfg(feature = "selection")]
 mod selection_manager;
-#[cfg(feature = "ml")]
-mod ml_widget;
 #[cfg(feature = "coco")]
 mod coco;
 mod settings_modal;

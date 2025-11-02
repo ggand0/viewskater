@@ -18,7 +18,9 @@ use macos::*;
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
 
-use iced_widget::{container, Container, row, column, horizontal_space, text, button, center, Stack};
+use iced_widget::{container, Container, row, column, horizontal_space, text, button, center};
+#[cfg(feature = "coco")]
+use iced_widget::Stack;
 use iced_winit::core::{Color, Element, Length, Alignment};
 use iced_winit::core::alignment;
 use iced_winit::core::alignment::Horizontal;
@@ -37,7 +39,7 @@ use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
 use crate::widgets::synced_image_split::SyncedImageSplit;
-#[cfg(feature = "ml")]
+#[cfg(feature = "selection")]
 use crate::selection_manager::ImageMark;
 
 
@@ -73,9 +75,9 @@ impl FooterOptions {
         }
     }
 
-    #[cfg(feature = "ml")]
+    #[cfg(feature = "selection")]
     pub fn with_mark(mut self, mark: crate::selection_manager::ImageMark) -> Self {
-        self.mark_badge = Some(crate::ml_widget::mark_badge(mark));
+        self.mark_badge = Some(crate::widgets::selection_widget::mark_badge(mark));
         self
     }
 
@@ -89,11 +91,11 @@ impl FooterOptions {
     #[allow(dead_code)]
     pub fn get_mark_badge(self) -> Element<'static, Message, WinitTheme, Renderer> {
         self.mark_badge.unwrap_or_else(|| {
-            #[cfg(feature = "ml")]
+            #[cfg(feature = "selection")]
             {
-                crate::ml_widget::empty_badge()
+                crate::widgets::selection_widget::empty_badge()
             }
-            #[cfg(not(feature = "ml"))]
+            #[cfg(not(feature = "selection"))]
             {
                 container(text("")).width(0).height(0).into()
             }
@@ -123,11 +125,11 @@ pub fn get_footer(
 ) -> Container<'static, Message, WinitTheme, Renderer> {
     // Extract badges from options
     let mark_badge = options.mark_badge.unwrap_or_else(|| {
-        #[cfg(feature = "ml")]
+        #[cfg(feature = "selection")]
         {
-            crate::ml_widget::empty_badge()
+            crate::widgets::selection_widget::empty_badge()
         }
-        #[cfg(not(feature = "ml"))]
+        #[cfg(not(feature = "selection"))]
         {
             container(text("")).width(0).height(0).into()
         }
@@ -233,7 +235,7 @@ pub fn get_footer(
 
 pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer> {
     // Helper to get the current image mark for a pane (ML tools only)
-    #[cfg(feature = "ml")]
+    #[cfg(feature = "selection")]
     let get_mark_for_pane = |pane_index: usize| -> ImageMark {
         if let Some(pane) = app.panes.get(pane_index) {
             if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() {
@@ -287,7 +289,14 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     let image_handle = app.panes[0].slider_image.clone().unwrap();
 
                     center({
+                        #[cfg(feature = "coco")]
                         let mut viewer = viewer::Viewer::new(image_handle)
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .content_fit(iced_winit::core::ContentFit::Contain);
+
+                        #[cfg(not(feature = "coco"))]
+                        let viewer = viewer::Viewer::new(image_handle)
                             .width(Length::Fill)
                             .height(Length::Fill)
                             .content_fit(iced_winit::core::ContentFit::Contain);
@@ -301,7 +310,17 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     })
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Fixed: Pass Arc<Scene> reference correctly
+                    #[cfg(feature = "coco")]
                     let mut shader = ImageShader::new(Some(scene))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .content_fit(iced_winit::core::ContentFit::Contain)
+                        .horizontal_split(false)
+                        .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
+                        .double_click_threshold_ms(app.double_click_threshold_ms);
+
+                    #[cfg(not(feature = "coco"))]
+                    let shader = ImageShader::new(Some(scene))
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .content_fit(iced_winit::core::ContentFit::Contain)
@@ -439,11 +458,11 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             let footer = if app.show_footer && app.panes[0].dir_loaded {
                 let footer_text = format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files);
                 let options = {
-                    #[cfg(feature = "ml")]
+                    #[cfg(feature = "selection")]
                     {
                         FooterOptions::new().with_mark(get_mark_for_pane(0))
                     }
-                    #[cfg(not(feature = "ml"))]
+                    #[cfg(not(feature = "selection"))]
                     {
                         FooterOptions::new()
                     }
@@ -500,21 +519,21 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 // Prepare footer options for both panes
                 let footer_options = [
                     {
-                        #[cfg(feature = "ml")]
+                        #[cfg(feature = "selection")]
                         {
                             FooterOptions::new().with_mark(get_mark_for_pane(0))
                         }
-                        #[cfg(not(feature = "ml"))]
+                        #[cfg(not(feature = "selection"))]
                         {
                             FooterOptions::new()
                         }
                     },
                     {
-                        #[cfg(feature = "ml")]
+                        #[cfg(feature = "selection")]
                         {
                             FooterOptions::new().with_mark(get_mark_for_pane(1))
                         }
-                        #[cfg(not(feature = "ml"))]
+                        #[cfg(not(feature = "selection"))]
                         {
                             FooterOptions::new()
                         }
@@ -563,21 +582,21 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
                     let options0 = {
-                        #[cfg(feature = "ml")]
+                        #[cfg(feature = "selection")]
                         {
                             FooterOptions::new().with_mark(get_mark_for_pane(0))
                         }
-                        #[cfg(not(feature = "ml"))]
+                        #[cfg(not(feature = "selection"))]
                         {
                             FooterOptions::new()
                         }
                     };
                     let options1 = {
-                        #[cfg(feature = "ml")]
+                        #[cfg(feature = "selection")]
                         {
                             FooterOptions::new().with_mark(get_mark_for_pane(1))
                         }
-                        #[cfg(not(feature = "ml"))]
+                        #[cfg(not(feature = "selection"))]
                         {
                             FooterOptions::new()
                         }
