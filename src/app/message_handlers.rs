@@ -92,20 +92,20 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         // Feature-specific messages
         #[cfg(feature = "selection")]
         Message::SelectionAction(msg) => {
-            return crate::widgets::selection_widget::handle_selection_message(
+            crate::widgets::selection_widget::handle_selection_message(
                 msg,
                 &app.panes,
                 &mut app.selection_manager,
-            );
+            )
         }
 
         #[cfg(feature = "coco")]
         Message::CocoAction(coco_msg) => {
-            return crate::coco::widget::handle_coco_message(
+            crate::coco::widget::handle_coco_message(
                 coco_msg,
                 &mut app.panes,
                 &mut app.annotation_manager,
-            );
+            )
         }
     }
 }

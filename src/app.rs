@@ -547,21 +547,6 @@ impl iced_winit::runtime::Program for DataViewer {
                 self.is_slider_dual,
                 self.last_opened_pane as usize
             )
-        } else if self.skate_left {
-            self.update_counter = 0;
-            debug!("move_left_all from self.skate_left block");
-            move_left_all(
-                &self.device,
-                &self.queue,
-                self.cache_strategy,
-                self.compression_strategy,
-                &mut self.panes,
-                &mut self.loading_status,
-                &mut self.slider_value,
-                &self.pane_layout,
-                self.is_slider_dual,
-                self.last_opened_pane as usize
-            )
         } else {
             // No skate mode, return the task from message handler
             if self.update_counter == 0 {
