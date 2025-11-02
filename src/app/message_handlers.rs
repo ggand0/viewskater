@@ -90,10 +90,10 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         }
 
         // Feature-specific messages
-        #[cfg(feature = "ml")]
-        Message::MlAction(ml_msg) => {
-            return crate::ml_widget::handle_ml_message(
-                ml_msg,
+        #[cfg(feature = "selection")]
+        Message::SelectionAction(msg) => {
+            return crate::widgets::selection_widget::handle_selection_message(
+                msg,
                 &app.panes,
                 &mut app.selection_manager,
             );

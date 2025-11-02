@@ -304,9 +304,9 @@ impl DataViewer {
                 }
             }
             _ => {
-                // Check if ML module wants to handle this key
-                #[cfg(feature = "ml")]
-                if let Some(task) = crate::ml_widget::handle_keyboard_event(
+                // Check if selection module wants to handle this key
+                #[cfg(feature = "selection")]
+                if let Some(task) = crate::widgets::selection_widget::handle_keyboard_event(
                     key,
                     modifiers,
                     &self.pane_layout,

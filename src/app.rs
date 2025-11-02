@@ -57,7 +57,7 @@ use crate::loading_status;
 use crate::utils::timing::TimingStats;
 use crate::RendererRequest;
 use crate::build_info::BuildInfo;
-#[cfg(feature = "ml")]
+#[cfg(feature = "selection")]
 use crate::selection_manager::SelectionManager;
 use crate::settings::UserSettings;
 
@@ -105,7 +105,7 @@ pub struct DataViewer {
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub(crate) ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
-    #[cfg(feature = "ml")]
+    #[cfg(feature = "selection")]
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
     #[cfg(feature = "coco")]
     pub annotation_manager: crate::coco::annotation_manager::AnnotationManager,  // Manages COCO annotations
@@ -189,7 +189,7 @@ impl DataViewer {
             cursor_on_menu: false,
             cursor_on_footer: false,
             ctrl_pressed: false,
-            #[cfg(feature = "ml")]
+            #[cfg(feature = "selection")]
             selection_manager: SelectionManager::new(),
             #[cfg(feature = "coco")]
             annotation_manager: crate::coco::annotation_manager::AnnotationManager::new(),
@@ -291,7 +291,7 @@ impl DataViewer {
         self.last_opened_pane = pane_index as isize;
 
         // Load selection state for the directory (ML tools only)
-        #[cfg(feature = "ml")]
+        #[cfg(feature = "selection")]
         if let Some(dir_path) = &pane.directory_path {
             if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
                 warn!("Failed to load selection state for {}: {}", dir_path, e);

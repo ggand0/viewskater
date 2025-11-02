@@ -58,8 +58,8 @@ pub enum Message {
     CursorOnTop(bool),
     CursorOnMenu(bool),
     CursorOnFooter(bool),
-    #[cfg(feature = "ml")]
-    MlAction(crate::ml_widget::MlMessage),
+    #[cfg(feature = "selection")]
+    SelectionAction(crate::widgets::selection_widget::SelectionMessage),
     #[cfg(feature = "coco")]
     CocoAction(crate::coco::widget::CocoMessage),
     // Advanced settings input
