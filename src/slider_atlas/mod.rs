@@ -9,6 +9,7 @@ pub mod allocation;
 pub mod allocator;
 pub mod layer;
 pub mod atlas;
+pub mod pipeline;
 
 // Public exports (will be used in later phases)
 #[allow(unused_imports)]
@@ -21,6 +22,8 @@ pub use atlas::Atlas;
 pub use entry::Entry;
 #[allow(unused_imports)]
 pub use layer::Layer;
+#[allow(unused_imports)]
+pub use pipeline::AtlasPipeline;
 
 // Re-export commonly used types
 #[allow(dead_code)]
