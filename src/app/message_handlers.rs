@@ -312,11 +312,12 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
         }
         Message::SliderImageWidgetLoaded(result) => {
             match result {
-                Ok((pane_idx, pos, handle, dimensions)) => {
+                Ok((pane_idx, pos, handle, dimensions, rgba_bytes)) => {
                     crate::track_async_delivery();
 
                     if let Some(pane) = app.panes.get_mut(pane_idx) {
                         pane.slider_image = Some(handle);
+                        pane.slider_image_rgba = Some(rgba_bytes);
                         pane.slider_image_dimensions = Some(dimensions);
                         pane.img_cache.current_index = pos;
 

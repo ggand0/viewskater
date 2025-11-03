@@ -109,6 +109,10 @@ impl Atlas {
         &self.texture_bind_group
     }
 
+    pub fn texture_view(&self) -> &wgpu::TextureView {
+        &self.texture_view
+    }
+
     pub fn layer_count(&self) -> usize {
         self.layers.len()
     }

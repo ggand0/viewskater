@@ -335,13 +335,13 @@ pub fn load_remaining_images(
 }
 
 
-// Async loading task for Image widget - updated to include pane_idx and archive cache
+// Async loading task for Image widget - updated to include pane_idx, archive cache, and RGBA8 bytes
 pub async fn create_async_image_widget_task(
     img_path: crate::cache::img_cache::PathSource,
     pos: usize,
     pane_idx: usize,
     archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
-) -> Result<(usize, usize, Handle, (u32, u32)), (usize, usize)> {
+) -> Result<(usize, usize, Handle, (u32, u32), Vec<u8>), (usize, usize)> {
     // Start overall timer
     let task_start = std::time::Instant::now();
 
@@ -381,9 +381,14 @@ pub async fn create_async_image_widget_task(
             // Start handle creation timer
             let handle_start = std::time::Instant::now();
 
-            // Extract image dimensions from bytes before creating handle
-            let dimensions = match image::load_from_memory(&bytes) {
-                Ok(img) => (img.width(), img.height()),
+            // Extract image dimensions and RGBA8 bytes
+            let (dimensions, rgba_bytes) = match image::load_from_memory(&bytes) {
+                Ok(img) => {
+                    let rgba = img.to_rgba8();
+                    let dims = (rgba.width(), rgba.height());
+                    let rgba_raw = rgba.into_raw();
+                    (dims, rgba_raw)
+                }
                 Err(_) => {
                     // If we can't decode, return error
                     return Err((pane_idx, pos));
@@ -401,7 +406,7 @@ pub async fn create_async_image_widget_task(
             let total_time = task_start.elapsed();
             trace!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
 
-            Ok((pane_idx, pos, handle, dimensions))
+            Ok((pane_idx, pos, handle, dimensions, rgba_bytes))
         },
         Err(_) => Err((pane_idx, pos)),
     }
@@ -671,7 +676,25 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
             };
             match img_cache.get_initial_image_as_cpu(archive_cache) {
                 Ok(bytes) => {
-                    pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                    // Decode image to get RGBA8 bytes and dimensions
+                    match image::load_from_memory(&bytes) {
+                        Ok(img) => {
+                            let rgba = img.to_rgba8();
+                            let dimensions = (rgba.width(), rgba.height());
+                            
+                            // Store RGBA8 bytes for atlas-based rendering
+                            pane.slider_image_rgba = Some(rgba.into_raw());
+                            pane.slider_image_dimensions = Some(dimensions);
+                            
+                            // Keep the old Handle for backward compatibility (can be removed later)
+                            pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                        }
+                        Err(err) => {
+                            debug!("Failed to decode image for slider: {}", err);
+                            // Fallback: just use Handle
+                            pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                        }
+                    }
 
                     // Record image rendering time for FPS calculation
                     if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {
@@ -720,7 +743,25 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
 
                         match bytes_result {
                             Ok(bytes) => {
-                                pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                                // Decode image to get RGBA8 bytes and dimensions
+                                match image::load_from_memory(&bytes) {
+                                    Ok(img) => {
+                                        let rgba = img.to_rgba8();
+                                        let dimensions = (rgba.width(), rgba.height());
+                                        
+                                        // Store RGBA8 bytes for atlas-based rendering
+                                        pane.slider_image_rgba = Some(rgba.into_raw());
+                                        pane.slider_image_dimensions = Some(dimensions);
+                                        
+                                        // Keep the old Handle for backward compatibility
+                                        pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                                    }
+                                    Err(err) => {
+                                        debug!("Failed to decode image for slider (fallback): {}", err);
+                                        // Fallback: just use Handle
+                                        pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
+                                    }
+                                }
 
                                 // Record image rendering time for FPS calculation (for fallback path)
                                 if let Ok(mut render_times) = IMAGE_RENDER_TIMES.lock() {

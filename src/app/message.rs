@@ -36,7 +36,7 @@ pub enum Message {
     SliderReleased(isize, u16),
     #[allow(dead_code)]
     SliderImageLoaded(Result<(usize, CachedData), usize>),
-    SliderImageWidgetLoaded(Result<(usize, usize, Handle, (u32, u32)), (usize, usize)>),
+    SliderImageWidgetLoaded(Result<(usize, usize, Handle, (u32, u32), Vec<u8>), (usize, usize)>),
     Event(Event),
     ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
     OnSplitResize(u16),

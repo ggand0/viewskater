@@ -7,14 +7,15 @@ var atlas_texture: texture_2d_array<f32>;
 @group(0) @binding(1)
 var atlas_sampler: sampler;
 
-// Push constants for atlas entry info
+@group(0) @binding(2)
+var<uniform> entry: AtlasEntry;
+
+// Uniform buffer for atlas entry info
 struct AtlasEntry {
     atlas_rect: vec4<f32>,  // [x, y, width, height] normalized
     layer: u32,
     _padding: vec3<u32>,
 }
-
-var<push_constant> entry: AtlasEntry;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,

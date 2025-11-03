@@ -34,7 +34,7 @@ use app_menu::button_style;
 use crate::menu::PaneLayout;
 use crate::{app::Message, DataViewer};
 use crate::widgets::shader::image_shader::ImageShader;
-use crate::widgets::{split::Axis, viewer, dualslider::DualSlider};
+use crate::widgets::{split::Axis, dualslider::DualSlider};
 use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
@@ -284,30 +284,23 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             // Choose the appropriate widget based on slider movement state
             let first_img = if app.panes[0].dir_loaded {
                 // First, create the base image widget (either slider or shader)
-                let base_image_widget = if app.is_slider_moving && app.panes[0].slider_image.is_some() {
-                    // Use regular Image widget during slider movement (much faster)
-                    let image_handle = app.panes[0].slider_image.clone().unwrap();
+                let base_image_widget = if app.is_slider_moving && app.panes[0].slider_image_rgba.is_some() {
+                    // Use SliderImageShader during slider movement for atlas-based rendering
+                    let rgba_bytes = app.panes[0].slider_image_rgba.clone().unwrap();
+                    let dimensions = app.panes[0].slider_image_dimensions.unwrap_or((1, 1));
+                    let pos = app.panes[0].img_cache.current_index;
 
-                    center({
-                        #[cfg(feature = "coco")]
-                        let mut viewer = viewer::Viewer::new(image_handle)
-                            .width(Length::Fill)
-                            .height(Length::Fill)
-                            .content_fit(iced_winit::core::ContentFit::Contain);
-
-                        #[cfg(not(feature = "coco"))]
-                        let viewer = viewer::Viewer::new(image_handle)
-                            .width(Length::Fill)
-                            .height(Length::Fill)
-                            .content_fit(iced_winit::core::ContentFit::Contain);
-
-                        #[cfg(feature = "coco")]
-                        {
-                            viewer = viewer.with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset);
-                        }
-
-                        viewer
-                    })
+                    center(
+                        crate::widgets::slider_image_shader::SliderImageShader::new(
+                            app.panes[0].pane_id,
+                            pos,
+                            rgba_bytes,
+                            dimensions,
+                        )
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .content_fit(iced_winit::core::ContentFit::Contain)
+                    )
                 } else if let Some(scene) = app.panes[0].scene.as_ref() {
                     // Fixed: Pass Arc<Scene> reference correctly
                     #[cfg(feature = "coco")]

@@ -222,12 +222,28 @@ impl shader::Primitive for SliderImagePrimitive {
             usage: wgpu::BufferUsages::VERTEX,
         });
         
-        // Store prepared info
+        // Get pipeline first (immutable borrow)
+        let pipeline = storage.get::<AtlasPipeline>().expect("Pipeline should exist");
+        
+        // Then get state again to access atlas and entry (separate scope)
+        let state = storage.get::<SliderAtlasState>().expect("State should exist");
+        let entry = state.entries.get(&key).expect("Entry should exist after upload");
+        
+        // Create uniform buffer and bind group in prepare() where we have device access
+        let (uniform_buffer, bind_group) = pipeline.create_render_resources(
+            device,
+            &state.atlas,
+            entry,
+        );
+        
+        // Store prepared info with all resources needed for rendering
         storage.store(PreparedSliderImage {
             key,
             content_bounds,
             viewport: viewport.clone(),
             vertex_buffer,
+            uniform_buffer,
+            bind_group,
         });
     }
 
@@ -243,31 +259,17 @@ impl shader::Primitive for SliderImagePrimitive {
             return;
         };
 
-        let Some(state) = storage.get::<SliderAtlasState>() else {
-            warn!("SliderAtlasState not found in storage");
-            return;
-        };
-
         let Some(prepared) = storage.get::<PreparedSliderImage>() else {
             warn!("PreparedSliderImage not found in storage");
             return;
         };
 
-        let Some(entry) = state.entries.get(&prepared.key) else {
-            warn!("Atlas entry not found for key: {:?}", prepared.key);
-            return;
-        };
-
-        // Render from atlas using the prepared vertex buffer
-        let viewport_size = prepared.viewport.physical_size();
-        pipeline.render(
+        // Render using pre-created resources from prepare()
+        pipeline.render_with_resources(
             &prepared.vertex_buffer,
+            &prepared.bind_group,
             encoder,
-            &state.atlas,
-            entry,
             target,
-            prepared.content_bounds,
-            (viewport_size.width, viewport_size.height),
             clip_bounds,
         );
     }
@@ -369,6 +371,8 @@ struct PreparedSliderImage {
     content_bounds: Rectangle,
     viewport: Viewport,
     vertex_buffer: wgpu::Buffer,
+    uniform_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
 }
 
 impl std::fmt::Debug for PreparedSliderImage {
@@ -378,6 +382,8 @@ impl std::fmt::Debug for PreparedSliderImage {
             .field("content_bounds", &self.content_bounds)
             .field("viewport", &self.viewport)
             .field("vertex_buffer", &"wgpu::Buffer")
+            .field("uniform_buffer", &"wgpu::Buffer")
+            .field("bind_group", &"wgpu::BindGroup")
             .finish()
     }
 }

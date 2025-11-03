@@ -26,7 +26,6 @@ use crate::archive_cache::ArchiveType;
 use crate::file_io::ALLOWED_COMPRESSED_FILES;
 
 use crate::menu::PaneLayout;
-use crate::widgets::viewer;
 use crate::widgets::shader::{image_shader::ImageShader, scene::Scene, cpu_scene::CpuScene};
 use crate::file_io::{self, is_file, is_directory, get_file_index, ImageError};
 use crate::utils::mem;
@@ -55,6 +54,7 @@ pub struct Pane {
     pub scene: Option<Scene>,
     pub slider_scene: Option<Scene>, // Make sure this is Scene, not CpuScene
     pub slider_image: Option<Handle>,
+    pub slider_image_rgba: Option<Vec<u8>>, // RGBA8 bytes for atlas-based slider rendering
     pub slider_image_dimensions: Option<(u32, u32)>, // Store dimensions for annotation rendering
     pub backend: wgpu::Backend,
     pub device: Option<Arc<wgpu::Device>>,
@@ -96,6 +96,7 @@ impl Default for Pane {
             device: None,
             queue: None,
             slider_image: None,
+            slider_image_rgba: None,
             slider_image_dimensions: None,
             pane_id: 0, // Default to pane 0
             compression_strategy: CompressionStrategy::None,
@@ -146,6 +147,7 @@ impl Pane {
             device: Some(device),
             queue: Some(queue),
             slider_image: None,
+            slider_image_rgba: None,
             slider_image_dimensions: None,
             pane_id, // Use the provided pane_id
             compression_strategy,
@@ -672,14 +674,23 @@ impl Pane {
 
     pub fn build_ui_container(&self, is_slider_moving: bool, is_horizontal_split: bool, double_click_threshold_ms: u16) -> Container<'_, Message, WinitTheme, Renderer> {
         if self.dir_loaded {
-            if is_slider_moving && self.slider_image.is_some() {
-                // Use regular Image widget during slider movement (much faster)
-                let image_handle = self.slider_image.clone().unwrap();
+            if is_slider_moving && self.slider_image_rgba.is_some() {
+                // Use SliderImageShader during slider movement for atlas-based rendering
+                let rgba_bytes = self.slider_image_rgba.clone().unwrap();
+                let dimensions = self.slider_image_dimensions.unwrap_or((1, 1));
+                let pos = self.img_cache.current_index;
 
                 container(
                     center(
-                        viewer::Viewer::new(image_handle)
-                            .content_fit(iced_winit::core::ContentFit::Contain)
+                        crate::widgets::slider_image_shader::SliderImageShader::new(
+                            self.pane_id,
+                            pos,
+                            rgba_bytes,
+                            dimensions,
+                        )
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .content_fit(iced_winit::core::ContentFit::Contain)
                     )
                 )
                 .width(Length::Fill)
