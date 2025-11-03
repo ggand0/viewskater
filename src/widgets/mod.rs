@@ -5,5 +5,6 @@ pub mod viewer;
 pub mod modal;
 pub mod shader;
 pub mod synced_image_split;
+pub mod slider_image_shader;
 #[cfg(feature = "selection")]
 pub mod selection_widget;

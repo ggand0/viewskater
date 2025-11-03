@@ -157,15 +157,16 @@ impl AtlasPipeline {
         }
     }
 
-    /// Render an atlas entry to the screen
+    /// Render an atlas entry to the screen using a pre-computed vertex buffer
     pub fn render(
         &self,
+        vertex_buffer: &wgpu::Buffer,
         encoder: &mut wgpu::CommandEncoder,
         atlas: &Atlas,
         entry: &Entry,
         target: &wgpu::TextureView,
-        bounds: Rectangle,
-        viewport_size: (u32, u32),
+        _bounds: Rectangle,
+        _viewport_size: (u32, u32),
         clip_bounds: &Rectangle<u32>,
     ) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -185,7 +186,7 @@ impl AtlasPipeline {
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, atlas.bind_group(), &[]);
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         
         // Set scissor rect for clipping
@@ -199,7 +200,7 @@ impl AtlasPipeline {
         // Render each part of the entry (could be fragmented)
         match entry {
             Entry::Contiguous(allocation) => {
-                let push_constants = self.calculate_push_constants(allocation, bounds, viewport_size);
+                let push_constants = self.calculate_push_constants(allocation);
                 render_pass.set_push_constants(
                     wgpu::ShaderStages::FRAGMENT,
                     0,
@@ -212,7 +213,7 @@ impl AtlasPipeline {
                 // TODO: This is complex - may need multiple draw calls or a different approach
                 // For now, just render the first fragment as a fallback
                 if let Some(fragment) = fragments.first() {
-                    let push_constants = self.calculate_push_constants(&fragment.allocation, bounds, viewport_size);
+                    let push_constants = self.calculate_push_constants(&fragment.allocation);
                     render_pass.set_push_constants(
                         wgpu::ShaderStages::FRAGMENT,
                         0,
@@ -229,8 +230,6 @@ impl AtlasPipeline {
     fn calculate_push_constants(
         &self,
         allocation: &crate::slider_atlas::Allocation,
-        _bounds: Rectangle,
-        _viewport_size: (u32, u32),
     ) -> AtlasEntryPushConstants {
         let (x, y) = allocation.position();
         let size = allocation.size();
