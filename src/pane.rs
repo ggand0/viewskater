@@ -185,6 +185,8 @@ impl Pane {
         // Drop the current images
         self.current_image = CachedData::Cpu(vec![]);
         self.slider_image = None;
+        self.slider_image_rgba = None;
+        self.slider_image_dimensions = None;
 
         // Explicitly reset the image cache
         self.img_cache.clear_cache();

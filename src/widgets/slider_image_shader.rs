@@ -192,10 +192,24 @@ impl shader::Primitive for SliderImagePrimitive {
             debug!("Atlas entry already exists: pane={}, image={}", self.pane_idx, self.image_idx);
         }
 
-        // Calculate content bounds (ContentFit logic)
+        // Initialize registry if needed
+        if !storage.has::<SliderResourceRegistry>() {
+            debug!("Creating new SliderResourceRegistry");
+            storage.store(SliderResourceRegistry::new());
+        }
+
+        // Check if we already have cached resources for this key
+        let registry = storage.get_mut::<SliderResourceRegistry>().unwrap();
+        if registry.get(&key).is_some() {
+            debug!("Reusing cached GPU resources for pane={}, image={} (cache size={})", 
+                   self.pane_idx, self.image_idx, registry.resources.len());
+            return;
+        }
+        
+        // New image - calculate content bounds and create GPU resources
         let content_bounds = self.calculate_content_bounds(viewport);
         
-        // Create vertex buffer for this render
+        // Create vertex buffer
         let viewport_size = viewport.physical_size();
         let (x, y, width, height) = (
             content_bounds.x / viewport_size.width as f32,
@@ -230,21 +244,24 @@ impl shader::Primitive for SliderImagePrimitive {
         let entry = state.entries.get(&key).expect("Entry should exist after upload");
         
         // Create uniform buffer and bind group in prepare() where we have device access
+        debug!("Creating new GPU resources for pane={}, image={}", self.pane_idx, self.image_idx);
         let (uniform_buffer, bind_group) = pipeline.create_render_resources(
             device,
             &state.atlas,
             entry,
         );
         
-        // Store prepared info with all resources needed for rendering
-        storage.store(PreparedSliderImage {
-            key,
-            content_bounds,
-            viewport: viewport.clone(),
+        // Store in registry with LRU tracking
+        let registry = storage.get_mut::<SliderResourceRegistry>().unwrap();
+        registry.insert(key, SliderGpuResources {
             vertex_buffer,
             uniform_buffer,
             bind_group,
+            content_bounds,
         });
+        
+        debug!("Cached new slider image: pane={}, image={}, cache_size={}", 
+               self.pane_idx, self.image_idx, registry.resources.len());
     }
 
     fn render(
@@ -259,15 +276,22 @@ impl shader::Primitive for SliderImagePrimitive {
             return;
         };
 
-        let Some(prepared) = storage.get::<PreparedSliderImage>() else {
-            warn!("PreparedSliderImage not found in storage");
+        let registry = storage.get::<SliderResourceRegistry>().expect("Registry should exist after prepare");
+        
+        let key = AtlasKey {
+            pane_idx: self.pane_idx,
+            image_idx: self.image_idx,
+        };
+        
+        let Some(resources) = registry.resources.get(&key) else {
+            warn!("GPU resources not found in cache for pane={}, image={}", self.pane_idx, self.image_idx);
             return;
         };
 
-        // Render using pre-created resources from prepare()
+        // Render using cached resources
         pipeline.render_with_resources(
-            &prepared.vertex_buffer,
-            &prepared.bind_group,
+            &resources.vertex_buffer,
+            &resources.bind_group,
             encoder,
             target,
             clip_bounds,
@@ -355,7 +379,7 @@ impl SliderAtlasState {
             device,
             backend,
             bind_group_layout,
-            CompressionStrategy::Bc1,  // Use BC1 by default
+            CompressionStrategy::None,  // No compression for slider - speed over memory
         );
         
         Self {
@@ -365,26 +389,86 @@ impl SliderAtlasState {
     }
 }
 
-// Prepared rendering info
-struct PreparedSliderImage {
-    key: AtlasKey,
-    content_bounds: Rectangle,
-    viewport: Viewport,
+// GPU resources for a prepared slider image
+struct SliderGpuResources {
     vertex_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+    content_bounds: Rectangle,
 }
 
-impl std::fmt::Debug for PreparedSliderImage {
+impl std::fmt::Debug for SliderGpuResources {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PreparedSliderImage")
-            .field("key", &self.key)
+        f.debug_struct("SliderGpuResources")
             .field("content_bounds", &self.content_bounds)
-            .field("viewport", &self.viewport)
             .field("vertex_buffer", &"wgpu::Buffer")
             .field("uniform_buffer", &"wgpu::Buffer")
             .field("bind_group", &"wgpu::BindGroup")
             .finish()
+    }
+}
+
+// Registry for caching slider GPU resources with LRU eviction
+#[derive(Default)]
+struct SliderResourceRegistry {
+    resources: std::collections::HashMap<AtlasKey, SliderGpuResources>,
+    keys_order: std::collections::VecDeque<AtlasKey>,
+    max_resources: usize,
+}
+
+impl std::fmt::Debug for SliderResourceRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SliderResourceRegistry")
+            .field("cached_count", &self.resources.len())
+            .field("max_resources", &self.max_resources)
+            .finish()
+    }
+}
+
+impl SliderResourceRegistry {
+    fn new() -> Self {
+        Self {
+            resources: std::collections::HashMap::new(),
+            keys_order: std::collections::VecDeque::new(),
+            max_resources: 50,  // Cache up to 50 slider images
+        }
+    }
+    
+    fn insert(&mut self, key: AtlasKey, resource: SliderGpuResources) {
+        // If key already exists, update its position
+        if self.resources.contains_key(&key) {
+            if let Some(pos) = self.keys_order.iter().position(|k| k == &key) {
+                self.keys_order.remove(pos);
+            }
+        } else if self.resources.len() >= self.max_resources && !self.keys_order.is_empty() {
+            // At capacity - evict oldest
+            if let Some(oldest_key) = self.keys_order.pop_front() {
+                self.resources.remove(&oldest_key);
+                debug!("Evicted slider resources for pane={}, image={}", oldest_key.pane_idx, oldest_key.image_idx);
+            }
+        }
+        
+        // Add to end (most recently used)
+        self.keys_order.push_back(key);
+        self.resources.insert(key, resource);
+    }
+    
+    fn get(&mut self, key: &AtlasKey) -> Option<&SliderGpuResources> {
+        if self.resources.contains_key(key) {
+            // Update LRU: move to end
+            if let Some(pos) = self.keys_order.iter().position(|k| k == key) {
+                self.keys_order.remove(pos);
+                self.keys_order.push_back(*key);
+            }
+            return self.resources.get(key);
+        }
+        None
+    }
+    
+    fn clear(&mut self) {
+        debug!("Clearing all slider resource cache ({} entries)", self.resources.len());
+        self.resources.clear();
+        self.keys_order.clear();
     }
 }
 
