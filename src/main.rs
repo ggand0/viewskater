@@ -16,6 +16,7 @@ mod app;
 mod utils;
 mod build_info;
 mod logging;
+mod slider_atlas;  // New: Slider atlas cache module
 #[cfg(feature = "selection")]
 mod selection_manager;
 #[cfg(feature = "coco")]

@@ -5870,6 +5870,7 @@ dependencies = [
  "earcutr",
  "env_logger",
  "futures",
+ "guillotiere",
  "iced",
  "iced_aw",
  "iced_core",
