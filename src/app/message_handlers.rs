@@ -330,12 +330,6 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                         pane.slider_image_dimensions = Some(dimensions);
                         pane.img_cache.current_index = pos;
 
-                        // Only track FPS if this image matches the current slider position
-                        // (ignore stale/preloaded images that arrived late)
-                        if pos == current_slider_pos {
-                            crate::widgets::slider_image_shader::record_slider_frame();
-                        }
-
                         debug!("Slider image loaded for pane {} at position {} with dimensions {:?} (current: {})", 
                                pane_idx, pos, dimensions, current_slider_pos);
                     } else {

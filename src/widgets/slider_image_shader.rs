@@ -196,6 +196,11 @@ impl shader::Primitive for SliderImagePrimitive {
                 let upload_time = upload_start.elapsed();
                 info!("✅ Atlas upload complete: {:.2}ms", upload_time.as_secs_f64() * 1000.0);
                 state.entries.insert(key, entry);
+                
+                // Track FPS when image is actually uploaded to GPU (like iced_wgpu does)
+                if let Ok(mut tracker) = SLIDER_PERF_TRACKER.lock() {
+                    tracker.record_frame();
+                }
             } else {
                 warn!("Failed to upload image to atlas");
             }
@@ -569,10 +574,8 @@ impl SliderPerfTracker {
     }
     
     fn calculate_fps(&mut self) -> f64 {
-        let now = Instant::now();
-        let cutoff = now - self.window_duration;
-        
-        // Remove old timestamps
+        // Prune old timestamps
+        let cutoff = Instant::now() - self.window_duration;
         while !self.frame_timestamps.is_empty() && 
               self.frame_timestamps.front().unwrap() < &cutoff {
             self.frame_timestamps.pop_front();
@@ -580,9 +583,12 @@ impl SliderPerfTracker {
         
         if self.frame_timestamps.len() > 1 {
             let oldest = self.frame_timestamps.front().unwrap();
-            let elapsed = now.duration_since(*oldest).as_secs_f64();
-            if elapsed > 0.0 {
-                return self.frame_timestamps.len() as f64 / elapsed;
+            let newest = self.frame_timestamps.back().unwrap();
+            let time_span = newest.duration_since(*oldest).as_secs_f64();
+            
+            if time_span > 0.0 {
+                // N timestamps = N-1 intervals, so FPS = (N-1) / time_span
+                return (self.frame_timestamps.len() - 1) as f64 / time_span;
             }
         }
         0.0
