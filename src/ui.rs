@@ -849,13 +849,36 @@ fn get_fps_container(app: &DataViewer) -> Container<'_, Message, WinitTheme, Ren
             format!("Mem: {:.1} MB", memory_mb)
         };
 
+        // Get slider performance stats
+        let (slider_fps, slider_prepare_ms) = 
+            crate::widgets::slider_image_shader::get_slider_perf_stats();
+
+        let fps_line1 = format!("UI: {:.1} FPS | Image: {:.1} FPS | {}", 
+                                ui_fps, image_fps, memory_text);
+        let fps_line2 = if app.is_slider_moving && slider_fps > 0.0 {
+            format!("Slider: {:.1} FPS (Prep: {:.2}ms)", 
+                   slider_fps, slider_prepare_ms)
+        } else {
+            String::new()
+        };
+
         container(
-            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | {}",
-                         ui_fps, image_fps, memory_text))
-                .size(14)
-                .style(|_theme| iced::widget::text::Style {
-                    color: Some(Color::from([1.0, 1.0, 1.0]))
-                })
+            column![
+                text(fps_line1)
+                    .size(14)
+                    .style(|_theme| iced::widget::text::Style {
+                        color: Some(Color::from([1.0, 1.0, 1.0]))
+                    }),
+                if !fps_line2.is_empty() {
+                    text(fps_line2)
+                        .size(14)
+                        .style(|_theme| iced::widget::text::Style {
+                            color: Some(Color::from([1.0, 0.8, 0.8]))  // Slightly red tint
+                        })
+                } else {
+                    text("")
+                }
+            ]
         )
         .padding(5)
     } else {

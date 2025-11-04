@@ -6,6 +6,10 @@ use log::{debug, info, warn, error};
 
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+use std::sync::Mutex;
+use std::collections::VecDeque;
+use once_cell::sync::Lazy;
 use iced_core::ContentFit;
 use iced_core::layout::Layout;
 use iced_winit::core::{layout, mouse, renderer, widget, Element, Length, Rectangle, Size};
@@ -143,6 +147,11 @@ impl shader::Primitive for SliderImagePrimitive {
         _bounds: &Rectangle,
         viewport: &Viewport,
     ) {
+        // Start timing
+        if let Ok(mut tracker) = SLIDER_PERF_TRACKER.lock() {
+            tracker.start_prepare();
+        }
+        
         // Create atlas if not exists
         if !storage.has::<SliderAtlasState>() {
             debug!("Creating new SliderAtlasState");
@@ -262,6 +271,11 @@ impl shader::Primitive for SliderImagePrimitive {
         
         debug!("Cached new slider image: pane={}, image={}, cache_size={}", 
                self.pane_idx, self.image_idx, registry.resources.len());
+        
+        // End timing
+        if let Ok(mut tracker) = SLIDER_PERF_TRACKER.lock() {
+            tracker.end_prepare();
+        }
     }
 
     fn render(
@@ -469,6 +483,114 @@ impl SliderResourceRegistry {
         debug!("Clearing all slider resource cache ({} entries)", self.resources.len());
         self.resources.clear();
         self.keys_order.clear();
+    }
+}
+
+// Performance tracking for slider rendering
+static SLIDER_PERF_TRACKER: Lazy<Mutex<SliderPerfTracker>> = 
+    Lazy::new(|| Mutex::new(SliderPerfTracker::new()));
+
+#[derive(Debug)]
+struct SliderPerfTracker {
+    prepare_times: VecDeque<Duration>,
+    frame_timestamps: VecDeque<Instant>,
+    window_duration: Duration,
+    current_prepare_start: Option<Instant>,
+    total_frames: u64,
+}
+
+impl SliderPerfTracker {
+    fn new() -> Self {
+        Self {
+            prepare_times: VecDeque::with_capacity(100),
+            frame_timestamps: VecDeque::with_capacity(120),
+            window_duration: Duration::from_secs(3),
+            current_prepare_start: None,
+            total_frames: 0,
+        }
+    }
+    
+    fn start_prepare(&mut self) {
+        self.current_prepare_start = Some(Instant::now());
+    }
+    
+    fn end_prepare(&mut self) {
+        if let Some(start) = self.current_prepare_start.take() {
+            let duration = start.elapsed();
+            self.prepare_times.push_back(duration);
+            if self.prepare_times.len() > 100 {
+                self.prepare_times.pop_front();
+            }
+        }
+    }
+    
+    fn record_frame(&mut self) {
+        self.frame_timestamps.push_back(Instant::now());
+        self.total_frames += 1;
+        
+        // Calculate and log FPS every 30 frames
+        if self.total_frames % 30 == 0 {
+            let fps = self.calculate_fps();
+            let avg_prepare = self.get_avg_prepare_time();
+            info!("SLIDER PERF: Frames: {}, FPS: {:.1}, Prepare: {:.2}ms", 
+                  self.total_frames, fps, avg_prepare * 1000.0);
+        }
+    }
+    
+    fn calculate_fps(&mut self) -> f64 {
+        let now = Instant::now();
+        let cutoff = now - self.window_duration;
+        
+        // Remove old timestamps
+        while !self.frame_timestamps.is_empty() && 
+              self.frame_timestamps.front().unwrap() < &cutoff {
+            self.frame_timestamps.pop_front();
+        }
+        
+        if self.frame_timestamps.len() > 1 {
+            let oldest = self.frame_timestamps.front().unwrap();
+            let elapsed = now.duration_since(*oldest).as_secs_f64();
+            if elapsed > 0.0 {
+                return self.frame_timestamps.len() as f64 / elapsed;
+            }
+        }
+        0.0
+    }
+    
+    fn get_avg_prepare_time(&self) -> f64 {
+        if self.prepare_times.is_empty() {
+            0.0
+        } else {
+            self.prepare_times.iter().sum::<Duration>().as_secs_f64() 
+                / self.prepare_times.len() as f64
+        }
+    }
+}
+
+/// Get current slider FPS for display in debug menu
+pub fn get_slider_fps() -> f64 {
+    if let Ok(mut tracker) = SLIDER_PERF_TRACKER.lock() {
+        tracker.calculate_fps()
+    } else {
+        0.0
+    }
+}
+
+/// Get current slider performance stats for display
+pub fn get_slider_perf_stats() -> (f64, f64) {
+    if let Ok(mut tracker) = SLIDER_PERF_TRACKER.lock() {
+        let fps = tracker.calculate_fps();
+        let avg_prepare = tracker.get_avg_prepare_time();
+        (fps, avg_prepare * 1000.0)  // Convert to ms
+    } else {
+        (0.0, 0.0)
+    }
+}
+
+/// Record a slider frame when image is loaded (called from message handler)
+pub fn record_slider_frame() {
+    if let Ok(mut tracker) = SLIDER_PERF_TRACKER.lock() {
+        tracker.record_frame();
     }
 }
 

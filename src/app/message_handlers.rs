@@ -315,13 +315,29 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                 Ok((pane_idx, pos, handle, dimensions, rgba_bytes)) => {
                     crate::track_async_delivery();
 
+                    // Get current slider position before borrowing pane mutably
+                    let current_slider_pos = if pane_idx == 0 {
+                        app.slider_value as usize
+                    } else if let Some(pane) = app.panes.get(pane_idx) {
+                        pane.slider_value as usize
+                    } else {
+                        pos // Fallback if pane not found
+                    };
+
                     if let Some(pane) = app.panes.get_mut(pane_idx) {
                         pane.slider_image = Some(handle);
                         pane.slider_image_rgba = Some(rgba_bytes);
                         pane.slider_image_dimensions = Some(dimensions);
                         pane.img_cache.current_index = pos;
 
-                        debug!("Slider image loaded for pane {} at position {} with dimensions {:?}", pane_idx, pos, dimensions);
+                        // Only track FPS if this image matches the current slider position
+                        // (ignore stale/preloaded images that arrived late)
+                        if pos == current_slider_pos {
+                            crate::widgets::slider_image_shader::record_slider_frame();
+                        }
+
+                        debug!("Slider image loaded for pane {} at position {} with dimensions {:?} (current: {})", 
+                               pane_idx, pos, dimensions, current_slider_pos);
                     } else {
                         warn!("SliderImageWidgetLoaded: Invalid pane index {}", pane_idx);
                     }
