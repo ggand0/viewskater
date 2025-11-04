@@ -5,9 +5,8 @@
 use log::{debug, info, warn, error};
 
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::sync::Mutex;
 use std::collections::VecDeque;
 use once_cell::sync::Lazy;
 use iced_core::ContentFit;
@@ -25,7 +24,7 @@ use crate::slider_atlas::{Atlas, AtlasPipeline, Entry};
 pub struct SliderImageShader<Message> {
     pane_idx: usize,
     image_idx: usize,
-    image_bytes: Vec<u8>,  // RGBA8 image data
+    image_bytes: std::sync::Arc<Vec<u8>>,  // RGBA8 image data (Arc to avoid cloning)
     image_size: (u32, u32),
     width: Length,
     height: Length,
@@ -44,7 +43,7 @@ impl<Message> SliderImageShader<Message> {
         Self {
             pane_idx,
             image_idx,
-            image_bytes,
+            image_bytes: std::sync::Arc::new(image_bytes),  // Wrap in Arc
             image_size,
             width: Length::Fill,
             height: Length::Fill,
@@ -105,7 +104,7 @@ where
         let primitive = SliderImagePrimitive {
             pane_idx: self.pane_idx,
             image_idx: self.image_idx,
-            image_bytes: self.image_bytes.clone(),
+            image_bytes: Arc::clone(&self.image_bytes),  // Arc::clone is cheap (just increments refcount)
             image_size: self.image_size,
             bounds,
             content_fit: self.content_fit,
@@ -131,7 +130,7 @@ where
 struct SliderImagePrimitive {
     pane_idx: usize,
     image_idx: usize,
-    image_bytes: Vec<u8>,
+    image_bytes: std::sync::Arc<Vec<u8>>,  // Use Arc to avoid cloning 8MB on every frame
     image_size: (u32, u32),
     bounds: Rectangle,
     content_fit: ContentFit,
@@ -177,7 +176,9 @@ impl shader::Primitive for SliderImagePrimitive {
 
         // Check if already uploaded
         if !state.entries.contains_key(&key) {
-            debug!("Uploading image to atlas: pane={}, image={}", self.pane_idx, self.image_idx);
+            let upload_start = std::time::Instant::now();
+            info!("🔴 UPLOADING to atlas: pane={}, image={}, size={}x{}", 
+                   self.pane_idx, self.image_idx, self.image_size.0, self.image_size.1);
             
             // Upload to atlas
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -192,13 +193,14 @@ impl shader::Primitive for SliderImagePrimitive {
                 &self.image_bytes,
             ) {
                 queue.submit(Some(encoder.finish()));
+                let upload_time = upload_start.elapsed();
+                info!("✅ Atlas upload complete: {:.2}ms", upload_time.as_secs_f64() * 1000.0);
                 state.entries.insert(key, entry);
-                debug!("Successfully uploaded to atlas");
             } else {
                 warn!("Failed to upload image to atlas");
             }
         } else {
-            debug!("Atlas entry already exists: pane={}, image={}", self.pane_idx, self.image_idx);
+            debug!("✓ Atlas entry cached: pane={}, image={}", self.pane_idx, self.image_idx);
         }
 
         // Initialize registry if needed
@@ -210,12 +212,17 @@ impl shader::Primitive for SliderImagePrimitive {
         // Check if we already have cached resources for this key
         let registry = storage.get_mut::<SliderResourceRegistry>().unwrap();
         if registry.get(&key).is_some() {
-            debug!("Reusing cached GPU resources for pane={}, image={} (cache size={})", 
+            debug!("✓ GPU resources cached: pane={}, image={} (cache size={})", 
                    self.pane_idx, self.image_idx, registry.resources.len());
+            if let Ok(mut tracker) = SLIDER_PERF_TRACKER.lock() {
+                tracker.end_prepare();
+            }
             return;
         }
         
         // New image - calculate content bounds and create GPU resources
+        let gpu_resource_start = std::time::Instant::now();
+        info!("🔵 Creating GPU resources: pane={}, image={}", self.pane_idx, self.image_idx);
         let content_bounds = self.calculate_content_bounds(viewport);
         
         // Create vertex buffer
@@ -262,15 +269,26 @@ impl shader::Primitive for SliderImagePrimitive {
         
         // Store in registry with LRU tracking
         let registry = storage.get_mut::<SliderResourceRegistry>().unwrap();
-        registry.insert(key, SliderGpuResources {
+        let evicted_key = registry.insert(key, SliderGpuResources {
             vertex_buffer,
             uniform_buffer,
             bind_group,
             content_bounds,
         });
         
-        debug!("Cached new slider image: pane={}, image={}, cache_size={}", 
-               self.pane_idx, self.image_idx, registry.resources.len());
+        // If an entry was evicted from GPU cache, also remove it from atlas
+        if let Some(evicted) = evicted_key {
+            let state = storage.get_mut::<SliderAtlasState>().unwrap();
+            if let Some(entry) = state.entries.remove(&evicted) {
+                state.atlas.remove(&entry);
+                info!("🗑️ Removed atlas entry: pane={}, image={}", evicted.pane_idx, evicted.image_idx);
+            }
+        }
+        
+        let gpu_resource_time = gpu_resource_start.elapsed();
+        let registry = storage.get::<SliderResourceRegistry>().unwrap();
+        info!("✅ GPU resources created: {:.2}ms (cache_size={})", 
+               gpu_resource_time.as_secs_f64() * 1000.0, registry.resources.len());
         
         // End timing
         if let Ok(mut tracker) = SLIDER_PERF_TRACKER.lock() {
@@ -448,23 +466,36 @@ impl SliderResourceRegistry {
         }
     }
     
-    fn insert(&mut self, key: AtlasKey, resource: SliderGpuResources) {
+    fn insert(&mut self, key: AtlasKey, resource: SliderGpuResources) -> Option<AtlasKey> {
         // If key already exists, update its position
         if self.resources.contains_key(&key) {
             if let Some(pos) = self.keys_order.iter().position(|k| k == &key) {
                 self.keys_order.remove(pos);
             }
-        } else if self.resources.len() >= self.max_resources && !self.keys_order.is_empty() {
+            // Add to end (most recently used)
+            self.keys_order.push_back(key);
+            self.resources.insert(key, resource);
+            return None;
+        }
+        
+        let evicted_key = if self.resources.len() >= self.max_resources && !self.keys_order.is_empty() {
             // At capacity - evict oldest
             if let Some(oldest_key) = self.keys_order.pop_front() {
                 self.resources.remove(&oldest_key);
-                debug!("Evicted slider resources for pane={}, image={}", oldest_key.pane_idx, oldest_key.image_idx);
+                info!("🗑️ Evicting slider GPU+Atlas: pane={}, image={}", oldest_key.pane_idx, oldest_key.image_idx);
+                Some(oldest_key)
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
         
         // Add to end (most recently used)
         self.keys_order.push_back(key);
         self.resources.insert(key, resource);
+        
+        evicted_key
     }
     
     fn get(&mut self, key: &AtlasKey) -> Option<&SliderGpuResources> {
