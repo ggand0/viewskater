@@ -142,6 +142,7 @@ impl DataViewer {
                 // Check for first image navigation with platform modifier or Fn key
                 if is_platform_modifier(&modifiers) {
                     debug!("Navigating to first image");
+                    self.use_slider_image_for_render = false;
 
                     // Find which panes need to be updated
                     let mut operations = Vec::new();
@@ -196,6 +197,7 @@ impl DataViewer {
                     self.skate_left = true;
                 } else {
                     self.skate_left = false;
+                    self.use_slider_image_for_render = false;
 
                     debug!("move_left_all from handle_key_pressed_event()");
                     let task = move_left_all(
@@ -216,6 +218,7 @@ impl DataViewer {
                 // Check for last image navigation with platform modifier or Fn key
                 if is_platform_modifier(&modifiers) {
                     debug!("Navigating to last image");
+                    self.use_slider_image_for_render = false;
 
                     // Find which panes need to be updated
                     let mut operations = Vec::new();
@@ -271,6 +274,7 @@ impl DataViewer {
                     self.skate_right = true;
                 } else {
                     self.skate_right = false;
+                    self.use_slider_image_for_render = false;
 
                     let task = move_right_all(
                         &self.device,

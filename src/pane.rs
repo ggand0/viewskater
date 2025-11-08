@@ -670,9 +670,9 @@ impl Pane {
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
 
-    pub fn build_ui_container(&self, is_slider_moving: bool, is_horizontal_split: bool, double_click_threshold_ms: u16) -> Container<'_, Message, WinitTheme, Renderer> {
+    pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16) -> Container<'_, Message, WinitTheme, Renderer> {
         if self.dir_loaded {
-            if is_slider_moving && self.slider_image.is_some() {
+            if use_slider_image_for_render && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
                 let image_handle = self.slider_image.clone().unwrap();
 

@@ -367,6 +367,7 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
     match message {
         Message::SliderChanged(pane_index, value) => {
             app.is_slider_moving = true;
+            app.use_slider_image_for_render = true;
             app.last_slider_update = Instant::now();
 
             let use_async = true;

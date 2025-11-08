@@ -284,7 +284,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             // Choose the appropriate widget based on slider movement state
             let first_img = if app.panes[0].dir_loaded {
                 // First, create the base image widget (either slider or shader)
-                let base_image_widget = if app.is_slider_moving && app.panes[0].slider_image.is_some() {
+                let base_image_widget = if app.use_slider_image_for_render && app.panes[0].slider_image.is_some() {
                     // Use regular Image widget during slider movement (much faster)
                     let image_handle = app.panes[0].slider_image.clone().unwrap();
 
@@ -367,7 +367,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                 // During slider movement, use dimensions from slider_image_dimensions which
                                 // are extracted from the same image bytes that created the slider_image handle.
                                 // This ensures BBoxShader uses the SAME dimensions as the Viewer widget renders.
-                                let image_size = if app.is_slider_moving && app.panes[0].slider_image.is_some() {
+                                let image_size = if app.use_slider_image_for_render && app.panes[0].slider_image.is_some() {
                                     // Slider mode: use dimensions extracted when slider_image handle was created
                                     if let Some(dims) = app.panes[0].slider_image_dimensions {
                                         log::debug!("UI: Using slider_image_dimensions: {:?}", dims);
@@ -544,7 +544,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     &app.panes,
                     app.divider_position,
                     app.show_footer,
-                    app.is_slider_moving,
+                    app.use_slider_image_for_render,
                     app.is_horizontal_split,
                     app.synced_zoom,
                     app.show_copy_buttons,
@@ -569,7 +569,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 let panes = build_ui_dual_pane_slider1(
                     &app.panes,
                     app.divider_position,
-                    app.is_slider_moving,
+                    app.use_slider_image_for_render,
                     app.is_horizontal_split,
                     app.synced_zoom,
                     app.double_click_threshold_ms
@@ -658,13 +658,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 pub fn build_ui_dual_pane_slider1(
     panes: &[Pane],
     divider_position: Option<u16>,
-    is_slider_moving: bool,
+    use_slider_image_for_render: bool,
     is_horizontal_split: bool,
     synced_zoom: bool,
     double_click_threshold_ms: u16
 ) -> Element<'_, Message, WinitTheme, Renderer> {
-    let first_img = panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms);
-    let second_img = panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms);
+    let first_img = panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms);
+    let second_img = panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms);
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
 
@@ -695,7 +695,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
     panes: &'a [Pane],
     divider_position: Option<u16>,
     show_footer: bool,
-    is_slider_moving: bool,
+    use_slider_image_for_render: bool,
     is_horizontal_split: bool,
     _synced_zoom: bool,
     show_copy_buttons: bool,
@@ -722,7 +722,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
         container(
             if show_footer {
                 column![
-                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
+                    panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -735,7 +735,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                 ]
             } else {
                 column![
-                    panes[0].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
+                    panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -759,7 +759,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
         container(
             if show_footer {
                 column![
-                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
+                    panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -772,7 +772,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                 ]
             } else {
                 column![
-                    panes[1].build_ui_container(is_slider_moving, is_horizontal_split, double_click_threshold_ms),
+                    panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -829,7 +829,7 @@ fn get_fps_container(app: &DataViewer) -> Container<'_, Message, WinitTheme, Ren
     // Get image render FPS (image content refresh rate)
     // During slider movement use iced_wgpu::get_image_fps()
     // Otherwise use IMAGE_RENDER_FPS
-    let image_fps = if app.is_slider_moving {
+    let image_fps = if app.use_slider_image_for_render {
         iced_wgpu::get_image_fps()
     } else {
         IMAGE_RENDER_FPS.lock().map(|fps| *fps as f64).unwrap_or(0.0)
