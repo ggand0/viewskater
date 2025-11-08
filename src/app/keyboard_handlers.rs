@@ -199,6 +199,11 @@ impl DataViewer {
                     self.skate_left = false;
                     self.use_slider_image_for_render = false;
 
+                    // Clear slider_image_position when keyboard navigation starts
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
+
                     debug!("move_left_all from handle_key_pressed_event()");
                     let task = move_left_all(
                         &self.device,
@@ -275,6 +280,11 @@ impl DataViewer {
                 } else {
                     self.skate_right = false;
                     self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when keyboard navigation starts
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
 
                     let task = move_right_all(
                         &self.device,

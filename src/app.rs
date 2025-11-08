@@ -260,6 +260,7 @@ impl DataViewer {
         // Clear any cached slider images to prevent displaying stale images
         for pane in self.panes.iter_mut() {
             pane.slider_image = None;
+            pane.slider_image_position = None;
             pane.slider_scene = None;
         }
 

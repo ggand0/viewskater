@@ -136,24 +136,6 @@ fn load_full_res_image(
                 pane.current_image = loaded_image;
                 pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
                 pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
-
-                // Update slider_image to match the loaded position
-                // For GPU textures, we need to read the image bytes from disk
-                // Reconstruct archive_cache from the guard (which is still locked)
-                let archive_cache = if pane.has_compressed_file {
-                    Some(&mut *archive_guard)
-                } else {
-                    None
-                };
-                if let Ok(bytes) = crate::file_io::read_image_bytes(&img_path, archive_cache) {
-                    // Decode to get dimensions
-                    if let Ok(img) = image::load_from_memory(&bytes) {
-                        let (width, height) = (img.width(), img.height());
-                        pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes));
-                        pane.slider_image_dimensions = Some((width, height));
-                        debug!("Updated slider_image to match full-res at pos {} for pane {}", pos, idx);
-                    }
-                }
             } else {
                 // CPU-based loading
                 // Load the full-resolution image using CPU
@@ -174,7 +156,7 @@ fn load_full_res_image(
                         pane.current_image = cached_data.clone();
 
                         // Update scene if using CPU-based cached data
-                        if let CachedData::Cpu(bytes) = &cached_data {
+                        if let CachedData::Cpu(_img) = &cached_data {
                             // Create a new scene with the CPU image
                             pane.scene = Some(Scene::new(Some(&cached_data)));
 
@@ -183,15 +165,6 @@ fn load_full_res_image(
                                 if let Some(scene) = &mut pane.scene {
                                     scene.ensure_texture(device, queue, pane.pane_id);
                                 }
-                            }
-
-                            // Update slider_image to match the loaded position
-                            // For CPU data, we already have the bytes
-                            if let Ok(img) = image::load_from_memory(bytes) {
-                                let (width, height) = (img.width(), img.height());
-                                pane.slider_image = Some(iced::widget::image::Handle::from_bytes(bytes.clone()));
-                                pane.slider_image_dimensions = Some((width, height));
-                                debug!("Updated slider_image to match full-res at pos {} for pane {}", pos, idx);
                             }
                         }
                     },
