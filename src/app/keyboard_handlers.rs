@@ -195,6 +195,12 @@ impl DataViewer {
                     // will be handled at the end of update() to run move_left_all
                 } else if modifiers.shift() {
                     self.skate_left = true;
+                    self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when entering skate mode
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
                 } else {
                     self.skate_left = false;
                     self.use_slider_image_for_render = false;
@@ -277,6 +283,12 @@ impl DataViewer {
 
                 if modifiers.shift() {
                     self.skate_right = true;
+                    self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when entering skate mode
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
                 } else {
                     self.skate_right = false;
                     self.use_slider_image_for_render = false;
