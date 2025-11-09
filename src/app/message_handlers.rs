@@ -554,6 +554,12 @@ pub fn handle_event_messages(app: &mut DataViewer, event: Event) -> Task<Message
                     iced_core::mouse::ScrollDelta::Lines { y, .. }
                     | iced_core::mouse::ScrollDelta::Pixels { y, .. } => {
                         if y > 0.0 {
+                            // Clear slider state when using mouse wheel navigation
+                            app.use_slider_image_for_render = false;
+                            for pane in app.panes.iter_mut() {
+                                pane.slider_image_position = None;
+                            }
+
                             return move_left_all(
                                 &app.device,
                                 &app.queue,
@@ -566,6 +572,12 @@ pub fn handle_event_messages(app: &mut DataViewer, event: Event) -> Task<Message
                                 app.is_slider_dual,
                                 app.last_opened_pane as usize);
                         } else if y < 0.0 {
+                            // Clear slider state when using mouse wheel navigation
+                            app.use_slider_image_for_render = false;
+                            for pane in app.panes.iter_mut() {
+                                pane.slider_image_position = None;
+                            }
+
                             return move_right_all(
                                 &app.device,
                                 &app.queue,
