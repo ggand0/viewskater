@@ -144,6 +144,11 @@ impl DataViewer {
                     debug!("Navigating to first image");
                     self.use_slider_image_for_render = false;
 
+                    // Clear slider_image_position when navigating to first image
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
+
                     // Find which panes need to be updated
                     let mut operations = Vec::new();
 
@@ -230,6 +235,11 @@ impl DataViewer {
                 if is_platform_modifier(&modifiers) {
                     debug!("Navigating to last image");
                     self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when navigating to last image
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
 
                     // Find which panes need to be updated
                     let mut operations = Vec::new();
