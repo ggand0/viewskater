@@ -303,7 +303,14 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
                         #[cfg(feature = "coco")]
                         {
-                            viewer = viewer.with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset);
+                            viewer = viewer
+                                .with_zoom_state(app.panes[0].zoom_scale, app.panes[0].zoom_offset)
+                                .pane_index(0)
+                                .on_zoom_change(|pane_idx, scale, offset| {
+                                    Message::CocoAction(crate::coco::widget::CocoMessage::ZoomChanged(
+                                        pane_idx, scale, offset
+                                    ))
+                                });
                         }
 
                         viewer

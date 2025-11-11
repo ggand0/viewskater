@@ -33,7 +33,7 @@ use iced::{
 
 /// A frame that displays an image with the ability to zoom in/out and pan.
 #[allow(missing_debug_implementations)]
-pub struct Viewer<Handle> {
+pub struct Viewer<Handle, Message = ()> {
     padding: f32,
     width: Length,
     height: Length,
@@ -45,9 +45,14 @@ pub struct Viewer<Handle> {
     content_fit: ContentFit,
     initial_scale: Option<f32>,
     initial_offset: Option<Vector>,
+    #[cfg(feature = "coco")]
+    pane_index: usize,
+    #[cfg(feature = "coco")]
+    on_zoom_change: Option<Box<dyn Fn(usize, f32, Vector) -> Message>>,
+    _phantom: std::marker::PhantomData<Message>,
 }
 
-impl<Handle> Viewer<Handle> {
+impl<Handle, Message> Viewer<Handle, Message> {
     /// Creates a new [`Viewer`] with the given [`State`].
     pub fn new<T: Into<Handle>>(handle: T) -> Self {
         Viewer {
@@ -62,6 +67,11 @@ impl<Handle> Viewer<Handle> {
             content_fit: ContentFit::default(),
             initial_scale: None,
             initial_offset: None,
+            #[cfg(feature = "coco")]
+            pane_index: 0,
+            #[cfg(feature = "coco")]
+            on_zoom_change: None,
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -127,10 +137,27 @@ impl<Handle> Viewer<Handle> {
         self.initial_offset = Some(offset);
         self
     }
+
+    /// Sets the pane index for COCO feature zoom tracking
+    #[cfg(feature = "coco")]
+    pub fn pane_index(mut self, pane_index: usize) -> Self {
+        self.pane_index = pane_index;
+        self
+    }
+
+    /// Sets a callback to be called when zoom/pan state changes (for COCO feature)
+    #[cfg(feature = "coco")]
+    pub fn on_zoom_change<F>(mut self, f: F) -> Self
+    where
+        F: 'static + Fn(usize, f32, Vector) -> Message,
+    {
+        self.on_zoom_change = Some(Box::new(f));
+        self
+    }
 }
 
-impl<Message, Theme, Renderer, Handle> Widget<Message, Theme, Renderer>
-    for Viewer<Handle>
+impl<Msg, Theme, Renderer, Handle> Widget<Msg, Theme, Renderer>
+    for Viewer<Handle, Msg>
 where
     Renderer: image::Renderer<Handle = Handle>,
     Handle: Clone,
@@ -208,7 +235,7 @@ where
         cursor: mouse::Cursor,
         renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
-        _shell: &mut Shell<'_, Message>,
+        shell: &mut Shell<'_, Msg>,
         _viewport: &Rectangle,
     ) -> event::Status {
         let bounds = layout.bounds();
@@ -263,6 +290,12 @@ where
                                     0.0
                                 },
                             );
+
+                            // Emit zoom change event for COCO feature
+                            #[cfg(feature = "coco")]
+                            if let Some(ref on_zoom_change) = self.on_zoom_change {
+                                shell.publish(on_zoom_change(self.pane_index, state.scale, state.current_offset));
+                            }
                         }
                     }
                 }
@@ -286,6 +319,13 @@ where
                         state.current_offset = Vector::default();
                         state.starting_offset = Vector::default();
                         state.last_click_time = None;
+
+                        // Emit zoom change event for COCO feature
+                        #[cfg(feature = "coco")]
+                        if let Some(ref on_zoom_change) = self.on_zoom_change {
+                            shell.publish(on_zoom_change(self.pane_index, 1.0, Vector::default()));
+                        }
+
                         return event::Status::Captured;
                     }
                 }
@@ -344,6 +384,12 @@ where
                     };
 
                     state.current_offset = Vector::new(x, y);
+
+                    // Emit zoom change event for COCO feature when panning
+                    #[cfg(feature = "coco")]
+                    if let Some(ref on_zoom_change) = self.on_zoom_change {
+                        shell.publish(on_zoom_change(self.pane_index, state.scale, state.current_offset));
+                    }
 
                     event::Status::Captured
                 } else {
@@ -515,14 +561,14 @@ impl State {
     }
 }
 
-impl<'a, Message, Theme, Renderer, Handle> From<Viewer<Handle>>
+impl<'a, Message, Theme, Renderer, Handle> From<Viewer<Handle, Message>>
     for Element<'a, Message, Theme, Renderer>
 where
     Renderer: 'a + image::Renderer<Handle = Handle>,
     Message: 'a,
     Handle: Clone + 'a,
 {
-    fn from(viewer: Viewer<Handle>) -> Element<'a, Message, Theme, Renderer> {
+    fn from(viewer: Viewer<Handle, Message>) -> Element<'a, Message, Theme, Renderer> {
         Element::new(viewer)
     }
 }
