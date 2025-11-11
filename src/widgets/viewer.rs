@@ -275,7 +275,22 @@ where
                 };
 
                 let state = tree.state.downcast_mut::<State>();
+                let now = std::time::Instant::now();
 
+                // Check for double-click using the threshold from CONFIG
+                if let Some(last_click) = state.last_click_time {
+                    let threshold_ms = crate::CONFIG.double_click_threshold_ms as u128;
+                    if now.duration_since(last_click).as_millis() < threshold_ms {
+                        // Double-click detected - reset zoom and pan
+                        state.scale = 1.0;
+                        state.current_offset = Vector::default();
+                        state.starting_offset = Vector::default();
+                        state.last_click_time = None;
+                        return event::Status::Captured;
+                    }
+                }
+
+                state.last_click_time = Some(now);
                 state.cursor_grabbed_at = Some(cursor_position);
                 state.starting_offset = state.current_offset;
 
@@ -382,15 +397,15 @@ where
         );
 
         let image_size = renderer.measure_image(&self.handle);
-        log::debug!(
-            "Viewer draw: measured_image=({},{}), bounds=({:.1},{:.1}), final_size=({:.1},{:.1}), state.scale={:.3}, state.offset=({:.1},{:.1})",
-            image_size.width, image_size.height,
-            bounds.width, bounds.height,
-            final_size.width, final_size.height,
-            state.scale,
-            state.current_offset.x, state.current_offset.y
-        );
-
+        //log::debug!(
+        //    "Viewer draw: measured_image=({},{}), bounds=({:.1},{:.1}), final_size=({:.1},{:.1}), state.scale={:.3}, state.offset=({:.1},{:.1})",
+        //    image_size.width, image_size.height,
+        //    bounds.width, bounds.height,
+        //    final_size.width, final_size.height,
+        //    state.scale,
+        //    state.current_offset.x, state.current_offset.y
+        //);
+//
         // Adjust bounds size and position for padding
         let padding = 1.0; // Adjust the padding value as needed
         let padded_bounds = Rectangle {
@@ -458,6 +473,7 @@ pub struct State {
     starting_offset: Vector,
     current_offset: Vector,
     cursor_grabbed_at: Option<Point>,
+    last_click_time: Option<std::time::Instant>,
 }
 
 impl Default for State {
@@ -467,6 +483,7 @@ impl Default for State {
             starting_offset: Vector::default(),
             current_offset: Vector::default(),
             cursor_grabbed_at: None,
+            last_click_time: None,
         }
     }
 }

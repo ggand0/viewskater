@@ -606,30 +606,6 @@ pub fn handle_event_messages(app: &mut DataViewer, event: Event) -> Task<Message
             Task::none()
         }
 
-        Event::Mouse(iced_core::mouse::Event::ButtonPressed(_)) => {
-            // Clear slider state on mouse button press (for double-click zoom)
-            // Only if slider is not currently moving
-            if app.use_slider_image_for_render && !app.is_slider_moving {
-                app.use_slider_image_for_render = false;
-                for pane in app.panes.iter_mut() {
-                    pane.slider_image_position = None;
-                }
-            }
-            Task::none()
-        }
-
-        Event::Mouse(iced_core::mouse::Event::CursorMoved { .. }) => {
-            // Clear slider state on cursor move (for panning)
-            // Only if slider is not currently moving
-            if app.use_slider_image_for_render && !app.is_slider_moving {
-                app.use_slider_image_for_render = false;
-                for pane in app.panes.iter_mut() {
-                    pane.slider_image_position = None;
-                }
-            }
-            Task::none()
-        }
-
         Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
             debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
             debug!("modifiers.shift(): {}", modifiers.shift());
