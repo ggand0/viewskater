@@ -371,6 +371,24 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.use_slider_image_for_render = true;
             app.last_slider_update = Instant::now();
 
+            // Reset COCO zoom state when slider starts moving
+            #[cfg(feature = "coco")]
+            {
+                if pane_index == -1 {
+                    // Reset all panes
+                    for pane in app.panes.iter_mut() {
+                        pane.zoom_scale = 1.0;
+                        pane.zoom_offset = iced_core::Vector::default();
+                    }
+                } else {
+                    // Reset specific pane
+                    if let Some(pane) = app.panes.get_mut(pane_index as usize) {
+                        pane.zoom_scale = 1.0;
+                        pane.zoom_offset = iced_core::Vector::default();
+                    }
+                }
+            }
+
             let use_async = true;
 
             #[cfg(target_os = "linux")]
