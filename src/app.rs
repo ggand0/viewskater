@@ -93,6 +93,7 @@ pub struct DataViewer {
     pub cache_strategy: CacheStrategy,
     pub last_slider_update: Instant,
     pub is_slider_moving: bool,
+    pub use_slider_image_for_render: bool,             // Keep using Viewer widget after slider release until keyboard nav
     pub backend: wgpu::Backend,
     pub show_fps: bool,
     pub compression_strategy: CompressionStrategy,
@@ -176,6 +177,7 @@ impl DataViewer {
             background_color: Color::WHITE,
             last_slider_update: Instant::now(),
             is_slider_moving: false,
+            use_slider_image_for_render: false,
             backend,
             cache_strategy,
             show_fps: settings.show_fps,
@@ -228,6 +230,7 @@ impl DataViewer {
         self.show_about = false;
         self.last_slider_update = Instant::now();
         self.is_slider_moving = false;
+        self.use_slider_image_for_render = false;
 
         crate::utils::mem::log_memory("DataViewer::reset_state: After reset_state");
 
@@ -257,6 +260,7 @@ impl DataViewer {
         // Clear any cached slider images to prevent displaying stale images
         for pane in self.panes.iter_mut() {
             pane.slider_image = None;
+            pane.slider_image_position = None;
             pane.slider_scene = None;
         }
 

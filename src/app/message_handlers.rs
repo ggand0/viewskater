@@ -318,6 +318,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                     if let Some(pane) = app.panes.get_mut(pane_idx) {
                         pane.slider_image = Some(handle);
                         pane.slider_image_dimensions = Some(dimensions);
+                        pane.slider_image_position = Some(pos);
                         pane.img_cache.current_index = pos;
 
                         debug!("Slider image loaded for pane {} at position {} with dimensions {:?}", pane_idx, pos, dimensions);
@@ -367,7 +368,26 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
     match message {
         Message::SliderChanged(pane_index, value) => {
             app.is_slider_moving = true;
+            app.use_slider_image_for_render = true;
             app.last_slider_update = Instant::now();
+
+            // Reset COCO zoom state when slider starts moving
+            #[cfg(feature = "coco")]
+            {
+                if pane_index == -1 {
+                    // Reset all panes
+                    for pane in app.panes.iter_mut() {
+                        pane.zoom_scale = 1.0;
+                        pane.zoom_offset = iced_core::Vector::default();
+                    }
+                } else {
+                    // Reset specific pane
+                    if let Some(pane) = app.panes.get_mut(pane_index as usize) {
+                        pane.zoom_scale = 1.0;
+                        pane.zoom_offset = iced_core::Vector::default();
+                    }
+                }
+            }
 
             let use_async = true;
 
@@ -392,6 +412,7 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
                     for idx in 0..app.panes.len() {
                         if idx != pane_index_usize {
                             app.panes[idx].slider_image = None;
+                            app.panes[idx].slider_image_position = None;
                         }
                     }
                 }
@@ -431,6 +452,21 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 }
             }
 
+            // Use the position of the currently displayed slider_image if available,
+            // otherwise fall back to the slider value
+            let pos = if pane_index >= 0 {
+                app.panes.get(pane_index as usize)
+                    .and_then(|pane| pane.slider_image_position)
+                    .unwrap_or(value as usize)
+            } else {
+                // For pane_index == -1 (all panes), use slider_image_position from pane 0
+                app.panes.first()
+                    .and_then(|pane| pane.slider_image_position)
+                    .unwrap_or(value as usize)
+            };
+
+            debug!("SliderReleased: Using position {} (slider_image_position) instead of slider value {}", pos, value);
+
             navigation_slider::load_remaining_images(
                 &app.device,
                 &app.queue,
@@ -440,7 +476,7 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 &mut app.panes,
                 &mut app.loading_status,
                 pane_index,
-                value as usize)
+                pos)
         }
         _ => Task::none()
     }
@@ -536,6 +572,12 @@ pub fn handle_event_messages(app: &mut DataViewer, event: Event) -> Task<Message
                     iced_core::mouse::ScrollDelta::Lines { y, .. }
                     | iced_core::mouse::ScrollDelta::Pixels { y, .. } => {
                         if y > 0.0 {
+                            // Clear slider state when using mouse wheel navigation
+                            app.use_slider_image_for_render = false;
+                            for pane in app.panes.iter_mut() {
+                                pane.slider_image_position = None;
+                            }
+
                             return move_left_all(
                                 &app.device,
                                 &app.queue,
@@ -548,6 +590,12 @@ pub fn handle_event_messages(app: &mut DataViewer, event: Event) -> Task<Message
                                 app.is_slider_dual,
                                 app.last_opened_pane as usize);
                         } else if y < 0.0 {
+                            // Clear slider state when using mouse wheel navigation
+                            app.use_slider_image_for_render = false;
+                            for pane in app.panes.iter_mut() {
+                                pane.slider_image_position = None;
+                            }
+
                             return move_right_all(
                                 &app.device,
                                 &app.queue,
@@ -563,6 +611,15 @@ pub fn handle_event_messages(app: &mut DataViewer, event: Event) -> Task<Message
                         }
                     }
                 };
+            } else {
+                // Mouse wheel with ctrl pressed or mouse_wheel_zoom enabled = zoom mode
+                // Clear slider state to switch to ImageShader widget which handles zoom
+                if app.use_slider_image_for_render {
+                    app.use_slider_image_for_render = false;
+                    for pane in app.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
+                }
             }
             Task::none()
         }

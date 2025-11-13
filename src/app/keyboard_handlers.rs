@@ -142,6 +142,12 @@ impl DataViewer {
                 // Check for first image navigation with platform modifier or Fn key
                 if is_platform_modifier(&modifiers) {
                     debug!("Navigating to first image");
+                    self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when navigating to first image
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
 
                     // Find which panes need to be updated
                     let mut operations = Vec::new();
@@ -194,8 +200,20 @@ impl DataViewer {
                     // will be handled at the end of update() to run move_left_all
                 } else if modifiers.shift() {
                     self.skate_left = true;
+                    self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when entering skate mode
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
                 } else {
                     self.skate_left = false;
+                    self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when keyboard navigation starts
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
 
                     debug!("move_left_all from handle_key_pressed_event()");
                     let task = move_left_all(
@@ -216,6 +234,12 @@ impl DataViewer {
                 // Check for last image navigation with platform modifier or Fn key
                 if is_platform_modifier(&modifiers) {
                     debug!("Navigating to last image");
+                    self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when navigating to last image
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
 
                     // Find which panes need to be updated
                     let mut operations = Vec::new();
@@ -269,8 +293,20 @@ impl DataViewer {
 
                 if modifiers.shift() {
                     self.skate_right = true;
+                    self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when entering skate mode
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
                 } else {
                     self.skate_right = false;
+                    self.use_slider_image_for_render = false;
+
+                    // Clear slider_image_position when keyboard navigation starts
+                    for pane in self.panes.iter_mut() {
+                        pane.slider_image_position = None;
+                    }
 
                     let task = move_right_all(
                         &self.device,

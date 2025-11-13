@@ -33,7 +33,7 @@ use iced::{
 
 /// A frame that displays an image with the ability to zoom in/out and pan.
 #[allow(missing_debug_implementations)]
-pub struct Viewer<Handle> {
+pub struct Viewer<Handle, Message = ()> {
     padding: f32,
     width: Length,
     height: Length,
@@ -45,9 +45,14 @@ pub struct Viewer<Handle> {
     content_fit: ContentFit,
     initial_scale: Option<f32>,
     initial_offset: Option<Vector>,
+    #[cfg(feature = "coco")]
+    pane_index: usize,
+    #[cfg(feature = "coco")]
+    on_zoom_change: Option<Box<dyn Fn(usize, f32, Vector) -> Message>>,
+    _phantom: std::marker::PhantomData<Message>,
 }
 
-impl<Handle> Viewer<Handle> {
+impl<Handle, Message> Viewer<Handle, Message> {
     /// Creates a new [`Viewer`] with the given [`State`].
     pub fn new<T: Into<Handle>>(handle: T) -> Self {
         Viewer {
@@ -62,6 +67,11 @@ impl<Handle> Viewer<Handle> {
             content_fit: ContentFit::default(),
             initial_scale: None,
             initial_offset: None,
+            #[cfg(feature = "coco")]
+            pane_index: 0,
+            #[cfg(feature = "coco")]
+            on_zoom_change: None,
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -127,10 +137,27 @@ impl<Handle> Viewer<Handle> {
         self.initial_offset = Some(offset);
         self
     }
+
+    /// Sets the pane index for COCO feature zoom tracking
+    #[cfg(feature = "coco")]
+    pub fn pane_index(mut self, pane_index: usize) -> Self {
+        self.pane_index = pane_index;
+        self
+    }
+
+    /// Sets a callback to be called when zoom/pan state changes (for COCO feature)
+    #[cfg(feature = "coco")]
+    pub fn on_zoom_change<F>(mut self, f: F) -> Self
+    where
+        F: 'static + Fn(usize, f32, Vector) -> Message,
+    {
+        self.on_zoom_change = Some(Box::new(f));
+        self
+    }
 }
 
-impl<Message, Theme, Renderer, Handle> Widget<Message, Theme, Renderer>
-    for Viewer<Handle>
+impl<Msg, Theme, Renderer, Handle> Widget<Msg, Theme, Renderer>
+    for Viewer<Handle, Msg>
 where
     Renderer: image::Renderer<Handle = Handle>,
     Handle: Clone,
@@ -208,7 +235,8 @@ where
         cursor: mouse::Cursor,
         renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
-        _shell: &mut Shell<'_, Message>,
+        #[allow(unused_variables)]
+        shell: &mut Shell<'_, Msg>,
         _viewport: &Rectangle,
     ) -> event::Status {
         let bounds = layout.bounds();
@@ -263,6 +291,12 @@ where
                                     0.0
                                 },
                             );
+
+                            // Emit zoom change event for COCO feature
+                            #[cfg(feature = "coco")]
+                            if let Some(ref on_zoom_change) = self.on_zoom_change {
+                                shell.publish(on_zoom_change(self.pane_index, state.scale, state.current_offset));
+                            }
                         }
                     }
                 }
@@ -275,7 +309,29 @@ where
                 };
 
                 let state = tree.state.downcast_mut::<State>();
+                let now = std::time::Instant::now();
 
+                // Check for double-click using the threshold from CONFIG
+                if let Some(last_click) = state.last_click_time {
+                    let threshold_ms = crate::CONFIG.double_click_threshold_ms as u128;
+                    if now.duration_since(last_click).as_millis() < threshold_ms {
+                        // Double-click detected - reset zoom and pan
+                        state.scale = 1.0;
+                        state.current_offset = Vector::default();
+                        state.starting_offset = Vector::default();
+                        state.last_click_time = None;
+
+                        // Emit zoom change event for COCO feature
+                        #[cfg(feature = "coco")]
+                        if let Some(ref on_zoom_change) = self.on_zoom_change {
+                            shell.publish(on_zoom_change(self.pane_index, 1.0, Vector::default()));
+                        }
+
+                        return event::Status::Captured;
+                    }
+                }
+
+                state.last_click_time = Some(now);
                 state.cursor_grabbed_at = Some(cursor_position);
                 state.starting_offset = state.current_offset;
 
@@ -330,6 +386,12 @@ where
 
                     state.current_offset = Vector::new(x, y);
 
+                    // Emit zoom change event for COCO feature when panning
+                    #[cfg(feature = "coco")]
+                    if let Some(ref on_zoom_change) = self.on_zoom_change {
+                        shell.publish(on_zoom_change(self.pane_index, state.scale, state.current_offset));
+                    }
+
                     event::Status::Captured
                 } else {
                     event::Status::Ignored
@@ -381,16 +443,16 @@ where
             self.content_fit,
         );
 
-        let image_size = renderer.measure_image(&self.handle);
-        log::debug!(
-            "Viewer draw: measured_image=({},{}), bounds=({:.1},{:.1}), final_size=({:.1},{:.1}), state.scale={:.3}, state.offset=({:.1},{:.1})",
-            image_size.width, image_size.height,
-            bounds.width, bounds.height,
-            final_size.width, final_size.height,
-            state.scale,
-            state.current_offset.x, state.current_offset.y
-        );
-
+        let _image_size = renderer.measure_image(&self.handle);
+        //log::debug!(
+        //    "Viewer draw: measured_image=({},{}), bounds=({:.1},{:.1}), final_size=({:.1},{:.1}), state.scale={:.3}, state.offset=({:.1},{:.1})",
+        //    image_size.width, image_size.height,
+        //    bounds.width, bounds.height,
+        //    final_size.width, final_size.height,
+        //    state.scale,
+        //    state.current_offset.x, state.current_offset.y
+        //);
+//
         // Adjust bounds size and position for padding
         let padding = 1.0; // Adjust the padding value as needed
         let padded_bounds = Rectangle {
@@ -458,6 +520,7 @@ pub struct State {
     starting_offset: Vector,
     current_offset: Vector,
     cursor_grabbed_at: Option<Point>,
+    last_click_time: Option<std::time::Instant>,
 }
 
 impl Default for State {
@@ -467,6 +530,7 @@ impl Default for State {
             starting_offset: Vector::default(),
             current_offset: Vector::default(),
             cursor_grabbed_at: None,
+            last_click_time: None,
         }
     }
 }
@@ -498,14 +562,14 @@ impl State {
     }
 }
 
-impl<'a, Message, Theme, Renderer, Handle> From<Viewer<Handle>>
+impl<'a, Message, Theme, Renderer, Handle> From<Viewer<Handle, Message>>
     for Element<'a, Message, Theme, Renderer>
 where
     Renderer: 'a + image::Renderer<Handle = Handle>,
     Message: 'a,
     Handle: Clone + 'a,
 {
-    fn from(viewer: Viewer<Handle>) -> Element<'a, Message, Theme, Renderer> {
+    fn from(viewer: Viewer<Handle, Message>) -> Element<'a, Message, Theme, Renderer> {
         Element::new(viewer)
     }
 }
