@@ -460,7 +460,7 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
                     .unwrap_or(value as usize)
             } else {
                 // For pane_index == -1 (all panes), use slider_image_position from pane 0
-                app.panes.get(0)
+                app.panes.first()
                     .and_then(|pane| pane.slider_image_position)
                     .unwrap_or(value as usize)
             };

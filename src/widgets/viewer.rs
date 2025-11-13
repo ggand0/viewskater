@@ -235,6 +235,7 @@ where
         cursor: mouse::Cursor,
         renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
+        #[allow(unused_variables)]
         shell: &mut Shell<'_, Msg>,
         _viewport: &Rectangle,
     ) -> event::Status {
@@ -442,7 +443,7 @@ where
             self.content_fit,
         );
 
-        let image_size = renderer.measure_image(&self.handle);
+        let _image_size = renderer.measure_image(&self.handle);
         //log::debug!(
         //    "Viewer draw: measured_image=({},{}), bounds=({:.1},{:.1}), final_size=({:.1},{:.1}), state.scale={:.3}, state.offset=({:.1},{:.1})",
         //    image_size.width, image_size.height,
