@@ -71,6 +71,11 @@ struct PolygonBufferCache {
 // Cache for converted RLE polygons (annotation_id -> Vec<Vec<(f32, f32)>>)
 type RlePolygonCache = HashMap<u64, Vec<Vec<(f32, f32)>>>;
 
+// Track simplification setting to invalidate cache when it changes
+struct SimplificationSetting {
+    disable_simplification: bool,
+}
+
 // Helper to get a unique ID for caching
 fn get_annotation_cache_id(ann: &ImageAnnotation) -> u64 {
     // Use category_id combined with bbox as a simple hash
@@ -108,6 +113,24 @@ impl shader::Primitive for PolygonPrimitive {
         if !storage.has::<RlePolygonCache>() {
             storage.store(RlePolygonCache::new());
         }
+
+        // Check if simplification setting changed and clear cache if needed
+        let setting_changed = if let Some(prev_setting) = storage.get::<SimplificationSetting>() {
+            prev_setting.disable_simplification != self.disable_simplification
+        } else {
+            false
+        };
+
+        if setting_changed {
+            log::debug!("Polygon simplification setting changed, clearing RLE polygon cache");
+            storage.store(RlePolygonCache::new());
+        }
+
+        // Store current setting
+        storage.store(SimplificationSetting {
+            disable_simplification: self.disable_simplification,
+        });
+
         let rle_cache = storage.get_mut::<RlePolygonCache>().unwrap();
 
         // Pre-create all vertex buffers for polygons
