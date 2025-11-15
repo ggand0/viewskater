@@ -112,6 +112,8 @@ pub struct DataViewer {
     pub annotation_manager: crate::coco::annotation_manager::AnnotationManager,  // Manages COCO annotations
     #[cfg(feature = "coco")]
     pub coco_disable_simplification: bool,              // COCO: Disable polygon simplification for RLE masks
+    #[cfg(feature = "coco")]
+    pub coco_mask_render_mode: crate::settings::CocoMaskRenderMode,  // COCO: Mask rendering mode (Polygon or Pixel)
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -199,6 +201,8 @@ impl DataViewer {
             annotation_manager: crate::coco::annotation_manager::AnnotationManager::new(),
             #[cfg(feature = "coco")]
             coco_disable_simplification: settings.coco_disable_simplification,
+            #[cfg(feature = "coco")]
+            coco_mask_render_mode: settings.coco_mask_render_mode,
         }
     }
 

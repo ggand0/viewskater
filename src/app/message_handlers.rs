@@ -84,6 +84,11 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
             handle_toggle_messages(app, message)
         }
 
+        #[cfg(feature = "coco")]
+        Message::SetCocoMaskRenderMode(_) => {
+            handle_toggle_messages(app, message)
+        }
+
         // Event messages (mouse, keyboard, file drops)
         Message::Event(event) => {
             handle_event_messages(app, event)
@@ -531,6 +536,11 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             }
             Task::none()
         }
+        #[cfg(feature = "coco")]
+        Message::SetCocoMaskRenderMode(mode) => {
+            app.coco_mask_render_mode = mode;
+            Task::none()
+        }
         Message::ToggleFullScreen(enabled) => {
             app.is_fullscreen = enabled;
             Task::none()
@@ -921,6 +931,10 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         coco_disable_simplification: app.coco_disable_simplification,
         #[cfg(not(feature = "coco"))]
         coco_disable_simplification: false,
+        #[cfg(feature = "coco")]
+        coco_mask_render_mode: app.coco_mask_render_mode,
+        #[cfg(not(feature = "coco"))]
+        coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
     };
 
     let old_settings = UserSettings::load(None);

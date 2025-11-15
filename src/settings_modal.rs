@@ -418,7 +418,9 @@ fn view_advanced_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTh
 /// COCO tab content: COCO-specific settings
 #[cfg(feature = "coco")]
 fn view_coco_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme, Renderer> {
-    let content = column![
+    use crate::settings::CocoMaskRenderMode;
+
+    let mut content = column![
         text("COCO Dataset Settings").size(16)
             .font(Font {
                 family: iced_winit::core::font::Family::Name("Roboto"),
@@ -436,21 +438,38 @@ fn view_coco_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme,
                 style: iced_winit::core::font::Style::Normal,
             }),
 
+        Space::with_height(5),
+
         container(
-            widgets::toggler::Toggler::new(
-                Some("Disable Polygon Simplification".into()),
-                viewer.coco_disable_simplification,
-                Message::ToggleCocoSimplification,
-            ).width(Length::Fill)
+            text("Rendering Mode").size(13)
         ).style(|_theme: &WinitTheme| container::Style {
             text_color: Some(Color::from_rgb(0.878, 0.878, 0.878)),
             ..container::Style::default()
         }),
 
-        Space::with_height(5),
+        container(
+            row![
+                iced_widget::Radio::new(
+                    "Polygon (Vector)",
+                    CocoMaskRenderMode::Polygon,
+                    Some(viewer.coco_mask_render_mode),
+                    Message::SetCocoMaskRenderMode,
+                ),
+                iced_widget::horizontal_space(),
+                iced_widget::Radio::new(
+                    "Pixel (Raster)",
+                    CocoMaskRenderMode::Pixel,
+                    Some(viewer.coco_mask_render_mode),
+                    Message::SetCocoMaskRenderMode,
+                ),
+            ]
+            .spacing(20)
+        ).padding([0, 20]),
+
+        Space::with_height(3),
 
         container(
-            text("When enabled, RLE masks are converted to polygons without simplification,\npreserving maximum accuracy at the cost of slightly slower rendering.")
+            text("Polygon: Smooth scaling, slight approximation\nPixel: Exact RLE representation, better performance")
                 .size(12)
                 .style(|theme: &WinitTheme| {
                     iced_widget::text::Style {
@@ -458,8 +477,42 @@ fn view_coco_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme,
                     }
                 })
         ).padding([0, 20]),
+
+        Space::with_height(10),
     ]
     .spacing(3);
+
+    // Only show polygon simplification toggle when polygon mode is selected
+    if viewer.coco_mask_render_mode == CocoMaskRenderMode::Polygon {
+        content = content.push(
+            container(
+                widgets::toggler::Toggler::new(
+                    Some("Disable Polygon Simplification".into()),
+                    viewer.coco_disable_simplification,
+                    Message::ToggleCocoSimplification,
+                ).width(Length::Fill)
+            ).style(|_theme: &WinitTheme| container::Style {
+                text_color: Some(Color::from_rgb(0.878, 0.878, 0.878)),
+                ..container::Style::default()
+            })
+        );
+
+        content = content.push(Space::with_height(5));
+
+        content = content.push(
+            container(
+                text("When enabled, RLE masks are converted to polygons without simplification,\npreserving maximum accuracy at the cost of slightly slower rendering.")
+                    .size(12)
+                    .style(|theme: &WinitTheme| {
+                        iced_widget::text::Style {
+                            color: Some(theme.extended_palette().background.weak.color)
+                        }
+                    })
+            ).padding([0, 20])
+        );
+    }
+
+    let content = content;
 
     scrollable(
         container(content)

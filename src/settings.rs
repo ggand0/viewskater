@@ -85,6 +85,24 @@ pub struct UserSettings {
     /// COCO: Disable polygon simplification for segmentation masks
     #[serde(default)]
     pub coco_disable_simplification: bool,
+
+    /// COCO: Mask rendering mode
+    #[serde(default)]
+    pub coco_mask_render_mode: CocoMaskRenderMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CocoMaskRenderMode {
+    /// Polygon-based rendering (vector, scalable)
+    Polygon,
+    /// Pixel-based rendering (raster, exact)
+    Pixel,
+}
+
+impl Default for CocoMaskRenderMode {
+    fn default() -> Self {
+        Self::Polygon  // Keep existing behavior as default
+    }
 }
 
 fn default_show_footer() -> bool {
@@ -166,6 +184,7 @@ impl Default for UserSettings {
             archive_cache_size: config::DEFAULT_ARCHIVE_CACHE_SIZE,
             archive_warning_threshold_mb: config::DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB,
             coco_disable_simplification: false,
+            coco_mask_render_mode: CocoMaskRenderMode::default(),
         }
     }
 }
@@ -293,6 +312,10 @@ impl UserSettings {
 
         // Update COCO settings
         result = Self::replace_yaml_value_or_track(&result, "coco_disable_simplification", &self.coco_disable_simplification.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "coco_mask_render_mode", &format!("\"{}\"", match self.coco_mask_render_mode {
+            CocoMaskRenderMode::Polygon => "Polygon",
+            CocoMaskRenderMode::Pixel => "Pixel",
+        }), &mut missing_keys);
 
         // Append missing keys with comments
         if !missing_keys.is_empty() {
@@ -336,6 +359,7 @@ impl UserSettings {
             "archive_cache_size" => "# Max size for compressed file cache (bytes)".to_string(),
             "archive_warning_threshold_mb" => "# Warning threshold for solid archives (megabytes)".to_string(),
             "coco_disable_simplification" => "# COCO: Disable polygon simplification (more accurate but slower)".to_string(),
+            "coco_mask_render_mode" => "# COCO: Mask rendering mode (Polygon or Pixel)".to_string(),
             _ => String::new(),
         }
     }
@@ -437,6 +461,9 @@ archive_warning_threshold_mb: {}
 
 # Disable polygon simplification for segmentation masks (more accurate but slower)
 coco_disable_simplification: {}
+
+# Mask rendering mode: "Polygon" (vector, scalable) or "Pixel" (raster, exact)
+coco_mask_render_mode: "{}"
 "#,
             self.show_fps,
             self.show_footer,
@@ -456,7 +483,11 @@ coco_disable_simplification: {}
             self.double_click_threshold_ms,
             self.archive_cache_size,
             self.archive_warning_threshold_mb,
-            self.coco_disable_simplification
+            self.coco_disable_simplification,
+            match self.coco_mask_render_mode {
+                CocoMaskRenderMode::Polygon => "Polygon",
+                CocoMaskRenderMode::Pixel => "Pixel",
+            }
         )
     }
 

@@ -418,6 +418,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                     app.panes[0].show_bboxes,
                                     app.panes[0].show_masks,
                                     has_invalid,
+                                    app.coco_mask_render_mode,
                                     app.coco_disable_simplification,
                                 );
 

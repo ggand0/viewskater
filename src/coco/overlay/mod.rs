@@ -5,6 +5,7 @@
 pub mod bbox_overlay;
 pub mod bbox_shader;
 pub mod polygon_shader;
+pub mod mask_shader;
 
 // Re-export the main overlay rendering function
 pub use bbox_overlay::render_bbox_overlay;
