@@ -14,7 +14,7 @@ use crate::widgets;
 /// Builds the settings modal dialog with tabs
 pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme, Renderer> {
     // Create the tabs with compact styling
-    let tabs = Tabs::new(Message::SettingsTabSelected)
+    let mut tabs = Tabs::new(Message::SettingsTabSelected)
         .push(
             0,  // Tab ID
             TabLabel::Text("General".to_string()),  // Label
@@ -24,8 +24,19 @@ pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, W
             1,  // Tab ID
             TabLabel::Text("Advanced".to_string()),  // Label
             view_advanced_tab(viewer)  // Content
-        )
-        .set_active_tab(&viewer.settings.active_tab)
+        );
+
+    // Add COCO tab if feature is enabled
+    #[cfg(feature = "coco")]
+    {
+        tabs = tabs.push(
+            2,  // Tab ID
+            TabLabel::Text("COCO".to_string()),  // Label
+            view_coco_tab(viewer)  // Content
+        );
+    }
+
+    let tabs = tabs.set_active_tab(&viewer.settings.active_tab)
         .tab_bar_style(|theme: &WinitTheme, status| {
             use iced_aw::style::status::Status;
 
@@ -402,4 +413,58 @@ fn view_advanced_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTh
     scrollable(centered_content)
         .height(Length::Fill)
         .into()
+}
+
+/// COCO tab content: COCO-specific settings
+#[cfg(feature = "coco")]
+fn view_coco_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme, Renderer> {
+    let content = column![
+        text("COCO Dataset Settings").size(16)
+            .font(Font {
+                family: iced_winit::core::font::Family::Name("Roboto"),
+                weight: iced_winit::core::font::Weight::Medium,
+                stretch: iced_winit::core::font::Stretch::Normal,
+                style: iced_winit::core::font::Style::Normal,
+            }),
+        Space::with_height(10),
+
+        text("Segmentation Masks").size(14)
+            .font(Font {
+                family: iced_winit::core::font::Family::Name("Roboto"),
+                weight: iced_winit::core::font::Weight::Medium,
+                stretch: iced_winit::core::font::Stretch::Normal,
+                style: iced_winit::core::font::Style::Normal,
+            }),
+
+        container(
+            widgets::toggler::Toggler::new(
+                Some("Disable Polygon Simplification".into()),
+                viewer.coco_disable_simplification,
+                Message::ToggleCocoSimplification,
+            ).width(Length::Fill)
+        ).style(|_theme: &WinitTheme| container::Style {
+            text_color: Some(Color::from_rgb(0.878, 0.878, 0.878)),
+            ..container::Style::default()
+        }),
+
+        Space::with_height(5),
+
+        container(
+            text("When enabled, RLE masks are converted to polygons without simplification,\npreserving maximum accuracy at the cost of slightly slower rendering.")
+                .size(12)
+                .style(|theme: &WinitTheme| {
+                    iced_widget::text::Style {
+                        color: Some(theme.extended_palette().background.weak.color)
+                    }
+                })
+        ).padding([0, 20]),
+    ]
+    .spacing(3);
+
+    scrollable(
+        container(content)
+            .padding([5, 10])
+    )
+    .height(Length::Fill)
+    .into()
 }

@@ -58,6 +58,7 @@ pub enum Message {
     ToggleSyncedZoom(bool),
     ToggleMouseWheelZoom(bool),
     ToggleCopyButtons(bool),
+    ToggleCocoSimplification(bool),
     ToggleFullScreen(bool),
     CursorOnTop(bool),
     CursorOnMenu(bool),

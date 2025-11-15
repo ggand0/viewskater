@@ -61,6 +61,7 @@ pub fn render_bbox_overlay<'a>(
     show_bboxes: bool,
     show_masks: bool,
     has_invalid_annotations: bool,
+    disable_simplification: bool,
 ) -> Element<'a, Message, WinitTheme, Renderer> {
     if annotations.is_empty() {
         return container(iced_widget::Space::new(Length::Fill, Length::Fill))
@@ -74,7 +75,7 @@ pub fn render_bbox_overlay<'a>(
 
     // Segmentation masks (rendered first, behind bboxes)
     if show_masks {
-        let mask_shader = PolygonShader::new(annotations.to_vec(), image_size, zoom_scale, zoom_offset)
+        let mask_shader = PolygonShader::new(annotations.to_vec(), image_size, zoom_scale, zoom_offset, disable_simplification)
             .width(Length::Fill)
             .height(Length::Fill);
         stack = stack.push(mask_shader);

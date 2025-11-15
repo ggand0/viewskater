@@ -110,6 +110,8 @@ pub struct DataViewer {
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
     #[cfg(feature = "coco")]
     pub annotation_manager: crate::coco::annotation_manager::AnnotationManager,  // Manages COCO annotations
+    #[cfg(feature = "coco")]
+    pub coco_disable_simplification: bool,              // COCO: Disable polygon simplification for RLE masks
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -195,6 +197,8 @@ impl DataViewer {
             selection_manager: SelectionManager::new(),
             #[cfg(feature = "coco")]
             annotation_manager: crate::coco::annotation_manager::AnnotationManager::new(),
+            #[cfg(feature = "coco")]
+            coco_disable_simplification: settings.coco_disable_simplification,
         }
     }
 

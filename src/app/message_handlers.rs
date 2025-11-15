@@ -77,8 +77,8 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         // Toggle and UI control messages
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
         Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
-        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleFullScreen(_) |
-        Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
+        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleCocoSimplification(_) |
+        Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
             handle_toggle_messages(app, message)
@@ -520,6 +520,17 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.show_copy_buttons = enabled;
             Task::none()
         }
+        Message::ToggleCocoSimplification(enabled) => {
+            #[cfg(feature = "coco")]
+            {
+                app.coco_disable_simplification = enabled;
+            }
+            #[cfg(not(feature = "coco"))]
+            {
+                let _ = enabled; // Suppress unused variable warning
+            }
+            Task::none()
+        }
         Message::ToggleFullScreen(enabled) => {
             app.is_fullscreen = enabled;
             Task::none()
@@ -906,6 +917,10 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         double_click_threshold_ms,
         archive_cache_size,
         archive_warning_threshold_mb,
+        #[cfg(feature = "coco")]
+        coco_disable_simplification: app.coco_disable_simplification,
+        #[cfg(not(feature = "coco"))]
+        coco_disable_simplification: false,
     };
 
     let old_settings = UserSettings::load(None);

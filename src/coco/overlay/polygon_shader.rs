@@ -23,11 +23,12 @@ pub struct PolygonShader<Message> {
     image_size: (u32, u32),
     zoom_scale: f32,
     zoom_offset: Vector,
+    disable_simplification: bool,
     _phantom: PhantomData<Message>,
 }
 
 impl<Message> PolygonShader<Message> {
-    pub fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32), zoom_scale: f32, zoom_offset: Vector) -> Self {
+    pub fn new(annotations: Vec<ImageAnnotation>, image_size: (u32, u32), zoom_scale: f32, zoom_offset: Vector, disable_simplification: bool) -> Self {
         Self {
             width: Length::Fill,
             height: Length::Fill,
@@ -35,6 +36,7 @@ impl<Message> PolygonShader<Message> {
             image_size,
             zoom_scale,
             zoom_offset,
+            disable_simplification,
             _phantom: PhantomData,
         }
     }
@@ -58,6 +60,7 @@ pub struct PolygonPrimitive {
     image_size: (u32, u32),
     zoom_scale: f32,
     zoom_offset: Vector,
+    disable_simplification: bool,
 }
 
 // Cache for vertex buffers created in prepare()
@@ -234,8 +237,10 @@ impl shader::Primitive for PolygonPrimitive {
                                 let mask_height = rle.size[0] as f32;
                                 let mask_width = rle.size[1] as f32;
 
-                                // Use minimal simplification to preserve accuracy
-                                let simplify_epsilon = 1.0;
+                                // Use epsilon based on user setting
+                                // When simplification is disabled, use 0.0 (no simplification)
+                                // When enabled, use 1.0 (minimal simplification)
+                                let simplify_epsilon = if self.disable_simplification { 0.0 } else { 1.0 };
                                 let polygons = rle_decoder::mask_to_polygons(
                                     &mask,
                                     mask_width as usize,
@@ -571,6 +576,7 @@ where
             image_size: self.image_size,
             zoom_scale: self.zoom_scale,
             zoom_offset: self.zoom_offset,
+            disable_simplification: self.disable_simplification,
         };
 
         renderer.draw_primitive(bounds, primitive);
