@@ -78,17 +78,10 @@ struct SimplificationSetting {
 
 // Helper to get a unique ID for caching
 fn get_annotation_cache_id(ann: &ImageAnnotation) -> u64 {
-    // Use category_id combined with bbox as a simple hash
-    // This isn't perfect but works for most cases
-    let bbox_hash = ((ann.bbox.x * 1000.0) as u64)
-        .wrapping_mul(31)
-        .wrapping_add((ann.bbox.y * 1000.0) as u64)
-        .wrapping_mul(31)
-        .wrapping_add((ann.bbox.width * 1000.0) as u64)
-        .wrapping_mul(31)
-        .wrapping_add((ann.bbox.height * 1000.0) as u64);
-
-    ann.category_id.wrapping_mul(1000000).wrapping_add(bbox_hash)
+    // Use annotation ID which is unique per annotation
+    // This prevents cache collisions when different images have
+    // annotations with identical bboxes and category_ids
+    ann.id
 }
 
 impl shader::Primitive for PolygonPrimitive {

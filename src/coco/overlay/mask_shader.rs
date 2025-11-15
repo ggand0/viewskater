@@ -63,9 +63,20 @@ pub struct MaskPrimitive {
     zoom_offset: Vector,
 }
 
-/// Cache for render resources
+/// Cache for render resources with state tracking
 struct MaskBufferCache {
     quads: Vec<QuadRenderData>,
+    // Track the state that was used to create these quads
+    cached_state: Option<CachedRenderState>,
+}
+
+/// State used to determine if we need to recreate render resources
+#[derive(Clone, PartialEq)]
+struct CachedRenderState {
+    annotation_ids: Vec<u64>,
+    image_size: (u32, u32),
+    bounds: (u32, u32),  // width, height as u32
+    zoom_scale_bits: u32,  // f32 as bits for equality
 }
 
 struct QuadRenderData {
@@ -88,15 +99,10 @@ struct CachedTexture {
 
 /// Helper to get a unique ID for caching (same as polygon shader for consistency)
 fn get_annotation_cache_id(ann: &ImageAnnotation) -> u64 {
-    let bbox_hash = ((ann.bbox.x * 1000.0) as u64)
-        .wrapping_mul(31)
-        .wrapping_add((ann.bbox.y * 1000.0) as u64)
-        .wrapping_mul(31)
-        .wrapping_add((ann.bbox.width * 1000.0) as u64)
-        .wrapping_mul(31)
-        .wrapping_add((ann.bbox.height * 1000.0) as u64);
-
-    ann.category_id.wrapping_mul(1000000).wrapping_add(bbox_hash)
+    // Use annotation ID which is unique per annotation
+    // This prevents cache collisions when different images have
+    // annotations with identical bboxes and category_ids
+    ann.id
 }
 
 impl shader::Primitive for MaskPrimitive {
@@ -123,6 +129,36 @@ impl shader::Primitive for MaskPrimitive {
             storage.store(MaskTextureCache::new());
         }
 
+        // Get or create buffer cache
+        if !storage.has::<MaskBufferCache>() {
+            storage.store(MaskBufferCache { quads: Vec::new(), cached_state: None });
+        }
+
+        // Calculate current state
+        let viewport_size = viewport.physical_size();
+        let scale_factor = viewport.scale_factor() as f32;
+
+        let current_state = CachedRenderState {
+            annotation_ids: self.annotations.iter().map(|a| a.id).collect(),
+            image_size: self.image_size,
+            bounds: (self.bounds.width as u32, self.bounds.height as u32),
+            zoom_scale_bits: self.zoom_scale.to_bits(),
+        };
+
+        // Check if we can reuse cached quads
+        let needs_rebuild = {
+            let buffer_cache = storage.get::<MaskBufferCache>().unwrap();
+            buffer_cache.cached_state.as_ref() != Some(&current_state)
+        };
+
+        if !needs_rebuild {
+            // Cached quads are still valid, no need to rebuild
+            log::debug!("MaskShader: Reusing cached quads for {} annotations", self.annotations.len());
+            return;
+        }
+
+        log::debug!("MaskShader: Rebuilding quads for {} annotations (state changed)", self.annotations.len());
+
         // Evict old textures if cache is full (before getting mutable reference)
         {
             let texture_cache = storage.get_mut::<MaskTextureCache>().unwrap();
@@ -130,9 +166,6 @@ impl shader::Primitive for MaskPrimitive {
                 evict_lru_textures(texture_cache, MAX_TEXTURE_CACHE_SIZE / 5);
             }
         }
-
-        let viewport_size = viewport.physical_size();
-        let scale_factor = viewport.scale_factor() as f32;
 
         let image_width = self.image_size.0 as f32;
         let image_height = self.image_size.1 as f32;
@@ -334,7 +367,10 @@ impl shader::Primitive for MaskPrimitive {
         }
 
         log::debug!("MaskShader: Total quads created: {}", quads.len());
-        storage.store(MaskBufferCache { quads });
+        storage.store(MaskBufferCache {
+            quads,
+            cached_state: Some(current_state),
+        });
     }
 
     fn render(
@@ -350,6 +386,11 @@ impl shader::Primitive for MaskPrimitive {
 
         if let Some(pipeline) = storage.get::<MaskPipeline>() {
             if let Some(cache) = storage.get::<MaskBufferCache>() {
+                // Skip rendering if there are no quads (nothing to draw)
+                if cache.quads.is_empty() {
+                    return;
+                }
+
                 for quad in &cache.quads {
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Mask Render Pass"),
