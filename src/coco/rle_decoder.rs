@@ -4,7 +4,6 @@
 /// RLE format: {"size": [height, width], "counts": [run1, run2, ...]}
 /// Counts alternate between 0s and 1s, starting with 0s.
 /// IMPORTANT: COCO RLE uses COLUMN-MAJOR (Fortran) order!
-
 use crate::coco::parser::CocoRLE;
 
 /// Decode RLE to binary mask

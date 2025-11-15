@@ -78,7 +78,8 @@ struct QuadRenderData {
 type MaskTextureCache = HashMap<u64, CachedTexture>;
 
 struct CachedTexture {
-    texture: wgpu::Texture,
+    #[allow(dead_code)]
+    texture: wgpu::Texture,  // Keep texture alive for the view
     view: wgpu::TextureView,
     width: u32,
     height: u32,
@@ -194,8 +195,8 @@ impl shader::Primitive for MaskPrimitive {
 
                     log::debug!("MaskShader: Decoded mask, {} bytes", mask.len());
 
-                    let mask_height = rle.size[0] as u32;
-                    let mask_width = rle.size[1] as u32;
+                    let mask_height = rle.size[0];
+                    let mask_width = rle.size[1];
 
                     // Create R8Unorm texture
                     let texture = device.create_texture(&wgpu::TextureDescriptor {
