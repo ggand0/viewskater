@@ -142,6 +142,7 @@ impl CocoDataset {
     }
 
     /// Build a lookup map from filename to annotations
+    /// Keeps segmentations in their original format (RLE or Polygon)
     pub fn build_image_annotation_map(&self) -> HashMap<String, Vec<ImageAnnotation>> {
         let mut map: HashMap<String, Vec<ImageAnnotation>> = HashMap::new();
 

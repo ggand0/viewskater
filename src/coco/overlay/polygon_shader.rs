@@ -2,6 +2,7 @@
 ///
 /// Uses WGPU to draw filled polygons with proper triangulation.
 use std::marker::PhantomData;
+use std::collections::HashMap;
 use iced_core::{Color, Rectangle, Size, Length, Vector};
 use iced_core::layout::{self, Layout};
 use iced_core::mouse;
@@ -12,6 +13,7 @@ use iced_widget::shader::{self, Viewport, Storage};
 use iced_wgpu::{wgpu, primitive};
 use wgpu::util::DeviceExt;
 use crate::coco::parser::{ImageAnnotation, CocoSegmentation};
+use crate::coco::rle_decoder;
 
 /// A shader widget for rendering segmentation masks
 pub struct PolygonShader<Message> {
@@ -63,6 +65,24 @@ struct PolygonBufferCache {
     buffers: Vec<(wgpu::Buffer, u32)>, // (buffer, vertex_count)
 }
 
+// Cache for converted RLE polygons (annotation_id -> Vec<Vec<(f32, f32)>>)
+type RlePolygonCache = HashMap<u64, Vec<Vec<(f32, f32)>>>;
+
+// Helper to get a unique ID for caching
+fn get_annotation_cache_id(ann: &ImageAnnotation) -> u64 {
+    // Use category_id combined with bbox as a simple hash
+    // This isn't perfect but works for most cases
+    let bbox_hash = ((ann.bbox.x * 1000.0) as u64)
+        .wrapping_mul(31)
+        .wrapping_add((ann.bbox.y * 1000.0) as u64)
+        .wrapping_mul(31)
+        .wrapping_add((ann.bbox.width * 1000.0) as u64)
+        .wrapping_mul(31)
+        .wrapping_add((ann.bbox.height * 1000.0) as u64);
+
+    ann.category_id.wrapping_mul(1000000).wrapping_add(bbox_hash)
+}
+
 impl shader::Primitive for PolygonPrimitive {
     fn prepare(
         &self,
@@ -80,6 +100,12 @@ impl shader::Primitive for PolygonPrimitive {
             let pipeline = PolygonPipeline::new(device, format);
             storage.store(pipeline);
         }
+
+        // Get or create RLE polygon cache
+        if !storage.has::<RlePolygonCache>() {
+            storage.store(RlePolygonCache::new());
+        }
+        let rle_cache = storage.get_mut::<RlePolygonCache>().unwrap();
 
         // Pre-create all vertex buffers for polygons
         let viewport_size = viewport.physical_size();
@@ -193,8 +219,148 @@ impl shader::Primitive for PolygonPrimitive {
                             }
                         }
                     }
-                    CocoSegmentation::Rle(_rle) => {
-                        // RLE not yet implemented
+                    CocoSegmentation::Rle(rle) => {
+                        // Convert RLE to polygons (with caching and coordinate scaling)
+                        let cache_id = get_annotation_cache_id(annotation);
+
+                        let polygons_from_rle = if let Some(cached) = rle_cache.get(&cache_id) {
+                            // Use cached polygons (already in image coordinates)
+                            cached.clone()
+                        } else {
+                            // Decode and cache
+                            let mask = rle_decoder::decode_rle(rle);
+
+                            if !mask.is_empty() && rle.size.len() == 2 {
+                                let mask_height = rle.size[0] as f32;
+                                let mask_width = rle.size[1] as f32;
+
+                                // Use minimal simplification to preserve accuracy
+                                let simplify_epsilon = 1.0;
+                                let polygons = rle_decoder::mask_to_polygons(
+                                    &mask,
+                                    mask_width as usize,
+                                    mask_height as usize,
+                                    simplify_epsilon,
+                                );
+
+                                // Check if RLE size matches image size
+                                let needs_scaling = (mask_width - image_width).abs() > 1.0
+                                    || (mask_height - image_height).abs() > 1.0;
+
+                                let final_polygons: Vec<Vec<(f32, f32)>> = if needs_scaling {
+                                    // Scale polygons from RLE coordinates to image coordinates
+                                    let x_scale = image_width / mask_width;
+                                    let y_scale = image_height / mask_height;
+                                    log::warn!("RLE size {}x{} doesn't match image {}x{}, scaling",
+                                        mask_width, mask_height, image_width, image_height);
+
+                                    polygons
+                                        .into_iter()
+                                        .map(|poly| {
+                                            poly.into_iter()
+                                                .map(|(x, y)| (x * x_scale, y * y_scale))
+                                                .collect()
+                                        })
+                                        .collect()
+                                } else {
+                                    // No scaling needed, RLE is already in image coordinates
+                                    polygons
+                                };
+
+                                // Debug: Log polygon count
+                                let total_points: usize = final_polygons.iter().map(|p| p.len()).sum();
+                                log::debug!("RLE decoded: {} polygons, {} total points", final_polygons.len(), total_points);
+
+                                rle_cache.insert(cache_id, final_polygons.clone());
+                                final_polygons
+                            } else {
+                                Vec::new()
+                            }
+                        };
+
+                        // Render polygons using same logic as Polygon branch
+                        for polygon_points in polygons_from_rle {
+                            if polygon_points.len() < 3 {
+                                continue;
+                            }
+
+                            // Convert to flat Vec<f32> format like regular polygons
+                            let polygon_flat: Vec<f32> = polygon_points
+                                .into_iter()
+                                .flat_map(|(x, y)| vec![x, y])
+                                .collect();
+
+                            // Transform polygon vertices to screen coordinates
+                            let mut screen_points = Vec::new();
+                            for i in (0..polygon_flat.len()).step_by(2) {
+                                if i + 1 >= polygon_flat.len() {
+                                    break;
+                                }
+
+                                let x = polygon_flat[i];
+                                let y = polygon_flat[i + 1];
+
+                                // Apply same transformation as regular polygons
+                                let scaled_x = x * base_scale * self.zoom_scale;
+                                let scaled_y = y * base_scale * self.zoom_scale;
+
+                                let screen_x = (scaled_x + center_offset_x - self.zoom_offset.x + self.bounds.x) * scale_factor;
+                                let screen_y = (scaled_y + center_offset_y - self.zoom_offset.y + self.bounds.y) * scale_factor;
+
+                                screen_points.push((screen_x, screen_y));
+                            }
+
+                            // Triangulate and create buffers
+                            if screen_points.len() >= 3 {
+                                let mut coords: Vec<f64> = Vec::with_capacity(screen_points.len() * 2);
+                                for (x, y) in &screen_points {
+                                    coords.push(*x as f64);
+                                    coords.push(*y as f64);
+                                }
+
+                                let triangles = earcutr::earcut(&coords, &[], 2);
+
+                                if let Ok(indices) = triangles {
+                                    let mut vertices = Vec::new();
+
+                                    for idx in indices.chunks(3) {
+                                        if idx.len() == 3 {
+                                            let p0 = screen_points[idx[0]];
+                                            let p1 = screen_points[idx[1]];
+                                            let p2 = screen_points[idx[2]];
+
+                                            let ndc0 = self.to_ndc(p0, viewport_size);
+                                            let ndc1 = self.to_ndc(p1, viewport_size);
+                                            let ndc2 = self.to_ndc(p2, viewport_size);
+
+                                            vertices.push(PolygonVertex {
+                                                position: ndc0,
+                                                color: [mask_color.r, mask_color.g, mask_color.b, mask_color.a],
+                                            });
+                                            vertices.push(PolygonVertex {
+                                                position: ndc1,
+                                                color: [mask_color.r, mask_color.g, mask_color.b, mask_color.a],
+                                            });
+                                            vertices.push(PolygonVertex {
+                                                position: ndc2,
+                                                color: [mask_color.r, mask_color.g, mask_color.b, mask_color.a],
+                                            });
+                                        }
+                                    }
+
+                                    if !vertices.is_empty() {
+                                        let vertex_count = vertices.len() as u32;
+                                        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                            label: Some("Polygon Vertex Buffer (RLE)"),
+                                            contents: bytemuck::cast_slice(&vertices),
+                                            usage: wgpu::BufferUsages::VERTEX,
+                                        });
+
+                                        buffers.push((buffer, vertex_count));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -6,3 +6,4 @@ pub mod parser;
 pub mod annotation_manager;
 pub mod widget;
 pub mod overlay;
+pub mod rle_decoder;
