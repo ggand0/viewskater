@@ -452,7 +452,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             };
 
             let footer = if app.show_footer && app.panes[0].dir_loaded {
-                let footer_text = format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files);
+                // Use slider position during slider movement, otherwise use current_image_index
+                let display_index = if app.use_slider_image_for_render && app.panes[0].slider_image_position.is_some() {
+                    app.panes[0].slider_image_position.unwrap()
+                } else {
+                    app.panes[0].current_image_index.unwrap_or(app.panes[0].img_cache.current_index)
+                };
+                let footer_text = format!("{}/{}", display_index + 1, app.panes[0].img_cache.num_files);
                 let options = {
                     #[cfg(feature = "selection")]
                     {
@@ -571,9 +577,20 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.double_click_threshold_ms
                 );
 
+                // Use slider position during slider movement, otherwise use current_image_index
+                let display_index_0 = if app.use_slider_image_for_render && app.panes[0].slider_image_position.is_some() {
+                    app.panes[0].slider_image_position.unwrap()
+                } else {
+                    app.panes[0].current_image_index.unwrap_or(app.panes[0].img_cache.current_index)
+                };
+                let display_index_1 = if app.use_slider_image_for_render && app.panes[1].slider_image_position.is_some() {
+                    app.panes[1].slider_image_position.unwrap()
+                } else {
+                    app.panes[1].current_image_index.unwrap_or(app.panes[1].img_cache.current_index)
+                };
                 let footer_texts = [
-                    format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files),
-                    format!("{}/{}", app.panes[1].img_cache.current_index + 1, app.panes[1].img_cache.num_files)
+                    format!("{}/{}", display_index_0 + 1, app.panes[0].img_cache.num_files),
+                    format!("{}/{}", display_index_1 + 1, app.panes[1].img_cache.num_files)
                 ];
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
