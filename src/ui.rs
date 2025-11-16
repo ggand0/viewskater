@@ -395,6 +395,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                 let has_invalid = app.annotation_manager.has_invalid_annotations(&filename);
 
                                 // Create bbox/mask overlay
+                                log::debug!("UI: Creating annotation overlay with zoom_scale={:.2}, zoom_offset=({:.1}, {:.1})",
+                                    app.panes[0].zoom_scale, app.panes[0].zoom_offset.x, app.panes[0].zoom_offset.y);
                                 let bbox_overlay = crate::coco::overlay::render_bbox_overlay(
                                     annotations,
                                     image_size,

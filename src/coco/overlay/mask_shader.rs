@@ -77,6 +77,8 @@ struct CachedRenderState {
     image_size: (u32, u32),
     bounds: (u32, u32),  // width, height as u32
     zoom_scale_bits: u32,  // f32 as bits for equality
+    zoom_offset_x_bits: u32,  // f32 as bits for equality
+    zoom_offset_y_bits: u32,  // f32 as bits for equality
 }
 
 struct QuadRenderData {
@@ -143,6 +145,8 @@ impl shader::Primitive for MaskPrimitive {
             image_size: self.image_size,
             bounds: (self.bounds.width as u32, self.bounds.height as u32),
             zoom_scale_bits: self.zoom_scale.to_bits(),
+            zoom_offset_x_bits: self.zoom_offset.x.to_bits(),
+            zoom_offset_y_bits: self.zoom_offset.y.to_bits(),
         };
 
         // Check if we can reuse cached quads
