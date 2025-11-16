@@ -324,7 +324,9 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                         pane.slider_image = Some(handle);
                         pane.slider_image_dimensions = Some(dimensions);
                         pane.slider_image_position = Some(pos);
-                        pane.img_cache.current_index = pos;
+                        // BUGFIX: Don't update current_index here! It causes desyncs when stale slider images
+                        // load after slider release. The slider position is tracked in slider_image_position instead.
+                        // pane.img_cache.current_index = pos;
 
                         debug!("Slider image loaded for pane {} at position {} with dimensions {:?}", pane_idx, pos, dimensions);
                     } else {
@@ -339,13 +341,14 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
         }
         Message::SliderImageLoaded(result) => {
             match result {
-                Ok((_pos, cached_data)) => {
+                Ok((pos, cached_data)) => {
                     let pane = &mut app.panes[0];
 
                     if let CachedData::Cpu(bytes) = &cached_data {
                         debug!("SliderImageLoaded: loaded data: {:?}", bytes.len());
 
                         pane.current_image = CachedData::Cpu(bytes.clone());
+                        pane.current_image_index = Some(pos);
                         pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(
                             bytes.clone(), true)));
 

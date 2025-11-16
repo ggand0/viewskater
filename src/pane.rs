@@ -46,6 +46,7 @@ pub struct Pane {
     pub dir_loaded: bool,
     pub img_cache: ImageCache,
     pub current_image: CachedData, // <-- Now stores either CPU or GPU image
+    pub current_image_index: Option<usize>, // Track which index current_image contains
     pub is_next_image_loaded: bool, // whether the next image in cache is loaded
     pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
     pub slider_value: u16,
@@ -85,6 +86,7 @@ impl Default for Pane {
             dir_loaded: false,
             img_cache: ImageCache::default(),
             current_image: CachedData::Cpu(vec![]), // Default to empty CPU image
+            current_image_index: None,
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -136,6 +138,7 @@ impl Pane {
             dir_loaded: false,
             img_cache: ImageCache::default(),
             current_image: CachedData::Cpu(vec![]),
+            current_image_index: None,
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -185,6 +188,7 @@ impl Pane {
 
         // Drop the current images
         self.current_image = CachedData::Cpu(vec![]);
+        self.current_image_index = None;
         self.slider_image = None;
         self.slider_image_position = None;
 
@@ -322,6 +326,9 @@ impl Pane {
                 img_cache.current_index += 1;
             }
 
+            // Track which index current_image contains (after current_index is updated)
+            self.current_image_index = Some(img_cache.current_index);
+
             if *pane_layout == PaneLayout::DualPane && is_slider_dual {
                 self.slider_value = img_cache.current_index as u16;
             }
@@ -390,6 +397,9 @@ impl Pane {
                 if img_cache.current_index > 0 {
                     img_cache.current_index -= 1;
                 }
+
+                // Track which index current_image contains (after current_index is updated)
+                self.current_image_index = Some(img_cache.current_index);
                 debug!("RENDERED PREV: current_index: {}, current_offset: {}",
                 img_cache.current_index, img_cache.current_offset);
 
@@ -628,6 +638,9 @@ impl Pane {
 
 
         if let Ok(initial_image) = img_cache.get_initial_image() {
+            // Track which index this initial image represents
+            self.current_image_index = Some(img_cache.current_index);
+
             match initial_image {
                 CachedData::Gpu(texture) => {
                     debug!("Using GPU texture for initial image");

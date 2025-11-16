@@ -93,6 +93,9 @@ pub fn handle_load_operation_all(
 
                 // Reload current image if necessary
                 if let Ok(cached_image) = cache.get_initial_image() {
+                    // Track which index this image represents
+                    pane.current_image_index = Some(cache.current_index);
+
                     match cached_image {
                         CachedData::Cpu(data) => {
                             info!("Setting CPU image as current_image");
@@ -143,7 +146,7 @@ pub fn handle_load_pos_operation(
     target_indices_and_cache: &[Option<(isize, usize)>],
     image_data: &[Option<CachedData>],
 ) {
-    debug!("Handling LoadPos operation");
+    debug!("===== Handling LoadPos operation =====");
     // Remove the current LoadPos operation from the being_loaded queue
     loading_status.being_loaded_queue.pop_front();
 
@@ -182,7 +185,11 @@ pub fn handle_load_pos_operation(
 
                         if cache.current_index == target_index_usize {
                             // Reload current image if necessary
+                            debug!("LoadPos: target_index {} matches current_index {}, updating current_image", target_index_usize, cache.current_index);
                             if let Ok(cached_image) = cache.get_initial_image() {
+                                // Track which index this image represents
+                                pane.current_image_index = Some(cache.current_index);
+
                                 match cached_image {
                                     CachedData::Cpu(data) => {
                                         debug!("Setting CPU image as current_image");
@@ -218,6 +225,7 @@ pub fn handle_load_pos_operation(
             }
         }
 
-        debug!("Processed indices: {:?}", processed_indices);
+        debug!("LoadPos: Processed indices: {:?}", processed_indices);
+        debug!("LoadPos: After processing, pane[{}].current_index = {}", pane_index, cache.current_index);
     }
 }

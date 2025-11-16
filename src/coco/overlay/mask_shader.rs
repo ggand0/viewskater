@@ -153,11 +153,11 @@ impl shader::Primitive for MaskPrimitive {
 
         if !needs_rebuild {
             // Cached quads are still valid, no need to rebuild
-            log::debug!("MaskShader: Reusing cached quads for {} annotations", self.annotations.len());
+            // log::debug!("MaskShader: Reusing cached quads for {} annotations", self.annotations.len());
             return;
         }
 
-        log::debug!("MaskShader: Rebuilding quads for {} annotations (state changed)", self.annotations.len());
+        // log::debug!("MaskShader: Rebuilding quads for {} annotations (state changed)", self.annotations.len());
 
         // Evict old textures if cache is full (before getting mutable reference)
         {
