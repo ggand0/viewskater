@@ -77,10 +77,15 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         // Toggle and UI control messages
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
         Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
-        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleCocoSimplification(_) |
+        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) |
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
+            handle_toggle_messages(app, message)
+        }
+
+        #[cfg(feature = "coco")]
+        Message::ToggleCocoSimplification(_) => {
             handle_toggle_messages(app, message)
         }
 
@@ -528,15 +533,9 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.show_copy_buttons = enabled;
             Task::none()
         }
+        #[cfg(feature = "coco")]
         Message::ToggleCocoSimplification(enabled) => {
-            #[cfg(feature = "coco")]
-            {
-                app.coco_disable_simplification = enabled;
-            }
-            #[cfg(not(feature = "coco"))]
-            {
-                let _ = enabled; // Suppress unused variable warning
-            }
+            app.coco_disable_simplification = enabled;
             Task::none()
         }
         #[cfg(feature = "coco")]

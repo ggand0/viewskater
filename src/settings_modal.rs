@@ -14,6 +14,7 @@ use crate::widgets;
 /// Builds the settings modal dialog with tabs
 pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme, Renderer> {
     // Create the tabs with compact styling
+    #[cfg_attr(not(feature = "coco"), allow(unused_mut))]
     let mut tabs = Tabs::new(Message::SettingsTabSelected)
         .push(
             0,  // Tab ID
