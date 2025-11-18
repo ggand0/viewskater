@@ -12,6 +12,8 @@ It aims to alleviate the challenges of exploring and comparing numerous images. 
 - Supports image formats supported by the image crate (JPG, PNG, GIF, BMP, TIFF, WebP, QOI, TGA, etc.)
 - Supports viewing images inside ZIP, RAR, and 7z (LZMA2 codec) files
 - Renders images up to 8192×8192 px (larger images are resized to fit)
+- **COCO annotation support** (optional feature): Display bounding boxes and segmentation masks with dual rendering modes (polygon/pixel)
+- **Selection feature** (optional feature): Select and export subsets of images from large datasets
 
 ## Installation
 Download the pre-built binaries from the [releases page](https://github.com/ggand0/viewskater/releases), or build it locally:
@@ -30,6 +32,18 @@ To build a full release binary for packaging or distribution:
 cargo build --release
 ```
 
+**Building with optional features:**
+```sh
+# Build with COCO annotation support
+cargo build --release --features coco
+
+# Build with selection feature
+cargo build --release --features selection
+
+# Build with both features
+cargo build --release --features coco,selection
+```
+
 See [`BUNDLING.md`](./BUNDLING.md) for full packaging instructions.
 
 
@@ -39,6 +53,17 @@ Use the mouse wheel to zoom in/out of an image.
 
 In dual-pane mode (**Ctrl + 2**), the slider syncs images in both panes by default.
 You can switch to per-pane sliders by selecting the "Controls -> Controls -> Toggle Slider" menu item or pressing the **Space** bar.
+
+**COCO Annotations** (when built with `--features coco`):
+Drag and drop a COCO-format JSON annotation file onto the app. The app will automatically search for the image directory in common locations:
+- Same directory as the JSON file
+- `images/`, `img/`, `val2017/`, or `train2017/` subdirectories
+- Single subdirectory if only one exists in the JSON's parent directory
+
+If the image directory is not found automatically, a folder picker will prompt you to select the image directory manually.
+
+**Image Selection** (when built with `--features selection`):
+Mark images for dataset curation while browsing. Press **S** to mark an image as selected (green badge), **X** to exclude it (red badge), or **U** to clear the mark. Export your selections to JSON using **Cmd+E** (macOS) or **Ctrl+E** (Windows/Linux). Selection states are automatically saved and persist across sessions.
 
 ## Shortcuts
 | Action                             | macOS Shortcut      | Windows/Linux Shortcut |
