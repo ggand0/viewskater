@@ -142,6 +142,7 @@ impl CocoDataset {
     }
 
     /// Build a lookup map from filename to annotations
+    /// Keeps segmentations in their original format (RLE or Polygon)
     pub fn build_image_annotation_map(&self) -> HashMap<String, Vec<ImageAnnotation>> {
         let mut map: HashMap<String, Vec<ImageAnnotation>> = HashMap::new();
 
@@ -162,6 +163,7 @@ impl CocoDataset {
                     .unwrap_or_else(|| format!("Unknown ({})", ann.category_id));
 
                 let image_ann = ImageAnnotation {
+                    id: ann.id,
                     bbox: BoundingBox {
                         x: ann.bbox[0],
                         y: ann.bbox[1],
@@ -191,6 +193,7 @@ impl CocoDataset {
 /// Simplified annotation structure for rendering
 #[derive(Debug, Clone)]
 pub struct ImageAnnotation {
+    pub id: u64,  // Annotation ID for cache key uniqueness
     pub bbox: BoundingBox,
     pub category_id: u64,
     pub category_name: String,

@@ -58,6 +58,10 @@ pub enum Message {
     ToggleSyncedZoom(bool),
     ToggleMouseWheelZoom(bool),
     ToggleCopyButtons(bool),
+    #[cfg(feature = "coco")]
+    ToggleCocoSimplification(bool),
+    #[cfg(feature = "coco")]
+    SetCocoMaskRenderMode(crate::settings::CocoMaskRenderMode),
     ToggleFullScreen(bool),
     CursorOnTop(bool),
     CursorOnMenu(bool),

@@ -780,6 +780,8 @@ where
                     // Emit zoom change message during pan for real-time annotation updates
                     #[cfg(feature = "coco")]
                     if let Some(ref callback) = self.on_zoom_change {
+                        debug!("ImageShader: Publishing ZoomChanged during pan: scale={:.2}, offset=({:.1}, {:.1})",
+                            state.scale, state.current_offset.x, state.current_offset.y);
                         let message = callback(self.pane_index, state.scale, state.current_offset);
                         shell.publish(message);
                     }

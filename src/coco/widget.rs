@@ -373,6 +373,8 @@ pub fn handle_coco_message(
             if let Some(pane) = panes.get_mut(pane_index) {
                 pane.zoom_scale = scale;
                 pane.zoom_offset = offset;
+                log::debug!("ZoomChanged: pane={}, scale={:.2}, offset=({:.1}, {:.1})",
+                    pane_index, scale, offset.x, offset.y);
             }
             Task::none()
         }

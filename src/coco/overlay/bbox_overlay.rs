@@ -9,8 +9,10 @@ use iced_core::Border;
 
 use crate::app::Message;
 use crate::coco::parser::{ImageAnnotation, CocoSegmentation};
+use crate::settings::CocoMaskRenderMode;
 use super::bbox_shader::BBoxShader;
 use super::polygon_shader::PolygonShader;
+use super::mask_shader::MaskShader;
 
 /// Get YOLO color for category ID (same as bbox_shader)
 fn get_category_color(category_id: u64) -> Color {
@@ -51,7 +53,7 @@ fn get_category_color(category_id: u64) -> Color {
 /// Render bounding box and segmentation mask overlays for a list of annotations
 ///
 /// Uses custom WGPU shader for rendering actual bbox rectangles with text labels.
-/// Renders segmentation masks as semi-transparent filled polygons.
+/// Renders segmentation masks as semi-transparent filled polygons or pixel-perfect textures.
 /// Applies zoom transformation based on scale and offset parameters.
 pub fn render_bbox_overlay<'a>(
     annotations: &'a [ImageAnnotation],
@@ -61,6 +63,8 @@ pub fn render_bbox_overlay<'a>(
     show_bboxes: bool,
     show_masks: bool,
     has_invalid_annotations: bool,
+    render_mode: CocoMaskRenderMode,
+    disable_simplification: bool,
 ) -> Element<'a, Message, WinitTheme, Renderer> {
     if annotations.is_empty() {
         return container(iced_widget::Space::new(Length::Fill, Length::Fill))
@@ -74,10 +78,23 @@ pub fn render_bbox_overlay<'a>(
 
     // Segmentation masks (rendered first, behind bboxes)
     if show_masks {
-        let mask_shader = PolygonShader::new(annotations.to_vec(), image_size, zoom_scale, zoom_offset)
-            .width(Length::Fill)
-            .height(Length::Fill);
-        stack = stack.push(mask_shader);
+        let mask_element: Element<'a, Message, WinitTheme, Renderer> = match render_mode {
+            CocoMaskRenderMode::Polygon => {
+                // Polygon-based rendering (vector, scalable)
+                PolygonShader::new(annotations.to_vec(), image_size, zoom_scale, zoom_offset, disable_simplification)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            }
+            CocoMaskRenderMode::Pixel => {
+                // Pixel-based rendering (raster, exact)
+                MaskShader::new(annotations.to_vec(), image_size, zoom_scale, zoom_offset)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            }
+        };
+        stack = stack.push(mask_element);
     }
 
     // Bbox rectangles

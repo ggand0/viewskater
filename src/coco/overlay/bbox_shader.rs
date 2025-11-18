@@ -127,15 +127,15 @@ impl shader::Primitive for BBoxPrimitive {
         let center_offset_x = (display_width - zoomed_image_width) / 2.0;
         let center_offset_y = (display_height - zoomed_image_height) / 2.0;
 
-        log::debug!(
-            "BBox prepare: image=({},{}), bounds=({},{}) at ({:.1},{:.1}), base_scale={:.3}, zoom={:.3}, offset=({:.1},{:.1}), center=({:.1},{:.1})",
-            image_width, image_height,
-            display_width, display_height,
-            self.bounds.x, self.bounds.y,
-            base_scale, self.zoom_scale,
-            self.zoom_offset.x, self.zoom_offset.y,
-            center_offset_x, center_offset_y
-        );
+        // log::debug!(
+        //     "BBox prepare: image=({},{}), bounds=({},{}) at ({:.1},{:.1}), base_scale={:.3}, zoom={:.3}, offset=({:.1},{:.1}), center=({:.1},{:.1})",
+        //     image_width, image_height,
+        //     display_width, display_height,
+        //     self.bounds.x, self.bounds.y,
+        //     base_scale, self.zoom_scale,
+        //     self.zoom_offset.x, self.zoom_offset.y,
+        //     center_offset_x, center_offset_y
+        // );
 
         let mut buffers = Vec::new();
 

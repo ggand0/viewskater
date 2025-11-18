@@ -131,9 +131,12 @@ fn load_full_res_image(
                 img_cache.cached_data[target_index] = Some(loaded_image.clone());
                 img_cache.cached_image_indices[target_index] = pos as isize;
                 img_cache.current_index = pos;
+                debug!("load_full_res_image: Set current_index = {} for pane {}", pos, idx);
 
                 // Update the currently displayed image
                 pane.current_image = loaded_image;
+                pane.current_image_index = Some(pos);
+                debug!("load_full_res_image: Set current_image_index = {} for pane {}", pos, idx);
                 pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
                 pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
             } else {
@@ -151,9 +154,12 @@ fn load_full_res_image(
                         img_cache.cached_data[target_index] = Some(cached_data.clone());
                         img_cache.cached_image_indices[target_index] = pos as isize;
                         img_cache.current_index = pos;
+                        debug!("load_full_res_image (CPU): Set current_index = {} for pane {}", pos, idx);
 
                         // Update the currently displayed image
                         pane.current_image = cached_data.clone();
+                        pane.current_image_index = Some(pos);
+                        debug!("load_full_res_image (CPU): Set current_image_index = {} for pane {}", pos, idx);
 
                         // Update scene if using CPU-based cached data
                         if let CachedData::Cpu(_img) = &cached_data {
@@ -283,6 +289,12 @@ pub fn load_remaining_images(
     // First, load the full-resolution image **synchronously**
     let full_res_task = load_full_res_image(device, queue, is_gpu_supported, compression_strategy, panes, pane_index, pos);
     tasks.push(full_res_task);
+
+    // Debug: Check current_index after load_full_res_image
+    let check_pane_idx = if pane_index == -1 { 0 } else { pane_index as usize };
+    if let Some(pane) = panes.get(check_pane_idx) {
+        debug!("load_remaining_images: After load_full_res_image, pane[{}].current_index = {}", check_pane_idx, pane.img_cache.current_index);
+    }
 
     // Then, load the neighboring images asynchronously
     if pane_index == -1 {
@@ -612,6 +624,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
 
             // Update the current image to CPU data
             pane.current_image = CachedData::Cpu(bytes.clone());
+            pane.current_image_index = Some(pos);
             pane.slider_scene = Some(Scene::new(Some(&CachedData::Cpu(bytes.clone()))));
 
             // Ensure texture is created for CPU images

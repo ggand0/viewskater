@@ -77,10 +77,20 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         // Toggle and UI control messages
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
         Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
-        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleFullScreen(_) |
-        Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
+        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) |
+        Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
+            handle_toggle_messages(app, message)
+        }
+
+        #[cfg(feature = "coco")]
+        Message::ToggleCocoSimplification(_) => {
+            handle_toggle_messages(app, message)
+        }
+
+        #[cfg(feature = "coco")]
+        Message::SetCocoMaskRenderMode(_) => {
             handle_toggle_messages(app, message)
         }
 
@@ -319,7 +329,9 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                         pane.slider_image = Some(handle);
                         pane.slider_image_dimensions = Some(dimensions);
                         pane.slider_image_position = Some(pos);
-                        pane.img_cache.current_index = pos;
+                        // BUGFIX: Don't update current_index here! It causes desyncs when stale slider images
+                        // load after slider release. The slider position is tracked in slider_image_position instead.
+                        // pane.img_cache.current_index = pos;
 
                         debug!("Slider image loaded for pane {} at position {} with dimensions {:?}", pane_idx, pos, dimensions);
                     } else {
@@ -334,13 +346,14 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
         }
         Message::SliderImageLoaded(result) => {
             match result {
-                Ok((_pos, cached_data)) => {
+                Ok((pos, cached_data)) => {
                     let pane = &mut app.panes[0];
 
                     if let CachedData::Cpu(bytes) = &cached_data {
                         debug!("SliderImageLoaded: loaded data: {:?}", bytes.len());
 
                         pane.current_image = CachedData::Cpu(bytes.clone());
+                        pane.current_image_index = Some(pos);
                         pane.slider_scene = Some(Scene::CpuScene(CpuScene::new(
                             bytes.clone(), true)));
 
@@ -518,6 +531,16 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
         }
         Message::ToggleCopyButtons(enabled) => {
             app.show_copy_buttons = enabled;
+            Task::none()
+        }
+        #[cfg(feature = "coco")]
+        Message::ToggleCocoSimplification(enabled) => {
+            app.coco_disable_simplification = enabled;
+            Task::none()
+        }
+        #[cfg(feature = "coco")]
+        Message::SetCocoMaskRenderMode(mode) => {
+            app.coco_mask_render_mode = mode;
             Task::none()
         }
         Message::ToggleFullScreen(enabled) => {
@@ -906,6 +929,14 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         double_click_threshold_ms,
         archive_cache_size,
         archive_warning_threshold_mb,
+        #[cfg(feature = "coco")]
+        coco_disable_simplification: app.coco_disable_simplification,
+        #[cfg(not(feature = "coco"))]
+        coco_disable_simplification: false,
+        #[cfg(feature = "coco")]
+        coco_mask_render_mode: app.coco_mask_render_mode,
+        #[cfg(not(feature = "coco"))]
+        coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
     };
 
     let old_settings = UserSettings::load(None);

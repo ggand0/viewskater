@@ -362,54 +362,41 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 #[cfg(feature = "coco")]
                 let with_annotations = {
                     if (app.panes[0].show_bboxes || app.panes[0].show_masks) && app.annotation_manager.has_annotations() {
-                        // Use current_index (which gets updated by slider image loading)
-                        let current_index = app.panes[0].img_cache.current_index;
+                        // Determine which index to use for annotation lookup based on rendering mode
+                        let annotation_index = if app.use_slider_image_for_render && app.panes[0].slider_image.is_some() {
+                            // Slider mode: use slider_image_position
+                            app.panes[0].slider_image_position
+                                .or(app.panes[0].current_image_index)
+                                .unwrap_or(app.panes[0].img_cache.current_index)
+                        } else {
+                            // Normal mode: use current_image_index
+                            app.panes[0].current_image_index
+                                .unwrap_or(app.panes[0].img_cache.current_index)
+                        };
 
-                        if let Some(path_source) = app.panes[0].img_cache.image_paths.get(current_index) {
+                        if let Some(path_source) = app.panes[0].img_cache.image_paths.get(annotation_index) {
                             let filename = path_source.file_name();
 
                             // Look up annotations for this image
                             if let Some(annotations) = app.annotation_manager.get_annotations(&filename) {
-                                // Get image dimensions
-                                // During slider movement, use dimensions from slider_image_dimensions which
-                                // are extracted from the same image bytes that created the slider_image handle.
-                                // This ensures BBoxShader uses the SAME dimensions as the Viewer widget renders.
+                                // Get image dimensions based on rendering mode
                                 let image_size = if app.use_slider_image_for_render && app.panes[0].slider_image.is_some() {
-                                    // Slider mode: use dimensions extracted when slider_image handle was created
-                                    if let Some(dims) = app.panes[0].slider_image_dimensions {
-                                        log::debug!("UI: Using slider_image_dimensions: {:?}", dims);
-                                        dims
-                                    } else {
-                                        // Fallback if dimensions not available yet
-                                        let dims = (
-                                            app.panes[0].current_image.width(),
-                                            app.panes[0].current_image.height()
-                                        );
-                                        log::debug!("UI: Fallback to current_image dimensions (slider mode): {:?}", dims);
-                                        dims
-                                    }
+                                    // Slider mode: use slider_image_dimensions
+                                    app.panes[0].slider_image_dimensions
+                                        .unwrap_or((app.panes[0].current_image.width(), app.panes[0].current_image.height()))
                                 } else {
-                                    // Normal mode: look up from cache
-                                    log::debug!("UI: Looking up image size from cache for current_index={}", current_index);
-                                    app.panes[0].img_cache.cached_image_indices.iter()
-                                        .position(|&idx| idx == current_index as isize)
-                                        .and_then(|cache_idx| app.panes[0].img_cache.cached_data.get(cache_idx))
-                                        .and_then(|opt| opt.as_ref())
-                                        .map(|cached_data| (cached_data.width(), cached_data.height()))
-                                        .unwrap_or_else(|| {
-                                            let fallback = (
-                                                app.panes[0].current_image.width(),
-                                                app.panes[0].current_image.height()
-                                            );
-                                            log::debug!("UI: Using fallback dimensions from current_image: {:?}", fallback);
-                                            fallback
-                                        })
+                                    // Normal mode: use current_image dimensions
+                                    (app.panes[0].current_image.width(), app.panes[0].current_image.height())
                                 };
+                                // log::debug!("UI: Using dimensions for annotation_index={}: {:?} (slider_mode={})",
+                                //     annotation_index, image_size, app.use_slider_image_for_render);
 
                                 // Check if this image has invalid annotations
                                 let has_invalid = app.annotation_manager.has_invalid_annotations(&filename);
 
                                 // Create bbox/mask overlay
+                                log::debug!("UI: Creating annotation overlay with zoom_scale={:.2}, zoom_offset=({:.1}, {:.1})",
+                                    app.panes[0].zoom_scale, app.panes[0].zoom_offset.x, app.panes[0].zoom_offset.y);
                                 let bbox_overlay = crate::coco::overlay::render_bbox_overlay(
                                     annotations,
                                     image_size,
@@ -418,6 +405,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                                     app.panes[0].show_bboxes,
                                     app.panes[0].show_masks,
                                     has_invalid,
+                                    app.coco_mask_render_mode,
+                                    app.coco_disable_simplification,
                                 );
 
                                 // Stack image and annotations
@@ -463,7 +452,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
             };
 
             let footer = if app.show_footer && app.panes[0].dir_loaded {
-                let footer_text = format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files);
+                // Use slider position during slider movement, otherwise use current_image_index
+                let display_index = if app.use_slider_image_for_render && app.panes[0].slider_image_position.is_some() {
+                    app.panes[0].slider_image_position.unwrap()
+                } else {
+                    app.panes[0].current_image_index.unwrap_or(app.panes[0].img_cache.current_index)
+                };
+                let footer_text = format!("{}/{}", display_index + 1, app.panes[0].img_cache.num_files);
                 let options = {
                     #[cfg(feature = "selection")]
                     {
@@ -582,9 +577,20 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.double_click_threshold_ms
                 );
 
+                // Use slider position during slider movement, otherwise use current_image_index
+                let display_index_0 = if app.use_slider_image_for_render && app.panes[0].slider_image_position.is_some() {
+                    app.panes[0].slider_image_position.unwrap()
+                } else {
+                    app.panes[0].current_image_index.unwrap_or(app.panes[0].img_cache.current_index)
+                };
+                let display_index_1 = if app.use_slider_image_for_render && app.panes[1].slider_image_position.is_some() {
+                    app.panes[1].slider_image_position.unwrap()
+                } else {
+                    app.panes[1].current_image_index.unwrap_or(app.panes[1].img_cache.current_index)
+                };
                 let footer_texts = [
-                    format!("{}/{}", app.panes[0].img_cache.current_index + 1, app.panes[0].img_cache.num_files),
-                    format!("{}/{}", app.panes[1].img_cache.current_index + 1, app.panes[1].img_cache.num_files)
+                    format!("{}/{}", display_index_0 + 1, app.panes[0].img_cache.num_files),
+                    format!("{}/{}", display_index_1 + 1, app.panes[1].img_cache.num_files)
                 ];
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
