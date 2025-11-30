@@ -265,6 +265,9 @@ async fn load_image_gpu_async(
 
         match img_result {
             Ok(img) => {
+                // Apply size check and resize if image exceeds 8192px limit
+                let img = crate::cache::cache_utils::check_and_resize_if_oversized(img);
+
                 let (width, height) = img.dimensions();
                 let rgba = img.to_rgba8();
                 let rgba_data = rgba.as_raw();
