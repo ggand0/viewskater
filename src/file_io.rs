@@ -11,9 +11,10 @@ use log::{Level, debug, info, warn, error};
 
 use std::error::Error as StdError;
 use std::io;
+use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
-use image::GenericImageView;
+use image::{GenericImageView, ImageReader};
 use iced_wgpu::wgpu;
 
 use crate::cache::img_cache::CachedData;
@@ -223,12 +224,26 @@ async fn load_image_gpu_async(
         // Dispatch based on PathSource type
         let img_result = match &path_source {
             crate::cache::img_cache::PathSource::Filesystem(path) => {
-                // Direct filesystem reading - no archive cache needed
-                image::open(path)
-                    .map_err(|e| {
-                        error!("Failed to open filesystem image: {}", e);
-                        std::io::ErrorKind::InvalidData
-                    })
+                // Read bytes and use format detection instead of relying on file extension
+                match std::fs::read(path) {
+                    Ok(bytes) => {
+                        ImageReader::new(Cursor::new(bytes))
+                            .with_guessed_format()
+                            .map_err(|e| {
+                                error!("Failed to guess image format: {}", e);
+                                std::io::ErrorKind::InvalidData
+                            })?
+                            .decode()
+                            .map_err(|e| {
+                                error!("Failed to decode filesystem image: {}", e);
+                                std::io::ErrorKind::InvalidData
+                            })
+                    }
+                    Err(e) => {
+                        error!("Failed to read filesystem image: {}", e);
+                        Err(e.kind())
+                    }
+                }
             },
             crate::cache::img_cache::PathSource::Archive(_) | crate::cache::img_cache::PathSource::Preloaded(_) => {
                 // Archive content requires archive cache
