@@ -31,6 +31,7 @@ impl TexturePipeline {
         _render_size: (u32, u32),
         _image_size: (u32, u32),
         bounds_relative: (f32, f32, f32, f32),
+        use_nearest_filter: bool,
     ) -> Self {
         let debug = false;
         let (x, y, width, height) = bounds_relative;
@@ -72,12 +73,18 @@ impl TexturePipeline {
             contents: bytemuck::cast_slice(indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-        
+
+        let filter_mode = if use_nearest_filter {
+            wgpu::FilterMode::Nearest
+        } else {
+            wgpu::FilterMode::Linear
+        };
+
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
+            mag_filter: filter_mode,
+            min_filter: filter_mode,
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
@@ -185,19 +192,26 @@ impl TexturePipeline {
         &mut self,
         device: &wgpu::Device,
         _queue: &wgpu::Queue,
-        new_texture: Arc<wgpu::Texture>
+        new_texture: Arc<wgpu::Texture>,
+        use_nearest_filter: bool,
     ) {
         if Arc::ptr_eq(&self.texture, &new_texture) {
             return; // No update needed
         }
-        
+
         self.texture = new_texture;
-        
+
+        let filter_mode = if use_nearest_filter {
+            wgpu::FilterMode::Nearest
+        } else {
+            wgpu::FilterMode::Linear
+        };
+
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
+            mag_filter: filter_mode,
+            min_filter: filter_mode,
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });

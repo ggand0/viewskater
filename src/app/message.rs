@@ -58,6 +58,7 @@ pub enum Message {
     ToggleSyncedZoom(bool),
     ToggleMouseWheelZoom(bool),
     ToggleCopyButtons(bool),
+    ToggleNearestNeighborFilter(bool),
     #[cfg(feature = "coco")]
     ToggleCocoSimplification(bool),
     #[cfg(feature = "coco")]

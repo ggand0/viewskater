@@ -372,6 +372,8 @@ where
                 let mouse_over = cursor.is_over(layout.bounds());
 
                 if mouse_over {
+                    debug!("Toggler clicked! Current state: {}, publishing new state: {}", self.is_toggled, !self.is_toggled);
+                    eprintln!("TOGGLER CLICKED!!! Current: {}, New: {}", self.is_toggled, !self.is_toggled);
                     shell.publish(on_toggle(!self.is_toggled));
 
                     event::Status::Captured

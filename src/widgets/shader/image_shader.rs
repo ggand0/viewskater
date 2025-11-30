@@ -41,6 +41,7 @@ pub struct ImageShader<Message> {
     image_index: usize,
     initial_scale: Option<f32>,
     initial_offset: Option<Vector>,
+    use_nearest_filter: bool,
 }
 
 impl<Message> ImageShader<Message> {
@@ -86,6 +87,7 @@ impl<Message> ImageShader<Message> {
             image_index: 0,
             initial_scale: None,
             initial_offset: None,
+            use_nearest_filter: false,
         }
     }
 
@@ -278,6 +280,7 @@ pub struct ImagePrimitive {
     scale: f32,
     offset: Vector,
     debug: bool,
+    use_nearest_filter: bool,
 }
 
 impl shader::Primitive for ImagePrimitive {
@@ -322,10 +325,11 @@ impl shader::Primitive for ImagePrimitive {
                 debug!("ImagePrimitive::prepare - Relative bounds: {:?}", bounds_relative);
             }
 
-            // Create a unique pipeline key based on these bounds
-            let pipeline_key = format!("img_pipeline_{:.4}_{:.4}_{:.4}_{:.4}",
+            // Create a unique pipeline key based on bounds and filter mode
+            let pipeline_key = format!("img_pipeline_{:.4}_{:.4}_{:.4}_{:.4}_{}",
                                       bounds_relative.0, bounds_relative.1,
-                                      bounds_relative.2, bounds_relative.3);
+                                      bounds_relative.2, bounds_relative.3,
+                                      if self.use_nearest_filter { "nearest" } else { "linear" });
 
             // Ensure we have a registry to store pipelines
             if !storage.has::<PipelineRegistry>() {
@@ -336,9 +340,7 @@ impl shader::Primitive for ImagePrimitive {
 
             // Create pipeline if it doesn't exist or reuse existing one
             if !registry.contains_key(&pipeline_key) {
-                if self.debug {
-                    debug!("ImagePrimitive::prepare - Creating new pipeline for key {}", pipeline_key);
-                }
+                debug!("ImagePrimitive::prepare - Creating NEW pipeline for key {} with use_nearest_filter={}", pipeline_key, self.use_nearest_filter);
 
                 let pipeline = TexturePipeline::new(
                     device,
@@ -348,6 +350,7 @@ impl shader::Primitive for ImagePrimitive {
                     (viewport_size.width, viewport_size.height),
                     texture_size,
                     bounds_relative,
+                    self.use_nearest_filter,
                 );
 
                 registry.insert(pipeline_key.clone(), pipeline);
@@ -355,13 +358,14 @@ impl shader::Primitive for ImagePrimitive {
                     debug!("ImagePrimitive::prepare - Pipeline created and stored");
                 }
             } else {
+                debug!("ImagePrimitive::prepare - REUSING existing pipeline for key {}", pipeline_key);
 
                 // Update the texture in the existing pipeline
                 if let Some(pipeline) = registry.get_mut(&pipeline_key) {
                     if self.debug {
                         debug!("ImagePrimitive::prepare - Updating texture in existing pipeline");
                     }
-                    pipeline.update_texture(device, queue, Arc::clone(texture));
+                    pipeline.update_texture(device, queue, Arc::clone(texture), self.use_nearest_filter);
                 }
             }
         } else {
@@ -397,9 +401,10 @@ impl shader::Primitive for ImagePrimitive {
 
                     let bounds_relative = (x_rel, y_rel, width_rel, height_rel);
 
-                    let pipeline_key = format!("img_pipeline_{:.4}_{:.4}_{:.4}_{:.4}",
+                    let pipeline_key = format!("img_pipeline_{:.4}_{:.4}_{:.4}_{:.4}_{}",
                                             bounds_relative.0, bounds_relative.1,
-                                            bounds_relative.2, bounds_relative.3);
+                                            bounds_relative.2, bounds_relative.3,
+                                            if self.use_nearest_filter { "nearest" } else { "linear" });
 
                     if let Some(pipeline) = registry.get_ref(&pipeline_key) {
                         pipeline.render(target, encoder, clip_bounds);
@@ -851,6 +856,7 @@ where
             }
 
             if scene.get_texture().is_some() {
+                debug!("ImageShader::draw - Creating primitive with use_nearest_filter = {}", self.use_nearest_filter);
                 let primitive = ImagePrimitive {
                     scene: scene.clone(),
                     bounds,
@@ -858,6 +864,7 @@ where
                     scale: state.scale,
                     offset,
                     debug: self.debug,
+                    use_nearest_filter: self.use_nearest_filter,
                 };
 
                 renderer.draw_primitive(bounds, primitive);
@@ -969,6 +976,12 @@ impl<Message> ImageShader<Message> {
     #[cfg(feature = "coco")]
     pub fn image_index(mut self, image_index: usize) -> Self {
         self.image_index = image_index;
+        self
+    }
+
+    /// Set the filter mode for image rendering
+    pub fn use_nearest_filter(mut self, use_nearest: bool) -> Self {
+        self.use_nearest_filter = use_nearest;
         self
     }
 }
