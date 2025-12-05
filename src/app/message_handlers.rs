@@ -77,10 +77,11 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         // Toggle and UI control messages
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
         Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
-        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) |
-        Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
+        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleFullScreen(_) |
+        Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
-        Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
+        Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
+        Message::SizeChanged(_) | Message::PositionChanged(_) => {
             handle_toggle_messages(app, message)
         }
 
@@ -582,6 +583,14 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.update_compression_strategy(strategy);
             Task::none()
         }
+        Message::SizeChanged(size) => {
+            app.window_size = size;
+            Task::none()
+        }
+        Message::PositionChanged(position) => {
+            app.window_position = position;
+            Task::none()
+        }
         _ => Task::none()
     }
 }
@@ -923,8 +932,8 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         cache_size,
         max_loading_queue_size,
         max_being_loaded_queue_size,
-        window_width,
-        window_height,
+        window_width: app.window_size.width,
+        window_height: app.window_size.height,
         atlas_size,
         double_click_threshold_ms,
         archive_cache_size,
@@ -937,6 +946,9 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         coco_mask_render_mode: app.coco_mask_render_mode,
         #[cfg(not(feature = "coco"))]
         coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
+        is_fullscreen: app.is_fullscreen,
+        window_position_x: app.window_position.x,
+        window_position_y: app.window_position.y,
     };
 
     let old_settings = UserSettings::load(None);

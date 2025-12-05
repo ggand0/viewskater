@@ -26,6 +26,7 @@ mod settings_modal;
 mod macos_file_access;
 mod archive_cache;
 
+use iced_winit::winit::dpi::PhysicalPosition;
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};
 
@@ -491,16 +492,19 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::Resized(size) => {
                                     if size.width > 0 && size.height > 0 {
+                                        state.queue_message(Message::SizeChanged(size));
                                         *resized = true;
                                     } else {
                                         // Skip resizing and avoid configuring the surface
                                         *resized = false;
                                     }
                                 }
-                                WindowEvent::Moved(_) => {
+                                WindowEvent::Moved(position) => {
+                                    state.queue_message(Message::PositionChanged(position));
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
+                                    state.queue_message(Message::SaveSettings);
                                     #[cfg(target_os = "macos")]
                                     {
                                         // Clean up all active security-scoped access before shutdown
@@ -914,6 +918,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         }
                                     }
                                     Control::Exit => {
+                                        state.queue_message(Message::SaveSettings);
                                         #[cfg(target_os = "macos")]
                                         {
                                             // Clean up all active security-scoped access before shutdown
@@ -975,6 +980,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         )
                         .expect("Create window"),
                     );
+                    window.set_outer_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y));
+
+                    let size = window.current_monitor().unwrap_or(
+                        window.available_monitors().collect::<Vec<_>>().first().unwrap().clone()).size();
+                    // If window size is larger than current monitor size, simply maximized the window
+                    if CONFIG.window_width >= size.width && CONFIG.window_height > (size.height - 80) {
+                        window.set_maximized(true);
+                    }
 
                     if let Some(icon) = load_icon() {
                         window.set_window_icon(Some(icon));
@@ -1097,12 +1110,24 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     // Update state creation to lock renderer
                     let mut renderer_guard = renderer.lock().unwrap();
-                    let state = program::State::new(
+                    let mut state = program::State::new(
                         shader_widget,
                         viewport.logical_size(),
                         &mut *renderer_guard,
                         &mut debug_tool,
                     );
+
+                    if CONFIG.is_fullscreen {
+                        let fullscreen = Some(winit::window::Fullscreen::Borderless(None));
+                        state.queue_message(Message::ToggleFullScreen(true));
+                        #[cfg(target_os = "macos")] {
+                            use iced_winit::winit::platform::macos::WindowExtMacOS;
+                            window.set_simple_fullscreen(fullscreen.is_some());
+                        }
+                        #[cfg(not(target_os = "macos"))] {
+                            window.set_fullscreen(fullscreen);
+                        }
+                    }
 
                     // Set control flow
                     event_loop.set_control_flow(ControlFlow::Poll);

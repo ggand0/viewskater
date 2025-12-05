@@ -108,7 +108,7 @@ impl DataViewer {
             Key::Character("q") => {
                 // Terminate the app
                 if is_platform_modifier(&modifiers) {
-                    std::process::exit(0);
+                    tasks.push(Task::done(Message::Quit));
                 }
             }
 

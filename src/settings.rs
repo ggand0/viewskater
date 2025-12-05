@@ -74,7 +74,7 @@ pub struct UserSettings {
     #[serde(default = "default_double_click_threshold_ms")]
     pub double_click_threshold_ms: u16,
 
-    /// Max size for compressed file cache (bytes)
+    /// Max size for compressed file cache (MB)
     #[serde(default = "default_archive_cache_size")]
     pub archive_cache_size: u64,
 
@@ -89,6 +89,15 @@ pub struct UserSettings {
     /// COCO: Mask rendering mode
     #[serde(default)]
     pub coco_mask_render_mode: CocoMaskRenderMode,
+    
+    // Window position and state
+    #[serde(default)]
+    pub window_position_x: i32,
+    #[serde(default)]
+    pub window_position_y: i32,
+    #[serde(default)]
+    pub is_fullscreen: bool,
+
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -185,6 +194,9 @@ impl Default for UserSettings {
             archive_warning_threshold_mb: config::DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB,
             coco_disable_simplification: false,
             coco_mask_render_mode: CocoMaskRenderMode::default(),
+            window_position_x: 0,
+            window_position_y: 0,
+            is_fullscreen: false,
         }
     }
 }
@@ -309,13 +321,16 @@ impl UserSettings {
         result = Self::replace_yaml_value_or_track(&result, "double_click_threshold_ms", &self.double_click_threshold_ms.to_string(), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "archive_cache_size", &self.archive_cache_size.to_string(), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "archive_warning_threshold_mb", &self.archive_warning_threshold_mb.to_string(), &mut missing_keys);
-
         // Update COCO settings
         result = Self::replace_yaml_value_or_track(&result, "coco_disable_simplification", &self.coco_disable_simplification.to_string(), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "coco_mask_render_mode", &format!("\"{}\"", match self.coco_mask_render_mode {
             CocoMaskRenderMode::Polygon => "Polygon",
             CocoMaskRenderMode::Pixel => "Pixel",
         }), &mut missing_keys);
+
+        result = Self::replace_yaml_value_or_track(&result, "window_position_x", &self.window_position_x.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "window_position_y", &self.window_position_y.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "is_fullscreen", &self.is_fullscreen.to_string(), &mut missing_keys);
 
         // Append missing keys with comments
         if !missing_keys.is_empty() {
@@ -356,7 +371,7 @@ impl UserSettings {
             "window_height" => "# Default window height (pixels)".to_string(),
             "atlas_size" => "# Texture atlas size (affects slider performance, power of 2)".to_string(),
             "double_click_threshold_ms" => "# Double-click detection threshold (milliseconds)".to_string(),
-            "archive_cache_size" => "# Max size for compressed file cache (bytes)".to_string(),
+            "archive_cache_size" => "# Max size for compressed file cache (MB)".to_string(),
             "archive_warning_threshold_mb" => "# Warning threshold for solid archives (megabytes)".to_string(),
             "coco_disable_simplification" => "# COCO: Disable polygon simplification (more accurate but slower)".to_string(),
             "coco_mask_render_mode" => "# COCO: Mask rendering mode (Polygon or Pixel)".to_string(),
@@ -451,7 +466,7 @@ atlas_size: {}
 # Double-click detection threshold (milliseconds)
 double_click_threshold_ms: {}
 
-# Max size for compressed file cache (bytes)
+# Max size for compressed file cache (MB)
 archive_cache_size: {}
 
 # Warning threshold for solid archives (megabytes)
