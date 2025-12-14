@@ -7,6 +7,12 @@ use crate::menu::PaneLayout;
 use crate::file_io;
 use iced_wgpu::engine::CompressionStrategy;
 
+/// Result type for slider image widget loading: (pane_idx, position, handle, dimensions, file_size)
+pub type SliderImageWidgetResult = Result<(usize, usize, Handle, (u32, u32), u64), (usize, usize)>;
+
+/// Result type for batch image loading: (cached_data, metadata, load_operation)
+pub type ImagesLoadedResult = Result<(Vec<Option<CachedData>>, Vec<Option<ImageMetadata>>, Option<LoadOperation>), std::io::ErrorKind>;
+
 #[derive(Debug, Clone)]
 pub enum Message {
     Debug(String),
@@ -36,9 +42,9 @@ pub enum Message {
     SliderReleased(isize, u16),
     #[allow(dead_code)]
     SliderImageLoaded(Result<(usize, CachedData), usize>),
-    SliderImageWidgetLoaded(Result<(usize, usize, Handle, (u32, u32), u64), (usize, usize)>),
+    SliderImageWidgetLoaded(SliderImageWidgetResult),
     Event(Event),
-    ImagesLoaded(Result<(Vec<Option<CachedData>>, Vec<Option<ImageMetadata>>, Option<LoadOperation>), std::io::ErrorKind>),
+    ImagesLoaded(ImagesLoadedResult),
     OnSplitResize(u16),
     ResetSplit(u16),
     ToggleSliderType(bool),

@@ -709,11 +709,6 @@ impl ImageCache {
         self.cached_metadata.get(cache_index).and_then(|opt| opt.as_ref())
     }
 
-    /// Get metadata by cache index
-    pub fn get_metadata_by_index(&self, index: usize) -> Option<&ImageMetadata> {
-        self.cached_metadata.get(index).and_then(|opt| opt.as_ref())
-    }
-
     pub fn get_next_cache_index(&self) -> isize {
         self.cache_count as isize + self.current_offset + 1
     }
