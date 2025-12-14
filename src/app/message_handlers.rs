@@ -324,13 +324,17 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
         }
         Message::SliderImageWidgetLoaded(result) => {
             match result {
-                Ok((pane_idx, pos, handle, dimensions)) => {
+                Ok((pane_idx, pos, handle, dimensions, file_size)) => {
                     crate::track_async_delivery();
 
                     if let Some(pane) = app.panes.get_mut(pane_idx) {
                         pane.slider_image = Some(handle);
                         pane.slider_image_dimensions = Some(dimensions);
                         pane.slider_image_position = Some(pos);
+                        // Update metadata for footer display during slider dragging
+                        pane.current_image_metadata = Some(crate::cache::img_cache::ImageMetadata::new(
+                            dimensions.0, dimensions.1, file_size
+                        ));
                         // BUGFIX: Don't update current_index here! It causes desyncs when stale slider images
                         // load after slider release. The slider position is tracked in slider_image_position instead.
                         // pane.img_cache.current_index = pos;

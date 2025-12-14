@@ -387,7 +387,7 @@ pub async fn create_async_image_widget_task(
     pos: usize,
     pane_idx: usize,
     archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
-) -> Result<(usize, usize, Handle, (u32, u32)), (usize, usize)> {
+) -> Result<(usize, usize, Handle, (u32, u32), u64), (usize, usize)> {
     // Start overall timer
     let task_start = std::time::Instant::now();
 
@@ -427,6 +427,9 @@ pub async fn create_async_image_widget_task(
             // Start handle creation timer
             let handle_start = std::time::Instant::now();
 
+            // Capture file size before moving bytes
+            let file_size = bytes.len() as u64;
+
             // Extract image dimensions from bytes before creating handle
             let dimensions = match image::load_from_memory(&bytes) {
                 Ok(img) => (img.width(), img.height()),
@@ -447,7 +450,7 @@ pub async fn create_async_image_widget_task(
             let total_time = task_start.elapsed();
             trace!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
 
-            Ok((pane_idx, pos, handle, dimensions))
+            Ok((pane_idx, pos, handle, dimensions, file_size))
         },
         Err(_) => Err((pane_idx, pos)),
     }
@@ -691,6 +694,9 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
     } else {
         None
     };
+    // Get image path for file size lookup
+    let img_path = img_cache.image_paths.get(pos).cloned();
+
     match img_cache.load_image(pos, archive_cache) {
         Ok(image) => {
             let target_index: usize;
@@ -705,9 +711,32 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                 target_index = img_cache.cache_count;
                 img_cache.current_offset = 0;
             }
+
+            // Get dimensions from the loaded image and file size from filesystem
+            let (width, height) = image.dimensions();
+            let file_size = if let Some(ref path_source) = img_path {
+                match path_source {
+                    crate::cache::img_cache::PathSource::Filesystem(path) => {
+                        std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+                    },
+                    _ => {
+                        // For archive/preloaded, use the cached data length as approximation
+                        image.len() as u64
+                    }
+                }
+            } else {
+                0
+            };
+            let metadata = Some(ImageMetadata::new(width, height, file_size));
+            debug!("SliderChanged metadata: pos={}, dims={}x{}, size={}", pos, width, height, file_size);
+
             img_cache.cached_data[target_index] = Some(image);
+            img_cache.cached_metadata[target_index] = metadata.clone();
             img_cache.cached_image_indices[target_index] = pos as isize;
             img_cache.current_index = pos;
+
+            // Update pane's current metadata
+            pane.current_image_metadata = metadata;
 
             // Use the new method that ensures we get CPU data
             let mut archive_guard = pane.archive_cache.lock().unwrap();

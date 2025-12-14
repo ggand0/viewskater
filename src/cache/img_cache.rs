@@ -140,6 +140,21 @@ impl CachedData {
         }
     }
 
+    /// Get dimensions (width, height) with single decode for CPU images
+    pub fn dimensions(&self) -> (u32, u32) {
+        match self {
+            CachedData::Cpu(data) => {
+                if let Ok(image) = image::load_from_memory(data) {
+                    (image.width(), image.height())
+                } else {
+                    (0, 0)
+                }
+            },
+            CachedData::Gpu(texture) => (texture.width(), texture.height()),
+            CachedData::BC1(texture) => (texture.width(), texture.height()),
+        }
+    }
+
     pub fn handle(&self) -> Option<iced_core::image::Handle> {
         match self {
             CachedData::Cpu(data) => {
