@@ -17,7 +17,7 @@ use log::{debug, info, warn, error};
 const MAX_TEXTURE_SIZE: u32 = 8192;
 
 /// Checks if image exceeds MAX_TEXTURE_SIZE and resizes if needed while preserving aspect ratio
-fn check_and_resize_if_oversized(img: DynamicImage) -> DynamicImage {
+pub fn check_and_resize_if_oversized(img: DynamicImage) -> DynamicImage {
     let (width, height) = img.dimensions();
 
     if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
