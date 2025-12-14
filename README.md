@@ -10,6 +10,7 @@ It aims to alleviate the challenges of exploring and comparing numerous images. 
 - Continuous image rendering via key presses and the slider UI
 - Dual pane view for side-by-side image comparison
 - Supports image formats supported by the image crate (JPG, PNG, GIF, BMP, TIFF, WebP, QOI, TGA, etc.)
+- **JPEG 2000 support** (optional feature): View JP2, J2K, and J2C files
 - Supports viewing images inside ZIP, RAR, and 7z (LZMA2 codec) files
 - Renders images up to 8192×8192 px (larger images are resized to fit)
 - **COCO annotation support** (optional feature): Display bounding boxes and segmentation masks with dual rendering modes (polygon/pixel)
@@ -40,8 +41,11 @@ cargo build --release --features coco
 # Build with selection feature
 cargo build --release --features selection
 
-# Build with both features
-cargo build --release --features coco,selection
+# Build with JPEG 2000 support
+cargo build --release --features jp2
+
+# Build with multiple features
+cargo build --release --features coco,selection,jp2
 ```
 
 See [`BUNDLING.md`](./BUNDLING.md) for full packaging instructions.
