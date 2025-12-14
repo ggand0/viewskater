@@ -333,6 +333,9 @@ impl Pane {
             // Track which index current_image contains (after current_index is updated)
             self.current_image_index = Some(img_cache.current_index);
 
+            // Update metadata from cache
+            self.current_image_metadata = img_cache.get_initial_metadata().cloned();
+
             if *pane_layout == PaneLayout::DualPane && is_slider_dual {
                 self.slider_value = img_cache.current_index as u16;
             }
@@ -404,6 +407,10 @@ impl Pane {
 
                 // Track which index current_image contains (after current_index is updated)
                 self.current_image_index = Some(img_cache.current_index);
+
+                // Update metadata from cache
+                self.current_image_metadata = img_cache.get_initial_metadata().cloned();
+
                 debug!("RENDERED PREV: current_index: {}, current_offset: {}",
                 img_cache.current_index, img_cache.current_offset);
 

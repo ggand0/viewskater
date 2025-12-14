@@ -37,7 +37,7 @@ use crate::cache::img_cache::{LoadOperation, load_all_images_in_queue};
 use crate::widgets::shader::scene::Scene;
 use crate::loading_status::LoadingStatus;
 use crate::app::Message;
-use crate::cache::img_cache::{CachedData, CacheStrategy};
+use crate::cache::img_cache::{CachedData, CacheStrategy, ImageMetadata};
 use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
@@ -133,25 +133,58 @@ fn load_full_res_image(
                 img_cache.current_index = pos;
                 debug!("load_full_res_image: Set current_index = {} for pane {}", pos, idx);
 
+                // Get dimensions from the loaded texture and file size
+                let tex_size = texture.size();
+                let file_size = match crate::file_io::read_image_bytes_with_size(&img_path, None) {
+                    Ok((_, size)) => size,
+                    Err(_) => 0,
+                };
+                let metadata = ImageMetadata::new(tex_size.width, tex_size.height, file_size);
+                img_cache.cached_metadata[target_index] = Some(metadata.clone());
+
                 // Update the currently displayed image
                 pane.current_image = loaded_image;
                 pane.current_image_index = Some(pos);
+                pane.current_image_metadata = Some(metadata);
                 debug!("load_full_res_image: Set current_image_index = {} for pane {}", pos, idx);
                 pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
                 pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
             } else {
                 // CPU-based loading
-                // Load the full-resolution image using CPU
+                // Load the full-resolution image using CPU with metadata
                 let mut archive_guard = pane.archive_cache.lock().unwrap();
                 let archive_cache = if pane.has_compressed_file {
                     Some(&mut *archive_guard)
                 } else {
                     None
                 };
+
+                // Get file size and dimensions
+                let metadata = match crate::file_io::read_image_bytes_with_size(&img_path, archive_cache) {
+                    Ok((bytes, file_size)) => {
+                        use image::GenericImageView;
+                        let (width, height) = match image::load_from_memory(&bytes) {
+                            Ok(img) => img.dimensions(),
+                            Err(_) => (0, 0),
+                        };
+                        Some(ImageMetadata::new(width, height, file_size))
+                    },
+                    Err(_) => None,
+                };
+
+                // Reborrow archive_cache for load_image
+                let mut archive_guard = pane.archive_cache.lock().unwrap();
+                let archive_cache = if pane.has_compressed_file {
+                    Some(&mut *archive_guard)
+                } else {
+                    None
+                };
+
                 match img_cache.load_image(pos, archive_cache) {
                     Ok(cached_data) => {
                         // Store in cache and update current image
                         img_cache.cached_data[target_index] = Some(cached_data.clone());
+                        img_cache.cached_metadata[target_index] = metadata.clone();
                         img_cache.cached_image_indices[target_index] = pos as isize;
                         img_cache.current_index = pos;
                         debug!("load_full_res_image (CPU): Set current_index = {} for pane {}", pos, idx);
@@ -159,6 +192,7 @@ fn load_full_res_image(
                         // Update the currently displayed image
                         pane.current_image = cached_data.clone();
                         pane.current_image_index = Some(pos);
+                        pane.current_image_metadata = metadata;
                         debug!("load_full_res_image (CPU): Set current_image_index = {} for pane {}", pos, idx);
 
                         // Update scene if using CPU-based cached data
