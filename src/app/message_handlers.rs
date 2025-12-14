@@ -282,7 +282,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
         Message::ImagesLoaded(result) => {
             debug!("ImagesLoaded");
             match result {
-                Ok((image_data, operation)) => {
+                Ok((image_data, metadata, operation)) => {
                     if let Some(op) = operation {
                         let cloned_op = op.clone();
                         match op {
@@ -298,6 +298,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     pane_indices,
                                     target_indices,
                                     &image_data,
+                                    &metadata,
                                     &cloned_op,
                                     operation_type,
                                 );
@@ -309,6 +310,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     pane_index,
                                     &target_indices_and_cache,
                                     &image_data,
+                                    &metadata,
                                 );
                             }
                         }

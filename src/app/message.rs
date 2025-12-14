@@ -2,7 +2,7 @@ use iced_core::Event;
 use iced_core::image::Handle;
 use iced_core::Color;
 
-use crate::cache::img_cache::{CachedData, CacheStrategy, LoadOperation};
+use crate::cache::img_cache::{CachedData, CacheStrategy, ImageMetadata, LoadOperation};
 use crate::menu::PaneLayout;
 use crate::file_io;
 use iced_wgpu::engine::CompressionStrategy;
@@ -38,7 +38,7 @@ pub enum Message {
     SliderImageLoaded(Result<(usize, CachedData), usize>),
     SliderImageWidgetLoaded(Result<(usize, usize, Handle, (u32, u32)), (usize, usize)>),
     Event(Event),
-    ImagesLoaded(Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind>),
+    ImagesLoaded(Result<(Vec<Option<CachedData>>, Vec<Option<ImageMetadata>>, Option<LoadOperation>), std::io::ErrorKind>),
     OnSplitResize(u16),
     ResetSplit(u16),
     ToggleSliderType(bool),

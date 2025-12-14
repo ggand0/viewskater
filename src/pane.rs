@@ -19,7 +19,7 @@ use iced_widget::{center, Container};
 use crate::cache::img_cache::PathSource;
 use crate::config::CONFIG;
 use crate::app::Message;
-use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache};
+use crate::cache::img_cache::{CachedData, CacheStrategy, ImageCache, ImageMetadata};
 use crate::archive_cache::ArchiveCache;
 use crate::file_io::supported_image;
 use crate::archive_cache::ArchiveType;
@@ -47,6 +47,7 @@ pub struct Pane {
     pub img_cache: ImageCache,
     pub current_image: CachedData, // <-- Now stores either CPU or GPU image
     pub current_image_index: Option<usize>, // Track which index current_image contains
+    pub current_image_metadata: Option<ImageMetadata>, // Metadata for current image (resolution, file size)
     pub is_next_image_loaded: bool, // whether the next image in cache is loaded
     pub is_prev_image_loaded: bool, // whether the previous image in cache is loaded
     pub slider_value: u16,
@@ -87,6 +88,7 @@ impl Default for Pane {
             img_cache: ImageCache::default(),
             current_image: CachedData::Cpu(vec![]), // Default to empty CPU image
             current_image_index: None,
+            current_image_metadata: None,
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -139,6 +141,7 @@ impl Pane {
             img_cache: ImageCache::default(),
             current_image: CachedData::Cpu(vec![]),
             current_image_index: None,
+            current_image_metadata: None,
             is_next_image_loaded: true,
             is_prev_image_loaded: true,
             slider_value: 0,
@@ -189,6 +192,7 @@ impl Pane {
         // Drop the current images
         self.current_image = CachedData::Cpu(vec![]);
         self.current_image_index = None;
+        self.current_image_metadata = None;
         self.slider_image = None;
         self.slider_image_position = None;
 

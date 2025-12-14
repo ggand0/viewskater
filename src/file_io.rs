@@ -238,6 +238,81 @@ pub fn read_image_bytes(path_source: &crate::cache::img_cache::PathSource, archi
     }
 }
 
+/// Reads image bytes and returns (bytes, file_size_in_bytes)
+pub fn read_image_bytes_with_size(path_source: &crate::cache::img_cache::PathSource, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<(Vec<u8>, u64), std::io::Error> {
+    use std::fs::File;
+    use std::io::{self, Read};
+    use memmap2::Mmap;
+    use crate::cache::img_cache::PathSource;
+
+    // Dispatch based on PathSource type
+    match path_source {
+        PathSource::Filesystem(path) => {
+            // Direct filesystem reading with mmap optimization
+            if !path.exists() {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("Filesystem file not found: {}", path.display())
+                ));
+            }
+
+            let file = File::open(path)?;
+            let metadata = file.metadata()?;
+            let file_size = metadata.len();
+
+            // Use mmap for files over 1MB, regular reading for smaller files
+            if file_size > 1_048_576 {
+                let mmap = unsafe { Mmap::map(&file)? };
+                let bytes = mmap.to_vec();
+                debug!("Read {} bytes from filesystem using mmap: {}", bytes.len(), path.display());
+                Ok((bytes, file_size))
+            } else {
+                // For smaller files, regular reading is often faster
+                let mut buffer = Vec::with_capacity(file_size as usize);
+                let mut file = File::open(path)?;
+                file.read_to_end(&mut buffer)?;
+                debug!("Read {} bytes from filesystem: {}", buffer.len(), path.display());
+                Ok((buffer, file_size))
+            }
+        },
+
+        PathSource::Preloaded(path) => {
+            // Direct HashMap lookup - fastest path for preloaded content
+            let cache = archive_cache.ok_or_else(|| io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Archive cache required for preloaded content"
+            ))?;
+
+            let path_str = path.to_string_lossy();
+            if let Some(data) = cache.get_preloaded_data(&path_str) {
+                debug!("Using preloaded data for: {}", path_str);
+                let file_size = data.len() as u64;
+                Ok((data.to_vec(), file_size))
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("Preloaded data not found: {}", path_str)
+                ))
+            }
+        },
+
+        PathSource::Archive(path) => {
+            // Direct archive reading - no filesystem checks
+            let cache = archive_cache.ok_or_else(|| io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Archive cache required for archive content"
+            ))?;
+
+            let path_str = path.to_string_lossy();
+            debug!("Reading from archive: {}", path_str);
+            let bytes = cache.read_from_archive(&path_str)
+                .map_err(|e| io::Error::other(format!("Failed to read from archive: {}", e)))?;
+            let file_size = bytes.len() as u64;
+            Ok((bytes, file_size))
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
     let file_path = path.as_ref();
@@ -257,18 +332,26 @@ pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) 
 
 
 #[allow(dead_code)]
-async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathSource>, archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>) -> Result<Option<CachedData>, std::io::ErrorKind> {
+async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathSource>, archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>) -> Result<Option<(CachedData, crate::cache::img_cache::ImageMetadata)>, std::io::ErrorKind> {
+    use crate::cache::img_cache::ImageMetadata;
+
     // Load a single image asynchronously
     if let Some(path_source) = path_source {
         let start = Instant::now();
         debug!("load_image_cpu_async - Starting to load: {:?}", path_source.file_name());
 
-        // Dispatch based on PathSource type
-        let bytes = match &path_source {
+        // Dispatch based on PathSource type - get bytes and file size
+        let (bytes, file_size) = match &path_source {
             crate::cache::img_cache::PathSource::Filesystem(path) => {
-                // Direct filesystem reading - no archive cache needed
+                // Direct filesystem reading - get file size from metadata
+                let metadata = match tokio::fs::metadata(path).await {
+                    Ok(m) => m,
+                    Err(e) => return Err(e.kind()),
+                };
+                let file_size = metadata.len();
+
                 match tokio::fs::read(path).await {
-                    Ok(bytes) => bytes,
+                    Ok(bytes) => (bytes, file_size),
                     Err(e) => return Err(e.kind()),
                 }
             },
@@ -277,13 +360,13 @@ async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathS
                 if let Some(cache_arc) = archive_cache {
                     let cache_bytes_result = {
                         match cache_arc.lock() {
-                            Ok(mut cache) => read_image_bytes(&path_source, Some(&mut *cache)),
+                            Ok(mut cache) => read_image_bytes_with_size(&path_source, Some(&mut *cache)),
                             Err(_) => Err(std::io::Error::other("Archive cache lock failed")),
                         }
                     };
 
                     match cache_bytes_result {
-                        Ok(bytes) => bytes,
+                        Ok((bytes, file_size)) => (bytes, file_size),
                         Err(e) => {
                             error!("Failed to read archive content: {}", e);
                             return Err(std::io::ErrorKind::Other);
@@ -296,9 +379,17 @@ async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathS
             }
         };
 
+        // Get image dimensions by decoding header (lightweight)
+        let (width, height) = match image::load_from_memory(&bytes) {
+            Ok(img) => img.dimensions(),
+            Err(_) => (0, 0), // Fallback for corrupted images
+        };
+
+        let metadata = ImageMetadata::new(width, height, file_size);
+
         let total_time = start.elapsed();
         debug!("load_image_cpu_async - Total load time: {:?}", total_time);
-        Ok(Some(CachedData::Cpu(bytes)))
+        Ok(Some((CachedData::Cpu(bytes), metadata)))
     } else {
         Ok(None)
     }
@@ -311,19 +402,29 @@ async fn load_image_gpu_async(
     queue: &Arc<wgpu::Queue>,
     compression_strategy: CompressionStrategy,
     archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
-) -> Result<Option<CachedData>, std::io::ErrorKind> {
+) -> Result<Option<(CachedData, crate::cache::img_cache::ImageMetadata)>, std::io::ErrorKind> {
+    use crate::cache::img_cache::ImageMetadata;
+
     if let Some(path_source) = path_source {
         let start = Instant::now();
 
-        // Dispatch based on PathSource type
-        let img_result = match &path_source {
+        // Dispatch based on PathSource type - get decoded image and file size
+        let (img_result, file_size) = match &path_source {
             crate::cache::img_cache::PathSource::Filesystem(path) => {
                 // Read bytes and use unified decode function for format detection
+                // Get file size first
+                let file_size = match std::fs::metadata(path) {
+                    Ok(m) => m.len(),
+                    Err(e) => {
+                        error!("Failed to read filesystem metadata: {}", e);
+                        return Err(e.kind());
+                    }
+                };
                 match std::fs::read(path) {
-                    Ok(bytes) => decode_image_from_bytes(&bytes),
+                    Ok(bytes) => (decode_image_from_bytes(&bytes), file_size),
                     Err(e) => {
                         error!("Failed to read filesystem image: {}", e);
-                        Err(e.kind())
+                        return Err(e.kind());
                     }
                 }
             },
@@ -332,7 +433,7 @@ async fn load_image_gpu_async(
                 if let Some(cache_arc) = &archive_cache {
                     let cache_bytes_result = {
                         match cache_arc.lock() {
-                            Ok(mut cache) => read_image_bytes(&path_source, Some(&mut *cache)),
+                            Ok(mut cache) => read_image_bytes_with_size(&path_source, Some(&mut *cache)),
                             Err(e) => {
                                 error!("Failed to lock archive cache: {}", e);
                                 Err(std::io::Error::other("Archive cache lock failed"))
@@ -341,15 +442,15 @@ async fn load_image_gpu_async(
                     };
 
                     match cache_bytes_result {
-                        Ok(bytes) => decode_image_from_bytes(&bytes),
+                        Ok((bytes, file_size)) => (decode_image_from_bytes(&bytes), file_size),
                         Err(e) => {
                             error!("Failed to read archive content: {}", e);
-                            Err(std::io::ErrorKind::Other)
+                            return Err(std::io::ErrorKind::Other);
                         }
                     }
                 } else {
                     error!("Archive cache required for archive/preloaded content");
-                    Err(std::io::ErrorKind::InvalidInput)
+                    return Err(std::io::ErrorKind::InvalidInput);
                 }
             }
         };
@@ -362,6 +463,9 @@ async fn load_image_gpu_async(
                 let (width, height) = img.dimensions();
                 let rgba = img.to_rgba8();
                 let rgba_data = rgba.as_raw();
+
+                // Create metadata with original file size and current dimensions
+                let metadata = ImageMetadata::new(width, height, file_size);
 
                 let duration = start.elapsed();
                 IMAGE_LOAD_STATS.lock().unwrap().add_measurement(duration);
@@ -392,7 +496,7 @@ async fn load_image_gpu_async(
                     let upload_duration = upload_start.elapsed();
                     GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
 
-                    return Ok(Some(CachedData::BC1(Arc::new(texture))));
+                    return Ok(Some((CachedData::BC1(Arc::new(texture)), metadata)));
                 } else {
                     // Upload uncompressed
                     crate::cache::cache_utils::upload_uncompressed_texture(
@@ -402,7 +506,7 @@ async fn load_image_gpu_async(
                     let upload_duration = upload_start.elapsed();
                     GPU_UPLOAD_STATS.lock().unwrap().add_measurement(upload_duration);
 
-                    return Ok(Some(CachedData::Gpu(Arc::new(texture))));
+                    return Ok(Some((CachedData::Gpu(Arc::new(texture)), metadata)));
                 }
             }
             Err(e) => {
@@ -424,7 +528,7 @@ pub async fn load_images_async(
     compression_strategy: CompressionStrategy,
     load_operation: LoadOperation,
     archive_caches: Vec<Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>>
-) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
+) -> Result<(Vec<Option<CachedData>>, Vec<Option<crate::cache::img_cache::ImageMetadata>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
     debug!("load_images_async - cache_strategy: {:?}, compression: {:?}", cache_strategy, compression_strategy);
 
@@ -451,12 +555,24 @@ pub async fn load_images_async(
     let duration = start.elapsed();
     debug!("Finished loading images in {:?}", duration);
 
-    let images = results
-        .into_iter()
-        .map(|result| result.ok().flatten())
-        .collect();
+    // Separate images and metadata from the results
+    let mut images = Vec::new();
+    let mut metadata_vec = Vec::new();
 
-    Ok((images, Some(load_operation)))
+    for result in results {
+        match result.ok().flatten() {
+            Some((data, metadata)) => {
+                images.push(Some(data));
+                metadata_vec.push(Some(metadata));
+            }
+            None => {
+                images.push(None);
+                metadata_vec.push(None);
+            }
+        }
+    }
+
+    Ok((images, metadata_vec, Some(load_operation)))
 }
 
 
@@ -564,8 +680,8 @@ pub async fn empty_async_block(operation: LoadOperation) -> Result<(Option<Cache
     Ok((None, Some(operation)))
 }
 
-pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<CachedData>>, Option<LoadOperation>), std::io::ErrorKind> {
-    Ok((vec![None; count], Some(operation)))
+pub async fn empty_async_block_vec(operation: LoadOperation, count: usize) -> Result<(Vec<Option<CachedData>>, Vec<Option<crate::cache::img_cache::ImageMetadata>>, Option<LoadOperation>), std::io::ErrorKind> {
+    Ok((vec![None; count], vec![None; count], Some(operation)))
 }
 
 pub async fn _literal_empty_async_block() -> Result<(), std::io::ErrorKind> {

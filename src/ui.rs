@@ -119,6 +119,7 @@ impl FooterOptions {
 
 pub fn get_footer(
     footer_text: String,
+    metadata_text: Option<String>,
     pane_index: usize,
     show_copy_buttons: bool,
     options: FooterOptions,
@@ -145,7 +146,23 @@ pub fn get_footer(
         }
     });
 
-    if show_copy_buttons {
+    // Left side: metadata (resolution and file size) - EoG style
+    let left_content: Element<'_, Message, WinitTheme, Renderer> = if let Some(meta) = metadata_text {
+        text(meta)
+            .font(Font::MONOSPACE)
+            .style(|_theme| iced::widget::text::Style {
+                color: Some(Color::from([0.8, 0.8, 0.8]))
+            })
+            .size(14)
+            .into()
+    } else {
+        text("")
+            .size(14)
+            .into()
+    };
+
+    // Right side: copy buttons, badges, and index
+    let right_content: Element<'_, Message, WinitTheme, Renderer> = if show_copy_buttons {
         let copy_filename_button = tooltip(
             button(file_copy_icon())
                 .padding(iced::padding::all(2))
@@ -186,50 +203,49 @@ pub fn get_footer(
             tooltip::Position::Top,
         );
 
-        container::<Message, WinitTheme, Renderer>(
-            row![
-                copy_filepath_button,
-                copy_filename_button,
-                mark_badge,
-                coco_badge,
-                Element::<'_, Message, WinitTheme, Renderer>::from(
-                    text(footer_text)
-                    .font(Font::MONOSPACE)
-                    .style(|_theme| iced::widget::text::Style {
-                        color: Some(Color::from([0.8, 0.8, 0.8]))
-                    })
-                    .size(14)
-                )
-            ]
-            .align_y(Alignment::Center)
-            .spacing(3),
-        )
-        .width(Length::Fill)
-        .height(32)
-        .padding(3)
-        .align_x(Horizontal::Right)
+        row![
+            copy_filepath_button,
+            copy_filename_button,
+            mark_badge,
+            coco_badge,
+            text(footer_text)
+                .font(Font::MONOSPACE)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([0.8, 0.8, 0.8]))
+                })
+                .size(14)
+        ]
+        .align_y(Alignment::Center)
+        .spacing(3)
+        .into()
     } else {
-        container::<Message, WinitTheme, Renderer>(
-            row![
-                mark_badge,
-                coco_badge,
-                Element::<'_, Message, WinitTheme, Renderer>::from(
-                    text(footer_text)
-                    .font(Font::MONOSPACE)
-                    .style(|_theme| iced::widget::text::Style {
-                        color: Some(Color::from([0.8, 0.8, 0.8]))
-                    })
-                    .size(14)
-                )
-            ]
-            .align_y(Alignment::Center)
-            .spacing(3),
-        )
-        .width(Length::Fill)
-        .height(32)
-        .padding(3)
-        .align_x(Horizontal::Right)
-    }
+        row![
+            mark_badge,
+            coco_badge,
+            text(footer_text)
+                .font(Font::MONOSPACE)
+                .style(|_theme| iced::widget::text::Style {
+                    color: Some(Color::from([0.8, 0.8, 0.8]))
+                })
+                .size(14)
+        ]
+        .align_y(Alignment::Center)
+        .spacing(3)
+        .into()
+    };
+
+    // Combine left (metadata) and right (index + buttons) with space between
+    container::<Message, WinitTheme, Renderer>(
+        row![
+            left_content,
+            horizontal_space(),
+            right_content
+        ]
+        .align_y(Alignment::Center)
+    )
+    .width(Length::Fill)
+    .height(32)
+    .padding(3)
 }
 
 
@@ -461,6 +477,12 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.panes[0].current_image_index.unwrap_or(app.panes[0].img_cache.current_index)
                 };
                 let footer_text = format!("{}/{}", display_index + 1, app.panes[0].img_cache.num_files);
+
+                // Generate metadata text for footer (EoG style: "1920x1080 pixels  2.5 MB")
+                let metadata_text = app.panes[0].current_image_metadata.as_ref().map(|m|
+                    format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+                );
+
                 let options = {
                     #[cfg(feature = "selection")]
                     {
@@ -471,7 +493,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         FooterOptions::new()
                     }
                 };
-                get_footer(footer_text, 0, app.show_copy_buttons, options)
+                get_footer(footer_text, metadata_text, 0, app.show_copy_buttons, options)
             } else {
                 container(text("")).height(0)
             };
@@ -599,6 +621,16 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     format!("{}/{}", display_index_1 + 1, app.panes[1].img_cache.num_files)
                 ];
 
+                // Generate metadata text for each pane (EoG style)
+                let metadata_texts = [
+                    app.panes[0].current_image_metadata.as_ref().map(|m|
+                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+                    ),
+                    app.panes[1].current_image_metadata.as_ref().map(|m|
+                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+                    ),
+                ];
+
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
                     let options0 = {
                         #[cfg(feature = "selection")]
@@ -621,8 +653,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         }
                     };
                     row![
-                        get_footer(footer_texts[0].clone(), 0, app.show_copy_buttons, options0),
-                        get_footer(footer_texts[1].clone(), 1, app.show_copy_buttons, options1)
+                        get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, app.show_copy_buttons, options0),
+                        get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, app.show_copy_buttons, options1)
                     ]
                 } else {
                     row![]
@@ -736,6 +768,16 @@ pub fn build_ui_dual_pane_slider2<'a>(
         )
     ];
 
+    // Generate metadata text for each pane (EoG style)
+    let metadata_texts = [
+        panes[0].current_image_metadata.as_ref().map(|m|
+            format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+        ),
+        panes[1].current_image_metadata.as_ref().map(|m|
+            format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+        ),
+    ];
+
     // Destructure footer_options array
     let [footer_opt0, footer_opt1] = footer_options;
 
@@ -752,7 +794,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), 0, show_copy_buttons, footer_opt0)
+                    get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, show_copy_buttons, footer_opt0)
                 ]
             } else {
                 column![
@@ -789,7 +831,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), 1, show_copy_buttons, footer_opt1)
+                    get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, show_copy_buttons, footer_opt1)
                 ]
             } else {
                 column![
