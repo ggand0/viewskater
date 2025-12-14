@@ -21,9 +21,92 @@ use crate::cache::img_cache::CachedData;
 use crate::utils::timing::TimingStats;
 use crate::cache::img_cache::CacheStrategy;
 use iced_wgpu::engine::CompressionStrategy;
+use image::DynamicImage;
 
 const ALLOWED_EXTENSIONS: [&str; 15] = ["jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif",
         "webp", "pnm", "pbm", "pgm", "ppm", "qoi", "tga"];
+
+/// Check if the given bytes represent a JPEG 2000 file by checking magic bytes
+#[cfg(feature = "jp2")]
+fn is_jp2_format(bytes: &[u8]) -> bool {
+    // JP2 file format: starts with 0x0000000C 6A502020 0D0A870A
+    // or JPEG 2000 codestream: starts with 0xFF4FFF51
+    if bytes.len() < 12 {
+        return false;
+    }
+
+    // JP2 container format magic
+    let jp2_magic = [0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20, 0x0D, 0x0A, 0x87, 0x0A];
+    if bytes.starts_with(&jp2_magic) {
+        return true;
+    }
+
+    // Raw JPEG 2000 codestream (j2k/j2c)
+    if bytes.len() >= 4 && bytes[0] == 0xFF && bytes[1] == 0x4F && bytes[2] == 0xFF && bytes[3] == 0x51 {
+        return true;
+    }
+
+    false
+}
+
+/// Decode JPEG 2000 image from bytes
+#[cfg(feature = "jp2")]
+fn decode_jp2(bytes: &[u8]) -> Result<DynamicImage, std::io::ErrorKind> {
+    use jpeg2k::Image as Jp2Image;
+
+    let jp2_image = Jp2Image::from_bytes(bytes)
+        .map_err(|e| {
+            error!("Failed to decode JPEG 2000 image: {}", e);
+            std::io::ErrorKind::InvalidData
+        })?;
+
+    // TryFrom is implemented for &Image, not Image
+    DynamicImage::try_from(&jp2_image)
+        .map_err(|e: jpeg2k::error::Error| {
+            error!("Failed to convert JPEG 2000 to DynamicImage: {}", e);
+            std::io::ErrorKind::InvalidData
+        })
+}
+
+/// Decode image from bytes, handling both standard formats and JPEG 2000
+pub fn decode_image_from_bytes(bytes: &[u8]) -> Result<DynamicImage, std::io::ErrorKind> {
+    // Check for JPEG 2000 format first when feature is enabled
+    #[cfg(feature = "jp2")]
+    if is_jp2_format(bytes) {
+        return decode_jp2(bytes);
+    }
+
+    // Standard image formats via the image crate
+    ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| {
+            error!("Failed to guess image format: {}", e);
+            std::io::ErrorKind::InvalidData
+        })?
+        .decode()
+        .map_err(|e| {
+            error!("Failed to decode image: {}", e);
+            std::io::ErrorKind::InvalidData
+        })
+}
+
+/// Check if a file extension is a supported image format
+fn is_supported_extension(ext: &str) -> bool {
+    let ext_lower = ext.to_lowercase();
+
+    if ALLOWED_EXTENSIONS.contains(&ext_lower.as_str()) {
+        return true;
+    }
+
+    #[cfg(feature = "jp2")]
+    if ALLOWED_EXTENSIONS_JP2.contains(&ext_lower.as_str()) {
+        return true;
+    }
+
+    false
+}
+#[cfg(feature = "jp2")]
+const ALLOWED_EXTENSIONS_JP2: [&str; 3] = ["jp2", "j2k", "j2c"];
 pub const ALLOWED_COMPRESSED_FILES: [&str; 3] = ["zip", "rar", "7z"];
 
 pub fn supported_image(name: &str) -> bool {
@@ -32,7 +115,18 @@ pub fn supported_image(name: &str) -> bool {
         return false;
     }
 
-    ALLOWED_EXTENSIONS.contains(&name.split('.').next_back().unwrap_or("").to_lowercase().as_str())
+    let ext = name.split('.').next_back().unwrap_or("").to_lowercase();
+
+    if ALLOWED_EXTENSIONS.contains(&ext.as_str()) {
+        return true;
+    }
+
+    #[cfg(feature = "jp2")]
+    if ALLOWED_EXTENSIONS_JP2.contains(&ext.as_str()) {
+        return true;
+    }
+
+    false
 }
 
 static IMAGE_LOAD_STATS: Lazy<Mutex<TimingStats>> = Lazy::new(|| {
@@ -224,21 +318,9 @@ async fn load_image_gpu_async(
         // Dispatch based on PathSource type
         let img_result = match &path_source {
             crate::cache::img_cache::PathSource::Filesystem(path) => {
-                // Read bytes and use format detection instead of relying on file extension
+                // Read bytes and use unified decode function for format detection
                 match std::fs::read(path) {
-                    Ok(bytes) => {
-                        ImageReader::new(Cursor::new(bytes))
-                            .with_guessed_format()
-                            .map_err(|e| {
-                                error!("Failed to guess image format: {}", e);
-                                std::io::ErrorKind::InvalidData
-                            })?
-                            .decode()
-                            .map_err(|e| {
-                                error!("Failed to decode filesystem image: {}", e);
-                                std::io::ErrorKind::InvalidData
-                            })
-                    }
+                    Ok(bytes) => decode_image_from_bytes(&bytes),
                     Err(e) => {
                         error!("Failed to read filesystem image: {}", e);
                         Err(e.kind())
@@ -259,13 +341,7 @@ async fn load_image_gpu_async(
                     };
 
                     match cache_bytes_result {
-                        Ok(bytes) => {
-                            image::load_from_memory(&bytes)
-                                .map_err(|e| {
-                                    error!("Failed to load image from archive memory: {}", e);
-                                    std::io::ErrorKind::InvalidData
-                                })
-                        }
+                        Ok(bytes) => decode_image_from_bytes(&bytes),
                         Err(e) => {
                             error!("Failed to read archive content: {}", e);
                             Err(std::io::ErrorKind::Other)
@@ -406,6 +482,9 @@ pub async fn pick_folder() -> Result<String, Error> {
 
 pub async fn pick_file() -> Result<String, Error> {
     // https://stackoverflow.com/a/71194526
+    #[cfg(feature = "jp2")]
+    let extensions = [&ALLOWED_COMPRESSED_FILES[..], &ALLOWED_EXTENSIONS[..], &ALLOWED_EXTENSIONS_JP2[..]].concat();
+    #[cfg(not(feature = "jp2"))]
     let extensions = [&ALLOWED_COMPRESSED_FILES[..], &ALLOWED_EXTENSIONS[..]].concat();
     let handle = rfd::FileDialog::new()
         .set_title("Open File")
@@ -549,7 +628,7 @@ fn handle_fallback_for_single_file(
         if let Some(extension) = directory_path.extension().and_then(std::ffi::OsStr::to_str) {
             crate::logging::write_crash_debug_log(&format!("File extension: {}", extension));
             debug!("File extension: {}", extension);
-            if ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
+            if is_supported_extension(extension) {
                 crate::logging::write_crash_debug_log(&format!("✅ Valid image file found: {}", directory_path.display()));
                 debug!("✅ Valid image file found: {}", directory_path.display());
                 // Return just this single file
@@ -635,13 +714,13 @@ fn request_directory_access_and_retry(
                     let path = std::path::Path::new(&file_path);
                     if let Some(extension) = path.extension() {
                         if let Some(ext_str) = extension.to_str() {
-                            if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
+                            if is_supported_extension(ext_str) {
                                 image_paths.push(path.to_path_buf());
                             }
                         }
                     }
                 }
-                
+
                 crate::logging::write_crash_debug_log(&format!("STEP 0 (retry): ✅ Found {} image files", image_paths.len()));
                 return Ok(image_paths);
             } else {
@@ -650,7 +729,7 @@ fn request_directory_access_and_retry(
         } else {
             crate::logging::write_crash_debug_log("STEP 0 (retry): ❌ No stored bookmark or restoration failed");
         }
-        
+
         // Try permission dialog first
         crate::logging::write_crash_debug_log("Getting accessible paths");
         let accessible_paths = crate::macos_file_access::macos_file_handler::get_accessible_paths();
@@ -675,13 +754,13 @@ fn request_directory_access_and_retry(
                         let path = std::path::Path::new(&file_path);
                         if let Some(extension) = path.extension() {
                             if let Some(ext_str) = extension.to_str() {
-                                if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
+                                if is_supported_extension(ext_str) {
                                     image_paths.push(path.to_path_buf());
                                 }
                             }
                         }
                     }
-                    
+
                     crate::logging::write_crash_debug_log(&format!("✅ Found {} image files after permission dialog", image_paths.len()));
                     return Ok(image_paths);
                 } else {
@@ -694,13 +773,13 @@ fn request_directory_access_and_retry(
         } else {
             crate::logging::write_crash_debug_log("No accessible paths found");
         }
-        
+
         // Fallback to single file handling if all else fails
         crate::logging::write_crash_debug_log("All directory access methods failed, falling back to single file handling");
         debug!("All directory access methods failed, falling back to single file handling");
         return handle_fallback_for_single_file(directory_path, original_error);
     }
-    
+
     #[cfg(not(target_os = "macos"))]
     {
         crate::logging::write_crash_debug_log("Non-macOS platform - returning original error");
@@ -710,14 +789,14 @@ fn request_directory_access_and_retry(
 
 /// Helper function to process directory entries and filter for image files
 fn process_directory_entries(
-    entries: std::fs::ReadDir, 
+    entries: std::fs::ReadDir,
     directory_path: &Path
 ) -> Result<Vec<PathBuf>, ImageError> {
     let mut image_paths: Vec<PathBuf> = Vec::new();
-    
+
     for entry in entries.flatten() {
         if let Some(extension) = entry.path().extension().and_then(std::ffi::OsStr::to_str) {
-            if ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
+            if is_supported_extension(extension) {
                 image_paths.push(entry.path());
             }
         }
@@ -838,18 +917,18 @@ fn convert_file_paths_to_image_paths(
     file_paths: Vec<String>
 ) -> Result<Vec<PathBuf>, ImageError> {
     let mut image_paths = Vec::new();
-    
+
     for file_path in file_paths {
         let path = std::path::Path::new(&file_path);
         if let Some(extension) = path.extension() {
             if let Some(ext_str) = extension.to_str() {
-                if ALLOWED_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
+                if is_supported_extension(ext_str) {
                     image_paths.push(path.to_path_buf());
                 }
             }
         }
     }
-    
+
     if image_paths.is_empty() {
         crate::logging::write_crash_debug_log("❌ No image files found in security-scoped directory");
         Err(ImageError::NoImagesFound)
