@@ -645,6 +645,9 @@ impl Pane {
             // Track which index this initial image represents
             self.current_image_index = Some(img_cache.current_index);
 
+            // Set metadata for the initial image
+            self.current_image_metadata = img_cache.get_initial_metadata().cloned();
+
             match initial_image {
                 CachedData::Gpu(texture) => {
                     debug!("Using GPU texture for initial image");
