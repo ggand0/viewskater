@@ -958,6 +958,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         coco_mask_render_mode: app.coco_mask_render_mode,
         #[cfg(not(feature = "coco"))]
         coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
+        use_binary_size: app.use_binary_size,
     };
 
     let old_settings = UserSettings::load(None);

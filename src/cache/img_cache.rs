@@ -87,13 +87,21 @@ impl ImageMetadata {
     }
 
     /// Format file size as human-readable string (e.g., "2.5 MB")
-    pub fn file_size_string(&self) -> String {
-        if self.file_size < 1024 {
-            format!("{} B", self.file_size)
-        } else if self.file_size < 1024 * 1024 {
-            format!("{:.1} KB", self.file_size as f64 / 1024.0)
+    /// - use_binary: true = binary units (KiB/MiB, 1024 divisor) like `ls -lh`
+    /// - use_binary: false = decimal units (KB/MB, 1000 divisor) like GNOME/macOS/Windows
+    pub fn file_size_string(&self, use_binary: bool) -> String {
+        let (divisor, kb_suffix, mb_suffix) = if use_binary {
+            (1024.0, "KiB", "MiB")
         } else {
-            format!("{:.1} MB", self.file_size as f64 / (1024.0 * 1024.0))
+            (1000.0, "KB", "MB")
+        };
+
+        if self.file_size < divisor as u64 {
+            format!("{} B", self.file_size)
+        } else if self.file_size < (divisor * divisor) as u64 {
+            format!("{:.1} {}", self.file_size as f64 / divisor, kb_suffix)
+        } else {
+            format!("{:.1} {}", self.file_size as f64 / (divisor * divisor), mb_suffix)
         }
     }
 }

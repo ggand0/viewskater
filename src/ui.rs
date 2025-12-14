@@ -480,7 +480,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
                 // Generate metadata text for footer (EoG style: "1920x1080 pixels  2.5 MB")
                 let metadata_text = app.panes[0].current_image_metadata.as_ref().map(|m|
-                    format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+                    format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
                 );
 
                 let options = {
@@ -578,6 +578,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.double_click_threshold_ms,
                     footer_options,
                     app.nearest_neighbor_filter,
+                    app.use_binary_size,
                 );
 
                 container(
@@ -624,10 +625,10 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 // Generate metadata text for each pane (EoG style)
                 let metadata_texts = [
                     app.panes[0].current_image_metadata.as_ref().map(|m|
-                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
                     ),
                     app.panes[1].current_image_metadata.as_ref().map(|m|
-                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
                     ),
                 ];
 
@@ -754,6 +755,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
     double_click_threshold_ms: u16,
     footer_options: [FooterOptions; 2],
     use_nearest_filter: bool,
+    use_binary_size: bool,
 ) -> Element<'a, Message, WinitTheme, Renderer> {
     let footer_texts = [
         format!(
@@ -771,10 +773,10 @@ pub fn build_ui_dual_pane_slider2<'a>(
     // Generate metadata text for each pane (EoG style)
     let metadata_texts = [
         panes[0].current_image_metadata.as_ref().map(|m|
-            format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+            format!("{} pixels  {}", m.resolution_string(), m.file_size_string(use_binary_size))
         ),
         panes[1].current_image_metadata.as_ref().map(|m|
-            format!("{} pixels  {}", m.resolution_string(), m.file_size_string())
+            format!("{} pixels  {}", m.resolution_string(), m.file_size_string(use_binary_size))
         ),
     ];
 

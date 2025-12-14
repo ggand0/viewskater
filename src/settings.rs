@@ -93,6 +93,12 @@ pub struct UserSettings {
     /// COCO: Mask rendering mode
     #[serde(default)]
     pub coco_mask_render_mode: CocoMaskRenderMode,
+
+    /// Use binary file size units (KiB/MiB with 1024 divisor) instead of decimal (KB/MB with 1000)
+    /// - true: Binary units like `ls -lh` (1 KiB = 1024 bytes)
+    /// - false: Decimal units like GNOME/macOS/Windows (1 KB = 1000 bytes)
+    #[serde(default)]
+    pub use_binary_size: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,6 +196,7 @@ impl Default for UserSettings {
             archive_warning_threshold_mb: config::DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB,
             coco_disable_simplification: false,
             coco_mask_render_mode: CocoMaskRenderMode::default(),
+            use_binary_size: false,  // Default to decimal (GNOME/macOS/Windows style)
         }
     }
 }
@@ -323,6 +330,9 @@ impl UserSettings {
             CocoMaskRenderMode::Pixel => "Pixel",
         }), &mut missing_keys);
 
+        // Update display settings
+        result = Self::replace_yaml_value_or_track(&result, "use_binary_size", &self.use_binary_size.to_string(), &mut missing_keys);
+
         // Append missing keys with comments
         if !missing_keys.is_empty() {
             // Check if we need to add the advanced settings header
@@ -366,6 +376,7 @@ impl UserSettings {
             "archive_warning_threshold_mb" => "# Warning threshold for solid archives (megabytes)".to_string(),
             "coco_disable_simplification" => "# COCO: Disable polygon simplification (more accurate but slower)".to_string(),
             "coco_mask_render_mode" => "# COCO: Mask rendering mode (Polygon or Pixel)".to_string(),
+            "use_binary_size" => "# Use binary file size units (true = KiB/MiB like ls -lh, false = KB/MB like GNOME)".to_string(),
             _ => String::new(),
         }
     }
@@ -475,6 +486,13 @@ coco_disable_simplification: {}
 
 # Mask rendering mode: "Polygon" (vector, scalable) or "Pixel" (raster, exact)
 coco_mask_render_mode: "{}"
+
+# --- Display Settings ---
+
+# Use binary file size units (KiB/MiB with 1024 divisor) instead of decimal (KB/MB with 1000)
+# - true: Binary units like `ls -lh` (1 KiB = 1024 bytes)
+# - false: Decimal units like GNOME/macOS/Windows (1 KB = 1000 bytes)
+use_binary_size: {}
 "#,
             self.show_fps,
             self.show_footer,
@@ -499,7 +517,8 @@ coco_mask_render_mode: "{}"
             match self.coco_mask_render_mode {
                 CocoMaskRenderMode::Polygon => "Polygon",
                 CocoMaskRenderMode::Pixel => "Pixel",
-            }
+            },
+            self.use_binary_size
         )
     }
 
