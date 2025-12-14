@@ -1,8 +1,7 @@
-use std::io::Cursor;
 use std::io;
 #[allow(unused_imports)]
 use image::GenericImageView;
-use image::{DynamicImage, ImageReader};
+use image::DynamicImage;
 use std::sync::Arc;
 use wgpu::{Device, Queue};
 use iced_wgpu::wgpu;
@@ -41,8 +40,8 @@ pub fn load_original_image(path_source: &crate::cache::img_cache::PathSource, ar
     let img = {
         // Use PathSource-aware unified function
         let bytes = crate::file_io::read_image_bytes(path_source, archive_cache)?;
-        ImageReader::new(Cursor::new(bytes)).with_guessed_format()?.decode()
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from PathSource: {e} {}", path_source.file_name())))?
+        crate::file_io::decode_image_from_bytes(&bytes)
+            .map_err(|e| io::Error::new(e, format!("Failed to read image from PathSource: {}", path_source.file_name())))?
     };
     Ok(check_and_resize_if_oversized(img))
 }
@@ -52,8 +51,8 @@ pub fn load_and_resize_image(path_source: &crate::cache::img_cache::PathSource, 
     let img = {
         // Use PathSource-aware unified function
         let bytes = crate::file_io::read_image_bytes(path_source, archive_cache)?;
-        ImageReader::new(Cursor::new(bytes)).with_guessed_format()?.decode()
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read image from PathSource: {e} {}", path_source.file_name())))?
+        crate::file_io::decode_image_from_bytes(&bytes)
+            .map_err(|e| io::Error::new(e, format!("Failed to read image from PathSource: {}", path_source.file_name())))?
     };
     let (original_width, original_height) = img.dimensions();
     info!("Resizing image: {}x{} -> {}x{}", original_width, original_height, target_width, target_height);
