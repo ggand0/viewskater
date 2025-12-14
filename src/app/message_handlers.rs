@@ -77,7 +77,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         // Toggle and UI control messages
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
         Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
-        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) |
+        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleNearestNeighborFilter(_) |
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
@@ -533,6 +533,20 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.show_copy_buttons = enabled;
             Task::none()
         }
+        Message::ToggleNearestNeighborFilter(enabled) => {
+            debug!("ToggleNearestNeighborFilter: setting to {}", enabled);
+            app.nearest_neighbor_filter = enabled;
+
+            // Force reload of current directories to apply the new filter immediately
+            for pane_index in 0..app.panes.len() {
+                if let Some(dir_path) = app.panes[pane_index].directory_path.clone() {
+                    debug!("Reloading directory for pane {}: {:?}", pane_index, dir_path);
+                    app.initialize_dir_path(&PathBuf::from(dir_path), pane_index);
+                }
+            }
+
+            Task::none()
+        }
         #[cfg(feature = "coco")]
         Message::ToggleCocoSimplification(enabled) => {
             app.coco_disable_simplification = enabled;
@@ -911,6 +925,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         synced_zoom: app.synced_zoom,
         mouse_wheel_zoom: app.mouse_wheel_zoom,
         show_copy_buttons: app.show_copy_buttons,
+        nearest_neighbor_filter: app.nearest_neighbor_filter,
         cache_strategy: match app.cache_strategy {
             CacheStrategy::Cpu => "cpu".to_string(),
             CacheStrategy::Gpu => "gpu".to_string(),

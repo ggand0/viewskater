@@ -169,13 +169,14 @@ impl shader::Primitive for TexturePrimitive {
                 (viewport_size.width, viewport_size.height),
                 self.texture_size,
                 bounds_relative,
+                false, // Default to Linear filter for texture scene renderer
             );
-            
+
             registry.pipelines.insert(pipeline_key.clone(), pipeline);
         } else {
             // Only update the texture if needed
             let pipeline = registry.pipelines.get_mut(&pipeline_key).unwrap();
-            pipeline.update_texture(device, queue, self.texture.clone());
+            pipeline.update_texture(device, queue, self.texture.clone(), false);
         }
     }
 

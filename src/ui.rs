@@ -324,7 +324,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false)
                         .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
-                        .double_click_threshold_ms(app.double_click_threshold_ms);
+                        .double_click_threshold_ms(app.double_click_threshold_ms)
+                        .use_nearest_filter(app.nearest_neighbor_filter);
 
                     #[cfg(not(feature = "coco"))]
                     let shader = ImageShader::new(Some(scene))
@@ -333,7 +334,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(false)
                         .with_interaction_state(app.panes[0].mouse_wheel_zoom, app.panes[0].ctrl_pressed)
-                        .double_click_threshold_ms(app.double_click_threshold_ms);
+                        .double_click_threshold_ms(app.double_click_threshold_ms)
+                        .use_nearest_filter(app.nearest_neighbor_filter);
 
                     #[cfg(feature = "coco")]
                     {
@@ -542,6 +544,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     },
                 ];
 
+                debug!("build_ui (dual_pane_slider2): app.nearest_neighbor_filter = {}", app.nearest_neighbor_filter);
                 let panes = build_ui_dual_pane_slider2(
                     &app.panes,
                     app.divider_position,
@@ -552,6 +555,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.show_copy_buttons,
                     app.double_click_threshold_ms,
                     footer_options,
+                    app.nearest_neighbor_filter,
                 );
 
                 container(
@@ -568,13 +572,15 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 .height(Length::Fill)
             } else {
                 // Pass synced_zoom parameter
+                debug!("build_ui (dual_pane_slider1): app.nearest_neighbor_filter = {}", app.nearest_neighbor_filter);
                 let panes = build_ui_dual_pane_slider1(
                     &app.panes,
                     app.divider_position,
                     app.use_slider_image_for_render,
                     app.is_horizontal_split,
                     app.synced_zoom,
-                    app.double_click_threshold_ms
+                    app.double_click_threshold_ms,
+                    app.nearest_neighbor_filter,
                 );
 
                 // Use slider position during slider movement, otherwise use current_image_index
@@ -674,10 +680,11 @@ pub fn build_ui_dual_pane_slider1(
     use_slider_image_for_render: bool,
     is_horizontal_split: bool,
     synced_zoom: bool,
-    double_click_threshold_ms: u16
+    double_click_threshold_ms: u16,
+    use_nearest_filter: bool,
 ) -> Element<'_, Message, WinitTheme, Renderer> {
-    let first_img = panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms);
-    let second_img = panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms);
+    let first_img = panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms, use_nearest_filter);
+    let second_img = panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms, use_nearest_filter);
 
     let is_selected: Vec<bool> = panes.iter().map(|pane| pane.is_selected).collect();
 
@@ -714,6 +721,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
     show_copy_buttons: bool,
     double_click_threshold_ms: u16,
     footer_options: [FooterOptions; 2],
+    use_nearest_filter: bool,
 ) -> Element<'a, Message, WinitTheme, Renderer> {
     let footer_texts = [
         format!(
@@ -735,7 +743,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
         container(
             if show_footer {
                 column![
-                    panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms),
+                    panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms, use_nearest_filter),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -748,7 +756,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                 ]
             } else {
                 column![
-                    panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms),
+                    panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms, use_nearest_filter),
                     DualSlider::new(
                         0..=(panes[0].img_cache.num_files - 1) as u16,
                         panes[0].slider_value,
@@ -772,7 +780,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
         container(
             if show_footer {
                 column![
-                    panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms),
+                    panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms, use_nearest_filter),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,
@@ -785,7 +793,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                 ]
             } else {
                 column![
-                    panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms),
+                    panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms, use_nearest_filter),
                     DualSlider::new(
                         0..=(panes[1].img_cache.num_files - 1) as u16,
                         panes[1].slider_value,

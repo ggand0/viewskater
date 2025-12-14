@@ -11,7 +11,7 @@ use iced_winit::core::Length;
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::wgpu;
-use iced_core::image::Handle;
+use iced_core::image::{Handle, FilterMethod};
 #[cfg(feature = "coco")]
 use iced_core::Vector;
 use iced_widget::{center, Container};
@@ -687,7 +687,9 @@ impl Pane {
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
 
-    pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16) -> Container<'_, Message, WinitTheme, Renderer> {
+    pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> Container<'_, Message, WinitTheme, Renderer> {
+        use log::debug;
+        debug!("build_ui_container: use_nearest_filter = {}", use_nearest_filter);
         if self.dir_loaded {
             if use_slider_image_for_render && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
@@ -697,6 +699,11 @@ impl Pane {
                     center(
                         viewer::Viewer::new(image_handle)
                             .content_fit(iced_winit::core::ContentFit::Contain)
+                            .filter_method(if use_nearest_filter {
+                                FilterMethod::Nearest
+                            } else {
+                                FilterMethod::Linear
+                            })
                     )
                 )
                 .width(Length::Fill)
@@ -709,7 +716,8 @@ impl Pane {
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(is_horizontal_split)
                         .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed)
-                        .double_click_threshold_ms(double_click_threshold_ms);
+                        .double_click_threshold_ms(double_click_threshold_ms)
+                        .use_nearest_filter(use_nearest_filter);
 
                 #[cfg(not(feature = "coco"))]
                 let shader_widget = ImageShader::new(Some(scene))
@@ -718,7 +726,8 @@ impl Pane {
                         .content_fit(iced_winit::core::ContentFit::Contain)
                         .horizontal_split(is_horizontal_split)
                         .with_interaction_state(self.mouse_wheel_zoom, self.ctrl_pressed)
-                        .double_click_threshold_ms(double_click_threshold_ms);
+                        .double_click_threshold_ms(double_click_threshold_ms)
+                        .use_nearest_filter(use_nearest_filter);
 
                 // Set up zoom change callback for COCO bbox rendering
                 #[cfg(feature = "coco")]

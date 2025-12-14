@@ -101,6 +101,7 @@ pub struct DataViewer {
     pub is_horizontal_split: bool,
     pub file_receiver: Receiver<String>,
     pub synced_zoom: bool,
+    pub nearest_neighbor_filter: bool,
     pub is_fullscreen: bool,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
@@ -153,6 +154,7 @@ impl DataViewer {
         info!("  synced_zoom: {}", settings.synced_zoom);
         info!("  mouse_wheel_zoom: {}", settings.mouse_wheel_zoom);
         info!("  show_copy_buttons: {}", settings.show_copy_buttons);
+        info!("  nearest_neighbor_filter: {}", settings.nearest_neighbor_filter);
         info!("  cache_strategy: {:?}", cache_strategy);
         info!("  compression_strategy: {:?}", compression_strategy);
         info!("  is_slider_dual: {}", settings.is_slider_dual);
@@ -190,6 +192,7 @@ impl DataViewer {
             is_horizontal_split: settings.is_horizontal_split,
             file_receiver,
             synced_zoom: settings.synced_zoom,
+            nearest_neighbor_filter: settings.nearest_neighbor_filter,
             is_fullscreen: false,
             cursor_on_top: false,
             cursor_on_menu: false,

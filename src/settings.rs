@@ -45,6 +45,10 @@ pub struct UserSettings {
     #[serde(default = "default_show_copy_buttons")]
     pub show_copy_buttons: bool,
 
+    /// Use nearest-neighbor filtering for pixel-perfect image scaling
+    #[serde(default)]
+    pub nearest_neighbor_filter: bool,
+
     // Advanced settings (from config.rs)
     /// Cache window size
     #[serde(default = "default_cache_size")]
@@ -174,6 +178,7 @@ impl Default for UserSettings {
             compression_strategy: "none".to_string(),
             is_slider_dual: false,
             show_copy_buttons: true,
+            nearest_neighbor_filter: false,
             cache_size: config::DEFAULT_CACHE_SIZE,
             max_loading_queue_size: config::DEFAULT_MAX_LOADING_QUEUE_SIZE,
             max_being_loaded_queue_size: config::DEFAULT_MAX_BEING_LOADED_QUEUE_SIZE,
@@ -223,8 +228,8 @@ impl UserSettings {
                 match serde_yaml::from_str::<UserSettings>(&contents) {
                     Ok(settings) => {
                         info!("Loaded settings from {:?}", path);
-                        debug!("Settings: show_fps={}, compression={}, cache={}, mouse_wheel_zoom={}",
-                            settings.show_fps, settings.compression_strategy, settings.cache_strategy, settings.mouse_wheel_zoom);
+                        debug!("Settings: show_fps={}, compression={}, cache={}, mouse_wheel_zoom={}, nearest_neighbor_filter={}",
+                            settings.show_fps, settings.compression_strategy, settings.cache_strategy, settings.mouse_wheel_zoom, settings.nearest_neighbor_filter);
                         settings
                     }
                     Err(e) => {
@@ -298,6 +303,7 @@ impl UserSettings {
         result = Self::replace_yaml_value_or_track(&result, "compression_strategy", &format!("\"{}\"", self.compression_strategy), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "is_slider_dual", &self.is_slider_dual.to_string(), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "show_copy_buttons", &self.show_copy_buttons.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "nearest_neighbor_filter", &self.nearest_neighbor_filter.to_string(), &mut missing_keys);
 
         // Update advanced settings
         result = Self::replace_yaml_value_or_track(&result, "cache_size", &self.cache_size.to_string(), &mut missing_keys);
@@ -428,6 +434,11 @@ is_slider_dual: {}
 # Show copy filename/filepath buttons in footer
 show_copy_buttons: {}
 
+# Use nearest-neighbor filtering for pixel-perfect scaling (good for pixel art)
+# - true: Sharp, blocky pixels when zoomed (nearest-neighbor)
+# - false: Smooth, interpolated pixels when zoomed (linear)
+nearest_neighbor_filter: {}
+
 # --- Advanced Settings ---
 
 # Cache window size (number of images to keep in cache)
@@ -474,6 +485,7 @@ coco_mask_render_mode: "{}"
             self.compression_strategy,
             self.is_slider_dual,
             self.show_copy_buttons,
+            self.nearest_neighbor_filter,
             self.cache_size,
             self.max_loading_queue_size,
             self.max_being_loaded_queue_size,

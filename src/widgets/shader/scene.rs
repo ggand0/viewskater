@@ -205,10 +205,11 @@ impl shader::Primitive for Primitive {
                 shader_size,
                 self.texture_size,
                 bounds_relative,
+                false, // Default to Linear filter for legacy scene renderer
             ));
         } else {
             let pipeline = storage.get_mut::<TexturePipeline>().unwrap();
-            pipeline.update_texture(device, queue, self.texture.clone());
+            pipeline.update_texture(device, queue, self.texture.clone(), false);
         }
     }
 

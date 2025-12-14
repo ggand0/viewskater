@@ -284,6 +284,7 @@ impl shader::Primitive for CpuPrimitive {
                     shader_size,
                     self.texture_size,
                     bounds_relative,
+                    false, // Default to Linear filter for CPU scene renderer
                 );
 
                 registry.pipelines.insert(pipeline_key.clone(), pipeline);
@@ -295,7 +296,7 @@ impl shader::Primitive for CpuPrimitive {
                 let _vertices_time = vertices_start.elapsed();
 
                 let texture_update_start = Instant::now();
-                pipeline.update_texture(device, queue, texture.clone());
+                pipeline.update_texture(device, queue, texture.clone(), false);
                 let _texture_update_time = texture_update_start.elapsed();
 
 
