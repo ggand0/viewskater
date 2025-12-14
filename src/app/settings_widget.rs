@@ -9,6 +9,7 @@ use crate::settings::UserSettings;
 pub struct RuntimeSettings {
     pub mouse_wheel_zoom: bool,                         // Flag to change mouse scroll wheel behavior
     pub show_copy_buttons: bool,                        // Show copy filename/filepath buttons in footer
+    pub show_metadata: bool,                            // Show image metadata (resolution, file size) in footer
     pub cache_size: usize,                              // Image cache window size (number of images to cache)
     pub archive_cache_size: u64,                        // Archive cache size in bytes (for preload decision)
     pub archive_warning_threshold_mb: u64,              // Warning threshold for large solid archives (MB)
@@ -22,6 +23,7 @@ impl RuntimeSettings {
         Self {
             mouse_wheel_zoom: settings.mouse_wheel_zoom,
             show_copy_buttons: settings.show_copy_buttons,
+            show_metadata: settings.show_metadata,
             cache_size: settings.cache_size,
             archive_cache_size: settings.archive_cache_size * 1_048_576,  // Convert MB to bytes
             archive_warning_threshold_mb: settings.archive_warning_threshold_mb,

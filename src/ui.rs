@@ -479,9 +479,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 let footer_text = format!("{}/{}", display_index + 1, app.panes[0].img_cache.num_files);
 
                 // Generate metadata text for footer (EoG style: "1920x1080 pixels  2.5 MB")
-                let metadata_text = app.panes[0].current_image_metadata.as_ref().map(|m|
-                    format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
-                );
+                let metadata_text = if app.show_metadata {
+                    app.panes[0].current_image_metadata.as_ref().map(|m|
+                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
+                    )
+                } else {
+                    None
+                };
 
                 let options = {
                     #[cfg(feature = "selection")]
@@ -575,6 +579,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     app.is_horizontal_split,
                     app.synced_zoom,
                     app.show_copy_buttons,
+                    app.show_metadata,
                     app.double_click_threshold_ms,
                     footer_options,
                     app.nearest_neighbor_filter,
@@ -623,14 +628,18 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 ];
 
                 // Generate metadata text for each pane (EoG style)
-                let metadata_texts = [
-                    app.panes[0].current_image_metadata.as_ref().map(|m|
-                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
-                    ),
-                    app.panes[1].current_image_metadata.as_ref().map(|m|
-                        format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
-                    ),
-                ];
+                let metadata_texts = if app.show_metadata {
+                    [
+                        app.panes[0].current_image_metadata.as_ref().map(|m|
+                            format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
+                        ),
+                        app.panes[1].current_image_metadata.as_ref().map(|m|
+                            format!("{} pixels  {}", m.resolution_string(), m.file_size_string(app.use_binary_size))
+                        ),
+                    ]
+                } else {
+                    [None, None]
+                };
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
                     let options0 = {
@@ -752,6 +761,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
     is_horizontal_split: bool,
     _synced_zoom: bool,
     show_copy_buttons: bool,
+    show_metadata: bool,
     double_click_threshold_ms: u16,
     footer_options: [FooterOptions; 2],
     use_nearest_filter: bool,
@@ -771,14 +781,18 @@ pub fn build_ui_dual_pane_slider2<'a>(
     ];
 
     // Generate metadata text for each pane (EoG style)
-    let metadata_texts = [
-        panes[0].current_image_metadata.as_ref().map(|m|
-            format!("{} pixels  {}", m.resolution_string(), m.file_size_string(use_binary_size))
-        ),
-        panes[1].current_image_metadata.as_ref().map(|m|
-            format!("{} pixels  {}", m.resolution_string(), m.file_size_string(use_binary_size))
-        ),
-    ];
+    let metadata_texts = if show_metadata {
+        [
+            panes[0].current_image_metadata.as_ref().map(|m|
+                format!("{} pixels  {}", m.resolution_string(), m.file_size_string(use_binary_size))
+            ),
+            panes[1].current_image_metadata.as_ref().map(|m|
+                format!("{} pixels  {}", m.resolution_string(), m.file_size_string(use_binary_size))
+            ),
+        ]
+    } else {
+        [None, None]
+    };
 
     // Destructure footer_options array
     let [footer_opt0, footer_opt1] = footer_options;
