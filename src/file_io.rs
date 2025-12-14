@@ -313,6 +313,42 @@ pub fn read_image_bytes_with_size(path_source: &crate::cache::img_cache::PathSou
     }
 }
 
+/// Gets file size efficiently without reading the entire file content.
+/// For filesystem files, uses std::fs::metadata() which only reads the inode.
+/// For archive/preloaded content, reads from archive cache.
+pub fn get_file_size(path_source: &crate::cache::img_cache::PathSource, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> u64 {
+    use crate::cache::img_cache::PathSource;
+
+    match path_source {
+        PathSource::Filesystem(path) => {
+            // Use fs::metadata() - only reads inode, not file content (O(1) operation)
+            std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+        },
+        PathSource::Preloaded(path) => {
+            // Need to check preloaded data length
+            if let Some(cache) = archive_cache {
+                let path_str = path.to_string_lossy();
+                cache.get_preloaded_data(&path_str)
+                    .map(|data| data.len() as u64)
+                    .unwrap_or(0)
+            } else {
+                0
+            }
+        },
+        PathSource::Archive(path) => {
+            // For archives, we need to read from cache to get size
+            if let Some(cache) = archive_cache {
+                let path_str = path.to_string_lossy();
+                cache.read_from_archive(&path_str)
+                    .map(|bytes| bytes.len() as u64)
+                    .unwrap_or(0)
+            } else {
+                0
+            }
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub async fn async_load_image(path: impl AsRef<Path>, operation: LoadOperation) -> Result<(Option<Vec<u8>>, Option<LoadOperation>), std::io::ErrorKind> {
     let file_path = path.as_ref();

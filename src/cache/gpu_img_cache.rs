@@ -110,13 +110,10 @@ impl ImageCacheBackend for GpuImageCache {
             }
             // Load image and capture metadata
             if let Some(path_source) = image_paths.get(cache_index as usize) {
-                // Get file size first
-                let file_size = match crate::file_io::read_image_bytes_with_size(path_source, archive_cache.as_deref_mut()) {
-                    Ok((_, size)) => size,
-                    Err(_) => 0,
-                };
+                // Get file size efficiently without reading file content
+                let file_size = crate::file_io::get_file_size(path_source, archive_cache.as_deref_mut());
 
-                // Reborrow to avoid consuming archive_cache in the loop
+                // Load the image (this will read the file for actual decoding)
                 match self.load_image(cache_index as usize, image_paths, compression_strategy, archive_cache.as_deref_mut()) {
                     Ok(image) => {
                         // Get dimensions from the loaded texture

@@ -133,12 +133,9 @@ fn load_full_res_image(
                 img_cache.current_index = pos;
                 debug!("load_full_res_image: Set current_index = {} for pane {}", pos, idx);
 
-                // Get dimensions from the loaded texture and file size
+                // Get dimensions from the loaded texture and file size efficiently
                 let tex_size = texture.size();
-                let file_size = match crate::file_io::read_image_bytes_with_size(&img_path, None) {
-                    Ok((_, size)) => size,
-                    Err(_) => 0,
-                };
+                let file_size = crate::file_io::get_file_size(&img_path, None);
                 let metadata = ImageMetadata::new(tex_size.width, tex_size.height, file_size);
                 img_cache.cached_metadata[target_index] = Some(metadata.clone());
 
@@ -151,28 +148,10 @@ fn load_full_res_image(
                 pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
             } else {
                 // CPU-based loading
-                // Load the full-resolution image using CPU with metadata
-                let mut archive_guard = pane.archive_cache.lock().unwrap();
-                let archive_cache = if pane.has_compressed_file {
-                    Some(&mut *archive_guard)
-                } else {
-                    None
-                };
+                // Get file size efficiently first (doesn't read file content for filesystem files)
+                let file_size = crate::file_io::get_file_size(&img_path, None);
 
-                // Get file size and dimensions
-                let metadata = match crate::file_io::read_image_bytes_with_size(&img_path, archive_cache) {
-                    Ok((bytes, file_size)) => {
-                        use image::GenericImageView;
-                        let (width, height) = match image::load_from_memory(&bytes) {
-                            Ok(img) => img.dimensions(),
-                            Err(_) => (0, 0),
-                        };
-                        Some(ImageMetadata::new(width, height, file_size))
-                    },
-                    Err(_) => None,
-                };
-
-                // Reborrow archive_cache for load_image
+                // Load the image (reads and decodes the file)
                 let mut archive_guard = pane.archive_cache.lock().unwrap();
                 let archive_cache = if pane.has_compressed_file {
                     Some(&mut *archive_guard)
@@ -182,6 +161,10 @@ fn load_full_res_image(
 
                 match img_cache.load_image(pos, archive_cache) {
                     Ok(cached_data) => {
+                        // Get dimensions from loaded image data
+                        let (width, height) = cached_data.dimensions();
+                        let metadata = Some(ImageMetadata::new(width, height, file_size));
+
                         // Store in cache and update current image
                         img_cache.cached_data[target_index] = Some(cached_data.clone());
                         img_cache.cached_metadata[target_index] = metadata.clone();
