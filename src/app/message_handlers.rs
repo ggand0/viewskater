@@ -535,7 +535,6 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
         }
         Message::ToggleNearestNeighborFilter(enabled) => {
             debug!("ToggleNearestNeighborFilter: setting to {}", enabled);
-            eprintln!("MESSAGE HANDLER: ToggleNearestNeighborFilter to {}", enabled);
             app.nearest_neighbor_filter = enabled;
 
             // Force reload of current directories to apply the new filter immediately
