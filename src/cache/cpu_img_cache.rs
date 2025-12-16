@@ -2,7 +2,6 @@
 use log::{debug, info, warn, error};
 
 use std::io;
-use image::GenericImageView;
 use crate::cache::img_cache::{CachedData, ImageCacheBackend, ImageMetadata};
 use iced_wgpu::engine::CompressionStrategy;
 
@@ -69,11 +68,14 @@ impl ImageCacheBackend for CpuImageCache {
             if let Some(path_source) = image_paths.get(cache_index as usize) {
                 match crate::file_io::read_image_bytes_with_size(path_source, archive_cache.as_deref_mut()) {
                     Ok((bytes, file_size)) => {
-                        // Decode to get dimensions (lightweight header decode)
-                        let (width, height) = match image::load_from_memory(&bytes) {
-                            Ok(img) => img.dimensions(),
-                            Err(_) => (0, 0), // Fallback for corrupted images
-                        };
+                        // Get dimensions efficiently using header-only read
+                        use std::io::Cursor;
+                        use image::ImageReader;
+                        let (width, height) = ImageReader::new(Cursor::new(&bytes))
+                            .with_guessed_format()
+                            .ok()
+                            .and_then(|r| r.into_dimensions().ok())
+                            .unwrap_or((0, 0));
                         cached_data[i] = Some(CachedData::Cpu(bytes));
                         cached_metadata[i] = Some(ImageMetadata::new(width, height, file_size));
                         cached_image_indices[i] = cache_index;

@@ -415,11 +415,12 @@ async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathS
             }
         };
 
-        // Get image dimensions by decoding header (lightweight)
-        let (width, height) = match image::load_from_memory(&bytes) {
-            Ok(img) => img.dimensions(),
-            Err(_) => (0, 0), // Fallback for corrupted images
-        };
+        // Get image dimensions efficiently using header-only read
+        let (width, height) = ImageReader::new(Cursor::new(&bytes))
+            .with_guessed_format()
+            .ok()
+            .and_then(|r| r.into_dimensions().ok())
+            .unwrap_or((0, 0));
 
         let metadata = ImageMetadata::new(width, height, file_size);
 

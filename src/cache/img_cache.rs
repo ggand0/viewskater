@@ -119,44 +119,25 @@ impl CachedData {
     }
 
     pub fn width(&self) -> u32 {
-        match self {
-            CachedData::Cpu(data) => {
-                // Try to decode image and get width
-                if let Ok(image) = image::load_from_memory(data) {
-                    image.width()
-                } else {
-                    0
-                }
-            },
-            CachedData::Gpu(texture) => texture.width(),
-            CachedData::BC1(texture) => texture.width(),
-        }
+        self.dimensions().0
     }
 
     pub fn height(&self) -> u32 {
-        match self {
-            CachedData::Cpu(data) => {
-                // Try to decode image and get height
-                if let Ok(image) = image::load_from_memory(data) {
-                    image.height()
-                } else {
-                    0
-                }
-            },
-            CachedData::Gpu(texture) => texture.height(),
-            CachedData::BC1(texture) => texture.height(),
-        }
+        self.dimensions().1
     }
 
-    /// Get dimensions (width, height) with single decode for CPU images
+    /// Get dimensions (width, height) efficiently - uses header-only read for CPU images
     pub fn dimensions(&self) -> (u32, u32) {
         match self {
             CachedData::Cpu(data) => {
-                if let Ok(image) = image::load_from_memory(data) {
-                    (image.width(), image.height())
-                } else {
-                    (0, 0)
-                }
+                use std::io::Cursor;
+                use image::ImageReader;
+                // Use into_dimensions() which reads only the image header, not full decode
+                ImageReader::new(Cursor::new(data))
+                    .with_guessed_format()
+                    .ok()
+                    .and_then(|r| r.into_dimensions().ok())
+                    .unwrap_or((0, 0))
             },
             CachedData::Gpu(texture) => (texture.width(), texture.height()),
             CachedData::BC1(texture) => (texture.width(), texture.height()),

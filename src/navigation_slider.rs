@@ -413,10 +413,16 @@ pub async fn create_async_image_widget_task(
             // Capture file size before moving bytes
             let file_size = bytes.len() as u64;
 
-            // Extract image dimensions from bytes before creating handle
-            let dimensions = match image::load_from_memory(&bytes) {
-                Ok(img) => (img.width(), img.height()),
-                Err(_) => {
+            // Extract image dimensions efficiently using header-only read
+            use std::io::Cursor;
+            use image::ImageReader;
+            let dimensions = match ImageReader::new(Cursor::new(&bytes))
+                .with_guessed_format()
+                .ok()
+                .and_then(|r| r.into_dimensions().ok())
+            {
+                Some(dims) => dims,
+                None => {
                     // If we can't decode, return error
                     return Err((pane_idx, pos));
                 }
