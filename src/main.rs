@@ -492,6 +492,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 WindowEvent::Resized(size) => {
                                     if size.width > 0 && size.height > 0 {
                                         *resized = true;
+                                        // Update app's window width for responsive layout
+                                        state.queue_message(Message::WindowResized(size.width as f32));
                                     } else {
                                         // Skip resizing and avoid configuring the surface
                                         *resized = false;

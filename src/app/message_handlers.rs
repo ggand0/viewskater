@@ -80,7 +80,8 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleMetadataDisplay(_) | Message::ToggleNearestNeighborFilter(_) |
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
-        Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
+        Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
+        Message::WindowResized(_) => {
             handle_toggle_messages(app, message)
         }
 
@@ -604,6 +605,10 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
         }
         Message::SetCompressionStrategy(strategy) => {
             app.update_compression_strategy(strategy);
+            Task::none()
+        }
+        Message::WindowResized(width) => {
+            app.window_width = width;
             Task::none()
         }
         _ => Task::none()

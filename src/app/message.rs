@@ -81,4 +81,6 @@ pub enum Message {
     // Advanced settings input
     AdvancedSettingChanged(String, String),  // (field_name, value)
     ResetAdvancedSettings,
+    // Window resize
+    WindowResized(f32),  // new width
 }
