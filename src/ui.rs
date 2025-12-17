@@ -193,13 +193,17 @@ fn get_responsive_footer_state(
 
     let available_for_meta = available_width - right_side_width - PADDING;
 
-    // Phase 2: Resolution only (without file size)
+    // Extract resolution parts for progressive display
     if let Some(pixels_pos) = meta.find(" pixels") {
-        let resolution_only = &meta[..pixels_pos + 7]; // include " pixels"
-        let resolution_width = resolution_only.len() as f32 * CHAR_WIDTH;
+        let resolution_with_pixels = &meta[..pixels_pos + 7]; // "1920x1080 pixels"
+        let resolution_only = &meta[..pixels_pos]; // "1920x1080"
 
-        if available_for_meta < resolution_width {
-            // Not enough for resolution - phase 3
+        let resolution_only_width = resolution_only.len() as f32 * CHAR_WIDTH;
+        let resolution_with_pixels_width = resolution_with_pixels.len() as f32 * CHAR_WIDTH;
+        let full_meta_width = meta.len() as f32 * CHAR_WIDTH;
+
+        // Phase 4: Not enough for even dimensions - no metadata
+        if available_for_meta < resolution_only_width {
             return ResponsiveFooterState {
                 metadata: None,
                 show_copy_buttons,
@@ -207,11 +211,19 @@ fn get_responsive_footer_state(
             };
         }
 
-        let full_meta_width = meta.len() as f32 * CHAR_WIDTH;
-        if available_for_meta < full_meta_width {
-            // Phase 2: Resolution only fits
+        // Phase 3: Dimensions only (e.g., "1920x1080")
+        if available_for_meta < resolution_with_pixels_width {
             return ResponsiveFooterState {
                 metadata: Some(resolution_only.to_string()),
+                show_copy_buttons,
+                footer_text: footer_text.to_string(),
+            };
+        }
+
+        // Phase 2: Resolution with "pixels" (e.g., "1920x1080 pixels")
+        if available_for_meta < full_meta_width {
+            return ResponsiveFooterState {
+                metadata: Some(resolution_with_pixels.to_string()),
                 show_copy_buttons,
                 footer_text: footer_text.to_string(),
             };
