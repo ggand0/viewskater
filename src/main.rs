@@ -493,7 +493,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     if size.width > 0 && size.height > 0 {
                                         *resized = true;
                                         // Update app's window width for responsive layout
-                                        state.queue_message(Message::WindowResized(size.width as f32));
+                                        // Divide by scale factor to get logical pixels (important for macOS Retina)
+                                        let logical_width = size.width as f32 / window.scale_factor() as f32;
+                                        state.queue_message(Message::WindowResized(logical_width));
                                     } else {
                                         // Skip resizing and avoid configuring the surface
                                         *resized = false;
