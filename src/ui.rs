@@ -117,54 +117,113 @@ impl FooterOptions {
     }
 }
 
-/// Determines what metadata to show based on available width
-/// Returns the adjusted metadata string (full, resolution only, or none)
-fn get_responsive_metadata(
+/// Responsive footer layout state
+struct ResponsiveFooterState {
+    metadata: Option<String>,
+    show_copy_buttons: bool,
+    footer_text: String,
+}
+
+/// Determines responsive footer layout based on available width
+/// Phases:
+/// 1. Full metadata (resolution + file size) + buttons + index/total
+/// 2. Resolution only + buttons + index/total
+/// 3. No metadata + buttons + index/total
+/// 4. No metadata + no buttons + index/total
+/// 5. No metadata + no buttons + index only
+/// 6. Nothing (empty footer)
+fn get_responsive_footer_state(
     available_width: f32,
     metadata_text: &Option<String>,
     footer_text: &str,
     show_copy_buttons: bool,
-) -> Option<String> {
+) -> ResponsiveFooterState {
     // Approximate character width for monospace font at size 14
     const CHAR_WIDTH: f32 = 8.5;
-    const BUTTON_WIDTH: f32 = 28.0; // Each copy button ~28px
-    const PADDING: f32 = 30.0;      // Footer padding and spacing
+    const BUTTON_WIDTH: f32 = 30.0; // Each copy button: 18px icon + 4px padding + spacing
+    const PADDING: f32 = 40.0;      // Footer padding and spacing between elements
+    const MIN_MARGIN: f32 = 20.0;   // Minimum margin before hiding
+
+    // Parse footer_text to get index and total (format: "index/total")
+    let (index_str, _total_str) = footer_text.split_once('/').unwrap_or((footer_text, ""));
+    let index_only = index_str.to_string();
+
+    // Calculate widths for different configurations
+    let full_footer_width = footer_text.len() as f32 * CHAR_WIDTH;
+    let index_only_width = index_only.len() as f32 * CHAR_WIDTH;
+    let buttons_width = if show_copy_buttons { BUTTON_WIDTH * 2.0 } else { 0.0 };
+
+    // Phase 6: Nothing fits - hide everything
+    if available_width < index_only_width + MIN_MARGIN {
+        return ResponsiveFooterState {
+            metadata: None,
+            show_copy_buttons: false,
+            footer_text: String::new(),
+        };
+    }
+
+    // Phase 5: Only index (no total)
+    if available_width < full_footer_width + MIN_MARGIN {
+        return ResponsiveFooterState {
+            metadata: None,
+            show_copy_buttons: false,
+            footer_text: index_only,
+        };
+    }
+
+    // Phase 4: Index/total but no buttons
+    if available_width < full_footer_width + buttons_width + MIN_MARGIN {
+        return ResponsiveFooterState {
+            metadata: None,
+            show_copy_buttons: false,
+            footer_text: footer_text.to_string(),
+        };
+    }
+
+    // Phase 3: Buttons + index/total but no metadata
+    let right_side_width = buttons_width + full_footer_width + PADDING;
 
     let Some(meta) = metadata_text else {
-        return None;
+        return ResponsiveFooterState {
+            metadata: None,
+            show_copy_buttons,
+            footer_text: footer_text.to_string(),
+        };
     };
 
-    // Calculate right side width
-    let index_width = footer_text.len() as f32 * CHAR_WIDTH;
-    let buttons_width = if show_copy_buttons { BUTTON_WIDTH * 2.0 } else { 0.0 };
-    let right_side_width = buttons_width + index_width + PADDING;
-
-    // Phase 3/4: Very narrow - hide metadata entirely
-    if available_width < right_side_width + 50.0 {
-        return None;
-    }
-
-    // Calculate metadata width
-    let full_meta_width = meta.len() as f32 * CHAR_WIDTH;
     let available_for_meta = available_width - right_side_width - PADDING;
 
-    // Full metadata fits
-    if available_for_meta >= full_meta_width {
-        return Some(meta.clone());
-    }
-
-    // Phase 1: Try resolution only (without file size)
+    // Phase 2: Resolution only (without file size)
     if let Some(pixels_pos) = meta.find(" pixels") {
         let resolution_only = &meta[..pixels_pos + 7]; // include " pixels"
         let resolution_width = resolution_only.len() as f32 * CHAR_WIDTH;
 
-        if available_for_meta >= resolution_width {
-            return Some(resolution_only.to_string());
+        if available_for_meta < resolution_width {
+            // Not enough for resolution - phase 3
+            return ResponsiveFooterState {
+                metadata: None,
+                show_copy_buttons,
+                footer_text: footer_text.to_string(),
+            };
+        }
+
+        let full_meta_width = meta.len() as f32 * CHAR_WIDTH;
+        if available_for_meta < full_meta_width {
+            // Phase 2: Resolution only fits
+            return ResponsiveFooterState {
+                metadata: Some(resolution_only.to_string()),
+                show_copy_buttons,
+                footer_text: footer_text.to_string(),
+            };
         }
     }
 
-    // Not enough space for even resolution
-    None
+    // Phase 1: Full metadata fits
+    ResponsiveFooterState {
+        metadata: Some(meta.clone()),
+        show_copy_buttons,
+        footer_text: footer_text.to_string(),
+    }
 }
 
 pub fn get_footer(
@@ -175,13 +234,21 @@ pub fn get_footer(
     options: FooterOptions,
     available_width: f32,
 ) -> Container<'static, Message, WinitTheme, Renderer> {
-    // Get responsive metadata based on available width
-    let display_metadata = get_responsive_metadata(
+    // Get responsive footer state based on available width
+    let state = get_responsive_footer_state(
         available_width,
         &metadata_text,
         &footer_text,
         show_copy_buttons,
     );
+
+    // Phase 6: Empty footer
+    if state.footer_text.is_empty() {
+        return container::<Message, WinitTheme, Renderer>(text(""))
+            .width(Length::Fill)
+            .height(32)
+            .padding(3);
+    }
 
     // Extract badges from options
     let mark_badge = options.mark_badge.unwrap_or_else(|| {
@@ -206,7 +273,7 @@ pub fn get_footer(
     });
 
     // Left side: metadata (resolution and file size) - EoG style
-    let left_content: Element<'_, Message, WinitTheme, Renderer> = if let Some(meta) = display_metadata {
+    let left_content: Element<'_, Message, WinitTheme, Renderer> = if let Some(meta) = state.metadata {
         text(meta)
             .font(Font::MONOSPACE)
             .style(|_theme| iced::widget::text::Style {
@@ -221,7 +288,7 @@ pub fn get_footer(
     };
 
     // Right side: copy buttons, badges, and index
-    let right_content: Element<'_, Message, WinitTheme, Renderer> = if show_copy_buttons {
+    let right_content: Element<'_, Message, WinitTheme, Renderer> = if state.show_copy_buttons {
         let copy_filename_button = tooltip(
             button(file_copy_icon())
                 .padding(iced::padding::all(2))
@@ -267,7 +334,7 @@ pub fn get_footer(
             copy_filename_button,
             mark_badge,
             coco_badge,
-            text(footer_text)
+            text(state.footer_text)
                 .font(Font::MONOSPACE)
                 .style(|_theme| iced::widget::text::Style {
                     color: Some(Color::from([0.8, 0.8, 0.8]))
@@ -281,7 +348,7 @@ pub fn get_footer(
         row![
             mark_badge,
             coco_badge,
-            text(footer_text)
+            text(state.footer_text)
                 .font(Font::MONOSPACE)
                 .style(|_theme| iced::widget::text::Style {
                     color: Some(Color::from([0.8, 0.8, 0.8]))
