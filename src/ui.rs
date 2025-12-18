@@ -27,6 +27,8 @@ use iced_winit::core::alignment::Horizontal;
 use iced_winit::core::font::Font;
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::Renderer;
+use iced_wgpu::graphics::text::{font_system, cosmic_text, measure as measure_buffer, to_attributes, to_shaping};
+use iced_winit::core::text::Shaping;
 
 use crate::pane::Pane;
 use crate::{menu as app_menu};
@@ -124,37 +126,71 @@ struct ResponsiveFooterState {
     footer_text: String,
 }
 
+/// Measures the width of text using the actual font system
+/// Uses Font::MONOSPACE at size 14 to match footer text rendering
+fn measure_text_width(text: &str) -> f32 {
+    const FONT_SIZE: f32 = 14.0;
+    const LINE_HEIGHT: f32 = 1.3; // Default line height multiplier
+
+    let mut font_system_guard = font_system()
+        .write()
+        .expect("Failed to acquire font system lock");
+
+    let mut buffer = cosmic_text::Buffer::new(
+        font_system_guard.raw(),
+        cosmic_text::Metrics::new(FONT_SIZE, FONT_SIZE * LINE_HEIGHT),
+    );
+
+    // Set a large width so text doesn't wrap
+    buffer.set_size(font_system_guard.raw(), Some(10000.0), Some(100.0));
+
+    buffer.set_text(
+        font_system_guard.raw(),
+        text,
+        to_attributes(Font::MONOSPACE),
+        to_shaping(Shaping::Basic),
+    );
+
+    measure_buffer(&buffer).width
+}
+
 /// Determines responsive footer layout based on available width
 /// Phases:
 /// 1. Full metadata (resolution + file size) + buttons + index/total
-/// 2. Resolution only + buttons + index/total
-/// 3. No metadata + buttons + index/total
-/// 4. No metadata + no buttons + index/total
-/// 5. No metadata + no buttons + index only
-/// 6. Nothing (empty footer)
+/// 2. Resolution with "pixels" + buttons + index/total
+/// 3. Dimensions only + buttons + index/total
+/// 4. No metadata + buttons + index/total
+/// 5. No metadata + no buttons + index/total
+/// 6. No metadata + no buttons + index only
+/// 7. Nothing (empty footer)
 fn get_responsive_footer_state(
     available_width: f32,
     metadata_text: &Option<String>,
     footer_text: &str,
     show_copy_buttons: bool,
 ) -> ResponsiveFooterState {
-    // Approximate character width for monospace font at size 14
-    const CHAR_WIDTH: f32 = 8.5;
-    const BUTTON_WIDTH: f32 = 30.0; // Each copy button: 18px icon + 4px padding + spacing
-    const PADDING: f32 = 40.0;      // Footer padding and spacing between elements
-    const MIN_MARGIN: f32 = 20.0;   // Minimum margin before hiding
+    // Fixed widths for non-text elements
+    const BUTTON_WIDTH: f32 = 26.0;  // Each copy button: 18px icon + padding
+    const BUTTON_SPACING: f32 = 3.0; // Spacing between buttons
+    const FOOTER_PADDING: f32 = 6.0; // Footer container padding (3px each side)
+    const ELEMENT_SPACING: f32 = 3.0; // Spacing between row elements
+    const MIN_MARGIN: f32 = 5.0;     // Minimum margin before hiding
 
     // Parse footer_text to get index and total (format: "index/total")
     let (index_str, _total_str) = footer_text.split_once('/').unwrap_or((footer_text, ""));
     let index_only = index_str.to_string();
 
-    // Calculate widths for different configurations
-    let full_footer_width = footer_text.len() as f32 * CHAR_WIDTH;
-    let index_only_width = index_only.len() as f32 * CHAR_WIDTH;
-    let buttons_width = if show_copy_buttons { BUTTON_WIDTH * 2.0 } else { 0.0 };
+    // Measure actual text widths dynamically
+    let full_footer_width = measure_text_width(footer_text);
+    let index_only_width = measure_text_width(&index_only);
+    let buttons_width = if show_copy_buttons {
+        BUTTON_WIDTH * 2.0 + BUTTON_SPACING
+    } else {
+        0.0
+    };
 
-    // Phase 6: Nothing fits - hide everything
-    if available_width < index_only_width + MIN_MARGIN {
+    // Phase 7: Nothing fits - hide everything
+    if available_width < index_only_width + FOOTER_PADDING + MIN_MARGIN {
         return ResponsiveFooterState {
             metadata: None,
             show_copy_buttons: false,
@@ -162,8 +198,8 @@ fn get_responsive_footer_state(
         };
     }
 
-    // Phase 5: Only index (no total)
-    if available_width < full_footer_width + MIN_MARGIN {
+    // Phase 6: Only index (no total)
+    if available_width < full_footer_width + FOOTER_PADDING + MIN_MARGIN {
         return ResponsiveFooterState {
             metadata: None,
             show_copy_buttons: false,
@@ -171,8 +207,8 @@ fn get_responsive_footer_state(
         };
     }
 
-    // Phase 4: Index/total but no buttons
-    if available_width < full_footer_width + buttons_width + MIN_MARGIN {
+    // Phase 5: Index/total but no buttons
+    if available_width < full_footer_width + buttons_width + FOOTER_PADDING + ELEMENT_SPACING + MIN_MARGIN {
         return ResponsiveFooterState {
             metadata: None,
             show_copy_buttons: false,
@@ -180,8 +216,8 @@ fn get_responsive_footer_state(
         };
     }
 
-    // Phase 3: Buttons + index/total but no metadata
-    let right_side_width = buttons_width + full_footer_width + PADDING;
+    // Phase 4: Buttons + index/total but no metadata
+    let right_side_width = buttons_width + full_footer_width + ELEMENT_SPACING;
 
     let Some(meta) = metadata_text else {
         return ResponsiveFooterState {
@@ -191,19 +227,21 @@ fn get_responsive_footer_state(
         };
     };
 
-    let available_for_meta = available_width - right_side_width - PADDING;
+    // We need space for: left_content + horizontal_space + right_content
+    // horizontal_space is flexible, but we need at least some gap
+    let available_for_meta = available_width - right_side_width - FOOTER_PADDING - ELEMENT_SPACING;
 
     // Extract resolution parts for progressive display
     if let Some(pixels_pos) = meta.find(" pixels") {
-        let resolution_with_pixels = &meta[..pixels_pos + 7]; // "1920x1080 pixels"
-        let resolution_only = &meta[..pixels_pos]; // "1920x1080"
+        let resolution_with_pixels = &meta[..pixels_pos + 7]; // "1920 x 1080 pixels"
+        let resolution_only = &meta[..pixels_pos]; // "1920 x 1080"
 
-        let resolution_only_width = resolution_only.len() as f32 * CHAR_WIDTH;
-        let resolution_with_pixels_width = resolution_with_pixels.len() as f32 * CHAR_WIDTH;
-        let full_meta_width = meta.len() as f32 * CHAR_WIDTH;
+        let resolution_only_width = measure_text_width(resolution_only);
+        let resolution_with_pixels_width = measure_text_width(resolution_with_pixels);
+        let full_meta_width = measure_text_width(meta);
 
-        // Phase 4: Not enough for even dimensions - no metadata
-        if available_for_meta < resolution_only_width {
+        // Not enough for even dimensions - no metadata
+        if available_for_meta < resolution_only_width + MIN_MARGIN {
             return ResponsiveFooterState {
                 metadata: None,
                 show_copy_buttons,
@@ -211,8 +249,8 @@ fn get_responsive_footer_state(
             };
         }
 
-        // Phase 3: Dimensions only (e.g., "1920x1080")
-        if available_for_meta < resolution_with_pixels_width {
+        // Phase 3: Dimensions only (e.g., "1920 x 1080")
+        if available_for_meta < resolution_with_pixels_width + MIN_MARGIN {
             return ResponsiveFooterState {
                 metadata: Some(resolution_only.to_string()),
                 show_copy_buttons,
@@ -220,8 +258,8 @@ fn get_responsive_footer_state(
             };
         }
 
-        // Phase 2: Resolution with "pixels" (e.g., "1920x1080 pixels")
-        if available_for_meta < full_meta_width {
+        // Phase 2: Resolution with "pixels" (e.g., "1920 x 1080 pixels")
+        if available_for_meta < full_meta_width + MIN_MARGIN {
             return ResponsiveFooterState {
                 metadata: Some(resolution_with_pixels.to_string()),
                 show_copy_buttons,
