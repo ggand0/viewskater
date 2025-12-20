@@ -236,6 +236,7 @@ impl PathSource {
     }
 }
 
+#[allow(dead_code)]
 pub trait ImageCacheBackend {
     fn load_image(
         &self,
@@ -245,6 +246,21 @@ pub trait ImageCacheBackend {
         archive_cache: Option<&mut crate::archive_cache::ArchiveCache>
     ) -> Result<CachedData, io::Error>;
 
+    #[allow(clippy::too_many_arguments)]
+    fn load_single_image(
+        &mut self,
+        image_paths: &[PathSource],
+        cache_count: usize,
+        current_index: usize,
+        cached_data: &mut Vec<Option<CachedData>>,
+        cached_metadata: &mut Vec<Option<ImageMetadata>>,
+        cached_image_indices: &mut Vec<isize>,
+        current_offset: &mut isize,
+        compression_strategy: CompressionStrategy,
+        archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
+    ) -> Result<(), io::Error>;
+
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     fn load_initial_images(
         &mut self,
@@ -315,6 +331,7 @@ impl Default for ImageCache {
 }
 
 // Constructor, cached_data getter / setter, and type specific methods
+#[allow(dead_code)]
 impl ImageCache {
     pub fn new(
         image_paths: &[PathSource],
@@ -418,6 +435,21 @@ impl ImageCache {
         )
     }
 
+    pub fn load_single_image(&mut self, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<(), io::Error> {
+        self.backend.load_single_image(
+            &self.image_paths,
+            self.cache_count,
+            self.current_index,
+            &mut self.cached_data,
+            &mut self.cached_metadata,
+            &mut self.cached_image_indices,
+            &mut self.current_offset,
+            self.compression_strategy,
+            archive_cache,
+        )
+    }
+
+    #[allow(dead_code)]
     pub fn load_initial_images(&mut self, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<(), io::Error> {
         self.backend.load_initial_images(
             &self.image_paths,
