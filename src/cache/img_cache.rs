@@ -246,6 +246,20 @@ pub trait ImageCacheBackend {
     ) -> Result<CachedData, io::Error>;
 
     #[allow(clippy::too_many_arguments)]
+    fn load_single_image(
+        &mut self,
+        image_paths: &[PathSource],
+        cache_count: usize,
+        current_index: usize,
+        cached_data: &mut Vec<Option<CachedData>>,
+        cached_metadata: &mut Vec<Option<ImageMetadata>>,
+        cached_image_indices: &mut Vec<isize>,
+        current_offset: &mut isize,
+        compression_strategy: CompressionStrategy,
+        archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
+    ) -> Result<(), io::Error>;
+
+    #[allow(clippy::too_many_arguments)]
     fn load_initial_images(
         &mut self,
         image_paths: &[PathSource],
@@ -413,6 +427,20 @@ impl ImageCache {
             &mut self.cached_data,
             &mut self.cached_image_indices,
             self.cache_count,
+            self.compression_strategy,
+            archive_cache,
+        )
+    }
+
+    pub fn load_single_image(&mut self, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<(), io::Error> {
+        self.backend.load_single_image(
+            &self.image_paths,
+            self.cache_count,
+            self.current_index,
+            &mut self.cached_data,
+            &mut self.cached_metadata,
+            &mut self.cached_image_indices,
+            &mut self.current_offset,
             self.compression_strategy,
             archive_cache,
         )

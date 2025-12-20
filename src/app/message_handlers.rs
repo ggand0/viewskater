@@ -220,8 +220,7 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
             })
         }
         Message::FileDropped(pane_index, dropped_path) => {
-            handle_file_dropped(app, pane_index, dropped_path);
-            Task::none()
+            handle_file_dropped(app, pane_index, dropped_path)
         }
         Message::Close => {
             app.reset_state(-1);
@@ -240,15 +239,16 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
                     debug!("Folder opened: {}", dir);
                     if pane_index > 0 && app.pane_layout == PaneLayout::SinglePane {
                         debug!("Ignoring request to open folder in pane {} while in single-pane mode", pane_index);
+                        Task::none()
                     } else {
-                        app.initialize_dir_path(&PathBuf::from(dir), pane_index);
+                        app.initialize_dir_path(&PathBuf::from(dir), pane_index)
                     }
                 }
                 Err(err) => {
                     debug!("Folder open failed: {:?}", err);
+                    Task::none()
                 }
             }
-            Task::none()
         }
         Message::CopyFilename(pane_index) => {
             let path = &app.panes[pane_index].img_cache.image_paths[app.panes[pane_index].img_cache.current_index];
@@ -549,14 +549,15 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.nearest_neighbor_filter = enabled;
 
             // Force reload of current directories to apply the new filter immediately
+            let mut tasks = Vec::new();
             for pane_index in 0..app.panes.len() {
                 if let Some(dir_path) = app.panes[pane_index].directory_path.clone() {
                     debug!("Reloading directory for pane {}: {:?}", pane_index, dir_path);
-                    app.initialize_dir_path(&PathBuf::from(dir_path), pane_index);
+                    tasks.push(app.initialize_dir_path(&PathBuf::from(dir_path), pane_index));
                 }
             }
 
-            Task::none()
+            Task::batch(tasks)
         }
         #[cfg(feature = "coco")]
         Message::ToggleCocoSimplification(enabled) => {
@@ -741,11 +742,10 @@ fn handle_window_file_drop(app: &mut DataViewer, path: &std::path::Path) -> Task
 
     app.reset_state(-1);
     debug!("File dropped: {:?}", path);
-    app.initialize_dir_path(&path.to_path_buf(), 0);
-    Task::none()
+    app.initialize_dir_path(&path.to_path_buf(), 0)
 }
 
-fn handle_file_dropped(app: &mut DataViewer, pane_index: isize, dropped_path: String) {
+fn handle_file_dropped(app: &mut DataViewer, pane_index: isize, dropped_path: String) -> Task<Message> {
     let path = PathBuf::from(&dropped_path);
 
     #[cfg(feature = "coco")]
@@ -760,7 +760,7 @@ fn handle_file_dropped(app: &mut DataViewer, pane_index: isize, dropped_path: St
             Ok(content) => {
                 if crate::coco::parser::CocoDataset::is_coco_format(&content) {
                     info!("✓ Detected COCO JSON file: {}", path.display());
-                    return;
+                    return Task::none();
                 } else {
                     debug!("JSON file is not COCO format, treating as regular file");
                 }
@@ -777,7 +777,7 @@ fn handle_file_dropped(app: &mut DataViewer, pane_index: isize, dropped_path: St
     debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
     debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}",
         app.panes[pane_index as usize].dir_loaded, pane_index, app.last_opened_pane);
-    app.initialize_dir_path(&path, pane_index as usize);
+    app.initialize_dir_path(&path, pane_index as usize)
 }
 
 fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
@@ -1002,7 +1002,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
                         if pane.dir_loaded {
                             let path = PathBuf::from(dir_path);
 
-                            pane.initialize_dir_path(
+                            let _ = pane.initialize_dir_path(
                                 &Arc::clone(&app.device),
                                 &Arc::clone(&app.queue),
                                 app.is_gpu_supported,

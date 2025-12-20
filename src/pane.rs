@@ -8,6 +8,7 @@ use once_cell::sync::Lazy;
 
 use iced_widget::{container, text};
 use iced_winit::core::Length;
+use iced_winit::runtime::Task;
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 use iced_wgpu::wgpu;
@@ -431,19 +432,19 @@ impl Pane {
         &mut self,
         device: &Arc<wgpu::Device>,
         queue: &Arc<wgpu::Queue>,
-        _is_gpu_supported: bool,
+        is_gpu_supported: bool,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
         pane_layout: &PaneLayout,
         pane_file_lengths: &[usize],
-        _pane_index: usize,
+        pane_index: usize,
         path: &PathBuf,
         is_slider_dual: bool,
         slider_value: &mut u16,
         cache_size: usize,
         archive_cache_size: u64,
         archive_warning_threshold_mb: u64,
-    ) {
+    ) -> Task<Message> {
         mem::log_memory("Before pane initialization");
 
         let mut file_paths: Vec<PathSource> = Vec::new();
@@ -463,7 +464,7 @@ impl Pane {
                         },
                         Err(e) => {
                             error!("Failed to read zip file: {e}");
-                            return;
+                            return Task::none();
                         },
                     }
                 },
@@ -475,7 +476,7 @@ impl Pane {
                         },
                         Err(e) => {
                             error!("Failed to read rar file: {e}");
-                            return;
+                            return Task::none();
                         },
                     }
                 }
@@ -487,18 +488,18 @@ impl Pane {
                         },
                         Err(e) => {
                             error!("Failed to read 7z file: {e}");
-                            return;
+                            return Task::none();
                         },
                     }
                 }
                 _ => {
                     error!("File extension not supported");
-                    return;
+                    return Task::none();
                 }
             }
             if file_paths.is_empty() {
                 error!("No supported images found in {path:?}");
-                return;
+                return Task::none();
             }
             self.directory_path = Some(path.display().to_string());
             file_paths.sort_by(|a, b| alphanumeric_sort::compare_str(
@@ -546,7 +547,7 @@ impl Pane {
                 (dir, file_io::get_image_paths(path))
             } else {
                 error!("❌ Dropped path does not exist or cannot be accessed: {}", path.display());
-                return;
+                return Task::none();
             };
 
             // Handle the result from get_image_paths
@@ -558,12 +559,12 @@ impl Pane {
                 Err(ImageError::NoImagesFound) => {
                     error!("No supported images found in directory");
                     // TODO: Show a message to the user that no images were found
-                    return;
+                    return Task::none();
                 }
                 Err(e) => {
                     error!("Error reading directory: {e}");
                     // TODO: Show error message to user
-                    return;
+                    return Task::none();
                 }
             };
             self.directory_path = Some(dir_path);
@@ -581,7 +582,7 @@ impl Pane {
                     }
                     None => {
                         debug!("File index not found");
-                        return;
+                        return Task::none();
                     }
                 };
             }
@@ -617,9 +618,9 @@ impl Pane {
         );
 
         // Track memory before loading initial images
-        mem::log_memory("Pane::initialize_dir_path: Before loading initial images");
+        mem::log_memory("Pane::initialize_dir_path: Before loading initial image");
 
-        // Load initial images into the cache
+        // Load only the first/dropped image synchronously for immediate display
         let mut archive_guard = self.archive_cache.lock().unwrap();
         let archive_cache = if self.has_compressed_file {
             Some(&mut *archive_guard)
@@ -627,12 +628,13 @@ impl Pane {
             None
         };
 
-        if let Err(e) = img_cache.load_initial_images(archive_cache) {
-            error!("Failed to load initial images: {}", e);
-            return;
+        if let Err(e) = img_cache.load_single_image(archive_cache) {
+            error!("Failed to load initial image: {}", e);
+            drop(archive_guard); // Release the lock before returning
+            return Task::none();
         }
 
-        mem::log_memory("Pane::initialize_dir_path: After loading initial images");
+        mem::log_memory("Pane::initialize_dir_path: After loading initial image");
 
         for (index, image_option) in img_cache.cached_data.iter().enumerate() {
             match image_option {
@@ -699,6 +701,10 @@ impl Pane {
 
         self.img_cache = img_cache;
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
+
+        // Return Task::none() for now - we'll need to pass loading_status and panes from the caller
+        // to properly create the async loading task
+        Task::none()
     }
 
     pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> Container<'_, Message, WinitTheme, Renderer> {

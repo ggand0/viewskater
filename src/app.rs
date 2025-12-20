@@ -39,6 +39,7 @@ use log::{Level, debug, info, warn, error};
 use iced::{
     widget::button,
     font::Font,
+    Task,
 };
 use iced_widget::{row, column, container, text};
 use iced_wgpu::{wgpu, Renderer};
@@ -253,7 +254,7 @@ impl DataViewer {
         self.clear_primitive_storage();
     }
 
-    pub(crate) fn initialize_dir_path(&mut self, path: &PathBuf, pane_index: usize) {
+    pub(crate) fn initialize_dir_path(&mut self, path: &PathBuf, pane_index: usize) -> Task<Message> {
         debug!("last_opened_pane: {}", self.last_opened_pane);
 
         // Make sure we have enough panes
@@ -316,6 +317,20 @@ impl DataViewer {
                 warn!("Failed to load selection state for {}: {}", dir_path, e);
             }
         }
+
+        // After loading the first image, load remaining images asynchronously
+        let current_index = self.panes[pane_index].img_cache.current_index;
+        crate::navigation_slider::load_initial_neighbors(
+            &self.device,
+            &self.queue,
+            self.is_gpu_supported,
+            self.cache_strategy,
+            self.compression_strategy,
+            &mut self.panes,
+            &mut self.loading_status,
+            pane_index,
+            current_index,
+        )
     }
 
     fn set_ctrl_pressed(&mut self, enabled: bool) {
@@ -433,7 +448,7 @@ impl DataViewer {
                     let path = PathBuf::from(dir_path);
 
                     // Reinitialize the pane with the current directory
-                    pane.initialize_dir_path(
+                    let _ = pane.initialize_dir_path(
                         &Arc::clone(&self.device),
                         &Arc::clone(&self.queue),
                         self.is_gpu_supported,
@@ -485,7 +500,7 @@ impl DataViewer {
                             let path = PathBuf::from(dir_path);
 
                             // Reinitialize the pane with the current directory
-                            pane.initialize_dir_path(
+                            let _ = pane.initialize_dir_path(
                                 &Arc::clone(&self.device),
                                 &Arc::clone(&self.queue),
                                 self.is_gpu_supported,
@@ -526,7 +541,7 @@ impl iced_winit::runtime::Program for DataViewer {
             // Reset state and initialize the directory path
             self.reset_state(-1);
             println!("State reset complete, initializing directory path");
-            self.initialize_dir_path(&PathBuf::from(path), 0);
+            let _ = self.initialize_dir_path(&PathBuf::from(path), 0);
             println!("Directory path initialization complete");
         }
 

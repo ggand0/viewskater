@@ -376,6 +376,42 @@ pub fn load_remaining_images(
     Task::batch(tasks)
 }
 
+/// Load neighboring images asynchronously after initial single-image load
+/// This is used during initialization to load the cache window in the background
+#[allow(clippy::too_many_arguments)]
+pub fn load_initial_neighbors(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+    is_gpu_supported: bool,
+    cache_strategy: CacheStrategy,
+    compression_strategy: CompressionStrategy,
+    panes: &mut [pane::Pane],
+    loading_status: &mut LoadingStatus,
+    pane_index: usize,
+    pos: usize,
+) -> Task<Message> {
+    // Clear the global loading queue
+    loading_status.reset_image_load_queue();
+    loading_status.reset_image_being_loaded_queue();
+
+    debug!("load_initial_neighbors: Loading neighbors for pane {} at pos {}", pane_index, pos);
+
+    // Get loading tasks for neighbors (skips the central image which is already loaded)
+    let tasks = get_loading_tasks_slider(
+        device,
+        queue,
+        is_gpu_supported,
+        cache_strategy,
+        compression_strategy,
+        panes,
+        loading_status,
+        pane_index,
+        pos,
+    );
+
+    Task::batch(tasks)
+}
+
 
 // Async loading task for Image widget - updated to include pane_idx and archive cache
 pub async fn create_async_image_widget_task(
