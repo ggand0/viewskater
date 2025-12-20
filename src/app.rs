@@ -291,7 +291,7 @@ impl DataViewer {
         let pane = &mut self.panes[pane_index];
         debug!("pane_file_lengths: {:?}", pane_file_lengths);
 
-        pane.initialize_dir_path(
+        let _ = pane.initialize_dir_path(
             &Arc::clone(&self.device),
             &Arc::clone(&self.queue),
             self.is_gpu_supported,

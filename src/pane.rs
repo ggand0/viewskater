@@ -432,12 +432,12 @@ impl Pane {
         &mut self,
         device: &Arc<wgpu::Device>,
         queue: &Arc<wgpu::Queue>,
-        is_gpu_supported: bool,
+        _is_gpu_supported: bool,
         cache_strategy: CacheStrategy,
         compression_strategy: CompressionStrategy,
         pane_layout: &PaneLayout,
         pane_file_lengths: &[usize],
-        pane_index: usize,
+        _pane_index: usize,
         path: &PathBuf,
         is_slider_dual: bool,
         slider_value: &mut u16,
@@ -702,8 +702,7 @@ impl Pane {
         self.img_cache = img_cache;
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
 
-        // Return Task::none() for now - we'll need to pass loading_status and panes from the caller
-        // to properly create the async loading task
+        // Async neighbor loading is handled by the caller (app.rs) which has access to loading_status
         Task::none()
     }
 

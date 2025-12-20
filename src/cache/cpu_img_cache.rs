@@ -30,6 +30,7 @@ impl ImageCacheBackend for CpuImageCache {
         }
     }
 
+    #[allow(clippy::needless_option_as_deref)]
     fn load_single_image(
         &mut self,
         image_paths: &[crate::cache::img_cache::PathSource],
@@ -89,6 +90,7 @@ impl ImageCacheBackend for CpuImageCache {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn load_initial_images(
         &mut self,
         image_paths: &[crate::cache::img_cache::PathSource],

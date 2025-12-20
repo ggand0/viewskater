@@ -236,6 +236,7 @@ impl PathSource {
     }
 }
 
+#[allow(dead_code)]
 pub trait ImageCacheBackend {
     fn load_image(
         &self,
@@ -259,6 +260,7 @@ pub trait ImageCacheBackend {
         archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<(), io::Error>;
 
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     fn load_initial_images(
         &mut self,
@@ -329,6 +331,7 @@ impl Default for ImageCache {
 }
 
 // Constructor, cached_data getter / setter, and type specific methods
+#[allow(dead_code)]
 impl ImageCache {
     pub fn new(
         image_paths: &[PathSource],
@@ -446,6 +449,7 @@ impl ImageCache {
         )
     }
 
+    #[allow(dead_code)]
     pub fn load_initial_images(&mut self, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<(), io::Error> {
         self.backend.load_initial_images(
             &self.image_paths,
