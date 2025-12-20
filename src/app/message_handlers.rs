@@ -77,10 +77,11 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         // Toggle and UI control messages
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
         Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
-        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleNearestNeighborFilter(_) |
+        Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleMetadataDisplay(_) | Message::ToggleNearestNeighborFilter(_) |
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
-        Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) => {
+        Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
+        Message::WindowResized(_) => {
             handle_toggle_messages(app, message)
         }
 
@@ -282,7 +283,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
         Message::ImagesLoaded(result) => {
             debug!("ImagesLoaded");
             match result {
-                Ok((image_data, operation)) => {
+                Ok((image_data, metadata, operation)) => {
                     if let Some(op) = operation {
                         let cloned_op = op.clone();
                         match op {
@@ -298,6 +299,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     pane_indices,
                                     target_indices,
                                     &image_data,
+                                    &metadata,
                                     &cloned_op,
                                     operation_type,
                                 );
@@ -309,6 +311,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     pane_index,
                                     &target_indices_and_cache,
                                     &image_data,
+                                    &metadata,
                                 );
                             }
                         }
@@ -322,13 +325,17 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
         }
         Message::SliderImageWidgetLoaded(result) => {
             match result {
-                Ok((pane_idx, pos, handle, dimensions)) => {
+                Ok((pane_idx, pos, handle, dimensions, file_size)) => {
                     crate::track_async_delivery();
 
                     if let Some(pane) = app.panes.get_mut(pane_idx) {
                         pane.slider_image = Some(handle);
                         pane.slider_image_dimensions = Some(dimensions);
                         pane.slider_image_position = Some(pos);
+                        // Update metadata for footer display during slider dragging
+                        pane.current_image_metadata = Some(crate::cache::img_cache::ImageMetadata::new(
+                            dimensions.0, dimensions.1, file_size
+                        ));
                         // BUGFIX: Don't update current_index here! It causes desyncs when stale slider images
                         // load after slider release. The slider position is tracked in slider_image_position instead.
                         // pane.img_cache.current_index = pos;
@@ -533,6 +540,10 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.show_copy_buttons = enabled;
             Task::none()
         }
+        Message::ToggleMetadataDisplay(enabled) => {
+            app.show_metadata = enabled;
+            Task::none()
+        }
         Message::ToggleNearestNeighborFilter(enabled) => {
             debug!("ToggleNearestNeighborFilter: setting to {}", enabled);
             app.nearest_neighbor_filter = enabled;
@@ -594,6 +605,10 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
         }
         Message::SetCompressionStrategy(strategy) => {
             app.update_compression_strategy(strategy);
+            Task::none()
+        }
+        Message::WindowResized(width) => {
+            app.window_width = width;
             Task::none()
         }
         _ => Task::none()
@@ -925,6 +940,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         synced_zoom: app.synced_zoom,
         mouse_wheel_zoom: app.mouse_wheel_zoom,
         show_copy_buttons: app.show_copy_buttons,
+        show_metadata: app.show_metadata,
         nearest_neighbor_filter: app.nearest_neighbor_filter,
         cache_strategy: match app.cache_strategy {
             CacheStrategy::Cpu => "cpu".to_string(),
@@ -952,6 +968,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         coco_mask_render_mode: app.coco_mask_render_mode,
         #[cfg(not(feature = "coco"))]
         coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
+        use_binary_size: app.use_binary_size,
     };
 
     let old_settings = UserSettings::load(None);

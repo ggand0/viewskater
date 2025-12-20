@@ -37,7 +37,7 @@ use crate::cache::img_cache::{LoadOperation, load_all_images_in_queue};
 use crate::widgets::shader::scene::Scene;
 use crate::loading_status::LoadingStatus;
 use crate::app::Message;
-use crate::cache::img_cache::{CachedData, CacheStrategy};
+use crate::cache::img_cache::{CachedData, CacheStrategy, ImageMetadata};
 use crate::cache::cache_utils::{load_image_resized_sync, create_gpu_texture};
 use crate::pane::IMAGE_RENDER_TIMES;
 use crate::pane::IMAGE_RENDER_FPS;
@@ -116,15 +116,23 @@ fn load_full_res_image(
                 // Load the full-resolution image synchronously
                 // Use the archive cache if provided
                 let mut archive_guard = pane.archive_cache.lock().unwrap();
-                let archive_cache = if pane.has_compressed_file {
+                let archive_cache_opt = if pane.has_compressed_file {
                     Some(&mut *archive_guard)
                 } else {
                     None
                 };
-                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy, archive_cache) {
+                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy, archive_cache_opt) {
                     debug!("Failed to load full-res image {} for pane {idx}: {err}", img_path.file_name());
                     continue;
                 }
+
+                // Get file size while we still have the archive lock
+                let file_size = if pane.has_compressed_file {
+                    crate::file_io::get_file_size(&img_path, Some(&mut *archive_guard))
+                } else {
+                    crate::file_io::get_file_size(&img_path, None)
+                };
+                drop(archive_guard); // Release the lock
 
                 // Store the full-resolution texture in the cache
                 let loaded_image = CachedData::Gpu(texture.clone());
@@ -133,25 +141,46 @@ fn load_full_res_image(
                 img_cache.current_index = pos;
                 debug!("load_full_res_image: Set current_index = {} for pane {}", pos, idx);
 
+                // Get dimensions from the loaded texture
+                let tex_size = texture.size();
+                let metadata = ImageMetadata::new(tex_size.width, tex_size.height, file_size);
+                img_cache.cached_metadata[target_index] = Some(metadata.clone());
+
                 // Update the currently displayed image
                 pane.current_image = loaded_image;
                 pane.current_image_index = Some(pos);
+                pane.current_image_metadata = Some(metadata);
                 debug!("load_full_res_image: Set current_image_index = {} for pane {}", pos, idx);
                 pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
                 pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
             } else {
                 // CPU-based loading
-                // Load the full-resolution image using CPU
+                // Lock archive cache for both file size and image loading
                 let mut archive_guard = pane.archive_cache.lock().unwrap();
+
+                // Get file size (needs archive cache for archives)
+                let file_size = if pane.has_compressed_file {
+                    crate::file_io::get_file_size(&img_path, Some(&mut *archive_guard))
+                } else {
+                    crate::file_io::get_file_size(&img_path, None)
+                };
+
+                // Load the image
                 let archive_cache = if pane.has_compressed_file {
                     Some(&mut *archive_guard)
                 } else {
                     None
                 };
+
                 match img_cache.load_image(pos, archive_cache) {
                     Ok(cached_data) => {
+                        // Get dimensions from loaded image data
+                        let (width, height) = cached_data.dimensions();
+                        let metadata = Some(ImageMetadata::new(width, height, file_size));
+
                         // Store in cache and update current image
                         img_cache.cached_data[target_index] = Some(cached_data.clone());
+                        img_cache.cached_metadata[target_index] = metadata.clone();
                         img_cache.cached_image_indices[target_index] = pos as isize;
                         img_cache.current_index = pos;
                         debug!("load_full_res_image (CPU): Set current_index = {} for pane {}", pos, idx);
@@ -159,6 +188,7 @@ fn load_full_res_image(
                         // Update the currently displayed image
                         pane.current_image = cached_data.clone();
                         pane.current_image_index = Some(pos);
+                        pane.current_image_metadata = metadata;
                         debug!("load_full_res_image (CPU): Set current_image_index = {} for pane {}", pos, idx);
 
                         // Update scene if using CPU-based cached data
@@ -353,7 +383,7 @@ pub async fn create_async_image_widget_task(
     pos: usize,
     pane_idx: usize,
     archive_cache: Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>
-) -> Result<(usize, usize, Handle, (u32, u32)), (usize, usize)> {
+) -> Result<(usize, usize, Handle, (u32, u32), u64), (usize, usize)> {
     // Start overall timer
     let task_start = std::time::Instant::now();
 
@@ -393,10 +423,19 @@ pub async fn create_async_image_widget_task(
             // Start handle creation timer
             let handle_start = std::time::Instant::now();
 
-            // Extract image dimensions from bytes before creating handle
-            let dimensions = match image::load_from_memory(&bytes) {
-                Ok(img) => (img.width(), img.height()),
-                Err(_) => {
+            // Capture file size before moving bytes
+            let file_size = bytes.len() as u64;
+
+            // Extract image dimensions efficiently using header-only read
+            use std::io::Cursor;
+            use image::ImageReader;
+            let dimensions = match ImageReader::new(Cursor::new(&bytes))
+                .with_guessed_format()
+                .ok()
+                .and_then(|r| r.into_dimensions().ok())
+            {
+                Some(dims) => dims,
+                None => {
                     // If we can't decode, return error
                     return Err((pane_idx, pos));
                 }
@@ -413,7 +452,7 @@ pub async fn create_async_image_widget_task(
             let total_time = task_start.elapsed();
             trace!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
 
-            Ok((pane_idx, pos, handle, dimensions))
+            Ok((pane_idx, pos, handle, dimensions, file_size))
         },
         Err(_) => Err((pane_idx, pos)),
     }
@@ -657,6 +696,9 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
     } else {
         None
     };
+    // Get image path for file size lookup
+    let img_path = img_cache.image_paths.get(pos).cloned();
+
     match img_cache.load_image(pos, archive_cache) {
         Ok(image) => {
             let target_index: usize;
@@ -671,9 +713,32 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                 target_index = img_cache.cache_count;
                 img_cache.current_offset = 0;
             }
+
+            // Get dimensions from the loaded image and file size from filesystem
+            let (width, height) = image.dimensions();
+            let file_size = if let Some(ref path_source) = img_path {
+                match path_source {
+                    crate::cache::img_cache::PathSource::Filesystem(path) => {
+                        std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+                    },
+                    _ => {
+                        // For archive/preloaded, use the cached data length as approximation
+                        image.len() as u64
+                    }
+                }
+            } else {
+                0
+            };
+            let metadata = Some(ImageMetadata::new(width, height, file_size));
+            debug!("SliderChanged metadata: pos={}, dims={}x{}, size={}", pos, width, height, file_size);
+
             img_cache.cached_data[target_index] = Some(image);
+            img_cache.cached_metadata[target_index] = metadata.clone();
             img_cache.cached_image_indices[target_index] = pos as isize;
             img_cache.current_index = pos;
+
+            // Update pane's current metadata
+            pane.current_image_metadata = metadata;
 
             // Use the new method that ensures we get CPU data
             let mut archive_guard = pane.archive_cache.lock().unwrap();

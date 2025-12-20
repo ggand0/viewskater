@@ -45,6 +45,10 @@ pub struct UserSettings {
     #[serde(default = "default_show_copy_buttons")]
     pub show_copy_buttons: bool,
 
+    /// Show image metadata (resolution, file size) in footer
+    #[serde(default = "default_show_metadata")]
+    pub show_metadata: bool,
+
     /// Use nearest-neighbor filtering for pixel-perfect image scaling
     #[serde(default)]
     pub nearest_neighbor_filter: bool,
@@ -93,6 +97,12 @@ pub struct UserSettings {
     /// COCO: Mask rendering mode
     #[serde(default)]
     pub coco_mask_render_mode: CocoMaskRenderMode,
+
+    /// Use binary file size units (KiB/MiB with 1024 divisor) instead of decimal (KB/MB with 1000)
+    /// - true: Binary units like `ls -lh` (1 KiB = 1024 bytes)
+    /// - false: Decimal units like GNOME/macOS/Windows (1 KB = 1000 bytes)
+    #[serde(default)]
+    pub use_binary_size: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +136,10 @@ fn default_compression_strategy() -> String {
 }
 
 fn default_show_copy_buttons() -> bool {
+    true
+}
+
+fn default_show_metadata() -> bool {
     true
 }
 
@@ -178,6 +192,7 @@ impl Default for UserSettings {
             compression_strategy: "none".to_string(),
             is_slider_dual: false,
             show_copy_buttons: true,
+            show_metadata: true,
             nearest_neighbor_filter: false,
             cache_size: config::DEFAULT_CACHE_SIZE,
             max_loading_queue_size: config::DEFAULT_MAX_LOADING_QUEUE_SIZE,
@@ -190,6 +205,7 @@ impl Default for UserSettings {
             archive_warning_threshold_mb: config::DEFAULT_ARCHIVE_WARNING_THRESHOLD_MB,
             coco_disable_simplification: false,
             coco_mask_render_mode: CocoMaskRenderMode::default(),
+            use_binary_size: false,  // Default to decimal (GNOME/macOS/Windows style)
         }
     }
 }
@@ -303,6 +319,7 @@ impl UserSettings {
         result = Self::replace_yaml_value_or_track(&result, "compression_strategy", &format!("\"{}\"", self.compression_strategy), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "is_slider_dual", &self.is_slider_dual.to_string(), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "show_copy_buttons", &self.show_copy_buttons.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "show_metadata", &self.show_metadata.to_string(), &mut missing_keys);
         result = Self::replace_yaml_value_or_track(&result, "nearest_neighbor_filter", &self.nearest_neighbor_filter.to_string(), &mut missing_keys);
 
         // Update advanced settings
@@ -322,6 +339,9 @@ impl UserSettings {
             CocoMaskRenderMode::Polygon => "Polygon",
             CocoMaskRenderMode::Pixel => "Pixel",
         }), &mut missing_keys);
+
+        // Update display settings
+        result = Self::replace_yaml_value_or_track(&result, "use_binary_size", &self.use_binary_size.to_string(), &mut missing_keys);
 
         // Append missing keys with comments
         if !missing_keys.is_empty() {
@@ -366,6 +386,8 @@ impl UserSettings {
             "archive_warning_threshold_mb" => "# Warning threshold for solid archives (megabytes)".to_string(),
             "coco_disable_simplification" => "# COCO: Disable polygon simplification (more accurate but slower)".to_string(),
             "coco_mask_render_mode" => "# COCO: Mask rendering mode (Polygon or Pixel)".to_string(),
+            "use_binary_size" => "# Use binary file size units (true = KiB/MiB like ls -lh, false = KB/MB like GNOME)".to_string(),
+            "show_metadata" => "# Show image metadata (resolution, file size) in footer".to_string(),
             _ => String::new(),
         }
     }
@@ -434,6 +456,9 @@ is_slider_dual: {}
 # Show copy filename/filepath buttons in footer
 show_copy_buttons: {}
 
+# Show image metadata (resolution, file size) in footer
+show_metadata: {}
+
 # Use nearest-neighbor filtering for pixel-perfect scaling (good for pixel art)
 # - true: Sharp, blocky pixels when zoomed (nearest-neighbor)
 # - false: Smooth, interpolated pixels when zoomed (linear)
@@ -475,6 +500,13 @@ coco_disable_simplification: {}
 
 # Mask rendering mode: "Polygon" (vector, scalable) or "Pixel" (raster, exact)
 coco_mask_render_mode: "{}"
+
+# --- Display Settings ---
+
+# Use binary file size units (KiB/MiB with 1024 divisor) instead of decimal (KB/MB with 1000)
+# - true: Binary units like `ls -lh` (1 KiB = 1024 bytes)
+# - false: Decimal units like GNOME/macOS/Windows (1 KB = 1000 bytes)
+use_binary_size: {}
 "#,
             self.show_fps,
             self.show_footer,
@@ -485,6 +517,7 @@ coco_mask_render_mode: "{}"
             self.compression_strategy,
             self.is_slider_dual,
             self.show_copy_buttons,
+            self.show_metadata,
             self.nearest_neighbor_filter,
             self.cache_size,
             self.max_loading_queue_size,
@@ -499,7 +532,8 @@ coco_mask_render_mode: "{}"
             match self.coco_mask_render_mode {
                 CocoMaskRenderMode::Polygon => "Polygon",
                 CocoMaskRenderMode::Pixel => "Pixel",
-            }
+            },
+            self.use_binary_size
         )
     }
 

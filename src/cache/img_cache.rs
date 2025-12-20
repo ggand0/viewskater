@@ -68,6 +68,44 @@ impl CacheStrategy {
     }
 }
 
+/// Metadata for cached images to avoid repeated decoding
+#[derive(Debug, Clone, Default)]
+pub struct ImageMetadata {
+    pub width: u32,
+    pub height: u32,
+    pub file_size: u64,
+}
+
+impl ImageMetadata {
+    pub fn new(width: u32, height: u32, file_size: u64) -> Self {
+        Self { width, height, file_size }
+    }
+
+    /// Format resolution as "WIDTHxHEIGHT" string
+    pub fn resolution_string(&self) -> String {
+        format!("{}x{}", self.width, self.height)
+    }
+
+    /// Format file size as human-readable string (e.g., "2.5 MB")
+    /// - use_binary: true = binary units (KiB/MiB, 1024 divisor) like `ls -lh`
+    /// - use_binary: false = decimal units (KB/MB, 1000 divisor) like GNOME/macOS/Windows
+    pub fn file_size_string(&self, use_binary: bool) -> String {
+        let (divisor, kb_suffix, mb_suffix) = if use_binary {
+            (1024.0, "KiB", "MiB")
+        } else {
+            (1000.0, "KB", "MB")
+        };
+
+        if self.file_size < divisor as u64 {
+            format!("{} B", self.file_size)
+        } else if self.file_size < (divisor * divisor) as u64 {
+            format!("{:.1} {}", self.file_size as f64 / divisor, kb_suffix)
+        } else {
+            format!("{:.1} {}", self.file_size as f64 / (divisor * divisor), mb_suffix)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum CachedData {
     Cpu(Vec<u8>),                // CPU: Raw image bytes
@@ -81,32 +119,28 @@ impl CachedData {
     }
 
     pub fn width(&self) -> u32 {
-        match self {
-            CachedData::Cpu(data) => {
-                // Try to decode image and get width
-                if let Ok(image) = image::load_from_memory(data) {
-                    image.width()
-                } else {
-                    0
-                }
-            },
-            CachedData::Gpu(texture) => texture.width(),
-            CachedData::BC1(texture) => texture.width(),
-        }
+        self.dimensions().0
     }
 
     pub fn height(&self) -> u32 {
+        self.dimensions().1
+    }
+
+    /// Get dimensions (width, height) efficiently - uses header-only read for CPU images
+    pub fn dimensions(&self) -> (u32, u32) {
         match self {
             CachedData::Cpu(data) => {
-                // Try to decode image and get height
-                if let Ok(image) = image::load_from_memory(data) {
-                    image.height()
-                } else {
-                    0
-                }
+                use std::io::Cursor;
+                use image::ImageReader;
+                // Use into_dimensions() which reads only the image header, not full decode
+                ImageReader::new(Cursor::new(data))
+                    .with_guessed_format()
+                    .ok()
+                    .and_then(|r| r.into_dimensions().ok())
+                    .unwrap_or((0, 0))
             },
-            CachedData::Gpu(texture) => texture.height(),
-            CachedData::BC1(texture) => texture.height(),
+            CachedData::Gpu(texture) => (texture.width(), texture.height()),
+            CachedData::BC1(texture) => (texture.width(), texture.height()),
         }
     }
 
@@ -218,6 +252,7 @@ pub trait ImageCacheBackend {
         cache_count: usize,
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,
+        cached_metadata: &mut Vec<Option<ImageMetadata>>,
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
         compression_strategy: CompressionStrategy,
@@ -252,6 +287,7 @@ pub struct ImageCache {
     pub being_loaded_queue: VecDeque<LoadOperation>,    // Queue of image indices being loaded
 
     pub cached_data: Vec<Option<CachedData>>, // Caching mechanism
+    pub cached_metadata: Vec<Option<ImageMetadata>>, // Metadata parallel to cached_data
     pub backend: Box<dyn ImageCacheBackend>, // Backend determines caching type
     pub slider_texture: Option<Arc<wgpu::Texture>>,
     pub compression_strategy: CompressionStrategy,
@@ -270,6 +306,7 @@ impl Default for ImageCache {
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
             cached_data: Vec::new(),
+            cached_metadata: Vec::new(),
             backend: Box::new(CpuImageCache {}),
             slider_texture: None,
             compression_strategy: CompressionStrategy::None,
@@ -288,9 +325,12 @@ impl ImageCache {
         device: Option<Arc<wgpu::Device>>,
         queue: Option<Arc<wgpu::Queue>>,
     ) -> Self {
+        let cache_size = cache_count * 2 + 1;
         let mut cached_data = Vec::new();
-        for _ in 0..(cache_count * 2 + 1) {
+        let mut cached_metadata = Vec::new();
+        for _ in 0..cache_size {
             cached_data.push(None);
+            cached_metadata.push(None);
         }
 
         // Initialize the image cache with the basic structure
@@ -301,8 +341,9 @@ impl ImageCache {
             current_offset: 0,
             cache_count,
             cached_data,
-            cached_image_indices: vec![-1; cache_count * 2 + 1],
-            cache_states: vec![false; cache_count * 2 + 1],
+            cached_metadata,
+            cached_image_indices: vec![-1; cache_size],
+            cache_states: vec![false; cache_size],
             loading_queue: VecDeque::new(),
             being_loaded_queue: VecDeque::new(),
             slider_texture: None,
@@ -346,6 +387,12 @@ impl ImageCache {
         }
     }
 
+    pub fn set_cached_metadata(&mut self, index: usize, metadata: ImageMetadata) {
+        if index < self.cached_metadata.len() {
+            self.cached_metadata[index] = Some(metadata);
+        }
+    }
+
     pub fn load_image(&self, index: usize, archive_cache: Option<&mut crate::archive_cache::ArchiveCache>) -> Result<CachedData, io::Error> {
         self.backend.load_image(index, &self.image_paths, self.compression_strategy, archive_cache)
     }
@@ -377,6 +424,7 @@ impl ImageCache {
             self.cache_count,
             self.current_index,
             &mut self.cached_data,
+            &mut self.cached_metadata,
             &mut self.cached_image_indices,
             &mut self.current_offset,
             self.compression_strategy,
@@ -384,9 +432,13 @@ impl ImageCache {
         )
     }
 
-    pub fn shift_cache_left(&mut self, new_item: Option<CachedData>) {
+    pub fn shift_cache_left(&mut self, new_item: Option<CachedData>, new_metadata: Option<ImageMetadata>) {
         self.cached_data.remove(0);
         self.cached_data.push(new_item);
+
+        // Shift metadata in parallel
+        self.cached_metadata.remove(0);
+        self.cached_metadata.push(new_metadata);
 
         // Update indices
         self.cached_image_indices.remove(0);
@@ -459,6 +511,7 @@ impl ImageCache {
     pub fn clear_cache(&mut self) {
         // Clear all collections
         self.cached_data.clear();
+        self.cached_metadata.clear();
         self.cached_image_indices.clear();
         self.cache_states.clear();
         self.image_paths.clear();
@@ -472,32 +525,36 @@ impl ImageCache {
         self.loading_queue.clear();
         self.being_loaded_queue.clear();
 
-        // Reinitialize the cached_data vector (load_initial_images() expects this format)
+        // Reinitialize the cached_data and cached_metadata vectors
+        let cache_size = self.cache_count * 2 + 1;
         let mut cached_data = Vec::new();
-        for _ in 0..(self.cache_count * 2 + 1) {
+        let mut cached_metadata = Vec::new();
+        for _ in 0..cache_size {
             cached_data.push(None);
+            cached_metadata.push(None);
         }
         self.cached_data = cached_data;
+        self.cached_metadata = cached_metadata;
 
         self.cache_states = vec![false; self.image_paths.len()];
     }
 
-    pub fn move_next(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
+    pub fn move_next(&mut self, new_image: Option<CachedData>, new_metadata: Option<ImageMetadata>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index < self.image_paths.len() - 1 {
 
             //shift_cache_left(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
-            self.shift_cache_left(new_image);
+            self.shift_cache_left(new_image, new_metadata);
             Ok(false)
         } else {
             Err(io::Error::other("No more images to display"))
         }
     }
 
-    pub fn move_prev(&mut self, new_image: Option<CachedData>, _image_index: isize) -> Result<bool, io::Error> {
+    pub fn move_prev(&mut self, new_image: Option<CachedData>, new_metadata: Option<ImageMetadata>, _image_index: isize) -> Result<bool, io::Error> {
         if self.current_index > 0 {
 
             //shift_cache_right(&mut self.cached_data, &mut self.cached_image_indices, new_image, &mut self.current_offset);
-            self.shift_cache_right(new_image);
+            self.shift_cache_right(new_image, new_metadata);
             Ok(false)
         } else {
             Err(io::Error::other("No previous images to display"))
@@ -521,11 +578,15 @@ impl ImageCache {
     }
 
     pub fn shift_cache_right(
-        &mut self, new_item: Option<CachedData>,
+        &mut self, new_item: Option<CachedData>, new_metadata: Option<ImageMetadata>,
     ) {
         // Shift the elements in cached_images to the right
         self.cached_data.pop(); // Remove the last (rightmost) element
         self.cached_data.insert(0, new_item);
+
+        // Shift metadata in parallel
+        self.cached_metadata.pop();
+        self.cached_metadata.insert(0, new_metadata);
 
         // Update indices
         self.cached_image_indices.pop();
@@ -621,6 +682,12 @@ impl ImageCache {
         } else {
             Err(io::Error::other("Invalid cache index"))
         }
+    }
+
+    /// Get metadata for the initial (current) image
+    pub fn get_initial_metadata(&self) -> Option<&ImageMetadata> {
+        let cache_index = (self.cache_count as isize + self.current_offset) as usize;
+        self.cached_metadata.get(cache_index).and_then(|opt| opt.as_ref())
     }
 
     pub fn get_next_cache_index(&self) -> isize {

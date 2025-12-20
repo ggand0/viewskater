@@ -6,7 +6,7 @@ use std::io;
 use std::sync::Arc;
 use image::GenericImageView;
 use iced_wgpu::wgpu;
-use crate::cache::img_cache::{CachedData, ImageCacheBackend};
+use crate::cache::img_cache::{CachedData, ImageCacheBackend, ImageMetadata};
 use iced_wgpu::engine::CompressionStrategy;
 
 
@@ -80,6 +80,7 @@ impl ImageCacheBackend for GpuImageCache {
         cache_count: usize,
         current_index: usize,
         cached_data: &mut Vec<Option<CachedData>>,
+        cached_metadata: &mut Vec<Option<ImageMetadata>>,
         cached_image_indices: &mut Vec<isize>,
         current_offset: &mut isize,
         compression_strategy: CompressionStrategy,
@@ -107,39 +108,35 @@ impl ImageCacheBackend for GpuImageCache {
             if cache_index > image_paths.len() as isize - 1 {
                 break;
             }
-            // Reborrow to avoid consuming archive_cache in the loop
-            match self.load_image(cache_index as usize, image_paths, compression_strategy, archive_cache.as_deref_mut()) {
-                Ok(image) => {
-                    cached_data[i] = Some(image);
-                    cached_image_indices[i] = cache_index;
-                },
-                Err(e) => {
-                    warn!("Failed to load image at index {}: {}. Skipping...", cache_index, e);
-                    cached_data[i] = None;
-                    cached_image_indices[i] = -1; // Mark as invalid
+            // Load image and capture metadata
+            if let Some(path_source) = image_paths.get(cache_index as usize) {
+                // Get file size efficiently without reading file content
+                let file_size = crate::file_io::get_file_size(path_source, archive_cache.as_deref_mut());
+
+                // Load the image (this will read the file for actual decoding)
+                match self.load_image(cache_index as usize, image_paths, compression_strategy, archive_cache.as_deref_mut()) {
+                    Ok(image) => {
+                        // Get dimensions from the loaded texture
+                        let (width, height) = match &image {
+                            CachedData::Gpu(texture) | CachedData::BC1(texture) => {
+                                let size = texture.size();
+                                (size.width, size.height)
+                            },
+                            CachedData::Cpu(_) => (0, 0), // Shouldn't happen in GPU cache
+                        };
+                        cached_data[i] = Some(image);
+                        cached_metadata[i] = Some(ImageMetadata::new(width, height, file_size));
+                        cached_image_indices[i] = cache_index;
+                    },
+                    Err(e) => {
+                        warn!("Failed to load image at index {}: {}. Skipping...", cache_index, e);
+                        cached_data[i] = None;
+                        cached_metadata[i] = None;
+                        cached_image_indices[i] = -1; // Mark as invalid
+                    }
                 }
             }
         }
-
-        // Display information about each image
-        /*for (index, image_option) in cached_data.iter().enumerate() {
-            match image_option {
-                Some(image_bytes) => {
-                    let image_info = format!("Image {} - Size: {} bytes", index, image_bytes.len());
-                    debug!("{}", image_info);
-                }
-                None => {
-                    let no_image_info = format!("No image at index {}", index);
-                    debug!("{}", no_image_info);
-                }
-            }
-        }
-
-        // Display the indices
-        for (index, cache_index) in cached_image_indices.iter().enumerate() {
-            let index_info = format!("Index {} - Cache Index: {}", index, cache_index);
-            debug!("{}", index_info);
-        }*/
 
         Ok(())
     }

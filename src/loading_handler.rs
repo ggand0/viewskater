@@ -3,7 +3,7 @@ use log::{debug, error, warn, info};
 use crate::Arc;
 use crate::pane;
 use crate::loading_status::LoadingStatus;
-use crate::cache::img_cache::{LoadOperation, LoadOperationType};
+use crate::cache::img_cache::{LoadOperation, LoadOperationType, ImageMetadata};
 use crate::cache::img_cache::CachedData;
 use crate::widgets::shader::scene::Scene;
 
@@ -13,6 +13,7 @@ pub fn handle_load_operation_all(
     pane_indices: &[usize],
     target_indices: &[Option<isize>],
     image_data: &[Option<CachedData>],
+    metadata: &[Option<ImageMetadata>],
     op: &LoadOperation,
     operation_type: LoadOperationType,
 ) {
@@ -72,13 +73,15 @@ pub fn handle_load_operation_all(
                     None => None,
                 };
 
+                // Get metadata for this pane
+                let converted_metadata = metadata.get(pane_index).cloned().flatten();
 
                 match op {
                     LoadOperation::LoadNext(..) => {
-                        cache.move_next(converted_data.take(), target_index).unwrap();
+                        cache.move_next(converted_data.take(), converted_metadata, target_index).unwrap();
                     }
                     LoadOperation::LoadPrevious(..) => {
-                        cache.move_prev(converted_data.take(), target_index).unwrap();
+                        cache.move_prev(converted_data.take(), converted_metadata, target_index).unwrap();
                     }
                     LoadOperation::ShiftNext(..) => {
                         cache.move_next_edge(converted_data.take(), target_index).unwrap();
@@ -95,6 +98,9 @@ pub fn handle_load_operation_all(
                 if let Ok(cached_image) = cache.get_initial_image() {
                     // Track which index this image represents
                     pane.current_image_index = Some(cache.current_index);
+
+                    // Update current image metadata
+                    pane.current_image_metadata = cache.get_initial_metadata().cloned();
 
                     match cached_image {
                         CachedData::Cpu(data) => {
@@ -145,6 +151,7 @@ pub fn handle_load_pos_operation(
     pane_index: usize,
     target_indices_and_cache: &[Option<(isize, usize)>],
     image_data: &[Option<CachedData>],
+    metadata: &[Option<ImageMetadata>],
 ) {
     debug!("===== Handling LoadPos operation =====");
     // Remove the current LoadPos operation from the being_loaded queue
@@ -157,8 +164,8 @@ pub fn handle_load_pos_operation(
     if let Some(pane) = panes.get_mut(pane_index) {
         let cache = &mut pane.img_cache;
 
-        // Iterate over the target indices and cache positions along with image data
-        for (target_opt, image_data_opt) in target_indices_and_cache.iter().zip(image_data.iter()) {
+        // Iterate over the target indices and cache positions along with image data and metadata
+        for (i, (target_opt, image_data_opt)) in target_indices_and_cache.iter().zip(image_data.iter()).enumerate() {
             debug!("Target index and cache position: {:?}", target_opt);
 
             if let Some((target_index, cache_pos)) = target_opt {
@@ -183,12 +190,20 @@ pub fn handle_load_pos_operation(
                             }
                         }
 
+                        // Also store metadata if available
+                        if let Some(Some(meta)) = metadata.get(i) {
+                            cache.set_cached_metadata(*cache_pos, meta.clone());
+                        }
+
                         if cache.current_index == target_index_usize {
                             // Reload current image if necessary
                             debug!("LoadPos: target_index {} matches current_index {}, updating current_image", target_index_usize, cache.current_index);
                             if let Ok(cached_image) = cache.get_initial_image() {
                                 // Track which index this image represents
                                 pane.current_image_index = Some(cache.current_index);
+
+                                // Update current image metadata
+                                pane.current_image_metadata = cache.get_initial_metadata().cloned();
 
                                 match cached_image {
                                     CachedData::Cpu(data) => {
