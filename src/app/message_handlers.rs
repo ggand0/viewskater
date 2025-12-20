@@ -8,6 +8,8 @@ use iced_winit::runtime::Task;
 use iced_wgpu::engine::CompressionStrategy;
 use iced_core::Event;
 
+use iced_runtime::clipboard;
+
 use crate::app::{DataViewer, Message};
 use crate::cache::img_cache::{CacheStrategy, CachedData, LoadOperation};
 use crate::settings::UserSettings;
@@ -254,10 +256,8 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
             let path = &app.panes[pane_index].img_cache.image_paths[app.panes[pane_index].img_cache.current_index];
             let filename_str = path.file_name().to_string();
             if let Some(filename) = file_io::get_filename(&filename_str) {
-                debug!("Filename: {}", filename);
-                // TODO: Re-enable clipboard functionality
-                // The iced::clipboard module needs to be properly imported
-                // return clipboard::write::<Message>(filename);
+                debug!("Copying filename to clipboard: {}", filename);
+                return clipboard::write(filename);
             }
             Task::none()
         }
@@ -266,10 +266,8 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
             let img_path = path.file_name().to_string();
             if let Some(dir_path) = app.panes[pane_index].directory_path.as_ref() {
                 let full_path = format!("{}/{}", dir_path, img_path);
-                debug!("Full Path: {}", full_path);
-                // TODO: Re-enable clipboard functionality
-                // The iced::clipboard module needs to be properly imported
-                // return clipboard::write::<Message>(full_path);
+                debug!("Copying full path to clipboard: {}", full_path);
+                return clipboard::write(full_path);
             }
             Task::none()
         }
