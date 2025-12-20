@@ -116,15 +116,23 @@ fn load_full_res_image(
                 // Load the full-resolution image synchronously
                 // Use the archive cache if provided
                 let mut archive_guard = pane.archive_cache.lock().unwrap();
-                let archive_cache = if pane.has_compressed_file {
+                let archive_cache_opt = if pane.has_compressed_file {
                     Some(&mut *archive_guard)
                 } else {
                     None
                 };
-                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy, archive_cache) {
+                if let Err(err) = load_image_resized_sync(&img_path, false, device, queue, &mut texture, compression_strategy, archive_cache_opt) {
                     debug!("Failed to load full-res image {} for pane {idx}: {err}", img_path.file_name());
                     continue;
                 }
+
+                // Get file size while we still have the archive lock
+                let file_size = if pane.has_compressed_file {
+                    crate::file_io::get_file_size(&img_path, Some(&mut *archive_guard))
+                } else {
+                    crate::file_io::get_file_size(&img_path, None)
+                };
+                drop(archive_guard); // Release the lock
 
                 // Store the full-resolution texture in the cache
                 let loaded_image = CachedData::Gpu(texture.clone());
@@ -133,9 +141,8 @@ fn load_full_res_image(
                 img_cache.current_index = pos;
                 debug!("load_full_res_image: Set current_index = {} for pane {}", pos, idx);
 
-                // Get dimensions from the loaded texture and file size efficiently
+                // Get dimensions from the loaded texture
                 let tex_size = texture.size();
-                let file_size = crate::file_io::get_file_size(&img_path, None);
                 let metadata = ImageMetadata::new(tex_size.width, tex_size.height, file_size);
                 img_cache.cached_metadata[target_index] = Some(metadata.clone());
 
@@ -148,11 +155,17 @@ fn load_full_res_image(
                 pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
             } else {
                 // CPU-based loading
-                // Get file size efficiently first (doesn't read file content for filesystem files)
-                let file_size = crate::file_io::get_file_size(&img_path, None);
-
-                // Load the image (reads and decodes the file)
+                // Lock archive cache for both file size and image loading
                 let mut archive_guard = pane.archive_cache.lock().unwrap();
+
+                // Get file size (needs archive cache for archives)
+                let file_size = if pane.has_compressed_file {
+                    crate::file_io::get_file_size(&img_path, Some(&mut *archive_guard))
+                } else {
+                    crate::file_io::get_file_size(&img_path, None)
+                };
+
+                // Load the image
                 let archive_cache = if pane.has_compressed_file {
                     Some(&mut *archive_guard)
                 } else {
