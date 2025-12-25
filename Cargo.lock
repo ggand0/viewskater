@@ -5908,7 +5908,7 @@ dependencies = [
 
 [[package]]
 name = "viewskater"
-version = "0.2.5"
+version = "0.3.0"
 dependencies = [
  "alphanumeric-sort",
  "backtrace",
