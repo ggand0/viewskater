@@ -80,4 +80,25 @@ impl BuildInfo {
             ""
         }
     }
+
+    /// Get enabled feature flags for display
+    #[allow(unused_mut)]
+    pub fn enabled_features() -> String {
+        let mut features: Vec<&str> = Vec::new();
+
+        #[cfg(feature = "selection")]
+        features.push("selection");
+
+        #[cfg(feature = "coco")]
+        features.push("coco");
+
+        #[cfg(feature = "jp2")]
+        features.push("jp2");
+
+        if features.is_empty() {
+            "none".to_string()
+        } else {
+            features.join(", ")
+        }
+    }
 } 

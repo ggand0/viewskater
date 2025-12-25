@@ -620,6 +620,12 @@ impl iced_winit::runtime::Program for DataViewer {
                         color: Some(theme.extended_palette().background.weak.color),
                     }
                 }),
+                text(format!("Features: {}", BuildInfo::enabled_features())).size(12)
+                .style(|theme: &WinitTheme| {
+                    iced_widget::text::Style {
+                        color: Some(theme.extended_palette().background.weak.color),
+                    }
+                }),
             ];
 
             // Add bundle version only on macOS to avoid empty widgets
