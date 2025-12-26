@@ -105,6 +105,7 @@ pub struct DataViewer {
     pub nearest_neighbor_filter: bool,
     pub replay_controller: Option<crate::replay::ReplayController>,
     pub replay_keep_alive_task: Option<Task<Message>>,
+    pub replay_keep_alive_pending: bool,  // Track if a keep-alive is in flight to prevent flooding
     pub is_fullscreen: bool,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
@@ -201,6 +202,7 @@ impl DataViewer {
             nearest_neighbor_filter: settings.nearest_neighbor_filter,
             replay_controller: replay_config.map(crate::replay::ReplayController::new),
             replay_keep_alive_task: None,
+            replay_keep_alive_pending: false,
             is_fullscreen: false,
             cursor_on_top: false,
             cursor_on_menu: false,
@@ -626,8 +628,9 @@ impl DataViewer {
             debug!("Replay controller returned action: {:?}", a);
         }
 
-        // Schedule keep-alive task if replay is active
-        if replay_controller.is_active() {
+        // Schedule keep-alive task if replay is active and we don't already have one in flight
+        // This prevents accumulating many delayed messages when update() is called rapidly
+        if replay_controller.is_active() && !self.replay_keep_alive_pending {
             self.replay_keep_alive_task = Some(Task::perform(
                 async { tokio::time::sleep(tokio::time::Duration::from_millis(50)).await; },
                 |_| Message::ReplayKeepAlive
@@ -763,6 +766,7 @@ impl iced_winit::runtime::Program for DataViewer {
             );
             // Batch with keep-alive task if present (for replay mode timing)
             if let Some(keep_alive) = keep_alive_task {
+                self.replay_keep_alive_pending = true;
                 Task::batch([nav_task, keep_alive])
             } else {
                 nav_task
@@ -784,12 +788,14 @@ impl iced_winit::runtime::Program for DataViewer {
             );
             // Batch with keep-alive task if present (for replay mode timing)
             if let Some(keep_alive) = keep_alive_task {
+                self.replay_keep_alive_pending = true;
                 Task::batch([nav_task, keep_alive])
             } else {
                 nav_task
             }
         } else if let Some(keep_alive) = keep_alive_task {
             // Not in skate mode, return keep-alive task for replay timing
+            self.replay_keep_alive_pending = true;
             return keep_alive;
         } else {
             // No skate mode, return the task from message handler

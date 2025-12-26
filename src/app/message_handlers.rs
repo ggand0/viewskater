@@ -49,6 +49,8 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::ReplayKeepAlive => {
             // This message is sent periodically during replay mode to keep the update loop active
             debug!("ReplayKeepAlive received - keeping replay update loop active");
+            // Reset pending flag so a new keep-alive can be scheduled
+            app.replay_keep_alive_pending = false;
             Task::none()
         }
 
