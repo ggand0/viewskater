@@ -170,6 +170,9 @@ pub struct ReplayController {
     pub last_navigation_time: Instant,
     pub current_iteration: u32,
     pub completed_iterations: u32,
+    /// True when navigation has reached the boundary (end or beginning of images)
+    /// Metrics are not collected while at boundary to avoid skewing results
+    pub at_boundary: bool,
 }
 
 impl ReplayController {
@@ -182,6 +185,7 @@ impl ReplayController {
             last_navigation_time: Instant::now(),
             current_iteration: 0,
             completed_iterations: 0,
+            at_boundary: false,
         }
     }
 
@@ -249,6 +253,19 @@ impl ReplayController {
         self.last_navigation_time = Instant::now();
     }
 
+    /// Called by app when navigation reaches a boundary (end or beginning of images)
+    /// This prevents collecting misleading metrics while stuck at boundary
+    pub fn set_at_boundary(&mut self, at_boundary: bool) {
+        if self.at_boundary != at_boundary {
+            if at_boundary {
+                debug!("Navigation reached boundary - metrics collection paused");
+            } else {
+                debug!("Navigation resumed from boundary");
+            }
+            self.at_boundary = at_boundary;
+        }
+    }
+
     pub fn on_directory_loaded(&mut self, directory_index: usize) {
         if let ReplayState::LoadingDirectory { directory_index: expected_index } = &self.state {
             if *expected_index == directory_index {
@@ -299,17 +316,34 @@ impl ReplayController {
     }
 
     pub fn update_metrics(&mut self, ui_fps: f32, image_fps: f32, memory_mb: f64) {
+        // Skip metric collection when at boundary to avoid skewing results
+        // (FPS during idle time isn't representative of navigation performance)
+        if self.at_boundary {
+            return;
+        }
         if let Some(ref mut metrics) = self.current_metrics {
             metrics.add_sample(ui_fps, image_fps, memory_mb);
         }
     }
 
     pub fn update(&mut self) -> Option<ReplayAction> {
+        // Minimum time to collect metrics before allowing early transition (1 second)
+        const MIN_METRICS_DURATION: Duration = Duration::from_secs(1);
+
         match &self.state {
             ReplayState::NavigatingRight { start_time, directory_index } => {
                 let elapsed = start_time.elapsed();
-                
-                if elapsed >= self.config.duration_per_directory {
+
+                // Transition when duration reached OR when at boundary (after minimum metrics time)
+                let should_transition = elapsed >= self.config.duration_per_directory ||
+                    (self.at_boundary && elapsed >= MIN_METRICS_DURATION);
+
+                if should_transition {
+                    if self.at_boundary && elapsed < self.config.duration_per_directory {
+                        info!("Early transition: reached end of images after {:.2}s (duration was {:.2}s)",
+                              elapsed.as_secs_f64(), self.config.duration_per_directory.as_secs_f64());
+                    }
+
                     // Finish current metrics
                     if let Some(mut metrics) = self.current_metrics.take() {
                         metrics.finalize();
@@ -318,15 +352,18 @@ impl ReplayController {
                         }
                         self.completed_metrics.push(metrics);
                     }
-                    
+
+                    // Reset boundary flag for next direction
+                    self.at_boundary = false;
+
                     // Check if we need to test left navigation for this directory
                     if self.config.directions.contains(&ReplayDirection::Both) {
                         let directory_path = self.config.test_directories[*directory_index].clone();
                         info!("Switching from right to left navigation for directory: {}", directory_path.display());
                         // Switch immediately to left navigation
-                        self.state = ReplayState::NavigatingLeft { 
-                            start_time: Instant::now(), 
-                            directory_index: *directory_index 
+                        self.state = ReplayState::NavigatingLeft {
+                            start_time: Instant::now(),
+                            directory_index: *directory_index
                         };
                         self.current_metrics = Some(ReplayMetrics::new(directory_path, ReplayDirection::Left));
                         return Some(ReplayAction::StartNavigatingLeft);
@@ -345,18 +382,26 @@ impl ReplayController {
             
             ReplayState::NavigatingLeft { start_time, directory_index } => {
                 let elapsed = start_time.elapsed();
-                
+
                 // Debug: Log timing during left navigation
                 if elapsed.as_millis() % 500 < 50 { // Log every ~500ms
-                    debug!("Left navigation progress: {:.2}s / {:.2}s (target: {:.2}s)", 
-                           elapsed.as_secs_f64(), 
+                    debug!("Left navigation progress: {:.2}s / {:.2}s (target: {:.2}s)",
+                           elapsed.as_secs_f64(),
                            self.config.duration_per_directory.as_secs_f64(),
                            self.config.duration_per_directory.as_secs_f64());
                 }
-                
-                if elapsed >= self.config.duration_per_directory {
-                    // Left navigation duration completed - stop regardless of current image index
-                    // This is time-based testing, not completion-based (we don't need to reach index 0)
+
+                // Transition when duration reached OR when at boundary (after minimum metrics time)
+                let should_transition = elapsed >= self.config.duration_per_directory ||
+                    (self.at_boundary && elapsed >= MIN_METRICS_DURATION);
+
+                if should_transition {
+                    if self.at_boundary && elapsed < self.config.duration_per_directory {
+                        info!("Early transition: reached beginning of images after {:.2}s (duration was {:.2}s)",
+                              elapsed.as_secs_f64(), self.config.duration_per_directory.as_secs_f64());
+                    }
+
+                    // Finish current metrics
                     if let Some(mut metrics) = self.current_metrics.take() {
                         metrics.finalize();
                         if self.config.verbose {
@@ -364,7 +409,10 @@ impl ReplayController {
                         }
                         self.completed_metrics.push(metrics);
                     }
-                    
+
+                    // Reset boundary flag for next directory
+                    self.at_boundary = false;
+
                     // Move to next directory or finish
                     self.advance_to_next_directory(*directory_index)
                 } else if self.last_navigation_time.elapsed() >= self.config.navigation_interval {

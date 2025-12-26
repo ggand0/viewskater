@@ -567,14 +567,25 @@ impl DataViewer {
 
         replay_controller.update_metrics(ui_fps, image_fps, memory_mb);
 
+        // Extract state info before mutable operations (to satisfy borrow checker)
+        let (state_type, start_time_elapsed) = match &replay_controller.state {
+            crate::replay::ReplayState::NavigatingRight { start_time, .. } => ("right", Some(start_time.elapsed())),
+            crate::replay::ReplayState::NavigatingLeft { start_time, .. } => ("left", Some(start_time.elapsed())),
+            _ => ("other", None),
+        };
+        let duration_limit = replay_controller.config.duration_per_directory + Duration::from_secs(1);
+
         // Synchronize app navigation state with replay controller state
-        match &replay_controller.state {
-            crate::replay::ReplayState::NavigatingRight { start_time, .. } => {
+        match state_type {
+            "right" => {
                 // Check if we're at the end of images
                 let at_end = self.panes.iter().any(|pane| {
                     pane.is_selected && pane.dir_loaded &&
                     pane.img_cache.current_index >= pane.img_cache.image_paths.len().saturating_sub(1)
                 });
+
+                // Notify replay controller about boundary state (affects metrics collection)
+                replay_controller.set_at_boundary(at_end);
 
                 if at_end && self.skate_right {
                     debug!("Reached end of images, stopping right navigation");
@@ -586,16 +597,21 @@ impl DataViewer {
                 }
 
                 // Force progress if stuck for too long
-                if start_time.elapsed() > replay_controller.config.duration_per_directory + Duration::from_secs(1) {
-                    warn!("Replay seems stuck in NavigatingRight state, forcing progress");
-                    self.skate_right = false;
+                if let Some(elapsed) = start_time_elapsed {
+                    if elapsed > duration_limit {
+                        warn!("Replay seems stuck in NavigatingRight state, forcing progress");
+                        self.skate_right = false;
+                    }
                 }
             }
-            crate::replay::ReplayState::NavigatingLeft { start_time, .. } => {
+            "left" => {
                 // Check if we're at the beginning of images
                 let at_beginning = self.panes.iter().any(|pane| {
                     pane.is_selected && pane.dir_loaded && pane.img_cache.current_index == 0
                 });
+
+                // Notify replay controller about boundary state (affects metrics collection)
+                replay_controller.set_at_boundary(at_beginning);
 
                 if at_beginning && self.skate_left {
                     debug!("Reached beginning of images, stopping left navigation");
@@ -607,9 +623,11 @@ impl DataViewer {
                 }
 
                 // Force progress if stuck for too long
-                if start_time.elapsed() > replay_controller.config.duration_per_directory + Duration::from_secs(1) {
-                    warn!("Replay seems stuck in NavigatingLeft state, forcing progress");
-                    self.skate_left = false;
+                if let Some(elapsed) = start_time_elapsed {
+                    if elapsed > duration_limit {
+                        warn!("Replay seems stuck in NavigatingLeft state, forcing progress");
+                        self.skate_left = false;
+                    }
                 }
             }
             _ => {
