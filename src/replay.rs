@@ -635,7 +635,7 @@ impl ReplayController {
 #[derive(Debug, Clone)]
 pub enum ReplayAction {
     LoadDirectory(PathBuf),
-    RestartIteration(PathBuf), // Same directory, new iteration - no need to reload
+    RestartIteration(PathBuf), // Start new iteration from first directory (reloads to reset position)
     NavigateRight,
     NavigateLeft,
     StartNavigatingLeft,

@@ -680,29 +680,22 @@ impl DataViewer {
                 Some(load_task)
             }
             crate::replay::ReplayAction::RestartIteration(path) => {
-                info!("Restarting iteration for replay: {}", path.display());
+                // Restart iteration by fully reloading the first directory
+                // This ensures pane state is properly reset to the beginning
+                info!("Restarting iteration - loading directory: {}", path.display());
+                self.reset_state(-1);
 
-                // Clean up navigation state
-                self.skate_right = false;
-                self.skate_left = false;
-                self.update_counter = 0;
-                self.slider_value = 0;
-                self.prev_slider_value = 0;
-                self.current_image_index = 0;
+                // Initialize directory and get the image loading task
+                let load_task = self.initialize_dir_path(&path, 0);
 
-                // Clear pending loading operations
-                self.loading_status.reset_load_next_queue_items();
-                self.loading_status.reset_load_previous_queue_items();
-                self.loading_status.being_loaded_queue.clear();
-
+                // Notify replay controller that directory loading started
                 if let Some(ref mut replay_controller) = self.replay_controller {
                     if let Some(directory_index) = replay_controller.config.test_directories.iter().position(|p| p == &path) {
                         replay_controller.on_directory_loaded(directory_index);
-                        replay_controller.on_ready_to_navigate();
                     }
                 }
 
-                Some(Task::perform(async { std::thread::sleep(std::time::Duration::from_millis(1)); }, |_| Message::Nothing))
+                Some(load_task)
             }
             crate::replay::ReplayAction::NavigateRight => {
                 self.skate_right = true;
