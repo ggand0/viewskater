@@ -2,6 +2,14 @@ use std::time::{Duration, Instant};
 use std::path::PathBuf;
 use log::{debug, info, warn};
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum OutputFormat {
+    #[default]
+    Text,
+    Json,
+    Markdown,
+}
+
 #[derive(Debug, Clone)]
 pub struct ReplayConfig {
     pub test_directories: Vec<PathBuf>,
@@ -9,6 +17,7 @@ pub struct ReplayConfig {
     pub navigation_interval: Duration,
     pub directions: Vec<ReplayDirection>,
     pub output_file: Option<PathBuf>,
+    pub output_format: OutputFormat,
     pub verbose: bool,
     pub iterations: u32,
     pub auto_exit: bool,
@@ -445,33 +454,132 @@ impl ReplayController {
 
     fn export_metrics_to_file(&self, output_file: &PathBuf) -> Result<(), std::io::Error> {
         use std::fs::File;
-        use std::io::Write;
-        
+
         let mut file = File::create(output_file)?;
-        
+
+        match self.config.output_format {
+            OutputFormat::Json => self.export_json(&mut file),
+            OutputFormat::Markdown => self.export_markdown(&mut file),
+            OutputFormat::Text => self.export_text(&mut file),
+        }
+    }
+
+    fn export_text(&self, file: &mut std::fs::File) -> Result<(), std::io::Error> {
+        use std::io::Write;
+
         writeln!(file, "ViewSkater Replay Benchmark Results")?;
         writeln!(file, "Generated: {:?}", std::time::SystemTime::now())?;
         writeln!(file)?;
-        
+
         for (i, metrics) in self.completed_metrics.iter().enumerate() {
             writeln!(file, "Test {}: {}", i + 1, metrics.directory_path.display())?;
             writeln!(file, "Direction: {:?}", metrics.direction)?;
             writeln!(file, "Duration: {:.2}s", metrics.duration().as_secs_f64())?;
             writeln!(file, "Total Frames: {}", metrics.total_frames)?;
-            writeln!(file, "UI FPS - Min: {:.1}, Max: {:.1}, Avg: {:.1}", 
+            writeln!(file, "UI FPS - Min: {:.1}, Max: {:.1}, Avg: {:.1}",
                      metrics.min_ui_fps, metrics.max_ui_fps, metrics.avg_ui_fps)?;
-            writeln!(file, "Image FPS - Min: {:.1}, Max: {:.1}, Avg: {:.1}", 
+            writeln!(file, "Image FPS - Min: {:.1}, Max: {:.1}, Avg: {:.1}",
                      metrics.min_image_fps, metrics.max_image_fps, metrics.avg_image_fps)?;
-            
+
             if metrics.min_memory_mb >= 0.0 {
-                writeln!(file, "Memory (MB) - Min: {:.1}, Max: {:.1}, Avg: {:.1}", 
+                writeln!(file, "Memory (MB) - Min: {:.1}, Max: {:.1}, Avg: {:.1}",
                          metrics.min_memory_mb, metrics.max_memory_mb, metrics.avg_memory_mb)?;
             } else {
                 writeln!(file, "Memory: N/A")?;
             }
             writeln!(file)?;
         }
-        
+
+        Ok(())
+    }
+
+    fn export_json(&self, file: &mut std::fs::File) -> Result<(), std::io::Error> {
+        use std::io::Write;
+
+        let results: Vec<serde_json::Value> = self.completed_metrics.iter().map(|m| {
+            serde_json::json!({
+                "directory": m.directory_path.to_string_lossy(),
+                "direction": format!("{:?}", m.direction),
+                "duration_secs": m.duration().as_secs_f64(),
+                "total_frames": m.total_frames,
+                "ui_fps": {
+                    "min": m.min_ui_fps,
+                    "max": m.max_ui_fps,
+                    "avg": m.avg_ui_fps
+                },
+                "image_fps": {
+                    "min": m.min_image_fps,
+                    "max": m.max_image_fps,
+                    "avg": m.avg_image_fps
+                },
+                "memory_mb": if m.min_memory_mb >= 0.0 {
+                    serde_json::json!({
+                        "min": m.min_memory_mb,
+                        "max": m.max_memory_mb,
+                        "avg": m.avg_memory_mb
+                    })
+                } else {
+                    serde_json::Value::Null
+                }
+            })
+        }).collect();
+
+        let output = serde_json::json!({
+            "generated": chrono::Utc::now().to_rfc3339(),
+            "iterations": self.config.iterations,
+            "results": results
+        });
+
+        writeln!(file, "{}", serde_json::to_string_pretty(&output).unwrap_or_default())?;
+        Ok(())
+    }
+
+    fn export_markdown(&self, file: &mut std::fs::File) -> Result<(), std::io::Error> {
+        use std::io::Write;
+
+        writeln!(file, "# ViewSkater Replay Benchmark Results")?;
+        writeln!(file)?;
+        writeln!(file, "Generated: {}", chrono::Utc::now().to_rfc3339())?;
+        writeln!(file)?;
+        writeln!(file, "| Directory | Direction | Duration | Frames | UI FPS (avg) | Image FPS (avg) | Memory (avg) |")?;
+        writeln!(file, "|-----------|-----------|----------|--------|--------------|-----------------|--------------|")?;
+
+        for metrics in &self.completed_metrics {
+            let dir_name = metrics.directory_path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| metrics.directory_path.to_string_lossy().to_string());
+
+            let memory = if metrics.min_memory_mb >= 0.0 {
+                format!("{:.1} MB", metrics.avg_memory_mb)
+            } else {
+                "N/A".to_string()
+            };
+
+            writeln!(file, "| {} | {:?} | {:.2}s | {} | {:.1} | {:.1} | {} |",
+                     dir_name,
+                     metrics.direction,
+                     metrics.duration().as_secs_f64(),
+                     metrics.total_frames,
+                     metrics.avg_ui_fps,
+                     metrics.avg_image_fps,
+                     memory)?;
+        }
+
+        writeln!(file)?;
+
+        // Add summary stats
+        if !self.completed_metrics.is_empty() {
+            let avg_ui_fps: f32 = self.completed_metrics.iter().map(|m| m.avg_ui_fps).sum::<f32>()
+                / self.completed_metrics.len() as f32;
+            let avg_image_fps: f32 = self.completed_metrics.iter().map(|m| m.avg_image_fps).sum::<f32>()
+                / self.completed_metrics.len() as f32;
+
+            writeln!(file, "## Summary")?;
+            writeln!(file)?;
+            writeln!(file, "- **Overall Avg UI FPS:** {:.1}", avg_ui_fps)?;
+            writeln!(file, "- **Overall Avg Image FPS:** {:.1}", avg_image_fps)?;
+        }
+
         Ok(())
     }
 }

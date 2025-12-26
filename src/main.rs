@@ -193,6 +193,10 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     output: Option<PathBuf>,
 
+    /// Output format: text, json, markdown
+    #[arg(long, default_value = "text")]
+    output_format: String,
+
     /// Number of complete iterations/cycles to run
     #[arg(long, default_value = "1")]
     iterations: u32,
@@ -367,12 +371,19 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             println!("  Output file: {}", output.display());
         }
 
+        let output_format = match args.output_format.to_lowercase().as_str() {
+            "json" => replay::OutputFormat::Json,
+            "markdown" | "md" => replay::OutputFormat::Markdown,
+            _ => replay::OutputFormat::Text,
+        };
+
         Some(replay::ReplayConfig {
             test_directories: test_dirs,
             duration_per_directory: Duration::from_secs(args.duration),
             navigation_interval: Duration::from_millis(args.nav_interval),
             directions,
             output_file: args.output.clone(),
+            output_format,
             verbose: args.verbose,
             iterations: args.iterations,
             auto_exit: args.auto_exit,
