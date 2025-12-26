@@ -743,19 +743,13 @@ impl iced_winit::runtime::Program for DataViewer {
         }
 
         // Check if we have a keep-alive task to return (for replay mode timing)
-        if let Some(keep_alive_task) = self.replay_keep_alive_task.take() {
-            // If we also have skate mode, the skate navigation will happen below,
-            // but we still need to return the keep-alive task to maintain timing
-            if !self.skate_right && !self.skate_left {
-                return keep_alive_task;
-            }
-        }
+        let keep_alive_task = self.replay_keep_alive_task.take();
 
         // Return the task if it's not skate mode
         // Skate mode overrides normal task handling for continuous navigation
         if self.skate_right {
             self.update_counter = 0;
-            move_right_all(
+            let nav_task = move_right_all(
                 &self.device,
                 &self.queue,
                 self.cache_strategy,
@@ -766,11 +760,17 @@ impl iced_winit::runtime::Program for DataViewer {
                 &self.pane_layout,
                 self.is_slider_dual,
                 self.last_opened_pane as usize
-            )
+            );
+            // Batch with keep-alive task if present (for replay mode timing)
+            if let Some(keep_alive) = keep_alive_task {
+                Task::batch([nav_task, keep_alive])
+            } else {
+                nav_task
+            }
         } else if self.skate_left {
             self.update_counter = 0;
             debug!("move_left_all from self.skate_left block");
-            move_left_all(
+            let nav_task = move_left_all(
                 &self.device,
                 &self.queue,
                 self.cache_strategy,
@@ -781,7 +781,16 @@ impl iced_winit::runtime::Program for DataViewer {
                 &self.pane_layout,
                 self.is_slider_dual,
                 self.last_opened_pane as usize
-            )
+            );
+            // Batch with keep-alive task if present (for replay mode timing)
+            if let Some(keep_alive) = keep_alive_task {
+                Task::batch([nav_task, keep_alive])
+            } else {
+                nav_task
+            }
+        } else if let Some(keep_alive) = keep_alive_task {
+            // Not in skate mode, return keep-alive task for replay timing
+            return keep_alive;
         } else {
             // No skate mode, return the task from message handler
             if self.update_counter == 0 {
