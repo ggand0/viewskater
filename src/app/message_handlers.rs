@@ -46,6 +46,11 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::Quit => {
             std::process::exit(0);
         }
+        Message::ReplayKeepAlive => {
+            // This message is sent periodically during replay mode to keep the update loop active
+            debug!("ReplayKeepAlive received - keeping replay update loop active");
+            Task::none()
+        }
 
         // UI state messages (About, Options, Logs)
         Message::ShowLogs | Message::OpenSettingsDir | Message::ExportDebugLogs |
@@ -311,6 +316,14 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     &image_data,
                                     &metadata,
                                 );
+
+                                // Signal replay controller that initial load is complete
+                                if let Some(ref mut replay_controller) = app.replay_controller {
+                                    if matches!(replay_controller.state, crate::replay::ReplayState::WaitingForReady { .. }) {
+                                        debug!("LoadPos complete - signaling replay controller that app is ready to navigate");
+                                        replay_controller.on_ready_to_navigate();
+                                    }
+                                }
                             }
                         }
                     }

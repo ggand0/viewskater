@@ -31,7 +31,7 @@ use std::sync::Mutex;
 use once_cell::sync::Lazy;
 
 #[allow(unused_imports)]
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -103,6 +103,8 @@ pub struct DataViewer {
     pub file_receiver: Receiver<String>,
     pub synced_zoom: bool,
     pub nearest_neighbor_filter: bool,
+    pub replay_controller: Option<crate::replay::ReplayController>,
+    pub replay_keep_alive_task: Option<Task<Message>>,
     pub is_fullscreen: bool,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
@@ -144,6 +146,7 @@ impl DataViewer {
         renderer_request_sender: Sender<RendererRequest>,
         file_receiver: Receiver<String>,
         settings_path: Option<&str>,
+        replay_config: Option<crate::replay::ReplayConfig>,
     ) -> Self {
         // Load user settings from YAML file
         let settings = UserSettings::load(settings_path);
@@ -196,6 +199,8 @@ impl DataViewer {
             file_receiver,
             synced_zoom: settings.synced_zoom,
             nearest_neighbor_filter: settings.nearest_neighbor_filter,
+            replay_controller: replay_config.map(crate::replay::ReplayController::new),
+            replay_keep_alive_task: None,
             is_fullscreen: false,
             cursor_on_top: false,
             cursor_on_menu: false,
@@ -526,6 +531,186 @@ impl DataViewer {
     pub(crate) fn toggle_split_orientation(&mut self) {
         self.is_horizontal_split = !self.is_horizontal_split;
     }
+
+    /// Update replay mode logic and return any action that should be processed
+    fn update_replay_mode(&mut self) -> Option<crate::replay::ReplayAction> {
+        let replay_controller = self.replay_controller.as_mut()?;
+
+        if !replay_controller.is_active() && !replay_controller.is_completed()
+           && !replay_controller.config.test_directories.is_empty() {
+            // Start replay if we have a controller but it's not active yet and not completed
+            replay_controller.start();
+            // Get the first directory for loading
+            return replay_controller.get_current_directory().map(|dir| {
+                crate::replay::ReplayAction::LoadDirectory(dir.clone())
+            });
+        }
+
+        if !replay_controller.is_active() {
+            return None;
+        }
+
+        debug!("App update called during active replay mode, state: {:?}", replay_controller.state);
+
+        // Update metrics with current FPS and memory values
+        let ui_fps = crate::CURRENT_FPS.lock().map(|fps| *fps).unwrap_or(0.0);
+        let image_fps = if self.is_slider_moving {
+            iced_wgpu::get_image_fps() as f32
+        } else {
+            crate::pane::IMAGE_RENDER_FPS.lock().map(|fps| *fps).unwrap_or(0.0)
+        };
+        let memory_mb = crate::CURRENT_MEMORY_USAGE.lock()
+            .map(|mem| if *mem == u64::MAX { -1.0 } else { *mem as f64 / 1024.0 / 1024.0 })
+            .unwrap_or(0.0);
+
+        replay_controller.update_metrics(ui_fps, image_fps, memory_mb);
+
+        // Synchronize app navigation state with replay controller state
+        match &replay_controller.state {
+            crate::replay::ReplayState::NavigatingRight { start_time, .. } => {
+                // Check if we're at the end of images
+                let at_end = self.panes.iter().any(|pane| {
+                    pane.is_selected && pane.dir_loaded &&
+                    pane.img_cache.current_index >= pane.img_cache.image_paths.len().saturating_sub(1)
+                });
+
+                if at_end && self.skate_right {
+                    debug!("Reached end of images, stopping right navigation");
+                    self.skate_right = false;
+                } else if !at_end && !self.skate_right {
+                    debug!("Syncing app state: setting skate_right = true");
+                    self.skate_right = true;
+                    self.skate_left = false;
+                }
+
+                // Force progress if stuck for too long
+                if start_time.elapsed() > replay_controller.config.duration_per_directory + Duration::from_secs(1) {
+                    warn!("Replay seems stuck in NavigatingRight state, forcing progress");
+                    self.skate_right = false;
+                }
+            }
+            crate::replay::ReplayState::NavigatingLeft { start_time, .. } => {
+                // Check if we're at the beginning of images
+                let at_beginning = self.panes.iter().any(|pane| {
+                    pane.is_selected && pane.dir_loaded && pane.img_cache.current_index == 0
+                });
+
+                if at_beginning && self.skate_left {
+                    debug!("Reached beginning of images, stopping left navigation");
+                    self.skate_left = false;
+                } else if !at_beginning && !self.skate_left {
+                    debug!("Syncing app state: setting skate_left = true");
+                    self.skate_left = true;
+                    self.skate_right = false;
+                }
+
+                // Force progress if stuck for too long
+                if start_time.elapsed() > replay_controller.config.duration_per_directory + Duration::from_secs(1) {
+                    warn!("Replay seems stuck in NavigatingLeft state, forcing progress");
+                    self.skate_left = false;
+                }
+            }
+            _ => {
+                // For other states, ensure navigation flags are cleared
+                if self.skate_right || self.skate_left {
+                    debug!("Syncing app state: clearing navigation flags");
+                    self.skate_right = false;
+                    self.skate_left = false;
+                }
+            }
+        }
+
+        // Get action from replay controller
+        let action = replay_controller.update();
+        if let Some(ref a) = action {
+            debug!("Replay controller returned action: {:?}", a);
+        }
+
+        // Schedule keep-alive task if replay is active
+        if replay_controller.is_active() {
+            self.replay_keep_alive_task = Some(Task::perform(
+                async { tokio::time::sleep(tokio::time::Duration::from_millis(50)).await; },
+                |_| Message::ReplayKeepAlive
+            ));
+        }
+
+        action
+    }
+
+    /// Process a replay action and return the appropriate task
+    fn process_replay_action(&mut self, action: crate::replay::ReplayAction) -> Option<Task<Message>> {
+        match action {
+            crate::replay::ReplayAction::LoadDirectory(path) => {
+                info!("Loading directory for replay: {}", path.display());
+                self.reset_state(-1);
+
+                // Initialize directory and get the image loading task
+                let load_task = self.initialize_dir_path(&path, 0);
+
+                // Notify replay controller that directory loading started
+                // on_ready_to_navigate() will be called when ImagesLoaded (LoadPos) completes
+                if let Some(ref mut replay_controller) = self.replay_controller {
+                    if let Some(directory_index) = replay_controller.config.test_directories.iter().position(|p| p == &path) {
+                        replay_controller.on_directory_loaded(directory_index);
+                    }
+                }
+
+                // Return the load task so images actually get loaded
+                Some(load_task)
+            }
+            crate::replay::ReplayAction::RestartIteration(path) => {
+                info!("Restarting iteration for replay: {}", path.display());
+
+                // Clean up navigation state
+                self.skate_right = false;
+                self.skate_left = false;
+                self.update_counter = 0;
+                self.slider_value = 0;
+                self.prev_slider_value = 0;
+                self.current_image_index = 0;
+
+                // Clear pending loading operations
+                self.loading_status.reset_load_next_queue_items();
+                self.loading_status.reset_load_previous_queue_items();
+                self.loading_status.being_loaded_queue.clear();
+
+                if let Some(ref mut replay_controller) = self.replay_controller {
+                    if let Some(directory_index) = replay_controller.config.test_directories.iter().position(|p| p == &path) {
+                        replay_controller.on_directory_loaded(directory_index);
+                        replay_controller.on_ready_to_navigate();
+                    }
+                }
+
+                Some(Task::perform(async { std::thread::sleep(std::time::Duration::from_millis(1)); }, |_| Message::Nothing))
+            }
+            crate::replay::ReplayAction::NavigateRight => {
+                self.skate_right = true;
+                if let Some(ref mut replay_controller) = self.replay_controller {
+                    replay_controller.on_navigation_performed();
+                }
+                None
+            }
+            crate::replay::ReplayAction::NavigateLeft => {
+                self.skate_left = true;
+                if let Some(ref mut replay_controller) = self.replay_controller {
+                    replay_controller.on_navigation_performed();
+                }
+                None
+            }
+            crate::replay::ReplayAction::StartNavigatingLeft => {
+                self.skate_right = false;
+                self.skate_left = true;
+                if let Some(ref mut replay_controller) = self.replay_controller {
+                    replay_controller.on_navigation_performed();
+                }
+                None
+            }
+            crate::replay::ReplayAction::Finish => {
+                info!("Replay mode finished");
+                None
+            }
+        }
+    }
 }
 
 
@@ -549,6 +734,22 @@ impl iced_winit::runtime::Program for DataViewer {
 
         // Route message to handler
         let task = message_handlers::handle_message(self, message);
+
+        // Handle replay mode logic
+        if let Some(replay_action) = self.update_replay_mode() {
+            if let Some(replay_task) = self.process_replay_action(replay_action) {
+                return replay_task;
+            }
+        }
+
+        // Check if we have a keep-alive task to return (for replay mode timing)
+        if let Some(keep_alive_task) = self.replay_keep_alive_task.take() {
+            // If we also have skate mode, the skate navigation will happen below,
+            // but we still need to return the keep-alive task to maintain timing
+            if !self.skate_right && !self.skate_left {
+                return keep_alive_task;
+            }
+        }
 
         // Return the task if it's not skate mode
         // Skate mode overrides normal task handling for continuous navigation

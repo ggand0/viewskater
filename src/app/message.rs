@@ -37,6 +37,7 @@ pub enum Message {
     FileDropped(isize, String),
     Close,
     Quit,
+    ReplayKeepAlive,
     FolderOpened(Result<String, file_io::Error>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
