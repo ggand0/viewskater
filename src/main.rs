@@ -200,6 +200,10 @@ struct Args {
     /// Verbose output during replay
     #[arg(long)]
     verbose: bool,
+
+    /// Exit automatically after replay completes
+    #[arg(long)]
+    auto_exit: bool,
 }
 
 fn register_font_manually(font_data: &'static [u8]) {
@@ -371,6 +375,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             output_file: args.output.clone(),
             verbose: args.verbose,
             iterations: args.iterations,
+            auto_exit: args.auto_exit,
         })
     } else {
         None

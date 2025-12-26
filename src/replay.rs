@@ -11,6 +11,7 @@ pub struct ReplayConfig {
     pub output_file: Option<PathBuf>,
     pub verbose: bool,
     pub iterations: u32,
+    pub auto_exit: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

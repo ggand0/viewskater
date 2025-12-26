@@ -710,6 +710,12 @@ impl DataViewer {
             }
             crate::replay::ReplayAction::Finish => {
                 info!("Replay mode finished");
+                if let Some(ref controller) = self.replay_controller {
+                    if controller.config.auto_exit {
+                        info!("Auto-exit enabled, exiting application");
+                        std::process::exit(0);
+                    }
+                }
                 None
             }
         }
