@@ -33,14 +33,12 @@ pub enum ReplayDirection {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub enum ReplayState {
     Inactive,
     LoadingDirectory { directory_index: usize },
     WaitingForReady { directory_index: usize },
     NavigatingRight { start_time: Instant, directory_index: usize },
     NavigatingLeft { start_time: Instant, directory_index: usize },
-    Pausing { start_time: Instant, directory_index: usize },
     Finished,
 }
 
@@ -218,36 +216,12 @@ impl ReplayController {
         matches!(self.state, ReplayState::Finished) && self.completed_iterations >= self.config.iterations
     }
 
-    #[allow(dead_code)]
-    pub fn should_navigate_right(&self) -> bool {
-        match &self.state {
-            ReplayState::NavigatingRight { start_time, .. } => {
-                let elapsed = start_time.elapsed();
-                elapsed < self.config.duration_per_directory &&
-                self.last_navigation_time.elapsed() >= self.config.navigation_interval
-            }
-            _ => false,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn should_navigate_left(&self) -> bool {
-        match &self.state {
-            ReplayState::NavigatingLeft { start_time, .. } => {
-                let elapsed = start_time.elapsed();
-                elapsed < self.config.duration_per_directory &&
-                self.last_navigation_time.elapsed() >= self.config.navigation_interval
-            }
-            _ => false,
-        }
-    }
-
     pub fn get_current_directory(&self) -> Option<&PathBuf> {
         match &self.state {
             ReplayState::LoadingDirectory { directory_index } |
+            ReplayState::WaitingForReady { directory_index } |
             ReplayState::NavigatingRight { directory_index, .. } |
-            ReplayState::NavigatingLeft { directory_index, .. } |
-            ReplayState::Pausing { directory_index, .. } => {
+            ReplayState::NavigatingLeft { directory_index, .. } => {
                 self.config.test_directories.get(*directory_index)
             }
             _ => None,
@@ -296,13 +270,6 @@ impl ReplayController {
             let direction = self.config.directions.first().unwrap_or(&ReplayDirection::Right);
 
             match direction {
-                ReplayDirection::Right => {
-                    self.state = ReplayState::NavigatingRight {
-                        start_time: Instant::now(),
-                        directory_index
-                    };
-                    self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Right));
-                }
                 ReplayDirection::Left => {
                     self.state = ReplayState::NavigatingLeft {
                         start_time: Instant::now(),
@@ -310,8 +277,8 @@ impl ReplayController {
                     };
                     self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Left));
                 }
-                ReplayDirection::Both => {
-                    // Start with right navigation first
+                ReplayDirection::Right | ReplayDirection::Both => {
+                    // Both starts with right navigation first
                     self.state = ReplayState::NavigatingRight {
                         start_time: Instant::now(),
                         directory_index
@@ -339,120 +306,78 @@ impl ReplayController {
         }
     }
 
-    pub fn update(&mut self) -> Option<ReplayAction> {
-        // Minimum time to collect metrics before allowing early transition (1 second)
-        const MIN_METRICS_DURATION: Duration = Duration::from_secs(1);
+    /// Finalize current metrics and prepare for next phase
+    fn finalize_current_metrics(&mut self) {
+        if let Some(mut metrics) = self.current_metrics.take() {
+            metrics.finalize();
+            if self.config.verbose {
+                metrics.print_summary();
+            }
+            self.completed_metrics.push(metrics);
+        }
+        self.at_boundary = false;
+    }
 
+    /// Check if navigation phase should transition (duration elapsed or boundary reached)
+    fn should_transition(&self, elapsed: Duration) -> bool {
+        const MIN_METRICS_DURATION: Duration = Duration::from_secs(1);
+        elapsed >= self.config.duration_per_directory ||
+            (self.at_boundary && elapsed >= MIN_METRICS_DURATION)
+    }
+
+    pub fn update(&mut self) -> Option<ReplayAction> {
         match &self.state {
             ReplayState::NavigatingRight { start_time, directory_index } => {
                 let elapsed = start_time.elapsed();
+                let directory_index = *directory_index;
 
-                // Transition when duration reached OR when at boundary (after minimum metrics time)
-                let should_transition = elapsed >= self.config.duration_per_directory ||
-                    (self.at_boundary && elapsed >= MIN_METRICS_DURATION);
-
-                if should_transition {
+                if self.should_transition(elapsed) {
                     if self.at_boundary && elapsed < self.config.duration_per_directory {
                         info!("Early transition: reached end of images after {:.2}s (duration was {:.2}s)",
                               elapsed.as_secs_f64(), self.config.duration_per_directory.as_secs_f64());
                     }
-
-                    // Finish current metrics
-                    if let Some(mut metrics) = self.current_metrics.take() {
-                        metrics.finalize();
-                        if self.config.verbose {
-                            metrics.print_summary();
-                        }
-                        self.completed_metrics.push(metrics);
-                    }
-
-                    // Reset boundary flag for next direction
-                    self.at_boundary = false;
+                    self.finalize_current_metrics();
 
                     // Check if we need to test left navigation for this directory
                     if self.config.directions.contains(&ReplayDirection::Both) {
-                        let directory_path = self.config.test_directories[*directory_index].clone();
+                        let directory_path = self.config.test_directories[directory_index].clone();
                         info!("Switching from right to left navigation for directory: {}", directory_path.display());
-                        // Reset navigation count for new direction
                         self.navigation_count = 0;
-                        // Switch immediately to left navigation
                         self.state = ReplayState::NavigatingLeft {
                             start_time: Instant::now(),
-                            directory_index: *directory_index
+                            directory_index
                         };
                         self.current_metrics = Some(ReplayMetrics::new(directory_path, ReplayDirection::Left));
                         Some(ReplayAction::StartNavigatingLeft)
                     } else {
-                        // Move to next directory or finish
-                        self.advance_to_next_directory(*directory_index)
+                        self.advance_to_next_directory(directory_index)
                     }
                 } else if self.last_navigation_time.elapsed() >= self.config.navigation_interval {
-                    // Navigate right if enough time has passed since last navigation
                     Some(ReplayAction::NavigateRight)
                 } else {
-                    // Still within duration but need to wait for navigation interval
                     None
                 }
             }
-            
+
             ReplayState::NavigatingLeft { start_time, directory_index } => {
                 let elapsed = start_time.elapsed();
+                let directory_index = *directory_index;
 
-                // Debug: Log timing during left navigation
-                if elapsed.as_millis() % 500 < 50 { // Log every ~500ms
-                    debug!("Left navigation progress: {:.2}s / {:.2}s (target: {:.2}s)",
-                           elapsed.as_secs_f64(),
-                           self.config.duration_per_directory.as_secs_f64(),
-                           self.config.duration_per_directory.as_secs_f64());
-                }
-
-                // Transition when duration reached OR when at boundary (after minimum metrics time)
-                let should_transition = elapsed >= self.config.duration_per_directory ||
-                    (self.at_boundary && elapsed >= MIN_METRICS_DURATION);
-
-                if should_transition {
+                if self.should_transition(elapsed) {
                     if self.at_boundary && elapsed < self.config.duration_per_directory {
                         info!("Early transition: reached beginning of images after {:.2}s (duration was {:.2}s)",
                               elapsed.as_secs_f64(), self.config.duration_per_directory.as_secs_f64());
                     }
-
-                    // Finish current metrics
-                    if let Some(mut metrics) = self.current_metrics.take() {
-                        metrics.finalize();
-                        if self.config.verbose {
-                            metrics.print_summary();
-                        }
-                        self.completed_metrics.push(metrics);
-                    }
-
-                    // Reset boundary flag for next directory
-                    self.at_boundary = false;
-
-                    // Move to next directory or finish
-                    self.advance_to_next_directory(*directory_index)
+                    self.finalize_current_metrics();
+                    self.advance_to_next_directory(directory_index)
                 } else if self.last_navigation_time.elapsed() >= self.config.navigation_interval {
-                    // Navigate left if enough time has passed since last navigation
                     Some(ReplayAction::NavigateLeft)
                 } else {
-                    // Still within duration but need to wait for navigation interval
                     None
                 }
             }
-            
-            ReplayState::Pausing { start_time, directory_index } => {
-                // Brief pause between operations if needed
-                if start_time.elapsed() >= Duration::from_millis(100) {
-                    self.advance_to_next_directory(*directory_index)
-                } else {
-                    None
-                }
-            }
-            
-            ReplayState::WaitingForReady { .. } => {
-                // Wait for app to signal readiness via on_ready_to_navigate()
-                None
-            }
-            
+
+            ReplayState::WaitingForReady { .. } => None,
             _ => None,
         }
     }
