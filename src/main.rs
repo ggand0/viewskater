@@ -79,7 +79,7 @@ use std::sync::mpsc::{self, Receiver};
 
 static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
 
-static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
+pub static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
 });
 static CURRENT_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
@@ -208,6 +208,10 @@ struct Args {
     /// Exit automatically after replay completes
     #[arg(long)]
     auto_exit: bool,
+
+    /// Skip first N images for metrics (to exclude pre-cached images with inflated FPS)
+    #[arg(long, default_value = "0")]
+    skip_initial: usize,
 }
 
 fn register_font_manually(font_data: &'static [u8]) {
@@ -387,6 +391,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             verbose: args.verbose,
             iterations: args.iterations,
             auto_exit: args.auto_exit,
+            skip_initial_images: args.skip_initial,
         })
     } else {
         None

@@ -665,6 +665,13 @@ impl DataViewer {
                 info!("Loading directory for replay: {}", path.display());
                 self.reset_state(-1);
 
+                // Reset FPS counters and timing history for fresh measurements
+                if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
+                if let Ok(mut fps) = crate::pane::IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
+                if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
+                if let Ok(mut times) = crate::pane::IMAGE_RENDER_TIMES.lock() { times.clear(); }
+                iced_wgpu::reset_image_fps();
+
                 // Initialize directory and get the image loading task
                 let load_task = self.initialize_dir_path(&path, 0);
 
@@ -684,6 +691,13 @@ impl DataViewer {
                 // This ensures pane state is properly reset to the beginning
                 info!("Restarting iteration - loading directory: {}", path.display());
                 self.reset_state(-1);
+
+                // Reset FPS counters and timing history for fresh measurements
+                if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
+                if let Ok(mut fps) = crate::pane::IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
+                if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
+                if let Ok(mut times) = crate::pane::IMAGE_RENDER_TIMES.lock() { times.clear(); }
+                iced_wgpu::reset_image_fps();
 
                 // Initialize directory and get the image loading task
                 let load_task = self.initialize_dir_path(&path, 0);
@@ -712,6 +726,13 @@ impl DataViewer {
                 None
             }
             crate::replay::ReplayAction::StartNavigatingLeft => {
+                // Reset FPS trackers before starting left navigation
+                if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
+                if let Ok(mut fps) = crate::pane::IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
+                if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
+                if let Ok(mut times) = crate::pane::IMAGE_RENDER_TIMES.lock() { times.clear(); }
+                iced_wgpu::reset_image_fps();
+
                 self.skate_right = false;
                 self.skate_left = true;
                 if let Some(ref mut replay_controller) = self.replay_controller {

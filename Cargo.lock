@@ -2449,7 +2449,6 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -2463,7 +2462,6 @@ dependencies = [
 [[package]]
 name = "iced_aw"
 version = "0.11.0"
-source = "git+https://github.com/ggand0/iced_aw.git?branch=custom-0.11.0#cd81f8db2c18235a111c8e7b449cee4b64d52dad"
 dependencies = [
  "cfg-if",
  "chrono",
@@ -2477,7 +2475,6 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "bitflags 2.9.4",
  "bytes",
@@ -2497,7 +2494,6 @@ dependencies = [
 [[package]]
 name = "iced_fonts"
 version = "0.1.1"
-source = "git+https://github.com/ggand0/iced_fonts.git?branch=custom-0.1.1#461e96d9106d8e48ce9b5a31bc1fc332b6d2d221"
 dependencies = [
  "iced_core",
 ]
@@ -2505,7 +2501,6 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "futures",
  "iced_core",
@@ -2532,7 +2527,6 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "bitflags 2.9.4",
  "bytemuck",
@@ -2554,7 +2548,6 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -2566,7 +2559,6 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "bytes",
  "iced_core",
@@ -2578,7 +2570,6 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2594,7 +2585,6 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "bitflags 2.9.4",
  "bytemuck",
@@ -2617,7 +2607,6 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "iced_renderer",
  "iced_runtime",
@@ -2632,7 +2621,6 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e935131ebf1d9e97fd7ba1a925a64b5e3f0f9dad"
 dependencies = [
  "iced_futures",
  "iced_graphics",

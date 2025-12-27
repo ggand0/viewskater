@@ -41,30 +41,31 @@ serde_yaml = "0.9"
 regex = "1.10"
 jpeg2k = { version = "0.10", optional = true, features = ["image"] }
 
-# Use custom iced
-iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
-    "image", "tokio", "svg", "lazy", "wgpu"
-] }
-iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
-iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
-iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["wgpu"] }
-iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
-iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
-iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["tokio"] }
-iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
-iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-0.11.0", features = [
-    "menu", "quad", "tabs"
-] }
+# Use custom iced (remote)
+#iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
+#    "image", "tokio", "svg", "lazy", "wgpu"
+#] }
+#iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+#iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+#iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["wgpu"] }
+#iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+#iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+#iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["tokio"] }
+#iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+#iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-0.11.0", features = [
+#    "menu", "quad", "tabs"
+#] }
 
 # Debug setup with local iced
-#iced_custom = { package = "iced", path = "../iced", features=["image", "tokio", "svg", "lazy", "wgpu", "advanced"] }
-#iced_winit = { path = "../iced/winit" }
-#iced_wgpu = { path = "../iced/wgpu", features = ["image"]}
-#iced_widget = { path = "../iced/widget", features = ["wgpu", "image"] }
-#iced_core = { path = "../iced/core" }
-#iced_runtime = { path = "../iced/runtime" }
-#iced_futures = { path = "../iced/futures", features = ["tokio"] }
-#iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
+iced_custom = { package = "iced", path = "../iced", features=["image", "tokio", "svg", "lazy", "wgpu", "advanced"] }
+iced_winit = { path = "../iced/winit" }
+iced_wgpu = { path = "../iced/wgpu", features = ["image"]}
+iced_widget = { path = "../iced/widget", features = ["wgpu", "image"] }
+iced_core = { path = "../iced/core" }
+iced_runtime = { path = "../iced/runtime" }
+iced_futures = { path = "../iced/futures", features = ["tokio"] }
+iced_graphics = { path = "../iced/graphics" }
+iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
 
 [features]
 # Image selection/curation features for dataset preparation (disabled by default)

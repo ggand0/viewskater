@@ -2,6 +2,7 @@ CLAUDE.md
 .DS_Store
 icon.png
 assets_dev/
+benchmarks/
 devlogs/
 docs/plans/
 logs/

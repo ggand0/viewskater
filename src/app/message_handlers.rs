@@ -323,6 +323,15 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                 if let Some(ref mut replay_controller) = app.replay_controller {
                                     if matches!(replay_controller.state, crate::replay::ReplayState::WaitingForReady { .. }) {
                                         debug!("LoadPos complete - signaling replay controller that app is ready to navigate");
+
+                                        // Reset FPS trackers right before navigation starts
+                                        // This ensures no stale data from image loading contaminates metrics
+                                        if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
+                                        if let Ok(mut fps) = IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
+                                        if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
+                                        if let Ok(mut times) = IMAGE_RENDER_TIMES.lock() { times.clear(); }
+                                        iced_wgpu::reset_image_fps();
+
                                         replay_controller.on_ready_to_navigate();
                                     }
                                 }

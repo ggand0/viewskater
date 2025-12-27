@@ -21,6 +21,8 @@ pub struct ReplayConfig {
     pub verbose: bool,
     pub iterations: u32,
     pub auto_exit: bool,
+    /// Number of initial images to skip for metrics (to avoid inflated FPS from cached images)
+    pub skip_initial_images: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -173,6 +175,8 @@ pub struct ReplayController {
     /// True when navigation has reached the boundary (end or beginning of images)
     /// Metrics are not collected while at boundary to avoid skewing results
     pub at_boundary: bool,
+    /// Count of navigations in current direction (reset when direction/directory changes)
+    pub navigation_count: usize,
 }
 
 impl ReplayController {
@@ -186,6 +190,7 @@ impl ReplayController {
             current_iteration: 0,
             completed_iterations: 0,
             at_boundary: false,
+            navigation_count: 0,
         }
     }
 
@@ -251,6 +256,7 @@ impl ReplayController {
 
     pub fn on_navigation_performed(&mut self) {
         self.last_navigation_time = Instant::now();
+        self.navigation_count += 1;
     }
 
     /// Called by app when navigation reaches a boundary (end or beginning of images)
@@ -282,35 +288,38 @@ impl ReplayController {
         if let ReplayState::WaitingForReady { directory_index } = &self.state {
             let directory_index = *directory_index;
             let directory_path = self.config.test_directories[directory_index].clone();
-            
+
+            // Reset navigation count for new directory
+            self.navigation_count = 0;
+
             // Start with the first direction for this directory
             let direction = self.config.directions.get(0).unwrap_or(&ReplayDirection::Right);
-            
+
             match direction {
                 ReplayDirection::Right => {
-                    self.state = ReplayState::NavigatingRight { 
-                        start_time: Instant::now(), 
-                        directory_index 
+                    self.state = ReplayState::NavigatingRight {
+                        start_time: Instant::now(),
+                        directory_index
                     };
                     self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Right));
                 }
                 ReplayDirection::Left => {
-                    self.state = ReplayState::NavigatingLeft { 
-                        start_time: Instant::now(), 
-                        directory_index 
+                    self.state = ReplayState::NavigatingLeft {
+                        start_time: Instant::now(),
+                        directory_index
                     };
                     self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Left));
                 }
                 ReplayDirection::Both => {
                     // Start with right navigation first
-                    self.state = ReplayState::NavigatingRight { 
-                        start_time: Instant::now(), 
-                        directory_index 
+                    self.state = ReplayState::NavigatingRight {
+                        start_time: Instant::now(),
+                        directory_index
                     };
                     self.current_metrics = Some(ReplayMetrics::new(directory_path.clone(), ReplayDirection::Right));
                 }
             }
-            
+
             info!("App ready - started replay navigation for directory: {}", directory_path.display());
         }
     }
@@ -319,6 +328,10 @@ impl ReplayController {
         // Skip metric collection when at boundary to avoid skewing results
         // (FPS during idle time isn't representative of navigation performance)
         if self.at_boundary {
+            return;
+        }
+        // Skip initial images that are pre-cached (would show inflated FPS)
+        if self.navigation_count < self.config.skip_initial_images {
             return;
         }
         if let Some(ref mut metrics) = self.current_metrics {
@@ -360,6 +373,8 @@ impl ReplayController {
                     if self.config.directions.contains(&ReplayDirection::Both) {
                         let directory_path = self.config.test_directories[*directory_index].clone();
                         info!("Switching from right to left navigation for directory: {}", directory_path.display());
+                        // Reset navigation count for new direction
+                        self.navigation_count = 0;
                         // Switch immediately to left navigation
                         self.state = ReplayState::NavigatingLeft {
                             start_time: Instant::now(),
