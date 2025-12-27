@@ -2,6 +2,7 @@
 mod message;
 mod message_handlers;
 mod keyboard_handlers;
+mod replay_handlers;
 mod settings_widget;
 
 // Re-exports
@@ -31,7 +32,7 @@ use std::sync::Mutex;
 use once_cell::sync::Lazy;
 
 #[allow(unused_imports)]
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[allow(unused_imports)]
 use log::{Level, debug, info, warn, error};
@@ -103,6 +104,9 @@ pub struct DataViewer {
     pub file_receiver: Receiver<String>,
     pub synced_zoom: bool,
     pub nearest_neighbor_filter: bool,
+    pub replay_controller: Option<crate::replay::ReplayController>,
+    pub replay_keep_alive_task: Option<Task<Message>>,
+    pub replay_keep_alive_pending: bool,  // Track if a keep-alive is in flight to prevent flooding
     pub is_fullscreen: bool,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
@@ -144,6 +148,7 @@ impl DataViewer {
         renderer_request_sender: Sender<RendererRequest>,
         file_receiver: Receiver<String>,
         settings_path: Option<&str>,
+        replay_config: Option<crate::replay::ReplayConfig>,
     ) -> Self {
         // Load user settings from YAML file
         let settings = UserSettings::load(settings_path);
@@ -196,6 +201,9 @@ impl DataViewer {
             file_receiver,
             synced_zoom: settings.synced_zoom,
             nearest_neighbor_filter: settings.nearest_neighbor_filter,
+            replay_controller: replay_config.map(crate::replay::ReplayController::new),
+            replay_keep_alive_task: None,
+            replay_keep_alive_pending: false,
             is_fullscreen: false,
             cursor_on_top: false,
             cursor_on_menu: false,
@@ -550,11 +558,21 @@ impl iced_winit::runtime::Program for DataViewer {
         // Route message to handler
         let task = message_handlers::handle_message(self, message);
 
+        // Handle replay mode logic
+        if let Some(replay_action) = self.update_replay_mode() {
+            if let Some(replay_task) = self.process_replay_action(replay_action) {
+                return replay_task;
+            }
+        }
+
+        // Check if we have a keep-alive task to return (for replay mode timing)
+        let keep_alive_task = self.replay_keep_alive_task.take();
+
         // Return the task if it's not skate mode
         // Skate mode overrides normal task handling for continuous navigation
         if self.skate_right {
             self.update_counter = 0;
-            move_right_all(
+            let nav_task = move_right_all(
                 &self.device,
                 &self.queue,
                 self.cache_strategy,
@@ -565,11 +583,18 @@ impl iced_winit::runtime::Program for DataViewer {
                 &self.pane_layout,
                 self.is_slider_dual,
                 self.last_opened_pane as usize
-            )
+            );
+            // Batch with keep-alive task if present (for replay mode timing)
+            if let Some(keep_alive) = keep_alive_task {
+                self.replay_keep_alive_pending = true;
+                Task::batch([nav_task, keep_alive])
+            } else {
+                nav_task
+            }
         } else if self.skate_left {
             self.update_counter = 0;
             debug!("move_left_all from self.skate_left block");
-            move_left_all(
+            let nav_task = move_left_all(
                 &self.device,
                 &self.queue,
                 self.cache_strategy,
@@ -580,7 +605,18 @@ impl iced_winit::runtime::Program for DataViewer {
                 &self.pane_layout,
                 self.is_slider_dual,
                 self.last_opened_pane as usize
-            )
+            );
+            // Batch with keep-alive task if present (for replay mode timing)
+            if let Some(keep_alive) = keep_alive_task {
+                self.replay_keep_alive_pending = true;
+                Task::batch([nav_task, keep_alive])
+            } else {
+                nav_task
+            }
+        } else if let Some(keep_alive) = keep_alive_task {
+            // Not in skate mode, return keep-alive task for replay timing
+            self.replay_keep_alive_pending = true;
+            keep_alive
         } else {
             // No skate mode, return the task from message handler
             if self.update_counter == 0 {

@@ -31,6 +31,7 @@ rayon = "1.8"
 texpresso = { version = "2.0.1", features = ["rayon"] }
 sysinfo = "0.33.1"
 libc = "0.2"
+clap = { version = "4.0", features = ["derive"] }
 zip = "4"
 unrar = "0.5"
 sevenz-rust2 = "0.18"
@@ -40,7 +41,7 @@ serde_yaml = "0.9"
 regex = "1.10"
 jpeg2k = { version = "0.10", optional = true, features = ["image"] }
 
-# Use custom iced
+# Use custom iced (remote)
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
     "image", "tokio", "svg", "lazy", "wgpu"
 ] }
@@ -63,6 +64,7 @@ iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", 
 #iced_core = { path = "../iced/core" }
 #iced_runtime = { path = "../iced/runtime" }
 #iced_futures = { path = "../iced/futures", features = ["tokio"] }
+#iced_graphics = { path = "../iced/graphics" }
 #iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
 
 [features]

@@ -21,6 +21,7 @@ mod selection_manager;
 #[cfg(feature = "coco")]
 mod coco;
 mod settings_modal;
+mod replay;
 
 #[cfg(target_os = "macos")]
 mod macos_file_access;
@@ -78,7 +79,7 @@ use std::sync::mpsc::{self, Receiver};
 
 static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
 
-static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
+pub static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
 });
 static CURRENT_FPS: Lazy<Mutex<f32>> = Lazy::new(|| {
@@ -153,46 +154,64 @@ fn load_icon() -> Option<winit::window::Icon> {
     winit::window::Icon::from_rgba(image.into_raw(), width, height).ok()
 }
 
-struct CliArgs {
+use clap::Parser;
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(name = "viewskater")]
+#[command(about = "A fast image viewer for browsing large collections of images")]
+#[command(version)]
+struct Args {
+    /// Path to image file or directory to open
+    path: Option<PathBuf>,
+
+    /// Path to custom settings file
+    #[arg(long = "settings")]
     settings_path: Option<String>,
-    #[cfg(not(target_os = "macos"))]
-    file_path: Option<String>,
-}
 
-fn parse_cli_args() -> CliArgs {
-    let args: Vec<String> = std::env::args().collect();
-    let mut settings_path: Option<String> = None;
-    #[cfg(not(target_os = "macos"))]
-    let mut file_path: Option<String> = None;
+    /// Enable replay/benchmark mode
+    #[arg(long)]
+    replay: bool,
 
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--settings" => {
-                if i + 1 < args.len() {
-                    settings_path = Some(args[i + 1].clone());
-                    i += 2;
-                } else {
-                    eprintln!("Error: --settings flag requires a path argument");
-                    i += 1;
-                }
-            }
-            #[cfg(not(target_os = "macos"))]
-            arg if !arg.starts_with("--") => {
-                file_path = Some(arg.to_string());
-                i += 1;
-            }
-            _ => {
-                i += 1;
-            }
-        }
-    }
+    /// Test directories for replay mode (can be specified multiple times)
+    #[arg(long = "test-dir", value_name = "DIR")]
+    test_directories: Vec<PathBuf>,
 
-    CliArgs {
-        settings_path,
-        #[cfg(not(target_os = "macos"))]
-        file_path,
-    }
+    /// Duration to test each directory in seconds
+    #[arg(long, default_value = "10")]
+    duration: u64,
+
+    /// Navigation interval in milliseconds
+    #[arg(long, default_value = "50")]
+    nav_interval: u64,
+
+    /// Test directions: right, left, both
+    #[arg(long, default_value = "both")]
+    directions: String,
+
+    /// Output file for benchmark results
+    #[arg(long, value_name = "FILE")]
+    output: Option<PathBuf>,
+
+    /// Output format: text, json, markdown
+    #[arg(long, default_value = "text")]
+    output_format: String,
+
+    /// Number of complete iterations/cycles to run
+    #[arg(long, default_value = "1")]
+    iterations: u32,
+
+    /// Verbose output during replay
+    #[arg(long)]
+    verbose: bool,
+
+    /// Exit automatically after replay completes
+    #[arg(long)]
+    auto_exit: bool,
+
+    /// Skip first N images for metrics (to exclude pre-cached images with inflated FPS)
+    #[arg(long, default_value = "0")]
+    skip_initial: usize,
 }
 
 fn register_font_manually(font_data: &'static [u8]) {
@@ -308,10 +327,75 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     let (file_sender, file_receiver) = mpsc::channel();
 
     // Parse command line arguments
-    let cli_args = parse_cli_args();
-    let settings_path = cli_args.settings_path;
+    let args = Args::parse();
+    let settings_path = args.settings_path.clone();
     #[cfg(not(target_os = "macos"))]
-    let file_arg = cli_args.file_path;
+    let file_arg = args.path.as_ref().map(|p| p.to_string_lossy().to_string());
+
+    // Create replay configuration if replay mode is enabled
+    let replay_config = if args.replay {
+        let test_dirs = if args.test_directories.is_empty() {
+            // If no test directories specified, try to use the path argument
+            if let Some(ref path) = args.path {
+                vec![path.clone()]
+            } else {
+                eprintln!("Error: Replay mode requires at least one test directory. Use --test-dir or provide a path argument.");
+                std::process::exit(1);
+            }
+        } else {
+            args.test_directories.clone()
+        };
+
+        // Validate that all test directories exist
+        for dir in &test_dirs {
+            if !dir.exists() {
+                eprintln!("Error: Test directory does not exist: {}", dir.display());
+                std::process::exit(1);
+            }
+        }
+
+        // Parse directions
+        let directions = match args.directions.to_lowercase().as_str() {
+            "right" => vec![replay::ReplayDirection::Right],
+            "left" => vec![replay::ReplayDirection::Left],
+            "both" => vec![replay::ReplayDirection::Both],
+            _ => {
+                eprintln!("Error: Invalid direction '{}'. Use 'right', 'left', or 'both'", args.directions);
+                std::process::exit(1);
+            }
+        };
+
+        println!("Replay mode enabled:");
+        println!("  Test directories: {:?}", test_dirs);
+        println!("  Duration per directory: {}s", args.duration);
+        println!("  Navigation interval: {}ms", args.nav_interval);
+        println!("  Directions: {:?}", directions);
+        println!("  Iterations: {}", args.iterations);
+        if let Some(ref output) = args.output {
+            println!("  Output file: {}", output.display());
+        }
+
+        let output_format = match args.output_format.to_lowercase().as_str() {
+            "json" => replay::OutputFormat::Json,
+            "markdown" | "md" => replay::OutputFormat::Markdown,
+            _ => replay::OutputFormat::Text,
+        };
+
+        Some(replay::ReplayConfig {
+            test_directories: test_dirs,
+            duration_per_directory: Duration::from_secs(args.duration),
+            navigation_interval: Duration::from_millis(args.nav_interval),
+            directions,
+            output_file: args.output.clone(),
+            output_format,
+            verbose: args.verbose,
+            iterations: args.iterations,
+            auto_exit: args.auto_exit,
+            skip_initial_images: args.skip_initial,
+        })
+    } else {
+        None
+    };
 
     // Test crash debug logging immediately at startup
     crate::logging::write_crash_debug_log("========== VIEWSKATER STARTUP ==========");
@@ -389,6 +473,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             control_receiver: StdReceiver<Control>,
             file_receiver: Receiver<String>,
             settings_path: Option<String>,
+            replay_config: Option<replay::ReplayConfig>,
         },
         Ready {
             window: Arc<winit::window::Window>,
@@ -944,7 +1029,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
     impl winit::application::ApplicationHandler<Action<Message>> for Runner {
         fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
             match self {
-                Self::Loading { proxy, event_sender, control_receiver, file_receiver, settings_path } => {
+                Self::Loading { proxy, event_sender, control_receiver, file_receiver, settings_path, replay_config } => {
                     info!("resumed()...");
 
                     let custom_theme = Theme::custom_with_fn(
@@ -1097,6 +1182,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         renderer_request_sender,
                         std::mem::replace(file_receiver, mpsc::channel().1),
                         settings_path.as_deref(),
+                        std::mem::take(replay_config),
                     );
 
                     // Update state creation to lock renderer
@@ -1231,6 +1317,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         control_receiver,
         file_receiver,
         settings_path,
+        replay_config,
     };
 
     event_loop.run_app(&mut runner)

@@ -46,6 +46,13 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::Quit => {
             std::process::exit(0);
         }
+        Message::ReplayKeepAlive => {
+            // This message is sent periodically during replay mode to keep the update loop active
+            debug!("ReplayKeepAlive received - keeping replay update loop active");
+            // Reset pending flag so a new keep-alive can be scheduled
+            app.replay_keep_alive_pending = false;
+            Task::none()
+        }
 
         // UI state messages (About, Options, Logs)
         Message::ShowLogs | Message::OpenSettingsDir | Message::ExportDebugLogs |
@@ -311,6 +318,23 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     &image_data,
                                     &metadata,
                                 );
+
+                                // Signal replay controller that initial load is complete
+                                if let Some(ref mut replay_controller) = app.replay_controller {
+                                    if matches!(replay_controller.state, crate::replay::ReplayState::WaitingForReady { .. }) {
+                                        debug!("LoadPos complete - signaling replay controller that app is ready to navigate");
+
+                                        // Reset FPS trackers right before navigation starts
+                                        // This ensures no stale data from image loading contaminates metrics
+                                        if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
+                                        if let Ok(mut fps) = IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
+                                        if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
+                                        if let Ok(mut times) = IMAGE_RENDER_TIMES.lock() { times.clear(); }
+                                        iced_wgpu::reset_image_fps();
+
+                                        replay_controller.on_ready_to_navigate();
+                                    }
+                                }
                             }
                         }
                     }
