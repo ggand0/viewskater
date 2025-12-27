@@ -58,6 +58,7 @@ pub struct ReplayMetrics {
     pub min_image_fps: f32,
     pub max_image_fps: f32,
     pub avg_image_fps: f32,
+    pub last_image_fps: f32,
     pub min_memory_mb: f64,
     pub max_memory_mb: f64,
     pub avg_memory_mb: f64,
@@ -81,6 +82,7 @@ impl ReplayMetrics {
             min_image_fps: f32::MAX,
             max_image_fps: 0.0,
             avg_image_fps: 0.0,
+            last_image_fps: 0.0,
             min_memory_mb: f64::MAX,
             max_memory_mb: 0.0,
             avg_memory_mb: 0.0,
@@ -99,10 +101,11 @@ impl ReplayMetrics {
         if ui_fps < self.min_ui_fps { self.min_ui_fps = ui_fps; }
         if ui_fps > self.max_ui_fps { self.max_ui_fps = ui_fps; }
         
-        // Update min/max for Image FPS
+        // Update min/max/last for Image FPS
         if image_fps < self.min_image_fps { self.min_image_fps = image_fps; }
         if image_fps > self.max_image_fps { self.max_image_fps = image_fps; }
-        
+        self.last_image_fps = image_fps;
+
         // Update min/max for Memory (if valid)
         if memory_mb >= 0.0 {
             if memory_mb < self.min_memory_mb { self.min_memory_mb = memory_mb; }
@@ -498,7 +501,8 @@ impl ReplayController {
                 "image_fps": {
                     "min": m.min_image_fps,
                     "max": m.max_image_fps,
-                    "avg": m.avg_image_fps
+                    "avg": m.avg_image_fps,
+                    "last": m.last_image_fps
                 },
                 "memory_mb": if m.min_memory_mb >= 0.0 {
                     serde_json::json!({
@@ -529,8 +533,8 @@ impl ReplayController {
         writeln!(file)?;
         writeln!(file, "Generated: {}", chrono::Utc::now().to_rfc3339())?;
         writeln!(file)?;
-        writeln!(file, "| Directory | Direction | Duration | Frames | UI FPS (avg) | Image FPS (avg) | Memory (avg) |")?;
-        writeln!(file, "|-----------|-----------|----------|--------|--------------|-----------------|--------------|")?;
+        writeln!(file, "| Directory | Direction | Duration | Frames | UI FPS (avg) | Image FPS (avg) | Image FPS (last) | Memory (avg) |")?;
+        writeln!(file, "|-----------|-----------|----------|--------|--------------|-----------------|------------------|--------------|")?;
 
         for metrics in &self.completed_metrics {
             let dir_name = metrics.directory_path.file_name()
@@ -543,13 +547,14 @@ impl ReplayController {
                 "N/A".to_string()
             };
 
-            writeln!(file, "| {} | {:?} | {:.2}s | {} | {:.1} | {:.1} | {} |",
+            writeln!(file, "| {} | {:?} | {:.2}s | {} | {:.1} | {:.1} | {:.1} | {} |",
                      dir_name,
                      metrics.direction,
                      metrics.duration().as_secs_f64(),
                      metrics.total_frames,
                      metrics.avg_ui_fps,
                      metrics.avg_image_fps,
+                     metrics.last_image_fps,
                      memory)?;
         }
 
