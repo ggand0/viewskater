@@ -834,7 +834,7 @@ impl iced_winit::runtime::Program for DataViewer {
         } else if let Some(keep_alive) = keep_alive_task {
             // Not in skate mode, return keep-alive task for replay timing
             self.replay_keep_alive_pending = true;
-            return keep_alive;
+            keep_alive
         } else {
             // No skate mode, return the task from message handler
             if self.update_counter == 0 {

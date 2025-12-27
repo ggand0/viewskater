@@ -293,7 +293,7 @@ impl ReplayController {
             self.navigation_count = 0;
 
             // Start with the first direction for this directory
-            let direction = self.config.directions.get(0).unwrap_or(&ReplayDirection::Right);
+            let direction = self.config.directions.first().unwrap_or(&ReplayDirection::Right);
 
             match direction {
                 ReplayDirection::Right => {
@@ -381,7 +381,7 @@ impl ReplayController {
                             directory_index: *directory_index
                         };
                         self.current_metrics = Some(ReplayMetrics::new(directory_path, ReplayDirection::Left));
-                        return Some(ReplayAction::StartNavigatingLeft);
+                        Some(ReplayAction::StartNavigatingLeft)
                     } else {
                         // Move to next directory or finish
                         self.advance_to_next_directory(*directory_index)
