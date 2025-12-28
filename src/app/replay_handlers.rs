@@ -51,63 +51,77 @@ impl DataViewer {
         let duration_limit = replay_controller.config.duration_per_directory + Duration::from_secs(1);
 
         // Synchronize app navigation state with replay controller state
+        // In slider mode, boundary detection is handled by the replay controller (position tracking)
+        // In keyboard mode, we sync skate flags with app state
+        let is_slider_mode = replay_controller.config.navigation_mode == crate::replay::NavigationMode::Slider;
+
         match state_type {
             "right" => {
-                // Check if we're at the end of images
-                let at_end = self.panes.iter().any(|pane| {
-                    pane.is_selected && pane.dir_loaded &&
-                    pane.img_cache.current_index >= pane.img_cache.image_paths.len().saturating_sub(1)
-                });
+                if is_slider_mode {
+                    // Slider mode: boundary is detected in replay controller via position tracking
+                    // No skate flags needed
+                } else {
+                    // Keyboard mode: check if we're at the end of images
+                    let at_end = self.panes.iter().any(|pane| {
+                        pane.is_selected && pane.dir_loaded &&
+                        pane.img_cache.current_index >= pane.img_cache.image_paths.len().saturating_sub(1)
+                    });
 
-                // Notify replay controller about boundary state (affects metrics collection)
-                replay_controller.set_at_boundary(at_end);
+                    // Notify replay controller about boundary state (affects metrics collection)
+                    replay_controller.set_at_boundary(at_end);
 
-                if at_end && self.skate_right {
-                    debug!("Reached end of images, stopping right navigation");
-                    self.skate_right = false;
-                } else if !at_end && !self.skate_right {
-                    debug!("Syncing app state: setting skate_right = true");
-                    self.skate_right = true;
-                    self.skate_left = false;
-                }
-
-                // Force progress if stuck for too long
-                if let Some(elapsed) = start_time_elapsed {
-                    if elapsed > duration_limit {
-                        warn!("Replay seems stuck in NavigatingRight state, forcing progress");
+                    if at_end && self.skate_right {
+                        debug!("Reached end of images, stopping right navigation");
                         self.skate_right = false;
+                    } else if !at_end && !self.skate_right {
+                        debug!("Syncing app state: setting skate_right = true");
+                        self.skate_right = true;
+                        self.skate_left = false;
+                    }
+
+                    // Force progress if stuck for too long
+                    if let Some(elapsed) = start_time_elapsed {
+                        if elapsed > duration_limit {
+                            warn!("Replay seems stuck in NavigatingRight state, forcing progress");
+                            self.skate_right = false;
+                        }
                     }
                 }
             }
             "left" => {
-                // Check if we're at the beginning of images
-                let at_beginning = self.panes.iter().any(|pane| {
-                    pane.is_selected && pane.dir_loaded && pane.img_cache.current_index == 0
-                });
+                if is_slider_mode {
+                    // Slider mode: boundary is detected in replay controller via position tracking
+                    // No skate flags needed
+                } else {
+                    // Keyboard mode: check if we're at the beginning of images
+                    let at_beginning = self.panes.iter().any(|pane| {
+                        pane.is_selected && pane.dir_loaded && pane.img_cache.current_index == 0
+                    });
 
-                // Notify replay controller about boundary state (affects metrics collection)
-                replay_controller.set_at_boundary(at_beginning);
+                    // Notify replay controller about boundary state (affects metrics collection)
+                    replay_controller.set_at_boundary(at_beginning);
 
-                if at_beginning && self.skate_left {
-                    debug!("Reached beginning of images, stopping left navigation");
-                    self.skate_left = false;
-                } else if !at_beginning && !self.skate_left {
-                    debug!("Syncing app state: setting skate_left = true");
-                    self.skate_left = true;
-                    self.skate_right = false;
-                }
-
-                // Force progress if stuck for too long
-                if let Some(elapsed) = start_time_elapsed {
-                    if elapsed > duration_limit {
-                        warn!("Replay seems stuck in NavigatingLeft state, forcing progress");
+                    if at_beginning && self.skate_left {
+                        debug!("Reached beginning of images, stopping left navigation");
                         self.skate_left = false;
+                    } else if !at_beginning && !self.skate_left {
+                        debug!("Syncing app state: setting skate_left = true");
+                        self.skate_left = true;
+                        self.skate_right = false;
+                    }
+
+                    // Force progress if stuck for too long
+                    if let Some(elapsed) = start_time_elapsed {
+                        if elapsed > duration_limit {
+                            warn!("Replay seems stuck in NavigatingLeft state, forcing progress");
+                            self.skate_left = false;
+                        }
                     }
                 }
             }
             _ => {
-                // For other states, ensure navigation flags are cleared
-                if self.skate_right || self.skate_left {
+                // For other states, ensure navigation flags are cleared (keyboard mode only)
+                if !is_slider_mode && (self.skate_right || self.skate_left) {
                     debug!("Syncing app state: clearing navigation flags");
                     self.skate_right = false;
                     self.skate_left = false;
@@ -213,6 +227,22 @@ impl DataViewer {
                 if let Some(ref mut replay_controller) = self.replay_controller {
                     replay_controller.on_navigation_performed();
                 }
+                None
+            }
+            crate::replay::ReplayAction::SliderNavigate { position } => {
+                // Slider mode navigation: send SliderChanged message to simulate slider drag
+                debug!("Slider navigate to position {}", position);
+                // Use pane index -1 to affect the selected pane (same as global slider)
+                Some(Task::done(Message::SliderChanged(-1, position)))
+            }
+            crate::replay::ReplayAction::SliderStartNavigatingLeft => {
+                // Reset FPS trackers before starting left navigation in slider mode
+                if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
+                if let Ok(mut fps) = crate::pane::IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
+                if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
+                if let Ok(mut times) = crate::pane::IMAGE_RENDER_TIMES.lock() { times.clear(); }
+                iced_wgpu::reset_image_fps();
+                // Slider mode doesn't use skate flags - position tracking is in replay controller
                 None
             }
             crate::replay::ReplayAction::Finish => {

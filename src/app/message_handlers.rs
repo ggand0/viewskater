@@ -324,6 +324,11 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     if matches!(replay_controller.state, crate::replay::ReplayState::WaitingForReady { .. }) {
                                         debug!("LoadPos complete - signaling replay controller that app is ready to navigate");
 
+                                        // Set image count for slider mode navigation
+                                        if let Some(pane) = app.panes.get(pane_index) {
+                                            replay_controller.set_image_count(pane.img_cache.image_paths.len());
+                                        }
+
                                         // Reset FPS trackers right before navigation starts
                                         // This ensures no stale data from image loading contaminates metrics
                                         if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }

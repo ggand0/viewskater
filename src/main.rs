@@ -212,6 +212,14 @@ struct Args {
     /// Skip first N images for metrics (to exclude pre-cached images with inflated FPS)
     #[arg(long, default_value = "0")]
     skip_initial: usize,
+
+    /// Navigation mode: keyboard (continuous skating) or slider (stepped position changes)
+    #[arg(long, default_value = "keyboard")]
+    nav_mode: String,
+
+    /// Step size for slider navigation mode (how many images to skip per navigation)
+    #[arg(long, default_value = "1")]
+    slider_step: u16,
 }
 
 fn register_font_manually(font_data: &'static [u8]) {
@@ -365,11 +373,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             }
         };
 
+        // Parse navigation mode
+        let navigation_mode = match args.nav_mode.to_lowercase().as_str() {
+            "slider" => replay::NavigationMode::Slider,
+            _ => replay::NavigationMode::Keyboard,
+        };
+
         println!("Replay mode enabled:");
         println!("  Test directories: {:?}", test_dirs);
         println!("  Duration per directory: {}s", args.duration);
         println!("  Navigation interval: {}ms", args.nav_interval);
         println!("  Directions: {:?}", directions);
+        println!("  Navigation mode: {:?}", navigation_mode);
+        if navigation_mode == replay::NavigationMode::Slider {
+            println!("  Slider step: {}", args.slider_step);
+        }
         println!("  Iterations: {}", args.iterations);
         if let Some(ref output) = args.output {
             println!("  Output file: {}", output.display());
@@ -392,6 +410,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             iterations: args.iterations,
             auto_exit: args.auto_exit,
             skip_initial_images: args.skip_initial,
+            navigation_mode,
+            slider_step: args.slider_step,
         })
     } else {
         None
