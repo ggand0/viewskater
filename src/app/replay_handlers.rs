@@ -137,9 +137,11 @@ impl DataViewer {
 
         // Schedule keep-alive task if replay is active and we don't already have one in flight
         // This prevents accumulating many delayed messages when update() is called rapidly
+        // Use navigation_interval to ensure we poll fast enough for the desired speed
         if replay_controller.is_active() && !self.replay_keep_alive_pending {
+            let interval_ms = replay_controller.config.navigation_interval.as_millis() as u64;
             self.replay_keep_alive_task = Some(Task::perform(
-                async { tokio::time::sleep(tokio::time::Duration::from_millis(50)).await; },
+                async move { tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await; },
                 |_| Message::ReplayKeepAlive
             ));
         }
