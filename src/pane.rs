@@ -219,6 +219,39 @@ impl Pane {
         self.prev_slider_value = 0;
     }
 
+    /// Set up scene with cached image data (GPU texture, BC1 compressed, or CPU bytes)
+    /// This is a common pattern used across render_next_image, render_prev_image,
+    /// initialize_dir_path, and initialize_with_paths
+    fn setup_scene_for_image(&mut self, cached_data: &CachedData) {
+        match cached_data {
+            CachedData::Gpu(texture) => {
+                debug!("Setting up scene with GPU texture");
+                self.current_image = CachedData::Gpu(Arc::clone(texture));
+                self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
+                self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+            }
+            CachedData::BC1(texture) => {
+                debug!("Setting up scene with BC1 compressed texture");
+                self.current_image = CachedData::BC1(Arc::clone(texture));
+                self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
+                self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+            }
+            CachedData::Cpu(image_bytes) => {
+                debug!("Setting up scene with CPU image");
+                self.current_image = CachedData::Cpu(image_bytes.clone());
+                self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
+                // Ensure texture is created for CPU images
+                if let Some(device) = &self.device {
+                    if let Some(queue) = &self.queue {
+                        if let Some(scene) = &mut self.scene {
+                            scene.ensure_texture(device, queue, self.pane_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn resize_panes(panes: &mut Vec<Pane>, new_size: usize) {
         if new_size > panes.len() {
             // Add new panes with proper IDs
@@ -271,152 +304,106 @@ impl Pane {
     }
 
     pub fn render_next_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
-        let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
 
-        img_cache.print_cache();
+        self.img_cache.print_cache();
 
         // Safely compute target index as isize
-        let target_index_isize = img_cache.cache_count as isize + img_cache.current_offset + 1;
+        let target_index_isize = self.img_cache.cache_count as isize + self.img_cache.current_offset + 1;
         if target_index_isize >= 0 {
-            let next_image_index_to_render = img_cache.cache_count as isize + img_cache.current_offset + 1;
+            let next_image_index_to_render = (self.img_cache.cache_count as isize + self.img_cache.current_offset + 1) as usize;
             debug!("BEGINE RENDERING NEXT: next_image_index_to_render: {} current_index: {}, current_offset: {}",
-                next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
+                next_image_index_to_render, self.img_cache.current_index, self.img_cache.current_offset);
 
-            // Retrieve the cached image (GPU or CPU)
-            if let Ok(cached_image) = img_cache.get_image_by_index(next_image_index_to_render as usize) {
-                match cached_image {
-                    CachedData::Cpu(image_bytes) => {
-                        debug!("Setting CPU image as current_image");
-                        self.current_image = CachedData::Cpu(image_bytes.clone());
-                        self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
+            // Clone the cached image to release the borrow before calling setup_scene_for_image
+            let cached_image = self.img_cache.get_image_by_index(next_image_index_to_render)
+                .cloned();
 
-                        // Ensure texture is created for CPU images
-                        if let Some(device) = &self.device {
-                            if let Some(queue) = &self.queue {
-                                if let Some(scene) = &mut self.scene {
-                                    scene.ensure_texture(device, queue, self.pane_id);
-                                }
-                            }
-                        }
-
-
-                    }
-                    CachedData::Gpu(texture) => {
-                        debug!("Setting GPU texture as current_image");
-                        self.current_image = CachedData::Gpu(Arc::clone(texture));
-                        self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
-                        self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-                    }
-                    CachedData::BC1(texture) => {
-                        debug!("Setting BC1 compressed texture as current_image");
-                        self.current_image = CachedData::BC1(Arc::clone(texture));
-                        self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
-                        self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-                    }
+            match cached_image {
+                Ok(data) => {
+                    self.setup_scene_for_image(&data);
                 }
-            } else {
-                debug!("Failed to retrieve next cached image.");
-                return false;
+                Err(_) => {
+                    debug!("Failed to retrieve next cached image.");
+                    return false;
+                }
             }
 
-            img_cache.current_offset += 1;
+            self.img_cache.current_offset += 1;
 
             // Since the next image is loaded and rendered, mark the is_next_image_loaded flag
             self.is_next_image_loaded = true;
             did_render_happen = true;
 
             // Handle current_index
-            if img_cache.current_index < img_cache.image_paths.len() - 1 {
-                img_cache.current_index += 1;
+            if self.img_cache.current_index < self.img_cache.image_paths.len() - 1 {
+                self.img_cache.current_index += 1;
             }
 
             // Track which index current_image contains (after current_index is updated)
-            self.current_image_index = Some(img_cache.current_index);
+            self.current_image_index = Some(self.img_cache.current_index);
 
             // Update metadata from cache
-            self.current_image_metadata = img_cache.get_initial_metadata().cloned();
+            self.current_image_metadata = self.img_cache.get_initial_metadata().cloned();
 
             if *pane_layout == PaneLayout::DualPane && is_slider_dual {
-                self.slider_value = img_cache.current_index as u16;
+                self.slider_value = self.img_cache.current_index as u16;
             }
-            debug!("END RENDERING NEXT: current_index: {}, current_offset: {}", img_cache.current_index, img_cache.current_offset);
+            debug!("END RENDERING NEXT: current_index: {}, current_offset: {}", self.img_cache.current_index, self.img_cache.current_offset);
         }
 
         did_render_happen
     }
 
     pub fn render_prev_image(&mut self, pane_layout: &PaneLayout, is_slider_dual: bool) -> bool {
-        let img_cache = &mut self.img_cache;
         let mut did_render_happen = false;
 
         // Render the previous one right away
         // Avoid loading around the edges
-        if img_cache.cache_count as isize + img_cache.current_offset > 0 &&
-            img_cache.is_some_at_index( (img_cache.cache_count as isize + img_cache.current_offset) as usize) {
+        if self.img_cache.cache_count as isize + self.img_cache.current_offset > 0 &&
+            self.img_cache.is_some_at_index((self.img_cache.cache_count as isize + self.img_cache.current_offset) as usize) {
 
-            let next_image_index_to_render = img_cache.cache_count as isize + (img_cache.current_offset - 1);
+            let next_image_index_to_render = self.img_cache.cache_count as isize + (self.img_cache.current_offset - 1);
             debug!("RENDERING PREV: next_image_index_to_render: {} current_index: {}, current_offset: {}",
-                next_image_index_to_render, img_cache.current_index, img_cache.current_offset);
+                next_image_index_to_render, self.img_cache.current_index, self.img_cache.current_offset);
 
-            if img_cache.is_image_index_within_bounds(next_image_index_to_render) {
-                // Retrieve the cached image (GPU or CPU)
-                if let Ok(cached_image) = img_cache.get_image_by_index(next_image_index_to_render as usize) {
-                    match cached_image {
-                        CachedData::Cpu(image_bytes) => {
-                            debug!("Setting CPU image as current_image");
-                            self.current_image = CachedData::Cpu(image_bytes.clone());
-                            self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
-                                // Ensure texture is created for CPU images
-                            if let Some(device) = &self.device {
-                                if let Some(queue) = &self.queue {
-                                    if let Some(scene) = &mut self.scene {
-                                        scene.ensure_texture(device, queue, self.pane_id);
-                                    }
-                                }
-                            }
-                        }
-                        CachedData::Gpu(texture) => {
-                            debug!("Setting GPU texture as current_image");
-                            self.current_image = CachedData::Gpu(Arc::clone(texture)); // Borrow before cloning
-                            self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
-                            self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-                        }
-                        CachedData::BC1(texture) => {
-                            debug!("Setting BC1 compressed texture as current_image");
-                            self.current_image = CachedData::BC1(Arc::clone(texture));
-                            self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
-                            self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-                        }
+            if self.img_cache.is_image_index_within_bounds(next_image_index_to_render) {
+                // Clone the cached image to release the borrow before calling setup_scene_for_image
+                let cached_image = self.img_cache.get_image_by_index(next_image_index_to_render as usize)
+                    .cloned();
+
+                match cached_image {
+                    Ok(data) => {
+                        self.setup_scene_for_image(&data);
                     }
-                } else {
-                    debug!("Failed to retrieve next cached image.");
-                    return false;
+                    Err(_) => {
+                        debug!("Failed to retrieve prev cached image.");
+                        return false;
+                    }
                 }
 
+                self.img_cache.current_offset -= 1;
 
-                img_cache.current_offset -= 1;
-
-                assert!(img_cache.current_offset >= -(img_cache.cache_count as isize)); // Check against actual cache size, not static CONFIG
+                assert!(self.img_cache.current_offset >= -(self.img_cache.cache_count as isize)); // Check against actual cache size, not static CONFIG
 
                 // Since the prev image is loaded and rendered, mark the is_prev_image_loaded flag
                 self.is_prev_image_loaded = true;
 
-                if img_cache.current_index > 0 {
-                    img_cache.current_index -= 1;
+                if self.img_cache.current_index > 0 {
+                    self.img_cache.current_index -= 1;
                 }
 
                 // Track which index current_image contains (after current_index is updated)
-                self.current_image_index = Some(img_cache.current_index);
+                self.current_image_index = Some(self.img_cache.current_index);
 
                 // Update metadata from cache
-                self.current_image_metadata = img_cache.get_initial_metadata().cloned();
+                self.current_image_metadata = self.img_cache.get_initial_metadata().cloned();
 
                 debug!("RENDERED PREV: current_index: {}, current_offset: {}",
-                img_cache.current_index, img_cache.current_offset);
+                self.img_cache.current_index, self.img_cache.current_offset);
 
                 if *pane_layout == PaneLayout::DualPane && is_slider_dual {
-                    self.slider_value = img_cache.current_index as u16;
+                    self.slider_value = self.img_cache.current_index as u16;
                 }
 
                 did_render_happen = true;
@@ -633,6 +620,7 @@ impl Pane {
             drop(archive_guard); // Release the lock before returning
             return Task::none();
         }
+        drop(archive_guard); // Release the lock after loading
 
         mem::log_memory("Pane::initialize_dir_path: After loading initial image");
 
@@ -657,30 +645,7 @@ impl Pane {
             // Set metadata for the initial image
             self.current_image_metadata = img_cache.get_initial_metadata().cloned();
 
-            match initial_image {
-                CachedData::Gpu(texture) => {
-                    debug!("Using GPU texture for initial image");
-                    self.current_image = CachedData::Gpu(Arc::clone(texture));
-                    self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
-                    self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-                }
-                CachedData::BC1(texture) => {
-                    debug!("Using BC1 compressed texture for initial image");
-                    self.current_image = CachedData::BC1(Arc::clone(texture));
-                    self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
-                    self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
-                }
-                CachedData::Cpu(image_bytes) => {
-                    debug!("Using CPU image for initial image");
-                    self.current_image = CachedData::Cpu(image_bytes.clone());
-                    self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
-
-                    // Ensure texture is created for CPU images
-                    if let Some(scene) = &mut self.scene {
-                        scene.ensure_texture(device, queue, self.pane_id);
-                    }
-                }
-            }
+            self.setup_scene_for_image(initial_image);
         } else {
             debug!("Failed to retrieve initial image");
         }
@@ -704,6 +669,103 @@ impl Pane {
 
         // Async neighbor loading is handled by the caller (app.rs) which has access to loading_status
         Task::none()
+    }
+
+    /// Initialize pane with pre-enumerated file paths (Issue #73 - NFS performance fix)
+    /// Called after async directory enumeration completes
+    #[allow(clippy::too_many_arguments)]
+    pub fn initialize_with_paths(
+        &mut self,
+        device: &Arc<wgpu::Device>,
+        queue: &Arc<wgpu::Queue>,
+        _is_gpu_supported: bool,
+        cache_strategy: CacheStrategy,
+        compression_strategy: CompressionStrategy,
+        pane_layout: &PaneLayout,
+        pane_file_lengths: &[usize],
+        _pane_index: usize,
+        image_paths: Vec<PathBuf>,
+        directory_path: String,
+        initial_index: usize,
+        is_slider_dual: bool,
+        slider_value: &mut u16,
+        cache_size: usize,
+    ) {
+        mem::log_memory("Before pane initialization with paths");
+
+        // Convert PathBuf to PathSource
+        let file_paths: Vec<PathSource> = image_paths.iter()
+            .map(|p| PathSource::Filesystem(p.clone()))
+            .collect();
+
+        if file_paths.is_empty() {
+            error!("No images in enumerated paths");
+            return;
+        }
+
+        self.directory_path = Some(directory_path);
+        self.has_compressed_file = false;
+
+        let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+
+        // Calculate if directory size is bigger than other panes
+        let is_dir_size_bigger: bool = if *pane_layout == PaneLayout::SinglePane ||
+            *pane_layout == PaneLayout::DualPane && is_slider_dual {
+            true
+        } else {
+            file_paths.len() >= *longest_file_length
+        };
+
+        debug!("File paths: {}", file_paths.len());
+        self.dir_loaded = true;
+
+        // Clone device and queue before passing to ImageCache
+        let device_clone = Arc::clone(device);
+        let queue_clone = Arc::clone(queue);
+
+        // Instantiate a new image cache with pre-enumerated paths
+        let mut img_cache = ImageCache::new(
+            &file_paths,
+            cache_size,
+            cache_strategy,
+            compression_strategy,
+            initial_index,
+            Some(device_clone),
+            Some(queue_clone),
+        );
+
+        mem::log_memory("Pane::initialize_with_paths: Before loading initial image");
+
+        // Load only the first/dropped image synchronously for immediate display
+        // No archive cache since this is for regular directories
+        if let Err(e) = img_cache.load_single_image(None) {
+            error!("Failed to load initial image: {}", e);
+            return;
+        }
+
+        mem::log_memory("Pane::initialize_with_paths: After loading initial image");
+
+        // Set up scene with initial image
+        if let Ok(initial_image) = img_cache.get_initial_image() {
+            self.current_image_index = Some(img_cache.current_index);
+            self.current_image_metadata = img_cache.get_initial_metadata().cloned();
+            self.setup_scene_for_image(initial_image);
+        } else {
+            debug!("Failed to retrieve initial image");
+        }
+
+        // Update slider value
+        let current_slider_value = initial_index as u16;
+        debug!("current_slider_value: {:?}", current_slider_value);
+        if is_slider_dual {
+            *slider_value = current_slider_value;
+            self.slider_value = current_slider_value;
+        } else if *pane_layout == PaneLayout::SinglePane || *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
+            *slider_value = current_slider_value;
+        }
+
+        self.img_cache = img_cache;
+        debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
 
     pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> Container<'_, Message, WinitTheme, Renderer> {

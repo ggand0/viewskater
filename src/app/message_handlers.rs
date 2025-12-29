@@ -69,7 +69,8 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
 
         // File operation messages
         Message::OpenFolder(_) | Message::OpenFile(_) | Message::FileDropped(_, _) |
-        Message::Close | Message::FolderOpened(_, _) | Message::CopyFilename(_) | Message::CopyFilePath(_) => {
+        Message::Close | Message::FolderOpened(_, _) | Message::DirectoryEnumerated(_, _) |
+        Message::CopyFilename(_) | Message::CopyFilePath(_) => {
             handle_file_messages(app, message)
         }
 
@@ -255,6 +256,27 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
                 }
                 Err(err) => {
                     debug!("Folder open failed: {:?}", err);
+                    Task::none()
+                }
+            }
+        }
+        Message::DirectoryEnumerated(result, pane_index) => {
+            use crate::app::DirectoryEnumError;
+            match result {
+                Ok(enum_result) => {
+                    debug!("Directory enumerated: {} images found", enum_result.file_paths.len());
+                    app.complete_dir_initialization(enum_result, pane_index)
+                }
+                Err(DirectoryEnumError::NoImagesFound) => {
+                    error!("No supported images found in directory");
+                    Task::none()
+                }
+                Err(DirectoryEnumError::DirectoryError(e)) => {
+                    error!("Directory enumeration error: {}", e);
+                    Task::none()
+                }
+                Err(DirectoryEnumError::NotFound) => {
+                    error!("Path not found");
                     Task::none()
                 }
             }

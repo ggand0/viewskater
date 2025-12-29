@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use iced_core::Event;
 use iced_core::image::Handle;
 use iced_core::Color;
@@ -6,6 +8,22 @@ use crate::cache::img_cache::{CachedData, CacheStrategy, ImageMetadata, LoadOper
 use crate::menu::PaneLayout;
 use crate::file_io;
 use iced_wgpu::engine::CompressionStrategy;
+
+/// Result of async directory enumeration
+#[derive(Debug, Clone)]
+pub struct DirectoryEnumResult {
+    pub file_paths: Vec<PathBuf>,
+    pub directory_path: String,
+    pub initial_index: usize,
+}
+
+/// Error type for async directory enumeration
+#[derive(Debug, Clone)]
+pub enum DirectoryEnumError {
+    NoImagesFound,
+    DirectoryError(String),
+    NotFound,
+}
 
 /// Result type for slider image widget loading: (pane_idx, position, handle, dimensions, file_size)
 pub type SliderImageWidgetResult = Result<(usize, usize, Handle, (u32, u32), u64), (usize, usize)>;
@@ -39,6 +57,7 @@ pub enum Message {
     Quit,
     ReplayKeepAlive,
     FolderOpened(Result<String, file_io::Error>, usize),
+    DirectoryEnumerated(Result<DirectoryEnumResult, DirectoryEnumError>, usize),
     SliderChanged(isize, u16),
     SliderReleased(isize, u16),
     #[allow(dead_code)]
