@@ -706,6 +706,126 @@ impl Pane {
         Task::none()
     }
 
+    /// Initialize pane with pre-enumerated file paths (Issue #73 - NFS performance fix)
+    /// Called after async directory enumeration completes
+    #[allow(clippy::too_many_arguments)]
+    pub fn initialize_with_paths(
+        &mut self,
+        device: &Arc<wgpu::Device>,
+        queue: &Arc<wgpu::Queue>,
+        _is_gpu_supported: bool,
+        cache_strategy: CacheStrategy,
+        compression_strategy: CompressionStrategy,
+        pane_layout: &PaneLayout,
+        pane_file_lengths: &[usize],
+        _pane_index: usize,
+        image_paths: Vec<PathBuf>,
+        directory_path: String,
+        initial_index: usize,
+        is_slider_dual: bool,
+        slider_value: &mut u16,
+        cache_size: usize,
+    ) {
+        mem::log_memory("Before pane initialization with paths");
+
+        // Convert PathBuf to PathSource
+        let file_paths: Vec<PathSource> = image_paths.iter()
+            .map(|p| PathSource::Filesystem(p.clone()))
+            .collect();
+
+        if file_paths.is_empty() {
+            error!("No images in enumerated paths");
+            return;
+        }
+
+        self.directory_path = Some(directory_path);
+        self.has_compressed_file = false;
+
+        let longest_file_length = pane_file_lengths.iter().max().unwrap_or(&0);
+
+        // Calculate if directory size is bigger than other panes
+        let is_dir_size_bigger: bool = if *pane_layout == PaneLayout::SinglePane ||
+            *pane_layout == PaneLayout::DualPane && is_slider_dual {
+            true
+        } else {
+            file_paths.len() >= *longest_file_length
+        };
+
+        debug!("File paths: {}", file_paths.len());
+        self.dir_loaded = true;
+
+        // Clone device and queue before passing to ImageCache
+        let device_clone = Arc::clone(device);
+        let queue_clone = Arc::clone(queue);
+
+        // Instantiate a new image cache with pre-enumerated paths
+        let mut img_cache = ImageCache::new(
+            &file_paths,
+            cache_size,
+            cache_strategy,
+            compression_strategy,
+            initial_index,
+            Some(device_clone),
+            Some(queue_clone),
+        );
+
+        mem::log_memory("Pane::initialize_with_paths: Before loading initial image");
+
+        // Load only the first/dropped image synchronously for immediate display
+        // No archive cache since this is for regular directories
+        if let Err(e) = img_cache.load_single_image(None) {
+            error!("Failed to load initial image: {}", e);
+            return;
+        }
+
+        mem::log_memory("Pane::initialize_with_paths: After loading initial image");
+
+        // Set up scene with initial image
+        if let Ok(initial_image) = img_cache.get_initial_image() {
+            self.current_image_index = Some(img_cache.current_index);
+            self.current_image_metadata = img_cache.get_initial_metadata().cloned();
+
+            match initial_image {
+                CachedData::Gpu(texture) => {
+                    debug!("Using GPU texture for initial image");
+                    self.current_image = CachedData::Gpu(Arc::clone(texture));
+                    self.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(texture)))));
+                    self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                }
+                CachedData::BC1(texture) => {
+                    debug!("Using BC1 compressed texture for initial image");
+                    self.current_image = CachedData::BC1(Arc::clone(texture));
+                    self.scene = Some(Scene::new(Some(&CachedData::BC1(Arc::clone(texture)))));
+                    self.scene.as_mut().unwrap().update_texture(Arc::clone(texture));
+                }
+                CachedData::Cpu(image_bytes) => {
+                    debug!("Using CPU image for initial image");
+                    self.current_image = CachedData::Cpu(image_bytes.clone());
+                    self.scene = Some(Scene::new(Some(&CachedData::Cpu(image_bytes.clone()))));
+
+                    if let Some(scene) = &mut self.scene {
+                        scene.ensure_texture(device, queue, self.pane_id);
+                    }
+                }
+            }
+        } else {
+            debug!("Failed to retrieve initial image");
+        }
+
+        // Update slider value
+        let current_slider_value = initial_index as u16;
+        debug!("current_slider_value: {:?}", current_slider_value);
+        if is_slider_dual {
+            *slider_value = current_slider_value;
+            self.slider_value = current_slider_value;
+        } else if *pane_layout == PaneLayout::SinglePane || *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
+            *slider_value = current_slider_value;
+        }
+
+        self.img_cache = img_cache;
+        debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
+    }
+
     pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> Container<'_, Message, WinitTheme, Renderer> {
         use log::debug;
         debug!("build_ui_container: use_nearest_filter = {}", use_nearest_filter);

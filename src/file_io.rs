@@ -1092,3 +1092,66 @@ fn convert_file_paths_to_image_paths(
         Ok(image_paths)
     }
 }
+
+// ============================================================================
+// Async Directory Enumeration (Issue #73 - NFS Performance Fix)
+// ============================================================================
+
+use crate::app::{DirectoryEnumResult, DirectoryEnumError};
+
+/// Async directory enumeration for non-blocking UI
+/// Uses tokio::fs for async I/O to prevent UI freezes on slow filesystems (NFS)
+pub async fn enumerate_directory_async(path: PathBuf) -> Result<DirectoryEnumResult, DirectoryEnumError> {
+    use tokio::fs as async_fs;
+
+    // Determine if path is a file or directory (sync metadata check is fast)
+    let (dir_path, is_file_drop) = if is_file(&path) {
+        let parent = path.parent()
+            .ok_or(DirectoryEnumError::NotFound)?
+            .to_path_buf();
+        (parent, true)
+    } else if is_directory(&path) {
+        (path.clone(), false)
+    } else {
+        return Err(DirectoryEnumError::NotFound);
+    };
+
+    // Async directory enumeration
+    let mut entries = async_fs::read_dir(&dir_path)
+        .await
+        .map_err(|e| DirectoryEnumError::DirectoryError(e.to_string()))?;
+
+    let mut image_paths: Vec<PathBuf> = Vec::new();
+
+    while let Some(entry) = entries.next_entry().await
+        .map_err(|e| DirectoryEnumError::DirectoryError(e.to_string()))?
+    {
+        let entry_path = entry.path();
+        if let Some(extension) = entry_path.extension().and_then(std::ffi::OsStr::to_str) {
+            if is_supported_extension(extension) {
+                image_paths.push(entry_path);
+            }
+        }
+    }
+
+    if image_paths.is_empty() {
+        return Err(DirectoryEnumError::NoImagesFound);
+    }
+
+    // Sort paths for consistent ordering
+    alphanumeric_sort::sort_path_slice(&mut image_paths);
+
+    // Calculate initial index for file drops
+    let initial_index = if is_file_drop {
+        get_file_index(&image_paths, &path).unwrap_or(0)
+    } else {
+        0
+    };
+
+    Ok(DirectoryEnumResult {
+        file_paths: image_paths,
+        directory_path: dir_path.to_string_lossy().to_string(),
+        original_path: path,
+        initial_index,
+    })
+}

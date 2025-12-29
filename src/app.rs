@@ -6,7 +6,7 @@ mod replay_handlers;
 mod settings_widget;
 
 // Re-exports
-pub use message::Message;
+pub use message::{Message, DirectoryEnumResult, DirectoryEnumError};
 pub use settings_widget::{RuntimeSettings, SettingsWidget};
 
 #[warn(unused_imports)]
@@ -265,9 +265,15 @@ impl DataViewer {
     pub(crate) fn initialize_dir_path(&mut self, path: &PathBuf, pane_index: usize) -> Task<Message> {
         debug!("last_opened_pane: {}", self.last_opened_pane);
 
+        // Check if this is a compressed file - use sync path for archives
+        if path.extension().is_some_and(|ex| {
+            crate::file_io::ALLOWED_COMPRESSED_FILES.contains(&ex.to_ascii_lowercase().to_str().unwrap_or(""))
+        }) {
+            return self.initialize_dir_path_sync(path, pane_index);
+        }
+
         // Make sure we have enough panes
         if pane_index >= self.panes.len() {
-            // Create new panes with proper device and queue initialization
             while self.panes.len() <= pane_index {
                 let new_pane_id = self.panes.len();
                 debug!("Creating new pane at index {}", new_pane_id);
@@ -275,11 +281,14 @@ impl DataViewer {
                     Arc::clone(&self.device),
                     Arc::clone(&self.queue),
                     self.backend,
-                    new_pane_id, // Pass the pane_id matching its index
+                    new_pane_id,
                     self.compression_strategy
                 ));
             }
         }
+
+        // Reset state before async enumeration
+        self.reset_state(pane_index as isize);
 
         // Clear any cached slider images to prevent displaying stale images
         for pane in self.panes.iter_mut() {
@@ -288,10 +297,44 @@ impl DataViewer {
             pane.slider_scene = None;
         }
 
-        let pane_file_lengths = self.panes  .iter().map(
+        // Dispatch async directory enumeration (Issue #73 - NFS performance fix)
+        let path_clone = path.clone();
+        Task::perform(
+            crate::file_io::enumerate_directory_async(path_clone),
+            move |result| Message::DirectoryEnumerated(result, pane_index)
+        )
+    }
+
+    /// Sync initialization path for compressed files (zip/rar/7z)
+    /// Archives are typically local so sync loading is acceptable
+    fn initialize_dir_path_sync(&mut self, path: &PathBuf, pane_index: usize) -> Task<Message> {
+        debug!("Sync initialization for compressed file: {}", path.display());
+
+        // Make sure we have enough panes
+        if pane_index >= self.panes.len() {
+            while self.panes.len() <= pane_index {
+                let new_pane_id = self.panes.len();
+                debug!("Creating new pane at index {}", new_pane_id);
+                self.panes.push(pane::Pane::new(
+                    Arc::clone(&self.device),
+                    Arc::clone(&self.queue),
+                    self.backend,
+                    new_pane_id,
+                    self.compression_strategy
+                ));
+            }
+        }
+
+        // Clear any cached slider images
+        for pane in self.panes.iter_mut() {
+            pane.slider_image = None;
+            pane.slider_image_position = None;
+            pane.slider_scene = None;
+        }
+
+        let pane_file_lengths = self.panes.iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
 
-        // Capture runtime settings before mutable borrow
         let cache_size = self.cache_size;
         let archive_cache_size = self.archive_cache_size;
         let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
@@ -318,15 +361,71 @@ impl DataViewer {
 
         self.last_opened_pane = pane_index as isize;
 
-        // Load selection state for the directory (ML tools only)
         #[cfg(feature = "selection")]
-        if let Some(dir_path) = &pane.directory_path {
+        if let Some(dir_path) = &self.panes[pane_index].directory_path {
             if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
                 warn!("Failed to load selection state for {}: {}", dir_path, e);
             }
         }
 
-        // After loading the first image, load remaining images asynchronously
+        let current_index = self.panes[pane_index].img_cache.current_index;
+        crate::navigation_slider::load_initial_neighbors(
+            &self.device,
+            &self.queue,
+            self.is_gpu_supported,
+            self.cache_strategy,
+            self.compression_strategy,
+            &mut self.panes,
+            &mut self.loading_status,
+            pane_index,
+            current_index,
+        )
+    }
+
+    /// Complete directory initialization after async enumeration
+    /// Called when DirectoryEnumerated message arrives
+    pub(crate) fn complete_dir_initialization(
+        &mut self,
+        result: crate::app::message::DirectoryEnumResult,
+        pane_index: usize,
+    ) -> Task<Message> {
+        debug!("Completing directory initialization: {} images found", result.file_paths.len());
+
+        let pane_file_lengths = self.panes.iter().map(
+            |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
+
+        let cache_size = self.cache_size;
+
+        let pane = &mut self.panes[pane_index];
+
+        // Initialize pane with pre-enumerated paths
+        pane.initialize_with_paths(
+            &Arc::clone(&self.device),
+            &Arc::clone(&self.queue),
+            self.is_gpu_supported,
+            self.cache_strategy,
+            self.compression_strategy,
+            &self.pane_layout,
+            &pane_file_lengths,
+            pane_index,
+            result.file_paths,
+            result.directory_path,
+            result.initial_index,
+            self.is_slider_dual,
+            &mut self.slider_value,
+            cache_size,
+        );
+
+        self.last_opened_pane = pane_index as isize;
+
+        #[cfg(feature = "selection")]
+        if let Some(dir_path) = &self.panes[pane_index].directory_path {
+            if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
+                warn!("Failed to load selection state for {}: {}", dir_path, e);
+            }
+        }
+
+        // Load neighbor images asynchronously
         let current_index = self.panes[pane_index].img_cache.current_index;
         crate::navigation_slider::load_initial_neighbors(
             &self.device,
@@ -544,13 +643,15 @@ impl iced_winit::runtime::Program for DataViewer {
 
     fn update(&mut self, message: Message) -> iced_winit::runtime::Task<Message> {
         // Check for any file paths received from the background thread
+        let mut cli_tasks: Vec<Task<Message>> = Vec::new();
         while let Ok(path) = self.file_receiver.try_recv() {
             println!("Processing file path in main thread: {}", path);
             // Reset state and initialize the directory path
             self.reset_state(-1);
             println!("State reset complete, initializing directory path");
-            let _ = self.initialize_dir_path(&PathBuf::from(path), 0);
-            println!("Directory path initialization complete");
+            let init_task = self.initialize_dir_path(&PathBuf::from(path), 0);
+            cli_tasks.push(init_task);
+            println!("Directory path initialization task queued");
         }
 
         let _update_start = Instant::now();
@@ -616,14 +717,24 @@ impl iced_winit::runtime::Program for DataViewer {
         } else if let Some(keep_alive) = keep_alive_task {
             // Not in skate mode, return keep-alive task for replay timing
             self.replay_keep_alive_pending = true;
-            keep_alive
+            if !cli_tasks.is_empty() {
+                cli_tasks.push(keep_alive);
+                Task::batch(cli_tasks)
+            } else {
+                keep_alive
+            }
         } else {
             // No skate mode, return the task from message handler
             if self.update_counter == 0 {
                 debug!("No skate mode detected, update_counter: {}", self.update_counter);
                 self.update_counter += 1;
             }
-            task
+            if !cli_tasks.is_empty() {
+                cli_tasks.push(task);
+                Task::batch(cli_tasks)
+            } else {
+                task
+            }
         }
     }
 
