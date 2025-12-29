@@ -10,6 +10,13 @@ pub enum OutputFormat {
     Markdown,
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum NavigationMode {
+    #[default]
+    Keyboard,
+    Slider,
+}
+
 #[derive(Debug, Clone)]
 pub struct ReplayConfig {
     pub test_directories: Vec<PathBuf>,
@@ -23,6 +30,10 @@ pub struct ReplayConfig {
     pub auto_exit: bool,
     /// Number of initial images to skip for metrics (to avoid inflated FPS from cached images)
     pub skip_initial_images: usize,
+    /// Navigation mode: Keyboard (continuous skating) or Slider (stepped position changes)
+    pub navigation_mode: NavigationMode,
+    /// Step size for slider navigation mode (how many images to skip per navigation)
+    pub slider_step: u16,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -178,6 +189,10 @@ pub struct ReplayController {
     pub at_boundary: bool,
     /// Count of navigations in current direction (reset when direction/directory changes)
     pub navigation_count: usize,
+    /// Current slider position for slider navigation mode (0-indexed)
+    pub current_slider_position: u16,
+    /// Maximum slider position (image_count - 1, set when directory loads)
+    pub max_slider_position: u16,
 }
 
 impl ReplayController {
@@ -192,6 +207,8 @@ impl ReplayController {
             completed_iterations: 0,
             at_boundary: false,
             navigation_count: 0,
+            current_slider_position: 0,
+            max_slider_position: 0,
         }
     }
 
@@ -294,6 +311,21 @@ impl ReplayController {
         }
     }
 
+    /// Set the total image count for slider navigation mode
+    /// Called after directory loads to enable proper slider position tracking
+    pub fn set_image_count(&mut self, count: usize) {
+        self.max_slider_position = count.saturating_sub(1) as u16;
+        // Reset position to start for right navigation, or end for left-only navigation
+        let direction = self.config.directions.first().unwrap_or(&ReplayDirection::Right);
+        if matches!(direction, ReplayDirection::Left) {
+            self.current_slider_position = self.max_slider_position;
+        } else {
+            self.current_slider_position = 0;
+        }
+        debug!("Slider position initialized: current={}, max={}",
+               self.current_slider_position, self.max_slider_position);
+    }
+
     pub fn update_metrics(&mut self, ui_fps: f32, image_fps: f32, memory_mb: f64) {
         // Skip metric collection when at boundary to avoid skewing results
         // (FPS during idle time isn't representative of navigation performance)
@@ -351,12 +383,24 @@ impl ReplayController {
                             directory_index
                         };
                         self.current_metrics = Some(ReplayMetrics::new(directory_path, ReplayDirection::Left));
-                        Some(ReplayAction::StartNavigatingLeft)
+
+                        // In slider mode, reset position to max for left navigation
+                        if self.config.navigation_mode == NavigationMode::Slider {
+                            self.current_slider_position = self.max_slider_position;
+                            Some(ReplayAction::SliderStartNavigatingLeft)
+                        } else {
+                            Some(ReplayAction::StartNavigatingLeft)
+                        }
                     } else {
                         self.advance_to_next_directory(directory_index)
                     }
                 } else if self.last_navigation_time.elapsed() >= self.config.navigation_interval {
-                    Some(ReplayAction::NavigateRight)
+                    // Navigation action based on mode
+                    if self.config.navigation_mode == NavigationMode::Slider {
+                        self.navigate_slider_right()
+                    } else {
+                        Some(ReplayAction::NavigateRight)
+                    }
                 } else {
                     None
                 }
@@ -374,7 +418,12 @@ impl ReplayController {
                     self.finalize_current_metrics();
                     self.advance_to_next_directory(directory_index)
                 } else if self.last_navigation_time.elapsed() >= self.config.navigation_interval {
-                    Some(ReplayAction::NavigateLeft)
+                    // Navigation action based on mode
+                    if self.config.navigation_mode == NavigationMode::Slider {
+                        self.navigate_slider_left()
+                    } else {
+                        Some(ReplayAction::NavigateLeft)
+                    }
                 } else {
                     None
                 }
@@ -383,6 +432,41 @@ impl ReplayController {
             ReplayState::WaitingForReady { .. } => None,
             _ => None,
         }
+    }
+
+    /// Navigate right in slider mode: increment position and emit SliderNavigate action
+    fn navigate_slider_right(&mut self) -> Option<ReplayAction> {
+        if self.current_slider_position >= self.max_slider_position {
+            // Already at end
+            self.set_at_boundary(true);
+            return None;
+        }
+
+        // Increment position by step, clamping to max
+        let new_pos = (self.current_slider_position + self.config.slider_step)
+            .min(self.max_slider_position);
+        self.current_slider_position = new_pos;
+        self.on_navigation_performed();
+
+        debug!("Slider navigate right: position {} / {}", new_pos, self.max_slider_position);
+        Some(ReplayAction::SliderNavigate { position: new_pos })
+    }
+
+    /// Navigate left in slider mode: decrement position and emit SliderNavigate action
+    fn navigate_slider_left(&mut self) -> Option<ReplayAction> {
+        if self.current_slider_position == 0 {
+            // Already at beginning
+            self.set_at_boundary(true);
+            return None;
+        }
+
+        // Decrement position by step, clamping to 0
+        let new_pos = self.current_slider_position.saturating_sub(self.config.slider_step);
+        self.current_slider_position = new_pos;
+        self.on_navigation_performed();
+
+        debug!("Slider navigate left: position {} / {}", new_pos, self.max_slider_position);
+        Some(ReplayAction::SliderNavigate { position: new_pos })
     }
 
     fn advance_to_next_directory(&mut self, current_directory_index: usize) -> Option<ReplayAction> {
@@ -584,5 +668,9 @@ pub enum ReplayAction {
     NavigateRight,
     NavigateLeft,
     StartNavigatingLeft,
+    /// Slider navigation: move to specific position (used in slider mode)
+    SliderNavigate { position: u16 },
+    /// Switch to left navigation in slider mode (resets position to max)
+    SliderStartNavigatingLeft,
     Finish,
 }

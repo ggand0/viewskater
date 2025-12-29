@@ -48,7 +48,7 @@ cargo build --release --features jp2
 cargo build --release --features coco,selection,jp2
 ```
 
-See [`BUNDLING.md`](./BUNDLING.md) for full packaging instructions.
+See [docs/bundling.md](./docs/bundling.md) for full packaging instructions.
 
 
 ## Usage
@@ -87,6 +87,11 @@ Mark images for dataset curation while browsing. Press **S** to mark an image as
 | Close all panes                    | Cmd + W              | Ctrl + W               |
 | Exit                               | Cmd + Q              | Ctrl + Q               |
 
+
+## Documentation
+
+- [Bundling & Packaging](./docs/bundling.md) - Build for Linux, macOS, Windows
+- [Replay Mode](./docs/replay.md) - Automated benchmarking with CLI options
 
 ## Resources
 - [Website](https://viewskater.com/)

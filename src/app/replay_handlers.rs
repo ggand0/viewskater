@@ -8,6 +8,15 @@ use log::{debug, info, warn};
 
 use super::{DataViewer, Message};
 
+/// Reset all FPS counters and timing history for fresh measurements
+fn reset_fps_trackers() {
+    if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
+    if let Ok(mut fps) = crate::pane::IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
+    if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
+    if let Ok(mut times) = crate::pane::IMAGE_RENDER_TIMES.lock() { times.clear(); }
+    iced_wgpu::reset_image_fps();
+}
+
 impl DataViewer {
     /// Update replay mode logic and return any action that should be processed
     pub(crate) fn update_replay_mode(&mut self) -> Option<crate::replay::ReplayAction> {
@@ -51,66 +60,67 @@ impl DataViewer {
         let duration_limit = replay_controller.config.duration_per_directory + Duration::from_secs(1);
 
         // Synchronize app navigation state with replay controller state
-        match state_type {
-            "right" => {
-                // Check if we're at the end of images
-                let at_end = self.panes.iter().any(|pane| {
-                    pane.is_selected && pane.dir_loaded &&
-                    pane.img_cache.current_index >= pane.img_cache.image_paths.len().saturating_sub(1)
-                });
+        // In slider mode, boundary detection is handled by the replay controller (position tracking)
+        // In keyboard mode, we sync skate flags with app state
+        let is_slider_mode = replay_controller.config.navigation_mode == crate::replay::NavigationMode::Slider;
 
-                // Notify replay controller about boundary state (affects metrics collection)
-                replay_controller.set_at_boundary(at_end);
+        // Keyboard mode only: sync skate flags with app state
+        // Slider mode handles boundary detection via position tracking in replay controller
+        if !is_slider_mode {
+            match state_type {
+                "right" => {
+                    let at_end = self.panes.iter().any(|pane| {
+                        pane.is_selected && pane.dir_loaded &&
+                        pane.img_cache.current_index >= pane.img_cache.image_paths.len().saturating_sub(1)
+                    });
 
-                if at_end && self.skate_right {
-                    debug!("Reached end of images, stopping right navigation");
-                    self.skate_right = false;
-                } else if !at_end && !self.skate_right {
-                    debug!("Syncing app state: setting skate_right = true");
-                    self.skate_right = true;
-                    self.skate_left = false;
-                }
+                    replay_controller.set_at_boundary(at_end);
 
-                // Force progress if stuck for too long
-                if let Some(elapsed) = start_time_elapsed {
-                    if elapsed > duration_limit {
-                        warn!("Replay seems stuck in NavigatingRight state, forcing progress");
+                    if at_end && self.skate_right {
+                        debug!("Reached end of images, stopping right navigation");
                         self.skate_right = false;
-                    }
-                }
-            }
-            "left" => {
-                // Check if we're at the beginning of images
-                let at_beginning = self.panes.iter().any(|pane| {
-                    pane.is_selected && pane.dir_loaded && pane.img_cache.current_index == 0
-                });
-
-                // Notify replay controller about boundary state (affects metrics collection)
-                replay_controller.set_at_boundary(at_beginning);
-
-                if at_beginning && self.skate_left {
-                    debug!("Reached beginning of images, stopping left navigation");
-                    self.skate_left = false;
-                } else if !at_beginning && !self.skate_left {
-                    debug!("Syncing app state: setting skate_left = true");
-                    self.skate_left = true;
-                    self.skate_right = false;
-                }
-
-                // Force progress if stuck for too long
-                if let Some(elapsed) = start_time_elapsed {
-                    if elapsed > duration_limit {
-                        warn!("Replay seems stuck in NavigatingLeft state, forcing progress");
+                    } else if !at_end && !self.skate_right {
+                        debug!("Syncing app state: setting skate_right = true");
+                        self.skate_right = true;
                         self.skate_left = false;
                     }
+
+                    if let Some(elapsed) = start_time_elapsed {
+                        if elapsed > duration_limit {
+                            warn!("Replay seems stuck in NavigatingRight state, forcing progress");
+                            self.skate_right = false;
+                        }
+                    }
                 }
-            }
-            _ => {
-                // For other states, ensure navigation flags are cleared
-                if self.skate_right || self.skate_left {
-                    debug!("Syncing app state: clearing navigation flags");
-                    self.skate_right = false;
-                    self.skate_left = false;
+                "left" => {
+                    let at_beginning = self.panes.iter().any(|pane| {
+                        pane.is_selected && pane.dir_loaded && pane.img_cache.current_index == 0
+                    });
+
+                    replay_controller.set_at_boundary(at_beginning);
+
+                    if at_beginning && self.skate_left {
+                        debug!("Reached beginning of images, stopping left navigation");
+                        self.skate_left = false;
+                    } else if !at_beginning && !self.skate_left {
+                        debug!("Syncing app state: setting skate_left = true");
+                        self.skate_left = true;
+                        self.skate_right = false;
+                    }
+
+                    if let Some(elapsed) = start_time_elapsed {
+                        if elapsed > duration_limit {
+                            warn!("Replay seems stuck in NavigatingLeft state, forcing progress");
+                            self.skate_left = false;
+                        }
+                    }
+                }
+                _ => {
+                    if self.skate_right || self.skate_left {
+                        debug!("Syncing app state: clearing navigation flags");
+                        self.skate_right = false;
+                        self.skate_left = false;
+                    }
                 }
             }
         }
@@ -123,9 +133,11 @@ impl DataViewer {
 
         // Schedule keep-alive task if replay is active and we don't already have one in flight
         // This prevents accumulating many delayed messages when update() is called rapidly
+        // Use navigation_interval to ensure we poll fast enough for the desired speed
         if replay_controller.is_active() && !self.replay_keep_alive_pending {
+            let interval_ms = replay_controller.config.navigation_interval.as_millis() as u64;
             self.replay_keep_alive_task = Some(Task::perform(
-                async { tokio::time::sleep(tokio::time::Duration::from_millis(50)).await; },
+                async move { tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await; },
                 |_| Message::ReplayKeepAlive
             ));
         }
@@ -139,13 +151,7 @@ impl DataViewer {
             crate::replay::ReplayAction::LoadDirectory(path) => {
                 info!("Loading directory for replay: {}", path.display());
                 self.reset_state(-1);
-
-                // Reset FPS counters and timing history for fresh measurements
-                if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
-                if let Ok(mut fps) = crate::pane::IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
-                if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
-                if let Ok(mut times) = crate::pane::IMAGE_RENDER_TIMES.lock() { times.clear(); }
-                iced_wgpu::reset_image_fps();
+                reset_fps_trackers();
 
                 // Initialize directory and get the image loading task
                 let load_task = self.initialize_dir_path(&path, 0);
@@ -166,13 +172,7 @@ impl DataViewer {
                 // This ensures pane state is properly reset to the beginning
                 info!("Restarting iteration - loading directory: {}", path.display());
                 self.reset_state(-1);
-
-                // Reset FPS counters and timing history for fresh measurements
-                if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
-                if let Ok(mut fps) = crate::pane::IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
-                if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
-                if let Ok(mut times) = crate::pane::IMAGE_RENDER_TIMES.lock() { times.clear(); }
-                iced_wgpu::reset_image_fps();
+                reset_fps_trackers();
 
                 // Initialize directory and get the image loading task
                 let load_task = self.initialize_dir_path(&path, 0);
@@ -201,18 +201,23 @@ impl DataViewer {
                 None
             }
             crate::replay::ReplayAction::StartNavigatingLeft => {
-                // Reset FPS trackers before starting left navigation
-                if let Ok(mut fps) = crate::CURRENT_FPS.lock() { *fps = 0.0; }
-                if let Ok(mut fps) = crate::pane::IMAGE_RENDER_FPS.lock() { *fps = 0.0; }
-                if let Ok(mut times) = crate::FRAME_TIMES.lock() { times.clear(); }
-                if let Ok(mut times) = crate::pane::IMAGE_RENDER_TIMES.lock() { times.clear(); }
-                iced_wgpu::reset_image_fps();
-
+                reset_fps_trackers();
                 self.skate_right = false;
                 self.skate_left = true;
                 if let Some(ref mut replay_controller) = self.replay_controller {
                     replay_controller.on_navigation_performed();
                 }
+                None
+            }
+            crate::replay::ReplayAction::SliderNavigate { position } => {
+                // Slider mode navigation: send SliderChanged message to simulate slider drag
+                debug!("Slider navigate to position {}", position);
+                // Use pane index -1 to affect the selected pane (same as global slider)
+                Some(Task::done(Message::SliderChanged(-1, position)))
+            }
+            crate::replay::ReplayAction::SliderStartNavigatingLeft => {
+                reset_fps_trackers();
+                // Slider mode doesn't use skate flags - position tracking is in replay controller
                 None
             }
             crate::replay::ReplayAction::Finish => {
