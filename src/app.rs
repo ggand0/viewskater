@@ -228,6 +228,56 @@ impl DataViewer {
         }
     }
 
+    /// Ensure panes vector has at least `pane_index + 1` panes, creating new ones as needed
+    fn ensure_pane_exists(&mut self, pane_index: usize) {
+        while self.panes.len() <= pane_index {
+            let new_pane_id = self.panes.len();
+            debug!("Creating new pane at index {}", new_pane_id);
+            self.panes.push(pane::Pane::new(
+                Arc::clone(&self.device),
+                Arc::clone(&self.queue),
+                self.backend,
+                new_pane_id,
+                self.compression_strategy
+            ));
+        }
+    }
+
+    /// Clear cached slider images from all panes to prevent displaying stale images
+    fn clear_slider_images(&mut self) {
+        for pane in self.panes.iter_mut() {
+            pane.slider_image = None;
+            pane.slider_image_position = None;
+            pane.slider_scene = None;
+        }
+    }
+
+    /// Start loading neighbor images after directory initialization completes
+    /// Sets last_opened_pane, loads selection state, and kicks off async neighbor loading
+    fn start_neighbor_loading(&mut self, pane_index: usize) -> Task<Message> {
+        self.last_opened_pane = pane_index as isize;
+
+        #[cfg(feature = "selection")]
+        if let Some(dir_path) = &self.panes[pane_index].directory_path {
+            if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
+                warn!("Failed to load selection state for {}: {}", dir_path, e);
+            }
+        }
+
+        let current_index = self.panes[pane_index].img_cache.current_index;
+        crate::navigation_slider::load_initial_neighbors(
+            &self.device,
+            &self.queue,
+            self.is_gpu_supported,
+            self.cache_strategy,
+            self.compression_strategy,
+            &mut self.panes,
+            &mut self.loading_status,
+            pane_index,
+            current_index,
+        )
+    }
+
     pub fn reset_state(&mut self, pane_index: isize) {
         // Reset loading status
         self.loading_status = loading_status::LoadingStatus::default();
@@ -272,30 +322,9 @@ impl DataViewer {
             return self.initialize_dir_path_sync(path, pane_index);
         }
 
-        // Make sure we have enough panes
-        if pane_index >= self.panes.len() {
-            while self.panes.len() <= pane_index {
-                let new_pane_id = self.panes.len();
-                debug!("Creating new pane at index {}", new_pane_id);
-                self.panes.push(pane::Pane::new(
-                    Arc::clone(&self.device),
-                    Arc::clone(&self.queue),
-                    self.backend,
-                    new_pane_id,
-                    self.compression_strategy
-                ));
-            }
-        }
-
-        // Reset state before async enumeration
+        self.ensure_pane_exists(pane_index);
         self.reset_state(pane_index as isize);
-
-        // Clear any cached slider images to prevent displaying stale images
-        for pane in self.panes.iter_mut() {
-            pane.slider_image = None;
-            pane.slider_image_position = None;
-            pane.slider_scene = None;
-        }
+        self.clear_slider_images();
 
         // Dispatch async directory enumeration (Issue #73 - NFS performance fix)
         let path_clone = path.clone();
@@ -310,27 +339,8 @@ impl DataViewer {
     fn initialize_dir_path_sync(&mut self, path: &PathBuf, pane_index: usize) -> Task<Message> {
         debug!("Sync initialization for compressed file: {}", path.display());
 
-        // Make sure we have enough panes
-        if pane_index >= self.panes.len() {
-            while self.panes.len() <= pane_index {
-                let new_pane_id = self.panes.len();
-                debug!("Creating new pane at index {}", new_pane_id);
-                self.panes.push(pane::Pane::new(
-                    Arc::clone(&self.device),
-                    Arc::clone(&self.queue),
-                    self.backend,
-                    new_pane_id,
-                    self.compression_strategy
-                ));
-            }
-        }
-
-        // Clear any cached slider images
-        for pane in self.panes.iter_mut() {
-            pane.slider_image = None;
-            pane.slider_image_position = None;
-            pane.slider_scene = None;
-        }
+        self.ensure_pane_exists(pane_index);
+        self.clear_slider_images();
 
         let pane_file_lengths = self.panes.iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
@@ -359,27 +369,7 @@ impl DataViewer {
             archive_warning_threshold_mb,
         );
 
-        self.last_opened_pane = pane_index as isize;
-
-        #[cfg(feature = "selection")]
-        if let Some(dir_path) = &self.panes[pane_index].directory_path {
-            if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
-                warn!("Failed to load selection state for {}: {}", dir_path, e);
-            }
-        }
-
-        let current_index = self.panes[pane_index].img_cache.current_index;
-        crate::navigation_slider::load_initial_neighbors(
-            &self.device,
-            &self.queue,
-            self.is_gpu_supported,
-            self.cache_strategy,
-            self.compression_strategy,
-            &mut self.panes,
-            &mut self.loading_status,
-            pane_index,
-            current_index,
-        )
+        self.start_neighbor_loading(pane_index)
     }
 
     /// Complete directory initialization after async enumeration
@@ -416,28 +406,7 @@ impl DataViewer {
             cache_size,
         );
 
-        self.last_opened_pane = pane_index as isize;
-
-        #[cfg(feature = "selection")]
-        if let Some(dir_path) = &self.panes[pane_index].directory_path {
-            if let Err(e) = self.selection_manager.load_for_directory(dir_path) {
-                warn!("Failed to load selection state for {}: {}", dir_path, e);
-            }
-        }
-
-        // Load neighbor images asynchronously
-        let current_index = self.panes[pane_index].img_cache.current_index;
-        crate::navigation_slider::load_initial_neighbors(
-            &self.device,
-            &self.queue,
-            self.is_gpu_supported,
-            self.cache_strategy,
-            self.compression_strategy,
-            &mut self.panes,
-            &mut self.loading_status,
-            pane_index,
-            current_index,
-        )
+        self.start_neighbor_loading(pane_index)
     }
 
     fn set_ctrl_pressed(&mut self, enabled: bool) {
