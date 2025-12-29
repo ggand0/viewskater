@@ -1151,7 +1151,6 @@ pub async fn enumerate_directory_async(path: PathBuf) -> Result<DirectoryEnumRes
     Ok(DirectoryEnumResult {
         file_paths: image_paths,
         directory_path: dir_path.to_string_lossy().to_string(),
-        original_path: path,
         initial_index,
     })
 }

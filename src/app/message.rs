@@ -14,7 +14,6 @@ use iced_wgpu::engine::CompressionStrategy;
 pub struct DirectoryEnumResult {
     pub file_paths: Vec<PathBuf>,
     pub directory_path: String,
-    pub original_path: PathBuf,
     pub initial_index: usize,
 }
 
