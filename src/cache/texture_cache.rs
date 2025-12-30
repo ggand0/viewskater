@@ -64,7 +64,7 @@ impl TextureCache {
         debug!("TextureCache: Creating new texture (hash: {})", hash);
 
         let load_start = Instant::now();
-        match image::load_from_memory(image_bytes) {
+        match crate::exif_utils::decode_with_exif_orientation(image_bytes) {
             Ok(img) => {
                 let load_time = load_start.elapsed();
                 debug!("TextureCache: Loaded image in {:?}", load_time);

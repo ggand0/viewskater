@@ -126,18 +126,13 @@ impl CachedData {
         self.dimensions().1
     }
 
-    /// Get dimensions (width, height) efficiently - uses header-only read for CPU images
+    /// Get dimensions (width, height) efficiently - uses header-only read for CPU images.
+    /// Accounts for EXIF orientation (90/270 rotations swap dimensions).
     pub fn dimensions(&self) -> (u32, u32) {
         match self {
             CachedData::Cpu(data) => {
-                use std::io::Cursor;
-                use image::ImageReader;
-                // Use into_dimensions() which reads only the image header, not full decode
-                ImageReader::new(Cursor::new(data))
-                    .with_guessed_format()
-                    .ok()
-                    .and_then(|r| r.into_dimensions().ok())
-                    .unwrap_or((0, 0))
+                // Use EXIF-aware dimensions to account for orientation
+                crate::exif_utils::get_orientation_aware_dimensions(data)
             },
             CachedData::Gpu(texture) => (texture.width(), texture.height()),
             CachedData::BC1(texture) => (texture.width(), texture.height()),

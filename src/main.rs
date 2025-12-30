@@ -22,6 +22,7 @@ mod selection_manager;
 mod coco;
 mod settings_modal;
 mod replay;
+mod exif_utils;
 
 #[cfg(target_os = "macos")]
 mod macos_file_access;

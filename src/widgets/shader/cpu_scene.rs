@@ -42,7 +42,7 @@ impl CpuScene {
     pub fn new(image_bytes: Vec<u8>, use_cached_texture: bool) -> Self {
         // Check if image_bytes is empty before attempting to load
         let dimensions = if !image_bytes.is_empty() {
-            match image::load_from_memory(&image_bytes) {
+            match crate::exif_utils::decode_with_exif_orientation(&image_bytes) {
                 Ok(img) => {
                     let (width, height) = img.dimensions();
                     debug!("CpuScene::new - loaded image with dimensions: {}x{}", width, height);
@@ -73,7 +73,7 @@ impl CpuScene {
         self.image_bytes = new_image_bytes;
 
         // Attempt to update dimensions from the new image bytes
-        if let Ok(img) = image::load_from_memory(&self.image_bytes) {
+        if let Ok(img) = crate::exif_utils::decode_with_exif_orientation(&self.image_bytes) {
             self.texture_size = img.dimensions();
         }
 
@@ -132,7 +132,7 @@ impl CpuScene {
 
             // Direct texture creation (fallback or when cache is disabled)
             let texture_start = Instant::now();
-            match image::load_from_memory(&self.image_bytes) {
+            match crate::exif_utils::decode_with_exif_orientation(&self.image_bytes) {
                 Ok(img) => {
                     let rgba = img.to_rgba8();
                     let dimensions = img.dimensions();
