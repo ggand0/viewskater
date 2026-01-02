@@ -775,23 +775,20 @@ impl Pane {
     }
 
     pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> iced_winit::core::Element<'_, Message, WinitTheme, Renderer> {
-        use log::{debug, info};
+        use log::debug;
         use crate::widgets::loading_overlay::loading_overlay;
         use std::time::Duration;
 
         debug!("build_ui_container: use_nearest_filter = {}", use_nearest_filter);
 
-        // Check if we should show the loading spinner (after 100ms delay for testing)
+        // Check if we should show the loading spinner (after 1 second delay to prevent flicker)
         let show_spinner = self.loading_started_at
-            .map_or(false, |start| start.elapsed() > Duration::from_millis(100));
+            .map_or(false, |start| start.elapsed() > Duration::from_secs(1));
 
-        // Always log to debug view render timing
-        info!("SPINNER: build_ui_container called, loading_started_at={:?}, show_spinner={}",
+        // Log spinner state for debugging
+        debug!("SPINNER: build_ui_container called, loading_started_at={:?}, show_spinner={}",
             self.loading_started_at.map(|s| s.elapsed().as_millis()),
             show_spinner);
-        if show_spinner {
-            info!("SPINNER: SHOWING SPINNER OVERLAY!");
-        }
 
         let base_container = if self.dir_loaded {
             if use_slider_image_for_render && self.slider_image.is_some() {
