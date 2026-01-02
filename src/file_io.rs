@@ -68,26 +68,18 @@ fn decode_jp2(bytes: &[u8]) -> Result<DynamicImage, std::io::ErrorKind> {
         })
 }
 
-/// Decode image from bytes, handling both standard formats and JPEG 2000
+/// Decode image from bytes, handling both standard formats and JPEG 2000.
+/// Applies EXIF orientation correction for supported formats (primarily JPEG).
 pub fn decode_image_from_bytes(bytes: &[u8]) -> Result<DynamicImage, std::io::ErrorKind> {
     // Check for JPEG 2000 format first when feature is enabled
+    // Note: JP2 doesn't use EXIF orientation, so decode directly
     #[cfg(feature = "jp2")]
     if is_jp2_format(bytes) {
         return decode_jp2(bytes);
     }
 
-    // Standard image formats via the image crate
-    ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|e| {
-            error!("Failed to guess image format: {}", e);
-            std::io::ErrorKind::InvalidData
-        })?
-        .decode()
-        .map_err(|e| {
-            error!("Failed to decode image: {}", e);
-            std::io::ErrorKind::InvalidData
-        })
+    // Use EXIF-aware decoding for standard formats
+    crate::exif_utils::decode_with_exif_orientation(bytes)
 }
 
 /// Check if a file extension is a supported image format
