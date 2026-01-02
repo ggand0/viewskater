@@ -43,6 +43,30 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
             debug!("TimerTick received");
             Task::none()
         }
+        Message::SpinnerTick => {
+            info!("SPINNER: SpinnerTick received");
+            // Check if any pane is still loading - if so, schedule another tick
+            let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
+            info!("SPINNER: is_loading = {}", is_loading);
+            if is_loading {
+                // Update spinner animation state
+                let now = std::time::Instant::now();
+                let cycle_duration = std::time::Duration::from_secs(2);
+                let rotation_duration = std::time::Duration::from_secs(4);
+                for pane in app.panes.iter_mut() {
+                    pane.spinner_state.update(now, cycle_duration, rotation_duration);
+                }
+                // Schedule another tick in 16ms (~60fps) using smol
+                Task::perform(
+                    async {
+                        smol::Timer::after(std::time::Duration::from_millis(16)).await;
+                    },
+                    |_| Message::SpinnerTick
+                )
+            } else {
+                Task::none()
+            }
+        }
         Message::Quit => {
             std::process::exit(0);
         }
