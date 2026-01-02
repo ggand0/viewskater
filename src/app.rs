@@ -334,10 +334,21 @@ impl DataViewer {
 
         // Dispatch async directory enumeration (Issue #73 - NFS performance fix)
         let path_clone = path.clone();
-        Task::perform(
+        let enum_task = Task::perform(
             crate::file_io::enumerate_directory_async(path_clone),
             move |result| Message::DirectoryEnumerated(result, pane_index)
-        )
+        );
+
+        // Start spinner tick loop to force view updates during loading
+        // Use smol's timer which runs on a separate thread pool
+        let spinner_task = Task::perform(
+            async {
+                smol::Timer::after(std::time::Duration::from_millis(50)).await;
+            },
+            |_| Message::SpinnerTick
+        );
+
+        Task::batch([enum_task, spinner_task])
     }
 
     /// Sync initialization path for compressed files (zip/rar/7z)

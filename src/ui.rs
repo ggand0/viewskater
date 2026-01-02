@@ -640,9 +640,15 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     .height(Length::Fill)
                     .padding(0);
 
-                with_annotations
+                with_annotations.into()
             } else {
-                container(text("")).height(Length::Fill)
+                // Use build_ui_container even when dir not loaded to show loading spinner
+                app.panes[0].build_ui_container(
+                    app.use_slider_image_for_render,
+                    app.is_horizontal_split,
+                    app.double_click_threshold_ms,
+                    app.nearest_neighbor_filter
+                )
             };
 
             let footer = if app.show_footer && app.panes[0].dir_loaded {
@@ -1009,10 +1015,9 @@ pub fn build_ui_dual_pane_slider2<'a>(
             }
         )
     } else {
+        // Use build_ui_container even when dir not loaded to show loading spinner
         container(column![
-            text(String::from(""))
-                .width(Length::Fill)
-                .height(Length::Fill),
+            panes[0].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms, use_nearest_filter),
         ])
     };
 
@@ -1046,10 +1051,9 @@ pub fn build_ui_dual_pane_slider2<'a>(
             }
         )
     } else {
+        // Use build_ui_container even when dir not loaded to show loading spinner
         container(column![
-            text(String::from(""))
-                .width(Length::Fill)
-                .height(Length::Fill),
+            panes[1].build_ui_container(use_slider_image_for_render, is_horizontal_split, double_click_threshold_ms, use_nearest_filter),
         ])
     };
 

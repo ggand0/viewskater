@@ -77,6 +77,7 @@ pub enum Message {
     BackgroundColorChanged(Color),
     #[allow(dead_code)]
     TimerTick,
+    SpinnerTick,  // Periodic tick to update spinner animation during loading
     SetCacheStrategy(CacheStrategy),
     SetCompressionStrategy(CompressionStrategy),
     ToggleFpsDisplay(bool),
