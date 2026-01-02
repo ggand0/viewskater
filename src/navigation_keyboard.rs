@@ -532,8 +532,9 @@ pub fn move_right_all(
     debug!("move_right_all() - panes[0].is_next_image_loaded: {}", panes_to_load[0].is_next_image_loaded);
     if !are_all_next_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
         let did_render_happen: bool = render_next_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
+        debug!("move_right_all() - did_render_happen = {}", did_render_happen);
 
-        if did_render_happen {// NOTE: I may need to edit the condition here
+        if did_render_happen {
             loading_status.is_next_image_loaded = true;
             for pane in panes_to_load.iter_mut() {
                 pane.is_next_image_loaded = true;
@@ -550,6 +551,14 @@ pub fn move_right_all(
                 pane_layout,
                 is_slider_dual
             ));
+        } else {
+            // Render failed because image not in cache - start loading timer for spinner
+            info!("SPINNER: move_right - render failed (not cached), setting timer");
+            for pane in panes_to_load.iter_mut() {
+                if pane.loading_started_at.is_none() {
+                    pane.loading_started_at = Some(Instant::now());
+                }
+            }
         }
     }
 
@@ -671,6 +680,14 @@ pub fn move_left_all(
                 indices_to_load.clone(),
                 loading_status,
                 pane_layout, is_slider_dual));
+        } else {
+            // Render failed because image not in cache - start loading timer for spinner
+            info!("SPINNER: move_left - render failed (not cached), setting timer");
+            for pane in panes_to_load.iter_mut() {
+                if pane.loading_started_at.is_none() {
+                    pane.loading_started_at = Some(Instant::now());
+                }
+            }
         }
     }
 

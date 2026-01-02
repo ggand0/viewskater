@@ -25,6 +25,7 @@ dirs = "5.0"
 webbrowser = "0.7"
 bytemuck = { version = "1.0", features = ["derive"] }
 earcutr = "0.4"
+lyon_algorithms = "1.0"
 chrono = { version = "0.4", features = ["clock"] }
 memmap2 = "0.9.5"
 rayon = "1.8"

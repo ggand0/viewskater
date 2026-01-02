@@ -6060,6 +6060,7 @@ dependencies = [
  "jpeg2k",
  "libc",
  "log",
+ "lyon_algorithms",
  "memmap2",
  "native-dialog",
  "num-traits 0.2.19",
