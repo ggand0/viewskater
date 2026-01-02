@@ -276,6 +276,10 @@ fn get_loading_tasks_slider(
         // Enqueue the batched LoadPos operation with (image index, cache position) pairs
         let load_operation = LoadOperation::LoadPos((pane_index, target_indices_and_cache));
         loading_status.enqueue_image_load(load_operation);
+
+        // Start loading timer for spinner display
+        pane.loading_started_at = Some(std::time::Instant::now());
+        info!("SPINNER: Set loading_started_at for pane {} (slider navigation)", pane_index);
         debug!("get_loading_tasks_slider - loading_status.loading_queue: {:?}", loading_status.loading_queue);
         loading_status.print_queue();
 

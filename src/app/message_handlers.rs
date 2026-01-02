@@ -330,6 +330,13 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     &cloned_op,
                                     operation_type,
                                 );
+
+                                // Clear loading timer for affected panes
+                                for &pane_idx in pane_indices {
+                                    if let Some(pane) = app.panes.get_mut(pane_idx) {
+                                        pane.loading_started_at = None;
+                                    }
+                                }
                             }
                             LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
                                 loading_handler::handle_load_pos_operation(
@@ -340,6 +347,11 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     &image_data,
                                     &metadata,
                                 );
+
+                                // Clear loading timer - image is now loaded
+                                if let Some(pane) = app.panes.get_mut(pane_index) {
+                                    pane.loading_started_at = None;
+                                }
 
                                 // Signal replay controller that initial load is complete
                                 if let Some(ref mut replay_controller) = app.replay_controller {

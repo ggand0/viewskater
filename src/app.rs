@@ -326,6 +326,12 @@ impl DataViewer {
         self.reset_state(pane_index as isize);
         self.clear_slider_images();
 
+        // Set loading timer for spinner display during initial load
+        if let Some(pane) = self.panes.get_mut(pane_index) {
+            pane.loading_started_at = Some(std::time::Instant::now());
+            log::info!("SPINNER: Set loading_started_at for initial directory load (pane {})", pane_index);
+        }
+
         // Dispatch async directory enumeration (Issue #73 - NFS performance fix)
         let path_clone = path.clone();
         Task::perform(
@@ -341,6 +347,12 @@ impl DataViewer {
 
         self.ensure_pane_exists(pane_index);
         self.clear_slider_images();
+
+        // Set loading timer for spinner display during initial load
+        if let Some(pane) = self.panes.get_mut(pane_index) {
+            pane.loading_started_at = Some(std::time::Instant::now());
+            log::info!("SPINNER: Set loading_started_at for sync directory load (pane {})", pane_index);
+        }
 
         let pane_file_lengths = self.panes.iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
@@ -368,6 +380,10 @@ impl DataViewer {
             archive_cache_size,
             archive_warning_threshold_mb,
         );
+
+        // Clear loading timer - first image is now loaded
+        pane.loading_started_at = None;
+        log::info!("SPINNER: Cleared loading_started_at after sync initial image load (pane {})", pane_index);
 
         self.start_neighbor_loading(pane_index)
     }
@@ -405,6 +421,10 @@ impl DataViewer {
             &mut self.slider_value,
             cache_size,
         );
+
+        // Clear loading timer - first image is now loaded
+        pane.loading_started_at = None;
+        log::info!("SPINNER: Cleared loading_started_at after initial image load (pane {})", pane_index);
 
         self.start_neighbor_loading(pane_index)
     }
