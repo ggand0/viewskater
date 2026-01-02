@@ -41,6 +41,7 @@ use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
 use crate::widgets::synced_image_split::SyncedImageSplit;
+use crate::widgets::loading_overlay::loading_overlay;
 #[cfg(feature = "selection")]
 use crate::selection_manager::ImageMark;
 
@@ -640,7 +641,10 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     .height(Length::Fill)
                     .padding(0);
 
-                with_annotations.into()
+                // Wrap with loading overlay for neighbor loading spinner
+                let show_spinner = app.panes[0].loading_started_at
+                    .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+                loading_overlay(with_annotations, show_spinner, &app.panes[0].spinner_state)
             } else {
                 // Use build_ui_container even when dir not loaded to show loading spinner
                 app.panes[0].build_ui_container(

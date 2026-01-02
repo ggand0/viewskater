@@ -264,8 +264,15 @@ impl DataViewer {
             }
         }
 
+        // Set loading timer for spinner display during neighbor loading
+        // The first image is already displayed, now we load the rest in background
+        if let Some(pane) = self.panes.get_mut(pane_index) {
+            pane.loading_started_at = Some(std::time::Instant::now());
+            debug!("SPINNER: Set loading_started_at for neighbor loading (pane {})", pane_index);
+        }
+
         let current_index = self.panes[pane_index].img_cache.current_index;
-        crate::navigation_slider::load_initial_neighbors(
+        let load_task = crate::navigation_slider::load_initial_neighbors(
             &self.device,
             &self.queue,
             self.is_gpu_supported,
@@ -275,7 +282,17 @@ impl DataViewer {
             &mut self.loading_status,
             pane_index,
             current_index,
-        )
+        );
+
+        // Start spinner tick loop using smol's timer (runs on separate thread pool)
+        let spinner_task = Task::perform(
+            async {
+                smol::Timer::after(std::time::Duration::from_millis(50)).await;
+            },
+            |_| Message::SpinnerTick
+        );
+
+        Task::batch([load_task, spinner_task])
     }
 
     pub fn reset_state(&mut self, pane_index: isize) {
@@ -326,29 +343,13 @@ impl DataViewer {
         self.reset_state(pane_index as isize);
         self.clear_slider_images();
 
-        // Set loading timer for spinner display during initial load
-        if let Some(pane) = self.panes.get_mut(pane_index) {
-            pane.loading_started_at = Some(std::time::Instant::now());
-            log::info!("SPINNER: Set loading_started_at for initial directory load (pane {})", pane_index);
-        }
-
         // Dispatch async directory enumeration (Issue #73 - NFS performance fix)
+        // Note: Loading spinner will be shown during neighbor loading phase (after first image displays)
         let path_clone = path.clone();
-        let enum_task = Task::perform(
+        Task::perform(
             crate::file_io::enumerate_directory_async(path_clone),
             move |result| Message::DirectoryEnumerated(result, pane_index)
-        );
-
-        // Start spinner tick loop to force view updates during loading
-        // Use smol's timer which runs on a separate thread pool
-        let spinner_task = Task::perform(
-            async {
-                smol::Timer::after(std::time::Duration::from_millis(50)).await;
-            },
-            |_| Message::SpinnerTick
-        );
-
-        Task::batch([enum_task, spinner_task])
+        )
     }
 
     /// Sync initialization path for compressed files (zip/rar/7z)
@@ -358,12 +359,6 @@ impl DataViewer {
 
         self.ensure_pane_exists(pane_index);
         self.clear_slider_images();
-
-        // Set loading timer for spinner display during initial load
-        if let Some(pane) = self.panes.get_mut(pane_index) {
-            pane.loading_started_at = Some(std::time::Instant::now());
-            log::info!("SPINNER: Set loading_started_at for sync directory load (pane {})", pane_index);
-        }
 
         let pane_file_lengths = self.panes.iter().map(
             |pane| pane.img_cache.image_paths.len()).collect::<Vec<usize>>();
@@ -375,6 +370,7 @@ impl DataViewer {
         let pane = &mut self.panes[pane_index];
         debug!("pane_file_lengths: {:?}", pane_file_lengths);
 
+        // Load first image synchronously (archives are local, so this is fast)
         let _ = pane.initialize_dir_path(
             &Arc::clone(&self.device),
             &Arc::clone(&self.queue),
@@ -392,10 +388,7 @@ impl DataViewer {
             archive_warning_threshold_mb,
         );
 
-        // Clear loading timer - first image is now loaded
-        pane.loading_started_at = None;
-        log::info!("SPINNER: Cleared loading_started_at after sync initial image load (pane {})", pane_index);
-
+        // start_neighbor_loading will set loading timer for neighbor loading phase
         self.start_neighbor_loading(pane_index)
     }
 
@@ -415,7 +408,7 @@ impl DataViewer {
 
         let pane = &mut self.panes[pane_index];
 
-        // Initialize pane with pre-enumerated paths
+        // Initialize pane with pre-enumerated paths (loads first image synchronously)
         pane.initialize_with_paths(
             &Arc::clone(&self.device),
             &Arc::clone(&self.queue),
@@ -433,10 +426,7 @@ impl DataViewer {
             cache_size,
         );
 
-        // Clear loading timer - first image is now loaded
-        pane.loading_started_at = None;
-        log::info!("SPINNER: Cleared loading_started_at after initial image load (pane {})", pane_index);
-
+        // start_neighbor_loading will set loading timer for neighbor loading phase
         self.start_neighbor_loading(pane_index)
     }
 

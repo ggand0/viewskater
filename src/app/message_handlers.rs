@@ -44,10 +44,8 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::SpinnerTick => {
-            info!("SPINNER: SpinnerTick received");
             // Check if any pane is still loading - if so, schedule another tick
             let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
-            info!("SPINNER: is_loading = {}", is_loading);
             if is_loading {
                 // Update spinner animation state
                 let now = std::time::Instant::now();
@@ -64,6 +62,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
                     |_| Message::SpinnerTick
                 )
             } else {
+                debug!("SPINNER: SpinnerTick stopped - loading complete");
                 Task::none()
             }
         }
