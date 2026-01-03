@@ -3,7 +3,7 @@ use iced_widget::{container, stack, center, opaque};
 use iced_wgpu::Renderer;
 use iced_winit::core::Theme as WinitTheme;
 
-use super::circular::{circular, CircularState};
+use super::circular::circular;
 
 /// Wraps content with an optional loading spinner overlay.
 /// When `show_spinner` is true, displays a semi-transparent backdrop
@@ -11,7 +11,6 @@ use super::circular::{circular, CircularState};
 pub fn loading_overlay<'a, Message>(
     base: impl Into<Element<'a, Message, WinitTheme, Renderer>>,
     show_spinner: bool,
-    spinner_state: &'a CircularState,
 ) -> Element<'a, Message, WinitTheme, Renderer>
 where
     Message: Clone + 'a,
@@ -20,7 +19,7 @@ where
         stack![
             base.into(),
             opaque(
-                center(circular(spinner_state))
+                center(circular())
                     .style(|_theme| {
                         container::Style {
                             background: Some(
