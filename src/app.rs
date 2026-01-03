@@ -107,6 +107,8 @@ pub struct DataViewer {
     pub replay_controller: Option<crate::replay::ReplayController>,
     pub replay_keep_alive_task: Option<Task<Message>>,
     pub replay_keep_alive_pending: bool,  // Track if a keep-alive is in flight to prevent flooding
+    pub spinner_tick_task: Option<Task<Message>>,
+    pub spinner_tick_pending: bool,  // Track if a spinner tick is in flight
     pub is_fullscreen: bool,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
@@ -204,6 +206,8 @@ impl DataViewer {
             replay_controller: replay_config.map(crate::replay::ReplayController::new),
             replay_keep_alive_task: None,
             replay_keep_alive_pending: false,
+            spinner_tick_task: None,
+            spinner_tick_pending: false,
             is_fullscreen: false,
             cursor_on_top: false,
             cursor_on_menu: false,
@@ -268,7 +272,7 @@ impl DataViewer {
         // The first image is already displayed, now we load the rest in background
         if let Some(pane) = self.panes.get_mut(pane_index) {
             pane.loading_started_at = Some(std::time::Instant::now());
-            debug!("SPINNER: Set loading_started_at for neighbor loading (pane {})", pane_index);
+            info!("SPINNER: Set loading_started_at for neighbor loading (pane {})", pane_index);
         }
 
         let current_index = self.panes[pane_index].img_cache.current_index;
@@ -284,14 +288,18 @@ impl DataViewer {
             current_index,
         );
 
-        // Start spinner tick loop using smol's timer (runs on separate thread pool)
+        // Start spinner tick immediately - don't wait for ImagesLoaded
+        // The spinner should animate as soon as loading begins
+        info!("SPINNER: Starting spinner tick immediately with load_task");
+        self.spinner_tick_pending = true;
         let spinner_task = Task::perform(
             async {
-                smol::Timer::after(std::time::Duration::from_millis(50)).await;
+                tokio::task::spawn_blocking(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(16));
+                }).await.ok();
             },
             |_| Message::SpinnerTick
         );
-
         Task::batch([load_task, spinner_task])
     }
 
@@ -427,6 +435,7 @@ impl DataViewer {
         );
 
         // start_neighbor_loading will set loading timer for neighbor loading phase
+        info!("SPINNER: complete_dir_initialization calling start_neighbor_loading for pane {}", pane_index);
         self.start_neighbor_loading(pane_index)
     }
 
@@ -523,6 +532,15 @@ impl DataViewer {
         }
     }
 
+    /// Returns true if any pane is currently showing the loading spinner
+    /// (loading has been active for more than 1 second)
+    pub fn is_any_pane_loading(&self) -> bool {
+        use std::time::Duration;
+        self.panes.iter().any(|pane| {
+            pane.loading_started_at
+                .map_or(false, |start| start.elapsed() > Duration::from_secs(1))
+        })
+    }
 
     pub(crate) fn update_cache_strategy(&mut self, strategy: CacheStrategy) {
         debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
@@ -659,6 +677,13 @@ impl iced_winit::runtime::Program for DataViewer {
         // Check if we have a keep-alive task to return (for replay mode timing)
         let keep_alive_task = self.replay_keep_alive_task.take();
 
+        // Check if we have a spinner tick task to return (from SpinnerTick handler)
+        let spinner_task = self.spinner_tick_task.take();
+        if spinner_task.is_some() {
+            info!("SPINNER: update() found stored spinner_tick_task");
+            self.spinner_tick_pending = true;
+        }
+
         // Return the task if it's not skate mode
         // Skate mode overrides normal task handling for continuous navigation
         if self.skate_right {
@@ -704,14 +729,22 @@ impl iced_winit::runtime::Program for DataViewer {
             } else {
                 nav_task
             }
-        } else if let Some(keep_alive) = keep_alive_task {
-            // Not in skate mode, return keep-alive task for replay timing
-            self.replay_keep_alive_pending = true;
-            if !cli_tasks.is_empty() {
-                cli_tasks.push(keep_alive);
-                Task::batch(cli_tasks)
+        } else if keep_alive_task.is_some() || spinner_task.is_some() {
+            // Batch keep-alive and spinner tasks together if present
+            let mut batch_tasks = cli_tasks;
+            if let Some(keep_alive) = keep_alive_task {
+                self.replay_keep_alive_pending = true;
+                batch_tasks.push(keep_alive);
+            }
+            if let Some(spinner) = spinner_task {
+                info!("SPINNER: update() returning spinner task (batched)");
+                batch_tasks.push(spinner);
+            }
+            if batch_tasks.is_empty() {
+                task
             } else {
-                keep_alive
+                batch_tasks.push(task);
+                Task::batch(batch_tasks)
             }
         } else {
             // No skate mode, return the task from message handler

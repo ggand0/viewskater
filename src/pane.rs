@@ -80,7 +80,6 @@ pub struct Pane {
     #[cfg(feature = "coco")]
     pub zoom_offset: Vector,  // Current pan offset for bbox rendering
     pub loading_started_at: Option<Instant>,  // When loading started (for spinner delay)
-    pub spinner_state: crate::widgets::circular::CircularState,  // State for loading spinner
 }
 
 impl Default for Pane {
@@ -123,7 +122,6 @@ impl Default for Pane {
             #[cfg(feature = "coco")]
             zoom_offset: Vector::default(),
             loading_started_at: None,
-            spinner_state: crate::widgets::circular::CircularState::default(),
         }
     }
 }
@@ -178,7 +176,6 @@ impl Pane {
             #[cfg(feature = "coco")]
             zoom_offset: Vector::default(),
             loading_started_at: None,
-            spinner_state: crate::widgets::circular::CircularState::default(),
         }
     }
 
@@ -785,11 +782,6 @@ impl Pane {
         let show_spinner = self.loading_started_at
             .map_or(false, |start| start.elapsed() > Duration::from_secs(1));
 
-        // Log spinner state for debugging
-        debug!("SPINNER: build_ui_container called, loading_started_at={:?}, show_spinner={}",
-            self.loading_started_at.map(|s| s.elapsed().as_millis()),
-            show_spinner);
-
         let base_container = if self.dir_loaded {
             if use_slider_image_for_render && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
@@ -857,7 +849,7 @@ impl Pane {
                 .height(Length::Fill)
         };
 
-        loading_overlay(base_container, show_spinner, &self.spinner_state)
+        loading_overlay(base_container, show_spinner)
     }
 }
 

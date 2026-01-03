@@ -44,23 +44,25 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::SpinnerTick => {
+            // Reset pending flag since we received the tick
+            app.spinner_tick_pending = false;
+
             // Check if any pane is still loading - if so, schedule another tick
+            // The Circular Widget now handles its own animation via on_event(RedrawRequested)
+            // We just need to keep sending SpinnerTicks to trigger RedrawRequested events
             let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
             if is_loading {
-                // Update spinner animation state
-                let now = std::time::Instant::now();
-                let cycle_duration = std::time::Duration::from_secs(2);
-                let rotation_duration = std::time::Duration::from_secs(4);
-                for pane in app.panes.iter_mut() {
-                    pane.spinner_state.update(now, cycle_duration, rotation_duration);
-                }
-                // Schedule another tick in 16ms (~60fps) using smol
-                Task::perform(
+                // Schedule another tick in 16ms (~60fps) using blocking sleep
+                // Store in app struct so it gets returned from update()
+                app.spinner_tick_task = Some(Task::perform(
                     async {
-                        smol::Timer::after(std::time::Duration::from_millis(16)).await;
+                        tokio::task::spawn_blocking(|| {
+                            std::thread::sleep(std::time::Duration::from_millis(16));
+                        }).await.ok();
                     },
                     |_| Message::SpinnerTick
-                )
+                ));
+                Task::none()
             } else {
                 debug!("SPINNER: SpinnerTick stopped - loading complete");
                 Task::none()
@@ -354,10 +356,14 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     operation_type,
                                 );
 
-                                // Clear loading timer for affected panes
-                                for &pane_idx in pane_indices {
-                                    if let Some(pane) = app.panes.get_mut(pane_idx) {
-                                        pane.loading_started_at = None;
+                                // Only clear loading timer when all loading is complete
+                                let still_loading = !app.loading_status.loading_queue.is_empty()
+                                    || !app.loading_status.being_loaded_queue.is_empty();
+                                if !still_loading {
+                                    for &pane_idx in pane_indices {
+                                        if let Some(pane) = app.panes.get_mut(pane_idx) {
+                                            pane.loading_started_at = None;
+                                        }
                                     }
                                 }
                             }
@@ -371,9 +377,16 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     &metadata,
                                 );
 
-                                // Clear loading timer - image is now loaded
-                                if let Some(pane) = app.panes.get_mut(pane_index) {
-                                    pane.loading_started_at = None;
+                                // Only clear loading timer when all loading is complete
+                                let still_loading = !app.loading_status.loading_queue.is_empty()
+                                    || !app.loading_status.being_loaded_queue.is_empty();
+                                if !still_loading {
+                                    if let Some(pane) = app.panes.get_mut(pane_index) {
+                                        info!("SPINNER: LoadPos complete, no more pending - clearing loading_started_at");
+                                        pane.loading_started_at = None;
+                                    }
+                                } else {
+                                    debug!("SPINNER: LoadPos complete but more loading pending");
                                 }
 
                                 // Signal replay controller that initial load is complete
@@ -404,6 +417,20 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                 Err(err) => {
                     debug!("Image load failed: {:?}", err);
                 }
+            }
+            // Check if loading is still ongoing - if so, start spinner tick loop
+            let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
+            info!("SPINNER: ImagesLoaded handler end - is_loading={}, pending={}", is_loading, app.spinner_tick_pending);
+            if is_loading && !app.spinner_tick_pending {
+                info!("SPINNER: ImagesLoaded - starting spinner tick");
+                app.spinner_tick_task = Some(Task::perform(
+                    async {
+                        tokio::task::spawn_blocking(|| {
+                            std::thread::sleep(std::time::Duration::from_millis(16));
+                        }).await.ok();
+                    },
+                    |_| Message::SpinnerTick
+                ));
             }
             Task::none()
         }

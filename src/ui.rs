@@ -644,7 +644,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 // Wrap with loading overlay for neighbor loading spinner
                 let show_spinner = app.panes[0].loading_started_at
                     .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
-                loading_overlay(with_annotations, show_spinner, &app.panes[0].spinner_state)
+                loading_overlay(with_annotations, show_spinner)
             } else {
                 // Use build_ui_container even when dir not loaded to show loading spinner
                 app.panes[0].build_ui_container(
