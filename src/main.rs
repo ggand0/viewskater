@@ -998,6 +998,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         state.queue_message(Message::CursorOnMenu(
                                             !state.program().cursor_on_footer && state.mouse_interaction() == mouse::Interaction::Pointer));
 
+                                        // Continue animation loop if spinner is active
+                                        if state.program().is_any_pane_loading() {
+                                            window.request_redraw();
+                                        }
+
                                         if *debug {
                                             let total_frame_time = frame_start.elapsed();
                                             trace!("Total frame time: {:?}", total_frame_time);
@@ -1129,6 +1134,38 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             *redraw = true;
                             // Immediately request redraw for animation (e.g., SpinnerTick)
                             window.request_redraw();
+
+                            // Also render directly if loading is active (for initial spinner animation)
+                            if state.program().is_any_pane_loading() {
+                                match surface.get_current_texture() {
+                                    Ok(frame) => {
+                                        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                            label: Some("Spinner Render Encoder"),
+                                        });
+
+                                        {
+                                            let mut engine_guard = engine.lock().unwrap();
+                                            let mut renderer_guard = renderer.lock().unwrap();
+                                            renderer_guard.present(
+                                                &mut engine_guard,
+                                                device,
+                                                queue,
+                                                &mut encoder,
+                                                None,
+                                                frame.texture.format(),
+                                                &view,
+                                                viewport,
+                                                &debug_tool.overlay(),
+                                            );
+                                            engine_guard.submit(queue, encoder);
+                                        }
+                                        frame.present();
+                                        *redraw = false;
+                                    }
+                                    Err(_) => {}
+                                }
+                            }
                         }
                         Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
                             // Process any pending control messages
