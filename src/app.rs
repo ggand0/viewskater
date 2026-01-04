@@ -532,14 +532,10 @@ impl DataViewer {
         }
     }
 
-    /// Returns true if any pane is currently showing the loading spinner
-    /// (loading has been active for more than 1 second)
+    /// Returns true if any pane has active loading (for animation loop)
+    /// This returns true as soon as loading starts, to keep the redraw loop active
     pub fn is_any_pane_loading(&self) -> bool {
-        use std::time::Duration;
-        self.panes.iter().any(|pane| {
-            pane.loading_started_at
-                .map_or(false, |start| start.elapsed() > Duration::from_secs(1))
-        })
+        self.panes.iter().any(|pane| pane.loading_started_at.is_some())
     }
 
     pub(crate) fn update_cache_strategy(&mut self, strategy: CacheStrategy) {
