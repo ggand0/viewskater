@@ -1003,15 +1003,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     }
                                 }
                                 Action::Output(message) => {
-                                    log::info!("MAIN: Action::Output received - UserEvent is being processed");
                                     state.queue_message(message);
-                                    // Queue RedrawRequested event so widgets receive it in on_event
-                                    // This is required for spinner animation - widgets only see events, not messages
-                                    state.queue_event(iced_winit::core::Event::Window(
-                                        iced_winit::core::window::Event::RedrawRequested(Instant::now())
-                                    ));
 
-                                    // Process immediately - fix for spinner/async task animations
+                                    // Process immediately
                                     if !state.is_queue_empty() {
                                         let (_, task) = state.update(
                                             viewport.logical_size(),
@@ -1036,10 +1030,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 _ => {}
                             }
                             *redraw = true;
-                            // Immediately request redraw for animation (e.g., SpinnerTick)
-                            window.request_redraw();
 
-                            // Also render directly if loading is active (for initial spinner animation)
+                            // Render directly if loading is active (for spinner animation)
                             if state.program().is_any_pane_loading() {
                                 match surface.get_current_texture() {
                                     Ok(frame) => {
