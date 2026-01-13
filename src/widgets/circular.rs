@@ -59,6 +59,14 @@ impl<'a> Circular<'a> {
             bar_color: Color::WHITE,
         }
     }
+
+    /// Set the size of the spinner (default: 48.0)
+    pub fn size(mut self, size: f32) -> Self {
+        self.size = size;
+        // Scale bar height proportionally (default is 4.0 for 48.0 size)
+        self.bar_height = size / 12.0;
+        self
+    }
 }
 
 impl Default for Circular<'_> {
@@ -204,7 +212,12 @@ where
     }
 }
 
-/// Create a circular spinner element
+/// Create a circular spinner element (48px default size)
 pub fn circular<'a, Message: Clone + 'a>() -> Element<'a, Message, WinitTheme, Renderer> {
     Circular::new().into()
+}
+
+/// Create a small circular spinner for compact spaces like footer (18px)
+pub fn mini_circular<'a, Message: Clone + 'a>() -> Element<'a, Message, WinitTheme, Renderer> {
+    Circular::new().size(18.0).into()
 }

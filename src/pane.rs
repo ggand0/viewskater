@@ -773,16 +773,10 @@ impl Pane {
 
     pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> iced_winit::core::Element<'_, Message, WinitTheme, Renderer> {
         use log::debug;
-        use crate::widgets::loading_overlay::loading_overlay;
-        use std::time::Duration;
 
         debug!("build_ui_container: use_nearest_filter = {}", use_nearest_filter);
 
-        // Check if we should show the loading spinner (after 1 second delay to prevent flicker)
-        let show_spinner = self.loading_started_at
-            .map_or(false, |start| start.elapsed() > Duration::from_secs(1));
-
-        let base_container = if self.dir_loaded {
+        if self.dir_loaded {
             if use_slider_image_for_render && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
                 let image_handle = self.slider_image.clone().unwrap();
@@ -800,6 +794,7 @@ impl Pane {
                 )
                 .width(Length::Fill)
                 .height(Length::Fill)
+                .into()
             } else if let Some(scene) = &self.scene {
                 #[cfg(feature = "coco")]
                 let mut shader_widget = ImageShader::new(Some(scene))
@@ -838,18 +833,19 @@ impl Pane {
                 container(center(shader_widget))
                     .width(Length::Fill)
                     .height(Length::Fill)
+                    .into()
             } else {
                 container(text("No image loaded"))
                     .width(Length::Fill)
                     .height(Length::Fill)
+                    .into()
             }
         } else {
             container(text(""))
                 .width(Length::Fill)
                 .height(Length::Fill)
-        };
-
-        loading_overlay(base_container, show_spinner)
+                .into()
+        }
     }
 }
 

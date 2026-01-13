@@ -41,7 +41,7 @@ use crate::{CURRENT_FPS, CURRENT_MEMORY_USAGE, pane::IMAGE_RENDER_FPS};
 use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
 use crate::widgets::synced_image_split::SyncedImageSplit;
-use crate::widgets::loading_overlay::loading_overlay;
+use crate::widgets::circular::mini_circular;
 #[cfg(feature = "selection")]
 use crate::selection_manager::ImageMark;
 
@@ -282,6 +282,7 @@ pub fn get_footer(
     metadata_text: Option<String>,
     pane_index: usize,
     show_copy_buttons: bool,
+    show_spinner: bool,
     options: FooterOptions,
     available_width: f32,
 ) -> Container<'static, Message, WinitTheme, Renderer> {
@@ -338,7 +339,15 @@ pub fn get_footer(
             .into()
     };
 
-    // Right side: copy buttons, badges, and index
+    // Optional loading spinner (shown during background loading)
+    let spinner_element: Element<'_, Message, WinitTheme, Renderer> = if show_spinner {
+        mini_circular()
+    } else {
+        // Empty placeholder to maintain spacing
+        container(text("")).width(0).height(0).into()
+    };
+
+    // Right side: spinner, copy buttons, badges, and index
     let right_content: Element<'_, Message, WinitTheme, Renderer> = if state.show_copy_buttons {
         let copy_filename_button = tooltip(
             button(file_copy_icon())
@@ -381,6 +390,7 @@ pub fn get_footer(
         );
 
         row![
+            spinner_element,
             copy_filepath_button,
             copy_filename_button,
             mark_badge,
@@ -397,6 +407,7 @@ pub fn get_footer(
         .into()
     } else {
         row![
+            spinner_element,
             mark_badge,
             coco_badge,
             text(state.footer_text)
@@ -641,10 +652,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     .height(Length::Fill)
                     .padding(0);
 
-                // Wrap with loading overlay for neighbor loading spinner
-                let show_spinner = app.panes[0].loading_started_at
-                    .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
-                loading_overlay(with_annotations, show_spinner)
+                with_annotations.into()
             } else {
                 // Use build_ui_container even when dir not loaded to show loading spinner
                 app.panes[0].build_ui_container(
@@ -673,6 +681,10 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     None
                 };
 
+                // Show spinner after 1 second of loading
+                let show_spinner = app.panes[0].loading_started_at
+                    .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+
                 let options = {
                     #[cfg(feature = "selection")]
                     {
@@ -683,7 +695,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         FooterOptions::new()
                     }
                 };
-                get_footer(footer_text, metadata_text, 0, app.show_copy_buttons, options, app.window_width)
+                get_footer(footer_text, metadata_text, 0, app.show_copy_buttons, show_spinner, options, app.window_width)
             } else {
                 container(text("")).height(0)
             };
@@ -829,6 +841,12 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 };
 
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
+                    // Show spinner after 1 second of loading
+                    let show_spinner_0 = app.panes[0].loading_started_at
+                        .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+                    let show_spinner_1 = app.panes[1].loading_started_at
+                        .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+
                     let options0 = {
                         #[cfg(feature = "selection")]
                         {
@@ -852,8 +870,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     // Each pane gets half the window width in dual mode
                     let pane_width = app.window_width / 2.0;
                     row![
-                        get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, app.show_copy_buttons, options0, pane_width),
-                        get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, app.show_copy_buttons, options1, pane_width)
+                        get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, app.show_copy_buttons, show_spinner_0, options0, pane_width),
+                        get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, app.show_copy_buttons, show_spinner_1, options1, pane_width)
                     ]
                 } else {
                     row![]
@@ -989,6 +1007,12 @@ pub fn build_ui_dual_pane_slider2<'a>(
     // Destructure footer_options array
     let [footer_opt0, footer_opt1] = footer_options;
 
+    // Show spinner after 1 second of loading
+    let show_spinner_0 = panes[0].loading_started_at
+        .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+    let show_spinner_1 = panes[1].loading_started_at
+        .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+
     let first_img = if panes[0].dir_loaded {
         container(
             if show_footer {
@@ -1002,7 +1026,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, show_copy_buttons, footer_opt0, pane_width)
+                    get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, show_copy_buttons, show_spinner_0, footer_opt0, pane_width)
                 ]
             } else {
                 column![
@@ -1038,7 +1062,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, show_copy_buttons, footer_opt1, pane_width)
+                    get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, show_copy_buttons, show_spinner_1, footer_opt1, pane_width)
                 ]
             } else {
                 column![
