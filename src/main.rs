@@ -23,6 +23,7 @@ mod coco;
 mod settings_modal;
 mod replay;
 mod exif_utils;
+mod render;
 
 #[cfg(target_os = "macos")]
 mod macos_file_access;
@@ -695,8 +696,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         }
                                     }
                                 }
-                                WindowEvent::RedrawRequested => {
-                                }
                                 _ => {}
                             }
 
@@ -1031,35 +1030,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             }
                             *redraw = true;
 
-                            // Render directly if loading is active (for spinner animation)
+                            // Render directly for spinner animation (SpinnerTick is a Message,
+                            // not an Event, so widgets won't redraw without this).
                             if state.program().is_any_pane_loading() {
-                                match surface.get_current_texture() {
-                                    Ok(frame) => {
-                                        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                            label: Some("Spinner Render Encoder"),
-                                        });
-
-                                        {
-                                            let mut engine_guard = engine.lock().unwrap();
-                                            let mut renderer_guard = renderer.lock().unwrap();
-                                            renderer_guard.present(
-                                                &mut engine_guard,
-                                                device,
-                                                queue,
-                                                &mut encoder,
-                                                None,
-                                                frame.texture.format(),
-                                                &view,
-                                                viewport,
-                                                &debug_tool.overlay(),
-                                            );
-                                            engine_guard.submit(queue, encoder);
-                                        }
-                                        frame.present();
-                                        *redraw = false;
-                                    }
-                                    Err(_) => {}
+                                if render::render_spinner_frame(
+                                    surface, device, queue, engine, renderer, viewport, debug_tool,
+                                ) {
+                                    *redraw = false;
                                 }
                             }
                         }
