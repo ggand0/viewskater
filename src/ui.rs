@@ -528,6 +528,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     let fps_bar = if is_fullscreen {
         container (
             row![fullscreen_menu_bar_spinner, get_fps_container(app)]
+                .align_y(alignment::Vertical::Center)
         ).align_x(alignment::Horizontal::Right)
         .width(Length::Fill)
     } else {
