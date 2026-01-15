@@ -42,6 +42,7 @@ use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
 use crate::widgets::synced_image_split::SyncedImageSplit;
 use crate::widgets::circular::mini_circular;
+use crate::settings::SpinnerLocation;
 #[cfg(feature = "selection")]
 use crate::selection_manager::ImageMark;
 
@@ -310,9 +311,12 @@ pub fn get_footer(
     pane_index: usize,
     show_copy_buttons: bool,
     show_spinner: bool,
+    spinner_location: SpinnerLocation,
     options: FooterOptions,
     available_width: f32,
 ) -> Container<'static, Message, WinitTheme, Renderer> {
+    // Only show spinner in footer if spinner_location is Footer
+    let show_spinner = show_spinner && spinner_location == SpinnerLocation::Footer;
     // Get responsive footer state based on available width
     let state = get_responsive_footer_state(
         available_width,
@@ -487,10 +491,22 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     let cursor_on_footer = app.cursor_on_footer;
     let show_option = app.settings.is_visible();
 
+    // Check if spinner should be shown in menu bar
+    let show_menu_bar_spinner = app.spinner_location == SpinnerLocation::MenuBar
+        && app.panes.iter().any(|p| p.loading_started_at
+            .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1)));
+
+    let menu_bar_spinner: Element<'_, Message, WinitTheme, Renderer> = if show_menu_bar_spinner {
+        container(mini_circular()).padding([0, 5]).into()
+    } else {
+        container(text("")).width(0).height(0).into()
+    };
+
     let top_bar = container(
         row![
             mb,
             horizontal_space(),
+            menu_bar_spinner,
             if !is_fullscreen {
                 get_fps_container(app)
             } else {
@@ -502,9 +518,16 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
 
+    // Menu bar spinner for fullscreen mode
+    let fullscreen_menu_bar_spinner: Element<'_, Message, WinitTheme, Renderer> = if show_menu_bar_spinner {
+        container(mini_circular()).padding([0, 5]).into()
+    } else {
+        container(text("")).width(0).height(0).into()
+    };
+
     let fps_bar = if is_fullscreen {
         container (
-            row![get_fps_container(app)]
+            row![fullscreen_menu_bar_spinner, get_fps_container(app)]
         ).align_x(alignment::Horizontal::Right)
         .width(Length::Fill)
     } else {
@@ -723,7 +746,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                         FooterOptions::new()
                     }
                 };
-                get_footer(footer_text, metadata_text, 0, app.show_copy_buttons, show_spinner, options, app.window_width)
+                get_footer(footer_text, metadata_text, 0, app.show_copy_buttons, show_spinner, app.spinner_location, options, app.window_width)
             } else {
                 container(text("")).height(0)
             };
@@ -810,6 +833,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     footer_options,
                     app.nearest_neighbor_filter,
                     app.use_binary_size,
+                    app.spinner_location,
                     app.window_width,
                 );
 
@@ -898,8 +922,8 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                     // Each pane gets half the window width in dual mode
                     let pane_width = app.window_width / 2.0;
                     row![
-                        get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, app.show_copy_buttons, show_spinner_0, options0, pane_width),
-                        get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, app.show_copy_buttons, show_spinner_1, options1, pane_width)
+                        get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, app.show_copy_buttons, show_spinner_0, app.spinner_location, options0, pane_width),
+                        get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, app.show_copy_buttons, show_spinner_1, app.spinner_location, options1, pane_width)
                     ]
                 } else {
                     row![]
@@ -1001,6 +1025,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
     footer_options: [FooterOptions; 2],
     use_nearest_filter: bool,
     use_binary_size: bool,
+    spinner_location: SpinnerLocation,
     window_width: f32,
 ) -> Element<'a, Message, WinitTheme, Renderer> {
     // Each pane gets roughly half the window width
@@ -1054,7 +1079,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, show_copy_buttons, show_spinner_0, footer_opt0, pane_width)
+                    get_footer(footer_texts[0].clone(), metadata_texts[0].clone(), 0, show_copy_buttons, show_spinner_0, spinner_location, footer_opt0, pane_width)
                 ]
             } else {
                 column![
@@ -1090,7 +1115,7 @@ pub fn build_ui_dual_pane_slider2<'a>(
                         Message::SliderReleased
                     )
                     .width(Length::Fill),
-                    get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, show_copy_buttons, show_spinner_1, footer_opt1, pane_width)
+                    get_footer(footer_texts[1].clone(), metadata_texts[1].clone(), 1, show_copy_buttons, show_spinner_1, spinner_location, footer_opt1, pane_width)
                 ]
             } else {
                 column![

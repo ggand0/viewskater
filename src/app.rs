@@ -115,6 +115,7 @@ pub struct DataViewer {
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub(crate) ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
     pub use_binary_size: bool,                          // Use binary (KiB/MiB) vs decimal (KB/MB) for file sizes
+    pub spinner_location: crate::settings::SpinnerLocation,  // Where to show loading spinner
     pub window_width: f32,                              // Current window width for responsive layout
     #[cfg(feature = "selection")]
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
@@ -214,6 +215,7 @@ impl DataViewer {
             cursor_on_footer: false,
             ctrl_pressed: false,
             use_binary_size: settings.use_binary_size,
+            spinner_location: settings.spinner_location,
             window_width: settings.window_width as f32,
             #[cfg(feature = "selection")]
             selection_manager: SelectionManager::new(),

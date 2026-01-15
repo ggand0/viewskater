@@ -103,6 +103,10 @@ pub struct UserSettings {
     /// - false: Decimal units like GNOME/macOS/Windows (1 KB = 1000 bytes)
     #[serde(default)]
     pub use_binary_size: bool,
+
+    /// Location where loading spinner is displayed
+    #[serde(default)]
+    pub spinner_location: SpinnerLocation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,6 +120,23 @@ pub enum CocoMaskRenderMode {
 impl Default for CocoMaskRenderMode {
     fn default() -> Self {
         Self::Polygon  // Keep existing behavior as default
+    }
+}
+
+/// Location where the loading spinner is displayed
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpinnerLocation {
+    /// Show spinner in the footer (default)
+    Footer,
+    /// Show spinner in the menu bar (overlays in fullscreen mode)
+    MenuBar,
+    /// Don't show spinner
+    None,
+}
+
+impl Default for SpinnerLocation {
+    fn default() -> Self {
+        Self::Footer
     }
 }
 
@@ -206,6 +227,7 @@ impl Default for UserSettings {
             coco_disable_simplification: false,
             coco_mask_render_mode: CocoMaskRenderMode::default(),
             use_binary_size: false,  // Default to decimal (GNOME/macOS/Windows style)
+            spinner_location: SpinnerLocation::default(),
         }
     }
 }
@@ -342,6 +364,11 @@ impl UserSettings {
 
         // Update display settings
         result = Self::replace_yaml_value_or_track(&result, "use_binary_size", &self.use_binary_size.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "spinner_location", &format!("\"{}\"", match self.spinner_location {
+            SpinnerLocation::Footer => "Footer",
+            SpinnerLocation::MenuBar => "MenuBar",
+            SpinnerLocation::None => "None",
+        }), &mut missing_keys);
 
         // Append missing keys with comments
         if !missing_keys.is_empty() {
@@ -388,6 +415,7 @@ impl UserSettings {
             "coco_mask_render_mode" => "# COCO: Mask rendering mode (Polygon or Pixel)".to_string(),
             "use_binary_size" => "# Use binary file size units (true = KiB/MiB like ls -lh, false = KB/MB like GNOME)".to_string(),
             "show_metadata" => "# Show image metadata (resolution, file size) in footer".to_string(),
+            "spinner_location" => "# Loading spinner location: Footer, MenuBar, or None".to_string(),
             _ => String::new(),
         }
     }
@@ -507,6 +535,12 @@ coco_mask_render_mode: "{}"
 # - true: Binary units like `ls -lh` (1 KiB = 1024 bytes)
 # - false: Decimal units like GNOME/macOS/Windows (1 KB = 1000 bytes)
 use_binary_size: {}
+
+# Loading spinner location
+# - "Footer": Show spinner in the footer bar (default)
+# - "MenuBar": Show spinner in the menu bar (overlays in fullscreen mode)
+# - "None": Don't show loading spinner
+spinner_location: "{}"
 "#,
             self.show_fps,
             self.show_footer,
@@ -533,7 +567,12 @@ use_binary_size: {}
                 CocoMaskRenderMode::Polygon => "Polygon",
                 CocoMaskRenderMode::Pixel => "Pixel",
             },
-            self.use_binary_size
+            self.use_binary_size,
+            match self.spinner_location {
+                SpinnerLocation::Footer => "Footer",
+                SpinnerLocation::MenuBar => "MenuBar",
+                SpinnerLocation::None => "None",
+            }
         )
     }
 

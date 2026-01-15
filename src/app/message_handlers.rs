@@ -113,6 +113,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
         Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
         Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleMetadataDisplay(_) | Message::ToggleNearestNeighborFilter(_) |
+        Message::SetSpinnerLocation(_) |
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
@@ -670,6 +671,11 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
 
             Task::batch(tasks)
         }
+        Message::SetSpinnerLocation(location) => {
+            debug!("SetSpinnerLocation: setting to {:?}", location);
+            app.spinner_location = location;
+            Task::none()
+        }
         #[cfg(feature = "coco")]
         Message::ToggleCocoSimplification(enabled) => {
             app.coco_disable_simplification = enabled;
@@ -1080,6 +1086,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         #[cfg(not(feature = "coco"))]
         coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
         use_binary_size: app.use_binary_size,
+        spinner_location: app.spinner_location,
     };
 
     let old_settings = UserSettings::load(None);

@@ -87,6 +87,7 @@ pub enum Message {
     ToggleCopyButtons(bool),
     ToggleMetadataDisplay(bool),
     ToggleNearestNeighborFilter(bool),
+    SetSpinnerLocation(crate::settings::SpinnerLocation),
     #[cfg(feature = "coco")]
     ToggleCocoSimplification(bool),
     #[cfg(feature = "coco")]
