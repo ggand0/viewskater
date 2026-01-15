@@ -123,6 +123,7 @@ impl FooterOptions {
 /// Responsive footer layout state
 struct ResponsiveFooterState {
     metadata: Option<String>,
+    show_spinner: bool,
     show_copy_buttons: bool,
     footer_text: String,
 }
@@ -157,22 +158,25 @@ fn measure_text_width(text: &str) -> f32 {
 
 /// Determines responsive footer layout based on available width
 /// Phases:
-/// 1. Full metadata (resolution + file size) + buttons + index/total
-/// 2. Resolution with "pixels" + buttons + index/total
-/// 3. Dimensions only + buttons + index/total
-/// 4. No metadata + buttons + index/total
-/// 5. No metadata + no buttons + index/total
-/// 6. No metadata + no buttons + index only
-/// 7. Nothing (empty footer)
+/// 1. Full metadata (resolution + file size) + spinner + buttons + index/total
+/// 2. Resolution with "pixels" + spinner + buttons + index/total
+/// 3. Dimensions only + spinner + buttons + index/total
+/// 4. No metadata + spinner + buttons + index/total
+/// 5. No metadata + no spinner + buttons + index/total
+/// 6. No metadata + no spinner + no buttons + index/total
+/// 7. No metadata + no spinner + no buttons + index only
+/// 8. Nothing (empty footer)
 fn get_responsive_footer_state(
     available_width: f32,
     metadata_text: &Option<String>,
     footer_text: &str,
+    show_spinner: bool,
     show_copy_buttons: bool,
 ) -> ResponsiveFooterState {
     // Fixed widths for non-text elements
     const BUTTON_WIDTH: f32 = 26.0;  // Each copy button: 18px icon + padding
     const BUTTON_SPACING: f32 = 3.0; // Spacing between buttons
+    const SPINNER_WIDTH: f32 = 18.0; // Mini spinner size
     const FOOTER_PADDING: f32 = 6.0; // Footer container padding (3px each side)
     const ELEMENT_SPACING: f32 = 3.0; // Spacing between row elements
     const MIN_MARGIN: f32 = 5.0;     // Minimum margin before hiding
@@ -189,40 +193,59 @@ fn get_responsive_footer_state(
     } else {
         0.0
     };
+    let spinner_width = if show_spinner {
+        SPINNER_WIDTH + ELEMENT_SPACING
+    } else {
+        0.0
+    };
 
-    // Phase 7: Nothing fits - hide everything
+    // Phase 8: Nothing fits - hide everything
     if available_width < index_only_width + FOOTER_PADDING + MIN_MARGIN {
         return ResponsiveFooterState {
             metadata: None,
+            show_spinner: false,
             show_copy_buttons: false,
             footer_text: String::new(),
         };
     }
 
-    // Phase 6: Only index (no total)
+    // Phase 7: Only index (no total)
     if available_width < full_footer_width + FOOTER_PADDING + MIN_MARGIN {
         return ResponsiveFooterState {
             metadata: None,
+            show_spinner: false,
             show_copy_buttons: false,
             footer_text: index_only,
         };
     }
 
-    // Phase 5: Index/total but no buttons
+    // Phase 6: Index/total but no buttons or spinner
     if available_width < full_footer_width + buttons_width + FOOTER_PADDING + ELEMENT_SPACING + MIN_MARGIN {
         return ResponsiveFooterState {
             metadata: None,
+            show_spinner: false,
             show_copy_buttons: false,
             footer_text: footer_text.to_string(),
         };
     }
 
-    // Phase 4: Buttons + index/total but no metadata
-    let right_side_width = buttons_width + full_footer_width + ELEMENT_SPACING;
+    // Phase 5: Buttons + index/total but no spinner or metadata
+    if available_width < full_footer_width + buttons_width + spinner_width + FOOTER_PADDING + ELEMENT_SPACING + MIN_MARGIN {
+        return ResponsiveFooterState {
+            metadata: None,
+            show_spinner: false,
+            show_copy_buttons,
+            footer_text: footer_text.to_string(),
+        };
+    }
+
+    // Phase 4: Spinner + buttons + index/total but no metadata
+    let right_side_width = spinner_width + buttons_width + full_footer_width + ELEMENT_SPACING;
 
     let Some(meta) = metadata_text else {
         return ResponsiveFooterState {
             metadata: None,
+            show_spinner,
             show_copy_buttons,
             footer_text: footer_text.to_string(),
         };
@@ -245,6 +268,7 @@ fn get_responsive_footer_state(
         if available_for_meta < resolution_only_width + MIN_MARGIN {
             return ResponsiveFooterState {
                 metadata: None,
+                show_spinner,
                 show_copy_buttons,
                 footer_text: footer_text.to_string(),
             };
@@ -254,6 +278,7 @@ fn get_responsive_footer_state(
         if available_for_meta < resolution_with_pixels_width + MIN_MARGIN {
             return ResponsiveFooterState {
                 metadata: Some(resolution_only.to_string()),
+                show_spinner,
                 show_copy_buttons,
                 footer_text: footer_text.to_string(),
             };
@@ -263,6 +288,7 @@ fn get_responsive_footer_state(
         if available_for_meta < full_meta_width + MIN_MARGIN {
             return ResponsiveFooterState {
                 metadata: Some(resolution_with_pixels.to_string()),
+                show_spinner,
                 show_copy_buttons,
                 footer_text: footer_text.to_string(),
             };
@@ -272,6 +298,7 @@ fn get_responsive_footer_state(
     // Phase 1: Full metadata fits
     ResponsiveFooterState {
         metadata: Some(meta.clone()),
+        show_spinner,
         show_copy_buttons,
         footer_text: footer_text.to_string(),
     }
@@ -291,6 +318,7 @@ pub fn get_footer(
         available_width,
         &metadata_text,
         &footer_text,
+        show_spinner,
         show_copy_buttons,
     );
 
@@ -339,8 +367,8 @@ pub fn get_footer(
             .into()
     };
 
-    // Optional loading spinner (shown during background loading)
-    let spinner_element: Element<'_, Message, WinitTheme, Renderer> = if show_spinner {
+    // Optional loading spinner (shown during background loading, hidden when footer is narrow)
+    let spinner_element: Element<'_, Message, WinitTheme, Renderer> = if state.show_spinner {
         mini_circular()
     } else {
         // Empty placeholder to maintain spacing
