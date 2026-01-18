@@ -496,11 +496,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         && app.panes.iter().any(|p| p.loading_started_at
             .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1)));
 
-    // Reserve fixed width for spinner (18px spinner + 10px padding = 28px)
+    // Reserve fixed width for spinner only when MenuBar location is selected
     let menu_bar_spinner: Element<'_, Message, WinitTheme, Renderer> = if show_menu_bar_spinner {
         container(mini_circular()).padding([0, 5]).width(28).into()
-    } else {
+    } else if app.spinner_location == SpinnerLocation::MenuBar {
         container(text("")).width(28).height(0).into()
+    } else {
+        container(text("")).width(0).height(0).into()
     };
 
     let top_bar = container(
@@ -519,11 +521,13 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
 
-    // Menu bar spinner for fullscreen mode (same fixed width)
+    // Menu bar spinner for fullscreen mode (same logic)
     let fullscreen_menu_bar_spinner: Element<'_, Message, WinitTheme, Renderer> = if show_menu_bar_spinner {
         container(mini_circular()).padding([0, 5]).width(28).into()
-    } else {
+    } else if app.spinner_location == SpinnerLocation::MenuBar {
         container(text("")).width(28).height(0).into()
+    } else {
+        container(text("")).width(0).height(0).into()
     };
 
     let fps_bar = if is_fullscreen {
