@@ -496,38 +496,39 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
         && app.panes.iter().any(|p| p.loading_started_at
             .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1)));
 
+    // Reserve fixed width for spinner (18px spinner + 10px padding = 28px)
     let menu_bar_spinner: Element<'_, Message, WinitTheme, Renderer> = if show_menu_bar_spinner {
-        container(mini_circular()).padding([0, 5]).into()
+        container(mini_circular()).padding([0, 5]).width(28).into()
     } else {
-        container(text("")).width(0).height(0).into()
+        container(text("")).width(28).height(0).into()
     };
 
     let top_bar = container(
         row![
             mb,
             horizontal_space(),
-            menu_bar_spinner,
             if !is_fullscreen {
                 get_fps_container(app)
             } else {
                 container(text("")).width(0).height(0)
-            }
+            },
+            menu_bar_spinner
         ]
             .align_y(alignment::Vertical::Center)
     )
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill);
 
-    // Menu bar spinner for fullscreen mode
+    // Menu bar spinner for fullscreen mode (same fixed width)
     let fullscreen_menu_bar_spinner: Element<'_, Message, WinitTheme, Renderer> = if show_menu_bar_spinner {
-        container(mini_circular()).padding([0, 5]).into()
+        container(mini_circular()).padding([0, 5]).width(28).into()
     } else {
-        container(text("")).width(0).height(0).into()
+        container(text("")).width(28).height(0).into()
     };
 
     let fps_bar = if is_fullscreen {
         container (
-            row![fullscreen_menu_bar_spinner, get_fps_container(app)]
+            row![get_fps_container(app), fullscreen_menu_bar_spinner]
                 .align_y(alignment::Vertical::Center)
         ).align_x(alignment::Horizontal::Right)
         .width(Length::Fill)
@@ -1197,16 +1198,18 @@ fn get_fps_container(app: &DataViewer) -> Container<'_, Message, WinitTheme, Ren
     };
 
     if app.show_fps {
+        // Use fixed-width number formatting to prevent spinner shifting
         let memory_text = if memory_mb < 0.0 {
-            "Mem: N/A".to_string()
+            "Mem:   N/A".to_string()
         } else {
-            format!("Mem: {:.1} MB", memory_mb)
+            format!("Mem: {:6.1} MB", memory_mb)
         };
 
         container(
-            text(format!("UI: {:.1} FPS | Image: {:.1} FPS | {}",
+            text(format!("UI: {:5.1} FPS | Image: {:5.1} FPS | {}",
                          ui_fps, image_fps, memory_text))
                 .size(14)
+                .font(Font::MONOSPACE)
                 .style(|_theme| iced::widget::text::Style {
                     color: Some(Color::from([1.0, 1.0, 1.0]))
                 })
