@@ -7,6 +7,5 @@ pub mod shader;
 pub mod synced_image_split;
 pub mod easing;
 pub mod circular;
-pub mod loading_overlay;
 #[cfg(feature = "selection")]
 pub mod selection_widget;

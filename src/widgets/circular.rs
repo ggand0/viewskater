@@ -146,6 +146,7 @@ where
         let progress_in_cycle = total_cycles.fract();
 
         // Alternate between expanding (even) and contracting (odd)
+        #[allow(clippy::manual_is_multiple_of)]
         let is_expanding = cycle_index % 2 == 0;
         let progress = progress_in_cycle;
 
@@ -210,11 +211,6 @@ where
     fn from(circular: Circular<'a>) -> Self {
         Self::new(circular)
     }
-}
-
-/// Create a circular spinner element (48px default size)
-pub fn circular<'a, Message: Clone + 'a>() -> Element<'a, Message, WinitTheme, Renderer> {
-    Circular::new().into()
 }
 
 /// Create a small circular spinner for compact spaces like footer (18px)

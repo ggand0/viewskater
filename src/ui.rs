@@ -494,7 +494,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
     // Check if spinner should be shown in menu bar
     let show_menu_bar_spinner = app.spinner_location == SpinnerLocation::MenuBar
         && app.panes.iter().any(|p| p.loading_started_at
-            .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1)));
+            .is_some_and(|start| start.elapsed() > std::time::Duration::from_secs(1)));
 
     // Reserve fixed width for spinner only when MenuBar location is selected
     let menu_bar_spinner: Element<'_, Message, WinitTheme, Renderer> = if show_menu_bar_spinner {
@@ -740,7 +740,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
                 // Show spinner after 1 second of loading
                 let show_spinner = app.panes[0].loading_started_at
-                    .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+                    .is_some_and(|start| start.elapsed() > std::time::Duration::from_secs(1));
 
                 let options = {
                     #[cfg(feature = "selection")]
@@ -901,9 +901,9 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
                 let footer = if app.show_footer && (app.panes[0].dir_loaded || app.panes[1].dir_loaded) {
                     // Show spinner after 1 second of loading
                     let show_spinner_0 = app.panes[0].loading_started_at
-                        .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+                        .is_some_and(|start| start.elapsed() > std::time::Duration::from_secs(1));
                     let show_spinner_1 = app.panes[1].loading_started_at
-                        .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+                        .is_some_and(|start| start.elapsed() > std::time::Duration::from_secs(1));
 
                     let options0 = {
                         #[cfg(feature = "selection")]
@@ -1068,9 +1068,9 @@ pub fn build_ui_dual_pane_slider2<'a>(
 
     // Show spinner after 1 second of loading
     let show_spinner_0 = panes[0].loading_started_at
-        .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+        .is_some_and(|start| start.elapsed() > std::time::Duration::from_secs(1));
     let show_spinner_1 = panes[1].loading_started_at
-        .map_or(false, |start| start.elapsed() > std::time::Duration::from_secs(1));
+        .is_some_and(|start| start.elapsed() > std::time::Duration::from_secs(1));
 
     let first_img = if panes[0].dir_loaded {
         container(
