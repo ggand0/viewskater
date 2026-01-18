@@ -553,7 +553,7 @@ pub fn move_right_all(
             ));
         } else {
             // Render failed because image not in cache - start loading timer for spinner
-            info!("SPINNER: move_right - render failed (not cached), setting timer");
+            debug!("SPINNER: move_right - render failed (not cached), setting timer");
             for pane in panes_to_load.iter_mut() {
                 if pane.loading_started_at.is_none() {
                     pane.loading_started_at = Some(Instant::now());
@@ -682,7 +682,7 @@ pub fn move_left_all(
                 pane_layout, is_slider_dual));
         } else {
             // Render failed because image not in cache - start loading timer for spinner
-            info!("SPINNER: move_left - render failed (not cached), setting timer");
+            debug!("SPINNER: move_left - render failed (not cached), setting timer");
             for pane in panes_to_load.iter_mut() {
                 if pane.loading_started_at.is_none() {
                     pane.loading_started_at = Some(Instant::now());

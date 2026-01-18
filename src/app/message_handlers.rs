@@ -383,7 +383,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     || !app.loading_status.being_loaded_queue.is_empty();
                                 if !still_loading {
                                     if let Some(pane) = app.panes.get_mut(pane_index) {
-                                        info!("SPINNER: LoadPos complete, no more pending - clearing loading_started_at");
+                                        debug!("SPINNER: LoadPos complete, no more pending - clearing loading_started_at");
                                         pane.loading_started_at = None;
                                     }
                                 } else {
@@ -421,9 +421,9 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
             }
             // Check if loading is still ongoing - if so, start spinner tick loop
             let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
-            info!("SPINNER: ImagesLoaded handler end - is_loading={}, pending={}", is_loading, app.spinner_tick_pending);
+            debug!("SPINNER: ImagesLoaded handler end - is_loading={}, pending={}", is_loading, app.spinner_tick_pending);
             if is_loading && !app.spinner_tick_pending {
-                info!("SPINNER: ImagesLoaded - starting spinner tick");
+                debug!("SPINNER: ImagesLoaded - starting spinner tick");
                 app.spinner_tick_task = Some(Task::perform(
                     async {
                         tokio::task::spawn_blocking(|| {

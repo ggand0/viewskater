@@ -279,7 +279,7 @@ fn get_loading_tasks_slider(
 
         // Start loading timer for spinner display
         pane.loading_started_at = Some(std::time::Instant::now());
-        info!("SPINNER: Set loading_started_at for pane {} (slider navigation)", pane_index);
+        debug!("SPINNER: Set loading_started_at for pane {} (slider navigation)", pane_index);
         debug!("get_loading_tasks_slider - loading_status.loading_queue: {:?}", loading_status.loading_queue);
         loading_status.print_queue();
 

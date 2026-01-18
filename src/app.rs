@@ -274,7 +274,7 @@ impl DataViewer {
         // The first image is already displayed, now we load the rest in background
         if let Some(pane) = self.panes.get_mut(pane_index) {
             pane.loading_started_at = Some(std::time::Instant::now());
-            info!("SPINNER: Set loading_started_at for neighbor loading (pane {})", pane_index);
+            debug!("SPINNER: Set loading_started_at for neighbor loading (pane {})", pane_index);
         }
 
         let current_index = self.panes[pane_index].img_cache.current_index;
@@ -292,7 +292,7 @@ impl DataViewer {
 
         // Start spinner tick immediately - don't wait for ImagesLoaded
         // The spinner should animate as soon as loading begins
-        info!("SPINNER: Starting spinner tick immediately with load_task");
+        debug!("SPINNER: Starting spinner tick immediately with load_task");
         self.spinner_tick_pending = true;
         let spinner_task = Task::perform(
             async {
@@ -437,7 +437,7 @@ impl DataViewer {
         );
 
         // start_neighbor_loading will set loading timer for neighbor loading phase
-        info!("SPINNER: complete_dir_initialization calling start_neighbor_loading for pane {}", pane_index);
+        debug!("SPINNER: complete_dir_initialization calling start_neighbor_loading for pane {}", pane_index);
         self.start_neighbor_loading(pane_index)
     }
 
@@ -678,7 +678,7 @@ impl iced_winit::runtime::Program for DataViewer {
         // Check if we have a spinner tick task to return (from SpinnerTick handler)
         let spinner_task = self.spinner_tick_task.take();
         if spinner_task.is_some() {
-            info!("SPINNER: update() found stored spinner_tick_task");
+            debug!("SPINNER: update() found stored spinner_tick_task");
             self.spinner_tick_pending = true;
         }
 
@@ -735,7 +735,7 @@ impl iced_winit::runtime::Program for DataViewer {
                 batch_tasks.push(keep_alive);
             }
             if let Some(spinner) = spinner_task {
-                info!("SPINNER: update() returning spinner task (batched)");
+                debug!("SPINNER: update() returning spinner task (batched)");
                 batch_tasks.push(spinner);
             }
             if batch_tasks.is_empty() {
