@@ -357,14 +357,11 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     operation_type,
                                 );
 
-                                // Only clear loading timer when all loading is complete
-                                let still_loading = !app.loading_status.loading_queue.is_empty()
-                                    || !app.loading_status.being_loaded_queue.is_empty();
-                                if !still_loading {
-                                    for &pane_idx in pane_indices {
-                                        if let Some(pane) = app.panes.get_mut(pane_idx) {
-                                            pane.loading_started_at = None;
-                                        }
+                                // Clear loading timer for the panes that completed
+                                // (clear per-pane, not based on global queue state)
+                                for &pane_idx in pane_indices {
+                                    if let Some(pane) = app.panes.get_mut(pane_idx) {
+                                        pane.loading_started_at = None;
                                     }
                                 }
                             }
@@ -378,16 +375,9 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     &metadata,
                                 );
 
-                                // Only clear loading timer when all loading is complete
-                                let still_loading = !app.loading_status.loading_queue.is_empty()
-                                    || !app.loading_status.being_loaded_queue.is_empty();
-                                if !still_loading {
-                                    if let Some(pane) = app.panes.get_mut(pane_index) {
-                                        debug!("SPINNER: LoadPos complete, no more pending - clearing loading_started_at");
-                                        pane.loading_started_at = None;
-                                    }
-                                } else {
-                                    debug!("SPINNER: LoadPos complete but more loading pending");
+                                // Clear loading timer for this pane
+                                if let Some(pane) = app.panes.get_mut(pane_index) {
+                                    pane.loading_started_at = None;
                                 }
 
                                 // Signal replay controller that initial load is complete
