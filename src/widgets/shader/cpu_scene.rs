@@ -45,11 +45,11 @@ impl CpuScene {
             match crate::exif_utils::decode_with_exif_orientation(&image_bytes) {
                 Ok(img) => {
                     let (width, height) = img.dimensions();
-                    debug!("CpuScene::new - loaded image with dimensions: {}x{}", width, height);
+                    debug!("CpuScene::new - loaded image with dimensions: {width}x{height}");
                     (width, height)
                 },
                 Err(e) => {
-                    error!("CpuScene::new - Failed to load image dimensions: {:?}", e);
+                    error!("CpuScene::new - Failed to load image dimensions: {e:?}");
                     (0, 0) // Default to 0,0 if we can't determine dimensions
                 }
             }
@@ -98,7 +98,7 @@ impl CpuScene {
                 let cache_start = Instant::now();
                 if let Ok(mut caches) = TEXTURE_CACHES.lock() {
                     let cache_lock_time = cache_start.elapsed();
-                    debug!("CpuScene::ensure_texture - Acquired texture caches lock in {:?}", cache_lock_time);
+                    debug!("CpuScene::ensure_texture - Acquired texture caches lock in {cache_lock_time:?}");
 
                     // Get or create the cache for this specific pane
                     let cache = caches.entry(pane_id.to_string())
@@ -112,22 +112,20 @@ impl CpuScene {
                         self.texture_size
                     ) {
                         let texture_time = texture_start.elapsed();
-                        debug!("CpuScene::ensure_texture - get_or_create_texture took {:?} for pane {}",
-                               texture_time, pane_id);
+                        debug!("CpuScene::ensure_texture - get_or_create_texture took {texture_time:?} for pane {pane_id}");
 
                         self.texture = Some(Arc::clone(&texture));
                         self.needs_update = false;
 
                         let total_time = start.elapsed();
-                        debug!("CpuScene::ensure_texture - Total time: {:?} for pane {}",
-                               total_time, pane_id);
+                        debug!("CpuScene::ensure_texture - Total time: {total_time:?} for pane {pane_id}");
 
                         return Some(Arc::clone(&texture));
                     }
                 }
 
                 // If we failed to get/create a texture from the cache, fallback to direct creation
-                error!("Failed to get/create texture from cache for pane {}", pane_id);
+                error!("Failed to get/create texture from cache for pane {pane_id}");
             }
 
             // Direct texture creation (fallback or when cache is disabled)
@@ -186,12 +184,12 @@ impl CpuScene {
                     self.needs_update = false;
 
                     let creation_time = texture_start.elapsed();
-                    debug!("Created texture directly in {:?}", creation_time);
+                    debug!("Created texture directly in {creation_time:?}");
 
                     return Some(texture_arc);
                 },
                 Err(e) => {
-                    error!("CpuScene::ensure_texture - Failed to load image: {:?}", e);
+                    error!("CpuScene::ensure_texture - Failed to load image: {e:?}");
                     return None;
                 }
             }
@@ -310,9 +308,9 @@ impl shader::Primitive for CpuPrimitive {
 
         let prepare_time = prepare_start.elapsed();
         if debug {
-            debug!("CpuPrimitive prepare - bounds: {:?}, bounds_relative: {:?}", bounds, bounds_relative);
-            debug!("CpuPrimitive prepare - viewport_size: {:?}, shader_size: {:?}", viewport_size, shader_size);
-            debug!("CpuPrimitive prepare completed in {:?}", prepare_time);
+            debug!("CpuPrimitive prepare - bounds: {bounds:?}, bounds_relative: {bounds_relative:?}");
+            debug!("CpuPrimitive prepare - viewport_size: {viewport_size:?}, shader_size: {shader_size:?}");
+            debug!("CpuPrimitive prepare completed in {prepare_time:?}");
         }
     }
 
@@ -333,12 +331,12 @@ impl shader::Primitive for CpuPrimitive {
             // Find our pipeline in the registry
             if let Some(registry) = storage.get::<CpuPipelineRegistry>() {
                 if let Some(pipeline) = registry.pipelines.get(&pipeline_key) {
-                    debug!("Rendering CPU image with TexturePipeline for key {}", pipeline_key);
+                    debug!("Rendering CPU image with TexturePipeline for key {pipeline_key}");
                     pipeline.render(target, encoder, clip_bounds);
                     let render_time = render_start.elapsed();
-                    debug!("Rendered CPU image in {:?}", render_time);
+                    debug!("Rendered CPU image in {render_time:?}");
                 } else {
-                    warn!("TexturePipeline not found in registry with key {}", pipeline_key);
+                    warn!("TexturePipeline not found in registry with key {pipeline_key}");
                 }
             } else {
                 warn!("CpuPipelineRegistry not found in storage");

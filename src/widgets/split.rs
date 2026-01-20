@@ -440,7 +440,7 @@ where
             Event::Window(iced::window::Event::FileHovered(position)) => {
                 // Access the cursor position from the FileHovered event
                 if self.debug {
-                    debug!("FILEHOVER POSITION: {:?}", position);
+                    debug!("FILEHOVER POSITION: {position:?}");
                 }
             }
 
@@ -454,7 +454,7 @@ where
 
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Event::Window(iced::window::Event::FileDropped(paths, position)) => {
-                debug!("FILEDROP POSITION: {:?}", position);
+                debug!("FILEDROP POSITION: {position:?}");
 
                 let mut children = layout.children();
                 let first_layout = children.next().expect("Missing first layout");
@@ -1027,7 +1027,7 @@ where
     Theme: Catalog,
 {
     let bounds = space.bounds();
-    if config.debug{ debug!("VERTICAL Split calculation - bounds: {:?}", bounds); }
+    if config.debug{ debug!("VERTICAL Split calculation - bounds: {bounds:?}"); }
 
     if space.bounds().width
         < config.spacing + f32::from(config.min_size_first + config.min_size_second)
@@ -1077,8 +1077,7 @@ where
     let divider_position_constrained = divider_position_constrained.min(min_right_divider_position);
 
     if config.debug {
-        debug!("VERTICAL Split - min constraints: left min={}, right min={}, constrained pos={}",
-            min_left_divider_position, min_right_divider_position, divider_position_constrained);
+        debug!("VERTICAL Split - min constraints: left min={min_left_divider_position}, right min={min_right_divider_position}, constrained pos={divider_position_constrained}");
     }
 
     // Calculate positions of elements with original offset
@@ -1133,7 +1132,7 @@ where
 
     if config.debug{
         debug!("VERTICAL Pane sizes - min_size_first: {}, min_size_second: {}", config.min_size_first, config.min_size_second);
-        debug!("VERTICAL Final widths - first: {}, divider: {}, second: {}", first_width, divider_width, second_width);
+        debug!("VERTICAL Final widths - first: {first_width}, divider: {divider_width}, second: {second_width}");
 
         // Debug output to verify the bounds are correct
         let children = result.children();

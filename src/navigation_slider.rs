@@ -59,7 +59,7 @@ fn load_full_res_image(
     pane_index: isize,
     pos: usize,
 ) -> Task<Message> {
-    debug!("load_full_res_image: Reloading full-resolution image at pos {}", pos);
+    debug!("load_full_res_image: Reloading full-resolution image at pos {pos}");
 
     // Create a list of pane indices to process
     let pane_indices: Vec<usize> = if pane_index == -1 {
@@ -79,7 +79,7 @@ fn load_full_res_image(
             let img_path = match img_cache.image_paths.get(pos) {
                 Some(path) => path.clone(),
                 None => {
-                    debug!("Image path missing for pos {} in pane {}", pos, idx);
+                    debug!("Image path missing for pos {pos} in pane {idx}");
                     continue;
                 }
             };
@@ -139,7 +139,7 @@ fn load_full_res_image(
                 img_cache.cached_data[target_index] = Some(loaded_image.clone());
                 img_cache.cached_image_indices[target_index] = pos as isize;
                 img_cache.current_index = pos;
-                debug!("load_full_res_image: Set current_index = {} for pane {}", pos, idx);
+                debug!("load_full_res_image: Set current_index = {pos} for pane {idx}");
 
                 // Get dimensions from the loaded texture
                 let tex_size = texture.size();
@@ -150,7 +150,7 @@ fn load_full_res_image(
                 pane.current_image = loaded_image;
                 pane.current_image_index = Some(pos);
                 pane.current_image_metadata = Some(metadata);
-                debug!("load_full_res_image: Set current_image_index = {} for pane {}", pos, idx);
+                debug!("load_full_res_image: Set current_image_index = {pos} for pane {idx}");
                 pane.scene = Some(Scene::new(Some(&CachedData::Gpu(Arc::clone(&texture)))));
                 pane.scene.as_mut().unwrap().update_texture(Arc::clone(&texture));
             } else {
@@ -183,13 +183,13 @@ fn load_full_res_image(
                         img_cache.cached_metadata[target_index] = metadata.clone();
                         img_cache.cached_image_indices[target_index] = pos as isize;
                         img_cache.current_index = pos;
-                        debug!("load_full_res_image (CPU): Set current_index = {} for pane {}", pos, idx);
+                        debug!("load_full_res_image (CPU): Set current_index = {pos} for pane {idx}");
 
                         // Update the currently displayed image
                         pane.current_image = cached_data.clone();
                         pane.current_image_index = Some(pos);
                         pane.current_image_metadata = metadata;
-                        debug!("load_full_res_image (CPU): Set current_image_index = {} for pane {}", pos, idx);
+                        debug!("load_full_res_image (CPU): Set current_image_index = {pos} for pane {idx}");
 
                         // Update scene if using CPU-based cached data
                         if let CachedData::Cpu(_img) = &cached_data {
@@ -205,13 +205,13 @@ fn load_full_res_image(
                         }
                     },
                     Err(err) => {
-                        debug!("Failed to load CPU image for pane {}: {}", idx, err);
+                        debug!("Failed to load CPU image for pane {idx}: {err}");
                         continue;
                     }
                 }
             }
 
-            debug!("Full-res image loaded successfully at pos {} for pane {}", pos, idx);
+            debug!("Full-res image loaded successfully at pos {pos} for pane {idx}");
         }
     }
 
@@ -279,7 +279,7 @@ fn get_loading_tasks_slider(
 
         // Start loading timer for spinner display
         pane.loading_started_at = Some(std::time::Instant::now());
-        debug!("SPINNER: Set loading_started_at for pane {} (slider navigation)", pane_index);
+        debug!("SPINNER: Set loading_started_at for pane {pane_index} (slider navigation)");
         debug!("get_loading_tasks_slider - loading_status.loading_queue: {:?}", loading_status.loading_queue);
         loading_status.print_queue();
 
@@ -295,7 +295,7 @@ fn get_loading_tasks_slider(
         tasks.push(local_tasks);
     }
 
-    debug!("get_loading_tasks_slider - loading_status addr: {:p}", loading_status);
+    debug!("get_loading_tasks_slider - loading_status addr: {loading_status:p}");
     loading_status.print_queue();
 
 
@@ -372,7 +372,7 @@ pub fn load_remaining_images(
         }
     }
 
-    debug!("load_remaining_images - loading_status addr: {:p}", loading_status);
+    debug!("load_remaining_images - loading_status addr: {loading_status:p}");
 
     loading_status.print_queue();
     debug!("load_remaining_images - tasks.len(): {}", tasks.len());
@@ -398,7 +398,7 @@ pub fn load_initial_neighbors(
     loading_status.reset_image_load_queue();
     loading_status.reset_image_being_loaded_queue();
 
-    debug!("load_initial_neighbors: Loading neighbors for pane {} at pos {}", pane_index, pos);
+    debug!("load_initial_neighbors: Loading neighbors for pane {pane_index} at pos {pos}");
 
     // Get loading tasks for neighbors (skips the central image which is already loaded)
     let tasks = get_loading_tasks_slider(
@@ -456,7 +456,7 @@ pub async fn create_async_image_widget_task(
 
     // Measure file reading time
     let read_time = read_start.elapsed();
-    trace!("PERF: File read time for pos {}: {:?}", pos, read_time);
+    trace!("PERF: File read time for pos {pos}: {read_time:?}");
 
     match bytes_result {
         Ok(bytes) => {
@@ -486,11 +486,11 @@ pub async fn create_async_image_widget_task(
 
             // Measure handle creation time
             let handle_time = handle_start.elapsed();
-            trace!("PERF: Handle creation time for pos {}: {:?}", pos, handle_time);
+            trace!("PERF: Handle creation time for pos {pos}: {handle_time:?}");
 
             // Measure total function time
             let total_time = task_start.elapsed();
-            trace!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
+            trace!("PERF: Total async task time for pos {pos}: {total_time:?}");
 
             Ok((pane_idx, pos, handle, dimensions, file_size))
         },
@@ -569,7 +569,7 @@ pub fn update_pos(
         for idx in pane_indices {
             if let Some(pane) = panes.get(idx) {
                 if pane.dir_loaded && !pane.img_cache.image_paths.is_empty() && pos < pane.img_cache.image_paths.len() {
-                    debug!("#####################update_pos - Creating async image loading task for pane {}", idx);
+                    debug!("#####################update_pos - Creating async image loading task for pane {idx}");
 
                     // Get only the single path we need from each pane
                     let img_path = pane.img_cache.image_paths[pos].clone();
@@ -608,10 +608,10 @@ pub fn update_pos(
                 //match load_current_slider_image(pane, pos) {
                 match load_current_slider_image_widget(pane, pos) {
                     Ok(()) => {
-                        debug!("update_pos - Image loaded successfully for pane {}", cache_index);
+                        debug!("update_pos - Image loaded successfully for pane {cache_index}");
                     }
                     Err(err) => {
-                        debug!("update_pos - Error loading image for pane {}: {}", cache_index, err);
+                        debug!("update_pos - Error loading image for pane {cache_index}: {err}");
                     }
                 }
             } else {
@@ -627,10 +627,10 @@ pub fn update_pos(
             //match load_current_slider_image(pane, pos) {
             match load_current_slider_image_widget(pane, pos) {
                 Ok(()) => {
-                    debug!("update_pos - Image loaded successfully for pane {}", pane_index);
+                    debug!("update_pos - Image loaded successfully for pane {pane_index}");
                 }
                 Err(err) => {
-                    debug!("update_pos - Error loading image for pane {}: {}", pane_index, err);
+                    debug!("update_pos - Error loading image for pane {pane_index}: {err}");
                 }
             }
         }
@@ -697,7 +697,7 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
                     ExtendedColorType::Rgba8
                 )
             } {
-                debug!("Failed to encode slider image: {}", err);
+                debug!("Failed to encode slider image: {err}");
                 return Err(io::Error::other("Failed to encode image"));
             }
 
@@ -718,8 +718,8 @@ fn load_current_slider_image(pane: &mut pane::Pane, pos: usize) -> Result<(), io
             Ok(())
         },
         Err(err) => {
-            debug!("Failed to open image for slider: {}", err);
-            Err(io::Error::other(format!("Failed to open image: {}", err)))
+            debug!("Failed to open image for slider: {err}");
+            Err(io::Error::other(format!("Failed to open image: {err}")))
         }
     }
 }
@@ -770,7 +770,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                 0
             };
             let metadata = Some(ImageMetadata::new(width, height, file_size));
-            debug!("SliderChanged metadata: pos={}, dims={}x{}, size={}", pos, width, height, file_size);
+            debug!("SliderChanged metadata: pos={pos}, dims={width}x{height}, size={file_size}");
 
             img_cache.cached_data[target_index] = Some(image);
             img_cache.cached_metadata[target_index] = metadata.clone();
@@ -819,7 +819,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                     Ok(())
                 },
                 Err(err) => {
-                    debug!("Failed to get CPU image data for slider: {}", err);
+                    debug!("Failed to get CPU image data for slider: {err}");
 
                     // Fallback: load directly from file
                     if let Some(img_path) = img_cache.image_paths.get(pos) {
@@ -868,7 +868,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
                                 Ok(())
                             },
                             Err(err) => Err(io::Error::other(
-                                format!("Failed to read image file for slider: {}", err)
+                                format!("Failed to read image file for slider: {err}")
                             ))
                         }
 
@@ -882,7 +882,7 @@ fn load_current_slider_image_widget(pane: &mut pane::Pane, pos: usize ) -> Resul
             }
         }
         Err(err) => {
-            debug!("update_pos(): Error loading image: {}", err);
+            debug!("update_pos(): Error loading image: {err}");
             Err(err)
         }
     }

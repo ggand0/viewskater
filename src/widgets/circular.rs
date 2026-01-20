@@ -146,7 +146,6 @@ where
         let progress_in_cycle = total_cycles.fract();
 
         // Alternate between expanding (even) and contracting (odd)
-        #[allow(clippy::manual_is_multiple_of)]
         let is_expanding = cycle_index % 2 == 0;
         let progress = progress_in_cycle;
 

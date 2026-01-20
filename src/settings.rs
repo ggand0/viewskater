@@ -250,14 +250,14 @@ impl UserSettings {
     pub fn load(custom_path: Option<&str>) -> Self {
         let path = match custom_path {
             Some(p) => {
-                info!("Using custom settings path: {}", p);
+                info!("Using custom settings path: {p}");
                 PathBuf::from(p)
             }
             None => Self::settings_path(),
         };
 
         if !path.exists() {
-            info!("Settings file not found at {:?}, using defaults", path);
+            info!("Settings file not found at {path:?}, using defaults");
             return Self::default();
         }
 
@@ -265,20 +265,20 @@ impl UserSettings {
             Ok(contents) => {
                 match serde_yaml::from_str::<UserSettings>(&contents) {
                     Ok(settings) => {
-                        info!("Loaded settings from {:?}", path);
+                        info!("Loaded settings from {path:?}");
                         debug!("Settings: show_fps={}, compression={}, cache={}, mouse_wheel_zoom={}, nearest_neighbor_filter={}",
                             settings.show_fps, settings.compression_strategy, settings.cache_strategy, settings.mouse_wheel_zoom, settings.nearest_neighbor_filter);
                         settings
                     }
                     Err(e) => {
-                        error!("Failed to parse settings file at {:?}: {}", path, e);
+                        error!("Failed to parse settings file at {path:?}: {e}");
                         warn!("Using default settings");
                         Self::default()
                     }
                 }
             }
             Err(e) => {
-                error!("Failed to read settings file at {:?}: {}", path, e);
+                error!("Failed to read settings file at {path:?}: {e}");
                 warn!("Using default settings");
                 Self::default()
             }
@@ -294,7 +294,7 @@ impl UserSettings {
         if let Some(parent) = path.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create settings directory: {}", e))?;
+                    .map_err(|e| format!("Failed to create settings directory: {e}"))?;
             }
         }
 
@@ -304,12 +304,12 @@ impl UserSettings {
                 Ok(contents) => {
                     let updated = self.update_yaml_values(&contents);
                     fs::write(&path, updated)
-                        .map_err(|e| format!("Failed to write settings file: {}", e))?;
-                    info!("Saved settings to {:?} (comments preserved)", path);
+                        .map_err(|e| format!("Failed to write settings file: {e}"))?;
+                    info!("Saved settings to {path:?} (comments preserved)");
                     return Ok(());
                 }
                 Err(e) => {
-                    warn!("Failed to read existing settings file for comment preservation: {}", e);
+                    warn!("Failed to read existing settings file for comment preservation: {e}");
                     // Fall through to create new file
                 }
             }
@@ -318,9 +318,9 @@ impl UserSettings {
         // File doesn't exist or couldn't be read, create with comments
         let yaml = self.to_yaml_with_comments();
         fs::write(&path, yaml)
-            .map_err(|e| format!("Failed to write settings file: {}", e))?;
+            .map_err(|e| format!("Failed to write settings file: {e}"))?;
 
-        info!("Saved settings to {:?}", path);
+        info!("Saved settings to {path:?}");
         Ok(())
     }
 
@@ -392,7 +392,7 @@ impl UserSettings {
                     result.push_str(&comment);
                     result.push('\n');
                 }
-                result.push_str(&format!("{}: {}\n", key, value));
+                result.push_str(&format!("{key}: {value}\n"));
             }
         }
 
@@ -428,7 +428,7 @@ impl UserSettings {
             Ok(re) => {
                 if re.is_match(yaml) {
                     // Key exists, replace it
-                    let replacement = format!("${{1}}{}", new_value);
+                    let replacement = format!("${{1}}{new_value}");
                     re.replace_all(yaml, replacement.as_str()).to_string()
                 } else {
                     // Key doesn't exist, track it
@@ -437,7 +437,7 @@ impl UserSettings {
                 }
             }
             Err(e) => {
-                warn!("Failed to create regex for key '{}': {}", key, e);
+                warn!("Failed to create regex for key '{key}': {e}");
                 yaml.to_string()
             }
         }

@@ -44,7 +44,7 @@ impl ArchiveCache {
         // Clear cache if switching to a different archive
         if let Some((current_path, _)) = &self.current_archive {
             if *current_path != path {
-                debug!("Switching archives, clearing cache: {:?} -> {:?}", current_path, path);
+                debug!("Switching archives, clearing cache: {current_path:?} -> {path:?}");
                 self.clear_cache();
             }
         }
@@ -94,7 +94,7 @@ impl ArchiveCache {
     fn read_zip_file(&mut self, path: &PathBuf, filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         // Get or create cached ZIP archive
         if self.zip_archive.is_none() {
-            debug!("Creating new ZIP archive instance for {:?}", path);
+            debug!("Creating new ZIP archive instance for {path:?}");
             let file = std::io::BufReader::new(std::fs::File::open(path)?);
             let zip_archive = zip::ZipArchive::new(file)?;
             self.zip_archive = Some(Arc::new(std::sync::Mutex::new(zip_archive)));
@@ -138,7 +138,7 @@ impl ArchiveCache {
     fn read_7z_file(&mut self, path: &PathBuf, filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         // Get or create cached 7z archive
         if self.sevenz_archive.is_none() {
-            debug!("Creating new 7z archive instance for {:?}", path);
+            debug!("Creating new 7z archive instance for {path:?}");
             let reader = sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty())?;
             self.sevenz_archive = Some(Arc::new(std::sync::Mutex::new(reader)));
         }
@@ -149,7 +149,7 @@ impl ArchiveCache {
         let data = match sevenz_arc.lock() {
             Ok(mut sevenz) => sevenz.read_file(filename)?,
             Err(e) => {
-                error!("Failed to lock 7z archive: {}", e);
+                error!("Failed to lock 7z archive: {e}");
                 return Err("Failed to lock 7z archive".into());
             }
         };

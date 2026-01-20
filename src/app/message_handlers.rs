@@ -210,7 +210,7 @@ pub fn handle_ui_messages(app: &mut DataViewer, message: Message) -> Task<Messag
         }
         Message::OpenWebLink(url) => {
             if let Err(e) = webbrowser::open(&url) {
-                warn!("Failed to open link: {}, error: {:?}", url, e);
+                warn!("Failed to open link: {url}, error: {e:?}");
             }
             Task::none()
         }
@@ -272,16 +272,16 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
         Message::FolderOpened(result, pane_index) => {
             match result {
                 Ok(dir) => {
-                    debug!("Folder opened: {}", dir);
+                    debug!("Folder opened: {dir}");
                     if pane_index > 0 && app.pane_layout == PaneLayout::SinglePane {
-                        debug!("Ignoring request to open folder in pane {} while in single-pane mode", pane_index);
+                        debug!("Ignoring request to open folder in pane {pane_index} while in single-pane mode");
                         Task::none()
                     } else {
                         app.initialize_dir_path(&PathBuf::from(dir), pane_index)
                     }
                 }
                 Err(err) => {
-                    debug!("Folder open failed: {:?}", err);
+                    debug!("Folder open failed: {err:?}");
                     Task::none()
                 }
             }
@@ -298,7 +298,7 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
                     Task::none()
                 }
                 Err(DirectoryEnumError::DirectoryError(e)) => {
-                    error!("Directory enumeration error: {}", e);
+                    error!("Directory enumeration error: {e}");
                     Task::none()
                 }
                 Err(DirectoryEnumError::NotFound) => {
@@ -311,7 +311,7 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
             let path = &app.panes[pane_index].img_cache.image_paths[app.panes[pane_index].img_cache.current_index];
             let filename_str = path.file_name().to_string();
             if let Some(filename) = file_io::get_filename(&filename_str) {
-                debug!("Copying filename to clipboard: {}", filename);
+                debug!("Copying filename to clipboard: {filename}");
                 return clipboard::write(filename);
             }
             Task::none()
@@ -320,8 +320,8 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
             let path = &app.panes[pane_index].img_cache.image_paths[app.panes[pane_index].img_cache.current_index];
             let img_path = path.file_name().to_string();
             if let Some(dir_path) = app.panes[pane_index].directory_path.as_ref() {
-                let full_path = format!("{}/{}", dir_path, img_path);
-                debug!("Copying full path to clipboard: {}", full_path);
+                let full_path = format!("{dir_path}/{img_path}");
+                debug!("Copying full path to clipboard: {full_path}");
                 return clipboard::write(full_path);
             }
             Task::none()
@@ -406,7 +406,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                     }
                 }
                 Err(err) => {
-                    debug!("Image load failed: {:?}", err);
+                    debug!("Image load failed: {err:?}");
                 }
             }
             // Check if loading is still ongoing - if so, start spinner tick loop
@@ -442,13 +442,13 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                         // load after slider release. The slider position is tracked in slider_image_position instead.
                         // pane.img_cache.current_index = pos;
 
-                        debug!("Slider image loaded for pane {} at position {} with dimensions {:?}", pane_idx, pos, dimensions);
+                        debug!("Slider image loaded for pane {pane_idx} at position {pos} with dimensions {dimensions:?}");
                     } else {
-                        warn!("SliderImageWidgetLoaded: Invalid pane index {}", pane_idx);
+                        warn!("SliderImageWidgetLoaded: Invalid pane index {pane_idx}");
                     }
                 },
                 Err((pane_idx, pos)) => {
-                    warn!("SLIDER: Failed to load image widget for pane {} at position {}", pane_idx, pos);
+                    warn!("SLIDER: Failed to load image widget for pane {pane_idx} at position {pos}");
                 }
             }
             Task::none()
@@ -476,7 +476,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                     }
                 },
                 Err(pos) => {
-                    warn!("SLIDER: Failed to load image for position {}", pos);
+                    warn!("SLIDER: Failed to load image for position {pos}");
                 }
             }
             Task::none()
@@ -569,7 +569,7 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
 
                     if let Ok(mut fps) = IMAGE_RENDER_FPS.lock() {
                         *fps = final_image_fps as f32;
-                        debug!("SLIDER_DEBUG: Synced image fps tracking, final FPS: {:.1}", final_image_fps);
+                        debug!("SLIDER_DEBUG: Synced image fps tracking, final FPS: {final_image_fps:.1}");
                     }
                 }
             }
@@ -587,7 +587,7 @@ pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Me
                     .unwrap_or(value as usize)
             };
 
-            debug!("SliderReleased: Using position {} (slider_image_position) instead of slider value {}", pos, value);
+            debug!("SliderReleased: Using position {pos} (slider_image_position) instead of slider value {value}");
 
             navigation_slider::load_remaining_images(
                 &app.device,
@@ -647,14 +647,14 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             Task::none()
         }
         Message::ToggleNearestNeighborFilter(enabled) => {
-            debug!("ToggleNearestNeighborFilter: setting to {}", enabled);
+            debug!("ToggleNearestNeighborFilter: setting to {enabled}");
             app.nearest_neighbor_filter = enabled;
 
             // Force reload of current directories to apply the new filter immediately
             let mut tasks = Vec::new();
             for pane_index in 0..app.panes.len() {
                 if let Some(dir_path) = app.panes[pane_index].directory_path.clone() {
-                    debug!("Reloading directory for pane {}: {:?}", pane_index, dir_path);
+                    debug!("Reloading directory for pane {pane_index}: {dir_path:?}");
                     tasks.push(app.initialize_dir_path(&PathBuf::from(dir_path), pane_index));
                 }
             }
@@ -662,7 +662,7 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             Task::batch(tasks)
         }
         Message::SetSpinnerLocation(location) => {
-            debug!("SetSpinnerLocation: setting to {:?}", location);
+            debug!("SetSpinnerLocation: setting to {location:?}");
             app.spinner_location = location;
             Task::none()
         }
@@ -785,7 +785,7 @@ pub fn handle_event_messages(app: &mut DataViewer, event: Event) -> Task<Message
         }
 
         Event::Keyboard(iced_core::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-            debug!("KeyPressed - Key pressed: {:?}, modifiers: {:?}", key, modifiers);
+            debug!("KeyPressed - Key pressed: {key:?}, modifiers: {modifiers:?}");
             debug!("modifiers.shift(): {}", modifiers.shift());
             let tasks = app.handle_key_pressed_event(&key, modifiers);
 
@@ -848,7 +848,7 @@ fn handle_window_file_drop(app: &mut DataViewer, path: &std::path::Path) -> Task
     }
 
     app.reset_state(-1);
-    debug!("File dropped: {:?}", path);
+    debug!("File dropped: {path:?}");
     app.initialize_dir_path(&path.to_path_buf(), 0)
 }
 
@@ -881,7 +881,7 @@ fn handle_file_dropped(app: &mut DataViewer, pane_index: isize, dropped_path: St
     debug!("Message::FileDropped - Resetting state");
     app.reset_state(pane_index);
 
-    debug!("File dropped: {:?}, pane_index: {}", dropped_path, pane_index);
+    debug!("File dropped: {dropped_path:?}, pane_index: {pane_index}");
     debug!("self.dir_loaded, pane_index, last_opened_pane: {:?}, {}, {}",
         app.panes[pane_index as usize].dir_loaded, pane_index, app.last_opened_pane);
     app.initialize_dir_path(&path, pane_index as usize)
@@ -891,9 +891,9 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
     let parse_value = |key: &str, _default: u64| -> Result<u64, String> {
         app.settings.advanced_input
             .get(key)
-            .ok_or_else(|| format!("Missing value for {}", key))?
+            .ok_or_else(|| format!("Missing value for {key}"))?
             .parse::<u64>()
-            .map_err(|_| format!("Invalid number for {}", key))
+            .map_err(|_| format!("Invalid number for {key}"))
     };
 
     let cache_size = match parse_value("cache_size", 5) {
@@ -905,7 +905,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing cache_size: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing cache_size: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -921,7 +921,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing max_loading_queue_size: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing max_loading_queue_size: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -937,7 +937,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing max_being_loaded_queue_size: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing max_being_loaded_queue_size: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -953,7 +953,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing window_width: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing window_width: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -969,7 +969,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing window_height: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing window_height: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -985,7 +985,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing atlas_size: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing atlas_size: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -1001,7 +1001,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing double_click_threshold_ms: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing double_click_threshold_ms: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -1017,7 +1017,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing archive_cache_size: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing archive_cache_size: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -1033,7 +1033,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus);
         }
         Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing archive_warning_threshold_mb: {}", e)));
+            app.settings.set_save_status(Some(format!("Error parsing archive_warning_threshold_mb: {e}")));
             return Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus);
@@ -1090,8 +1090,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
 
             app.archive_cache_size = archive_cache_size * 1_048_576;
             app.archive_warning_threshold_mb = archive_warning_threshold_mb;
-            info!("Archive settings applied immediately: cache_size={}MB, warning_threshold={}MB",
-                archive_cache_size, archive_warning_threshold_mb);
+            info!("Archive settings applied immediately: cache_size={archive_cache_size}MB, warning_threshold={archive_warning_threshold_mb}MB");
 
             if cache_size != app.cache_size {
                 info!("Cache size changed from {} to {}, reloading all panes", app.cache_size, cache_size);
@@ -1132,7 +1131,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }
 
             if max_loading_queue_size != app.max_loading_queue_size || max_being_loaded_queue_size != app.max_being_loaded_queue_size {
-                info!("Queue size settings changed: max_loading_queue_size={}, max_being_loaded_queue_size={}", max_loading_queue_size, max_being_loaded_queue_size);
+                info!("Queue size settings changed: max_loading_queue_size={max_loading_queue_size}, max_being_loaded_queue_size={max_being_loaded_queue_size}");
                 app.max_loading_queue_size = max_loading_queue_size;
                 app.max_being_loaded_queue_size = max_being_loaded_queue_size;
 
@@ -1158,8 +1157,8 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus)
         }
         Err(e) => {
-            error!("Failed to save settings: {}", e);
-            app.settings.set_save_status(Some(format!("Error: {}", e)));
+            error!("Failed to save settings: {e}");
+            app.settings.set_save_status(Some(format!("Error: {e}")));
 
             Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
@@ -1208,9 +1207,9 @@ fn handle_export_all_logs() {
                     info!("Debug logs successfully exported to: {}", debug_log_path.display());
                 }
                 Err(e) => {
-                    println!("DEBUG: Export failed: {}", e);
-                    error!("Failed to export debug logs: {}", e);
-                    eprintln!("Failed to export debug logs: {}", e);
+                    println!("DEBUG: Export failed: {e}");
+                    error!("Failed to export debug logs: {e}");
+                    eprintln!("Failed to export debug logs: {e}");
                 }
             }
         }

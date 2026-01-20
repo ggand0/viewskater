@@ -120,7 +120,7 @@ impl DataViewer {
                     } else {
                         self.last_opened_pane as usize // Use last opened pane in dual-pane mode
                     };
-                    debug!("o key pressed pane_index: {}", pane_index);
+                    debug!("o key pressed pane_index: {pane_index}");
 
                     // If shift is pressed or we have uppercase O, open folder
                     if modifiers.shift() {

@@ -25,12 +25,11 @@ pub fn check_and_resize_if_oversized(img: DynamicImage) -> DynamicImage {
         let new_width = (width as f32 * scale_factor) as u32;
         let new_height = (height as f32 * scale_factor) as u32;
 
-        warn!("Image {}x{} exceeds maximum texture size {}x{}. Resizing to {}x{} to prevent crashes.",
-              width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE, new_width, new_height);
+        warn!("Image {width}x{height} exceeds maximum texture size {MAX_TEXTURE_SIZE}x{MAX_TEXTURE_SIZE}. Resizing to {new_width}x{new_height} to prevent crashes.");
 
         img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3)
     } else {
-        debug!("Image {}x{} is within size limits, no resizing needed", width, height);
+        debug!("Image {width}x{height} is within size limits, no resizing needed");
         img
     }
 }
@@ -55,7 +54,7 @@ pub fn load_and_resize_image(path_source: &crate::cache::img_cache::PathSource, 
             .map_err(|e| io::Error::new(e, format!("Failed to read image from PathSource: {}", path_source.file_name())))?
     };
     let (original_width, original_height) = img.dimensions();
-    info!("Resizing image: {}x{} -> {}x{}", original_width, original_height, target_width, target_height);
+    info!("Resizing image: {original_width}x{original_height} -> {target_width}x{target_height}");
 
     // First resize to target dimensions
     let resized_img = img.resize_exact(target_width, target_height, image::imageops::FilterType::Triangle);
@@ -77,10 +76,10 @@ pub fn should_use_compression(width: u32, height: u32, strategy: CompressionStra
         CompressionStrategy::Bc1 => {
             // BC1 compression requires dimensions to be multiples of 4
             if width.is_multiple_of(4) && height.is_multiple_of(4) {
-                debug!("Using BC1 compression for image ({} x {})", width, height);
+                debug!("Using BC1 compression for image ({width} x {height})");
                 true
             } else {
-                debug!("Image dimensions ({} x {}) not compatible with BC1. Using uncompressed format.", width, height);
+                debug!("Image dimensions ({width} x {height}) not compatible with BC1. Using uncompressed format.");
                 false
             }
         },
@@ -267,7 +266,7 @@ pub fn create_and_upload_texture(
             },
             _ => {
                 // Raise an error if an unsupported compression strategy is used
-                panic!("Unsupported compression strategy: {:?}", compression_strategy);
+                panic!("Unsupported compression strategy: {compression_strategy:?}");
             }
         }
     } else {
@@ -317,7 +316,7 @@ pub async fn _load_image_resized(
         load_and_resize_image(img_path, 1280, 720, None)
     } else {
         load_original_image(img_path, None)
-    }.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e)))?;
+    }.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {e}")))?;
 
     let rgba_image = img.to_rgba8();
     let (width, height) = rgba_image.dimensions();

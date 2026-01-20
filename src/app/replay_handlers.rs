@@ -128,7 +128,7 @@ impl DataViewer {
         // Get action from replay controller
         let action = replay_controller.update();
         if let Some(ref a) = action {
-            debug!("Replay controller returned action: {:?}", a);
+            debug!("Replay controller returned action: {a:?}");
         }
 
         // Schedule keep-alive task if replay is active and we don't already have one in flight
@@ -211,7 +211,7 @@ impl DataViewer {
             }
             crate::replay::ReplayAction::SliderNavigate { position } => {
                 // Slider mode navigation: send SliderChanged message to simulate slider drag
-                debug!("Slider navigate to position {}", position);
+                debug!("Slider navigate to position {position}");
                 // Use pane index -1 to affect the selected pane (same as global slider)
                 Some(Task::done(Message::SliderChanged(-1, position)))
             }

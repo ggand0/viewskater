@@ -32,7 +32,7 @@ impl ImageCacheBackend for GpuImageCache {
         if let Some(path_source) = image_paths.get(index) {
             // Use the safe load_original_image function to prevent crashes with oversized images
             let img = crate::cache::cache_utils::load_original_image(path_source, archive_cache).map_err(|e| {
-                io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {}", e))
+                io::Error::new(io::ErrorKind::InvalidData, format!("Failed to open image: {e}"))
             })?;
 
             let rgba_image = img.to_rgba8();
@@ -121,10 +121,10 @@ impl ImageCacheBackend for GpuImageCache {
                     cached_data[cache_slot] = Some(image);
                     cached_metadata[cache_slot] = Some(ImageMetadata::new(width, height, file_size));
                     cached_image_indices[cache_slot] = current_index as isize;
-                    debug!("GpuCache: Loaded single image at index {} into cache slot {}", current_index, cache_slot);
+                    debug!("GpuCache: Loaded single image at index {current_index} into cache slot {cache_slot}");
                 },
                 Err(e) => {
-                    warn!("Failed to load image at index {}: {}. Skipping...", current_index, e);
+                    warn!("Failed to load image at index {current_index}: {e}. Skipping...");
                     cached_data[cache_slot] = None;
                     cached_metadata[cache_slot] = None;
                     cached_image_indices[cache_slot] = -1;
@@ -194,7 +194,7 @@ impl ImageCacheBackend for GpuImageCache {
                         cached_image_indices[i] = cache_index;
                     },
                     Err(e) => {
-                        warn!("Failed to load image at index {}: {}. Skipping...", cache_index, e);
+                        warn!("Failed to load image at index {cache_index}: {e}. Skipping...");
                         cached_data[i] = None;
                         cached_metadata[i] = None;
                         cached_image_indices[i] = -1; // Mark as invalid
@@ -218,7 +218,7 @@ impl ImageCacheBackend for GpuImageCache {
         _compression_strategy: CompressionStrategy,
         _archive_cache: Option<&mut crate::archive_cache::ArchiveCache>,
     ) -> Result<bool, io::Error> {
-        println!("GpuCache: Setting image at position {}", pos);
+        println!("GpuCache: Setting image at position {pos}");
 
         if pos >= cached_data.len() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Position out of bounds"));
@@ -229,7 +229,7 @@ impl ImageCacheBackend for GpuImageCache {
         cached_image_indices[pos] = image_index;
 
         // Debugging output
-        println!("Updated GPU cache at position {} with image index {}", pos, image_index);
+        println!("Updated GPU cache at position {pos} with image index {image_index}");
 
         // If the position corresponds to the center of the cache, return true to trigger a reload
         let should_reload = pos == cache_count;

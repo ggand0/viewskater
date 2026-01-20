@@ -25,7 +25,7 @@ pub fn decode_with_exif_orientation(bytes: &[u8]) -> Result<DynamicImage, std::i
     let reader = ImageReader::new(cursor)
         .with_guessed_format()
         .map_err(|e| {
-            error!("Failed to guess image format: {}", e);
+            error!("Failed to guess image format: {e}");
             std::io::ErrorKind::InvalidData
         })?;
 
@@ -37,13 +37,13 @@ pub fn decode_with_exif_orientation(bytes: &[u8]) -> Result<DynamicImage, std::i
                 .unwrap_or(image::metadata::Orientation::NoTransforms);
 
             if orientation != image::metadata::Orientation::NoTransforms {
-                debug!("EXIF orientation detected: {:?}", orientation);
+                debug!("EXIF orientation detected: {orientation:?}");
             }
 
             // Decode the image
             let mut img = DynamicImage::from_decoder(decoder)
                 .map_err(|e| {
-                    error!("Failed to decode image: {}", e);
+                    error!("Failed to decode image: {e}");
                     std::io::ErrorKind::InvalidData
                 })?;
 
@@ -58,14 +58,14 @@ pub fn decode_with_exif_orientation(bytes: &[u8]) -> Result<DynamicImage, std::i
         Err(e) => {
             // Fallback: some formats may not support decoder interface
             // Fall back to simple decode without orientation
-            warn!("Decoder creation failed, falling back to simple decode: {}", e);
+            warn!("Decoder creation failed, falling back to simple decode: {e}");
             let cursor = Cursor::new(bytes);
             ImageReader::new(cursor)
                 .with_guessed_format()
                 .map_err(|_| std::io::ErrorKind::InvalidData)?
                 .decode()
                 .map_err(|e| {
-                    error!("Failed to decode image: {}", e);
+                    error!("Failed to decode image: {e}");
                     std::io::ErrorKind::InvalidData
                 })
         }

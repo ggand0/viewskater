@@ -37,7 +37,7 @@ impl TexturePipeline {
         let (x, y, width, height) = bounds_relative;
         
         if debug {
-            println!("PIPELINE_INIT: Bounds relative: x={}, y={}, w={}, h={}", x, y, width, height);
+            println!("PIPELINE_INIT: Bounds relative: x={x}, y={y}, w={width}, h={height}");
         }
         
         // Convert to NDC coordinates (-1 to 1)
@@ -47,8 +47,7 @@ impl TexturePipeline {
         let bottom = 1.0 - 2.0 * (y + height);
         
         if debug {
-            println!("PIPELINE_INIT: NDC coords: left={}, right={}, top={}, bottom={}", 
-                    left, right, top, bottom);
+            println!("PIPELINE_INIT: NDC coords: left={left}, right={right}, top={top}, bottom={bottom}");
         }
 
         // Create vertices - each vertex has position and texture coordinates

@@ -516,11 +516,11 @@ impl ImageCache {
             match image_option {
                 Some(image_bytes) => {
                     let image_info = format!("Image {} - Index {} - Size: {} bytes", index, self.cached_image_indices[index], image_bytes.len());
-                    debug!("{}", image_info);
+                    debug!("{image_info}");
                 }
                 None => {
-                    let no_image_info = format!("No image at index {}", index);
-                    debug!("{}", no_image_info);
+                    let no_image_info = format!("No image at index {index}");
+                    debug!("{no_image_info}");
                 }
             }
         }
@@ -529,8 +529,8 @@ impl ImageCache {
     #[allow(dead_code)]
     pub fn print_cache_index(&self) {
         for (index, cache_index) in self.cached_image_indices.iter().enumerate() {
-            let index_info = format!("Index {} - Cache Index: {}", index, cache_index);
-            debug!("{}", index_info);
+            let index_info = format!("Index {index} - Cache Index: {cache_index}");
+            debug!("{index_info}");
         }
     }
 
@@ -762,7 +762,7 @@ impl ImageCache {
         if prev_image_index_to_render < 0 {
             return false;
         }
-        debug!("is_prev_cache_index_within_bounds - prev_image_index_to_render: {}", prev_image_index_to_render);
+        debug!("is_prev_cache_index_within_bounds - prev_image_index_to_render: {prev_image_index_to_render}");
         self.print_cache();
         self.is_cache_index_within_bounds(prev_image_index_to_render as usize)
     }
@@ -814,7 +814,7 @@ impl ImageCache {
                     }
 
                     if let Some(op) = loading_status.being_loaded_queue.front() {
-                        debug!("is_blocking_loading_ops_in_queue - op: {:?}", op);
+                        debug!("is_blocking_loading_ops_in_queue - op: {op:?}");
                         match op {
                             LoadOperation::LoadPrevious((_c_index, _img_index)) => {
                                 return true;
@@ -904,7 +904,7 @@ pub fn load_images_by_operation_slider(
                 None
             };
 
-            debug!("Task::perform started for {:?}", operation);
+            debug!("Task::perform started for {operation:?}");
 
             let images_loading_task = async move {
                 file_io::load_images_async(
@@ -923,7 +923,7 @@ pub fn load_images_by_operation_slider(
             Task::none()
         }
     } else {
-        debug!("Pane not found for pane_index: {}", pane_index);
+        debug!("Pane not found for pane_index: {pane_index}");
         Task::none()
     }
 }
@@ -969,7 +969,7 @@ pub fn load_images_by_indices(
         let device_clone = Arc::clone(device);
         let queue_clone = Arc::clone(queue);
 
-        debug!("Task::perform started for {:?}", operation);
+        debug!("Task::perform started for {operation:?}");
         Task::perform(
             async move {
                 let result = file_io::load_images_async(

@@ -37,7 +37,7 @@ pub fn handle_load_operation_all(
         .collect();
 
     for (pane_index, pane) in panes_to_load.iter_mut().enumerate() {
-        info!("Loading pane {}", pane_index);
+        info!("Loading pane {pane_index}");
         let cache = &mut pane.img_cache;
         let target_index = match &target_indices[pane_index] {
             Some(index) => *index,
@@ -166,7 +166,7 @@ pub fn handle_load_pos_operation(
 
         // Iterate over the target indices and cache positions along with image data and metadata
         for (i, (target_opt, image_data_opt)) in target_indices_and_cache.iter().zip(image_data.iter()).enumerate() {
-            debug!("Target index and cache position: {:?}", target_opt);
+            debug!("Target index and cache position: {target_opt:?}");
 
             if let Some((target_index, cache_pos)) = target_opt {
                 processed_indices.extend(*target_opt);
@@ -232,15 +232,15 @@ pub fn handle_load_pos_operation(
                             }
                         }
                     } else {
-                        debug!("No image data available for target index: {}", target_index);
+                        debug!("No image data available for target index: {target_index}");
                     }
                 } else {
-                    debug!("Target index {} is out of bounds", target_index);
+                    debug!("Target index {target_index} is out of bounds");
                 }
             }
         }
 
-        debug!("LoadPos: Processed indices: {:?}", processed_indices);
+        debug!("LoadPos: Processed indices: {processed_indices:?}");
         debug!("LoadPos: After processing, pane[{}].current_index = {}", pane_index, cache.current_index);
     }
 }

@@ -1206,12 +1206,11 @@ fn get_fps_container(app: &DataViewer) -> Container<'_, Message, WinitTheme, Ren
         let memory_text = if memory_mb < 0.0 {
             "Mem:   N/A".to_string()
         } else {
-            format!("Mem: {:6.1} MB", memory_mb)
+            format!("Mem: {memory_mb:6.1} MB")
         };
 
         container(
-            text(format!("UI: {:5.1} FPS | Image: {:5.1} FPS | {}",
-                         ui_fps, image_fps, memory_text))
+            text(format!("UI: {ui_fps:5.1} FPS | Image: {image_fps:5.1} FPS | {memory_text}"))
                 .size(14)
                 .font(Font::MONOSPACE)
                 .style(|_theme| iced::widget::text::Style {

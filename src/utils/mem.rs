@@ -49,7 +49,7 @@ pub fn update_memory_usage() -> u64 {
             }
         };
 
-        return memory_used;
+        memory_used
     }
 
     // For non-Apple platforms, use the original implementation
@@ -95,10 +95,10 @@ pub fn log_memory(label: &str) {
     // Use the unified memory tracking function
     let memory_bytes = update_memory_usage();
     if memory_bytes == u64::MAX {
-        info!("MEMORY [N/A] - {} (unavailable in sandbox)", label);
+        info!("MEMORY [N/A] - {label} (unavailable in sandbox)");
     } else {
         let memory_mb = memory_bytes as f64 / 1024.0 / 1024.0;
-        info!("MEMORY [{:.2}MB] - {}", memory_mb, label);
+        info!("MEMORY [{memory_mb:.2}MB] - {label}");
     }
 }
 
@@ -115,8 +115,7 @@ pub fn check_memory_for_archive(archive_size_mb: u64) -> (f64, bool) {
     let archive_gb = archive_size_mb as f64 / 1024.0;
     let recommended = available_gb > (archive_gb * 2.0);
 
-    debug!("Memory check: Available {:.1}GB, Archive {:.1}GB, Recommended: {}",
-           available_gb, archive_gb, recommended);
+    debug!("Memory check: Available {available_gb:.1}GB, Archive {archive_gb:.1}GB, Recommended: {recommended}");
 
     (available_gb, recommended)
 }

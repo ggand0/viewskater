@@ -205,12 +205,12 @@ pub fn read_image_bytes(path_source: &crate::cache::img_cache::PathSource, archi
 
             let path_str = path.to_string_lossy();
             if let Some(data) = cache.get_preloaded_data(&path_str) {
-                debug!("Using preloaded data for: {}", path_str);
+                debug!("Using preloaded data for: {path_str}");
                 Ok(data.to_vec())
             } else {
                 Err(io::Error::new(
                     io::ErrorKind::NotFound,
-                    format!("Preloaded data not found: {}", path_str)
+                    format!("Preloaded data not found: {path_str}")
                 ))
             }
         },
@@ -223,9 +223,9 @@ pub fn read_image_bytes(path_source: &crate::cache::img_cache::PathSource, archi
             ))?;
 
             let path_str = path.to_string_lossy();
-            debug!("Reading from archive: {}", path_str);
+            debug!("Reading from archive: {path_str}");
             cache.read_from_archive(&path_str)
-                .map_err(|e| io::Error::other(format!("Failed to read from archive: {}", e)))
+                .map_err(|e| io::Error::other(format!("Failed to read from archive: {e}")))
         }
     }
 }
@@ -277,13 +277,13 @@ pub fn read_image_bytes_with_size(path_source: &crate::cache::img_cache::PathSou
 
             let path_str = path.to_string_lossy();
             if let Some(data) = cache.get_preloaded_data(&path_str) {
-                debug!("Using preloaded data for: {}", path_str);
+                debug!("Using preloaded data for: {path_str}");
                 let file_size = data.len() as u64;
                 Ok((data.to_vec(), file_size))
             } else {
                 Err(io::Error::new(
                     io::ErrorKind::NotFound,
-                    format!("Preloaded data not found: {}", path_str)
+                    format!("Preloaded data not found: {path_str}")
                 ))
             }
         },
@@ -296,9 +296,9 @@ pub fn read_image_bytes_with_size(path_source: &crate::cache::img_cache::PathSou
             ))?;
 
             let path_str = path.to_string_lossy();
-            debug!("Reading from archive: {}", path_str);
+            debug!("Reading from archive: {path_str}");
             let bytes = cache.read_from_archive(&path_str)
-                .map_err(|e| io::Error::other(format!("Failed to read from archive: {}", e)))?;
+                .map_err(|e| io::Error::other(format!("Failed to read from archive: {e}")))?;
             let file_size = bytes.len() as u64;
             Ok((bytes, file_size))
         }
@@ -396,7 +396,7 @@ async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathS
                     match cache_bytes_result {
                         Ok((bytes, file_size)) => (bytes, file_size),
                         Err(e) => {
-                            error!("Failed to read archive content: {}", e);
+                            error!("Failed to read archive content: {e}");
                             return Err(std::io::ErrorKind::Other);
                         }
                     }
@@ -417,7 +417,7 @@ async fn load_image_cpu_async(path_source: Option<crate::cache::img_cache::PathS
         let metadata = ImageMetadata::new(width, height, file_size);
 
         let total_time = start.elapsed();
-        debug!("load_image_cpu_async - Total load time: {:?}", total_time);
+        debug!("load_image_cpu_async - Total load time: {total_time:?}");
         Ok(Some((CachedData::Cpu(bytes), metadata)))
     } else {
         Ok(None)
@@ -445,14 +445,14 @@ async fn load_image_gpu_async(
                 let file_size = match std::fs::metadata(path) {
                     Ok(m) => m.len(),
                     Err(e) => {
-                        error!("Failed to read filesystem metadata: {}", e);
+                        error!("Failed to read filesystem metadata: {e}");
                         return Err(e.kind());
                     }
                 };
                 match std::fs::read(path) {
                     Ok(bytes) => (decode_image_from_bytes(&bytes), file_size),
                     Err(e) => {
-                        error!("Failed to read filesystem image: {}", e);
+                        error!("Failed to read filesystem image: {e}");
                         return Err(e.kind());
                     }
                 }
@@ -464,7 +464,7 @@ async fn load_image_gpu_async(
                         match cache_arc.lock() {
                             Ok(mut cache) => read_image_bytes_with_size(&path_source, Some(&mut *cache)),
                             Err(e) => {
-                                error!("Failed to lock archive cache: {}", e);
+                                error!("Failed to lock archive cache: {e}");
                                 Err(std::io::Error::other("Archive cache lock failed"))
                             }
                         }
@@ -473,7 +473,7 @@ async fn load_image_gpu_async(
                     match cache_bytes_result {
                         Ok((bytes, file_size)) => (decode_image_from_bytes(&bytes), file_size),
                         Err(e) => {
-                            error!("Failed to read archive content: {}", e);
+                            error!("Failed to read archive content: {e}");
                             return Err(std::io::ErrorKind::Other);
                         }
                     }
@@ -539,7 +539,7 @@ async fn load_image_gpu_async(
                 }
             }
             Err(e) => {
-                error!("Error opening image: {:?}", e);
+                error!("Error opening image: {e:?}");
                 return Err(std::io::ErrorKind::InvalidData);
             }
         }
@@ -559,7 +559,7 @@ pub async fn load_images_async(
     archive_caches: Vec<Option<Arc<Mutex<crate::archive_cache::ArchiveCache>>>>
 ) -> Result<(Vec<Option<CachedData>>, Vec<Option<crate::cache::img_cache::ImageMetadata>>, Option<LoadOperation>), std::io::ErrorKind> {
     let start = Instant::now();
-    debug!("load_images_async - cache_strategy: {:?}, compression: {:?}", cache_strategy, compression_strategy);
+    debug!("load_images_async - cache_strategy: {cache_strategy:?}, compression: {compression_strategy:?}");
 
     let futures = paths.into_iter().enumerate().map(|(i, path)| {
         let device = Arc::clone(device);
@@ -573,7 +573,7 @@ pub async fn load_images_async(
                     load_image_cpu_async(path, pane_archive_cache).await
                 },
                 CacheStrategy::Gpu => {
-                    debug!("load_images_async - loading image with GPU strategy and compression: {:?}", compression_strategy);
+                    debug!("load_images_async - loading image with GPU strategy and compression: {compression_strategy:?}");
                     load_image_gpu_async(path, &device, &queue, compression_strategy, pane_archive_cache).await
                 },
             }
@@ -582,7 +582,7 @@ pub async fn load_images_async(
 
     let results = join_all(futures).await;
     let duration = start.elapsed();
-    debug!("Finished loading images in {:?}", duration);
+    debug!("Finished loading images in {duration:?}");
 
     // Separate images and metadata from the results
     let mut images = Vec::new();
@@ -664,7 +664,7 @@ pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_reco
     };
 
     let memory_info = if available_gb > 0.0 {
-        format!("Available memory: {:.1} GB\n\n", available_gb)
+        format!("Available memory: {available_gb:.1} GB\n\n")
     } else {
         // Don't show memory size when it's 0.0 GB
         // related: https://github.com/GuillaumeGomez/sysinfo/issues/1030
@@ -680,13 +680,12 @@ pub fn show_memory_warning_sync(archive_size_mb: u64, available_gb: f64, is_reco
     };
 
     let message = format!(
-        "{}: Large Archive Detected\n\n\
-        Archive size: {:.1} MB\n\
-        {}{}\n\n\
+        "{warning_level}: Large Archive Detected\n\n\
+        Archive size: {archive_size_mb:.1} MB\n\
+        {memory_info}{memory_note}\n\n\
         The application will load the archive into memory for optimal performance. \
         This may take a moment and use significant RAM.\n\n\
-        Continue?",
-        warning_level, archive_size_mb, memory_info, memory_note
+        Continue?"
     );
 
     let dialog_result = rfd::MessageDialog::new()
@@ -744,7 +743,7 @@ impl std::fmt::Display for ImageError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ImageError::NoImagesFound => write!(f, "No supported images found in directory"),
-            ImageError::DirectoryError(e) => write!(f, "Directory error: {}", e),
+            ImageError::DirectoryError(e) => write!(f, "Directory error: {e}"),
         }
     }
 }
@@ -760,27 +759,27 @@ fn handle_fallback_for_single_file(
 ) -> Result<Vec<PathBuf>, ImageError> {
     crate::logging::write_crash_debug_log("handle_fallback_for_single_file ENTRY");
     crate::logging::write_crash_debug_log(&format!("Directory path: {}", directory_path.display()));
-    crate::logging::write_crash_debug_log(&format!("Original error: {}", original_error));
+    crate::logging::write_crash_debug_log(&format!("Original error: {original_error}"));
     
     debug!("🔄 FALLBACK: Attempting single file fallback due to directory access failure");
     debug!("Directory path: {}", directory_path.display());
-    debug!("Original error: {}", original_error);
+    debug!("Original error: {original_error}");
     
     // If we can't read the directory, check if the path itself is a valid image file
     if directory_path.is_file() {
         crate::logging::write_crash_debug_log("Path is a file, checking if it's a valid image");
         debug!("✅ Path is a file, checking if it's a valid image");
         if let Some(extension) = directory_path.extension().and_then(std::ffi::OsStr::to_str) {
-            crate::logging::write_crash_debug_log(&format!("File extension: {}", extension));
-            debug!("File extension: {}", extension);
+            crate::logging::write_crash_debug_log(&format!("File extension: {extension}"));
+            debug!("File extension: {extension}");
             if is_supported_extension(extension) {
                 crate::logging::write_crash_debug_log(&format!("✅ Valid image file found: {}", directory_path.display()));
                 debug!("✅ Valid image file found: {}", directory_path.display());
                 // Return just this single file
                 return Ok(vec![directory_path.to_path_buf()]);
             } else {
-                crate::logging::write_crash_debug_log(&format!("❌ File has unsupported extension: {}", extension));
-                debug!("❌ File has unsupported extension: {}", extension);
+                crate::logging::write_crash_debug_log(&format!("❌ File has unsupported extension: {extension}"));
+                debug!("❌ File has unsupported extension: {extension}");
             }
         } else {
             crate::logging::write_crash_debug_log("❌ File has no extension");
@@ -835,7 +834,7 @@ fn request_directory_access_and_retry(
 ) -> Result<Vec<PathBuf>, ImageError> {
     crate::logging::write_crash_debug_log("request_directory_access_and_retry ENTRY");
     crate::logging::write_crash_debug_log(&format!("Directory path: {}", directory_path.display()));
-    crate::logging::write_crash_debug_log(&format!("Original error: {}", original_error));
+    crate::logging::write_crash_debug_log(&format!("Original error: {original_error}"));
     
     #[cfg(target_os = "macos")]
     {
@@ -881,7 +880,7 @@ fn request_directory_access_and_retry(
         crate::logging::write_crash_debug_log(&format!("Got {} accessible paths", accessible_paths.len()));
         
         if let Some(file_path) = accessible_paths.first() {
-            crate::logging::write_crash_debug_log(&format!("Using first accessible path: {}", file_path));
+            crate::logging::write_crash_debug_log(&format!("Using first accessible path: {file_path}"));
             crate::logging::write_crash_debug_log("About to call request_parent_directory_permission_dialog");
             if crate::macos_file_access::macos_file_handler::request_parent_directory_permission_dialog(file_path) {
                 crate::logging::write_crash_debug_log("Permission dialog succeeded, retrying directory read");
@@ -922,7 +921,7 @@ fn request_directory_access_and_retry(
         // Fallback to single file handling if all else fails
         crate::logging::write_crash_debug_log("All directory access methods failed, falling back to single file handling");
         debug!("All directory access methods failed, falling back to single file handling");
-        return handle_fallback_for_single_file(directory_path, original_error);
+        handle_fallback_for_single_file(directory_path, original_error)
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -996,14 +995,14 @@ fn get_image_paths_macos(directory_path: &Path) -> Result<Vec<PathBuf>, ImageErr
         Ok(entries) => {
             crate::logging::write_crash_debug_log("✅ Standard directory read successful");
             debug!("Successfully read directory normally (drag-and-drop or non-sandboxed): {}", directory_path.display());
-            return process_directory_entries(entries, directory_path);
+            process_directory_entries(entries, directory_path)
         }
         Err(e) => {
-            crate::logging::write_crash_debug_log(&format!("❌ Standard directory read failed: {}", e));
+            crate::logging::write_crash_debug_log(&format!("❌ Standard directory read failed: {e}"));
             debug!("Failed to read directory normally: {} (error: {})", directory_path.display(), e);
             
             // Handle macOS App Store sandbox scenarios
-            return handle_macos_sandbox_access(directory_path, e);
+            handle_macos_sandbox_access(directory_path, e)
         }
     }
 }
@@ -1048,11 +1047,11 @@ fn handle_macos_sandbox_access(
     if has_individual_file_access {
         crate::logging::write_crash_debug_log("STEP 2: ✅ Confirmed 'Open With' scenario - requesting permission");
         debug!("Confirmed 'Open With' scenario");
-        return request_directory_access_and_retry(directory_path, original_error);
+        request_directory_access_and_retry(directory_path, original_error)
     } else {
         crate::logging::write_crash_debug_log("STEP 2: ❌ Not an 'Open With' scenario - regular directory access failure");
         debug!("Not an 'Open With' scenario - regular directory access failure");
-        return Err(ImageError::DirectoryError(original_error));
+        Err(ImageError::DirectoryError(original_error))
     }
 }
 

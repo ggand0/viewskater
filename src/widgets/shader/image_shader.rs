@@ -302,7 +302,7 @@ impl shader::Primitive for ImagePrimitive {
         if self.debug {
             debug!("ImagePrimitive::prepare - Starting prepare");
             debug!("ImagePrimitive::prepare - Content bounds: {:?}", self.content_bounds);
-            debug!("ImagePrimitive::prepare - Viewport: {:?}, scale: {}", viewport_size, scale_factor);
+            debug!("ImagePrimitive::prepare - Viewport: {viewport_size:?}, scale: {scale_factor}");
         }
 
         // Get texture from scene
@@ -322,7 +322,7 @@ impl shader::Primitive for ImagePrimitive {
             let bounds_relative = (x_rel, y_rel, width_rel, height_rel);
 
             if self.debug {
-                debug!("ImagePrimitive::prepare - Relative bounds: {:?}", bounds_relative);
+                debug!("ImagePrimitive::prepare - Relative bounds: {bounds_relative:?}");
             }
 
             // Create a unique pipeline key based on bounds and filter mode
@@ -358,7 +358,7 @@ impl shader::Primitive for ImagePrimitive {
                     debug!("ImagePrimitive::prepare - Pipeline created and stored");
                 }
             } else {
-                debug!("ImagePrimitive::prepare - REUSING existing pipeline for key {}", pipeline_key);
+                debug!("ImagePrimitive::prepare - REUSING existing pipeline for key {pipeline_key}");
 
                 // Update the texture in the existing pipeline
                 if let Some(pipeline) = registry.get_mut(&pipeline_key) {
@@ -409,7 +409,7 @@ impl shader::Primitive for ImagePrimitive {
                     if let Some(pipeline) = registry.get_ref(&pipeline_key) {
                         pipeline.render(target, encoder, clip_bounds);
                     } else {
-                        debug!("ImagePrimitive::render - Pipeline NOT found for key: {}", pipeline_key);
+                        debug!("ImagePrimitive::render - Pipeline NOT found for key: {pipeline_key}");
                     }
                 } else {
                     // NEW CODE: Fall back to iterating over all pipelines
@@ -418,10 +418,10 @@ impl shader::Primitive for ImagePrimitive {
                     // Find any pipeline that might be related to our texture and use it
                     let mut rendered = false;
                     if let Some((key, pipeline)) = &registry.pipelines.iter().next() {
-                        debug!("ImagePrimitive::render - Trying pipeline with key: {}", key);
+                        debug!("ImagePrimitive::render - Trying pipeline with key: {key}");
                         pipeline.render(target, encoder, clip_bounds);
                         rendered = true;
-                        debug!("ImagePrimitive::render - Successfully rendered with pipeline: {}", key);
+                        debug!("ImagePrimitive::render - Successfully rendered with pipeline: {key}");
                     }
 
                     if !rendered {
@@ -724,7 +724,7 @@ where
                 state.starting_offset = state.current_offset;
 
                 if self.debug {
-                    debug!("ImageShader::on_event - Mouse grabbed at: {:?}", cursor_position);
+                    debug!("ImageShader::on_event - Mouse grabbed at: {cursor_position:?}");
                 }
 
                 event::Status::Captured
@@ -851,8 +851,8 @@ where
 
             if self.debug {
                 debug!("ImageShader::draw - Scene available");
-                debug!("ImageShader::draw - Layout bounds: {:?}", bounds);
-                debug!("ImageShader::draw - Content bounds: {:?}", content_bounds);
+                debug!("ImageShader::draw - Layout bounds: {bounds:?}");
+                debug!("ImageShader::draw - Content bounds: {content_bounds:?}");
             }
 
             if scene.get_texture().is_some() {

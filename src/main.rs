@@ -267,16 +267,16 @@ fn monitor_message_queue(state: &mut program::State<DataViewer>) {
     let queue_len = state.queued_messages_len();
     LAST_QUEUE_LENGTH.store(queue_len, Ordering::SeqCst);
 
-    trace!("Message queue size: {}", queue_len);
+    trace!("Message queue size: {queue_len}");
 
     // Log if the queue is getting large
     if queue_len > QUEUE_LOG_THRESHOLD {
-        debug!("Message queue size: {}", queue_len);
+        debug!("Message queue size: {queue_len}");
     }
 
     // Reset queue if it exceeds our threshold
     if queue_len > QUEUE_RESET_THRESHOLD {
-        warn!("MESSAGE QUEUE OVERLOAD: {} messages pending - clearing queue", queue_len);
+        warn!("MESSAGE QUEUE OVERLOAD: {queue_len} messages pending - clearing queue");
         state.clear_queued_messages();
     }
 }
@@ -382,11 +382,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         };
 
         println!("Replay mode enabled:");
-        println!("  Test directories: {:?}", test_dirs);
+        println!("  Test directories: {test_dirs:?}");
         println!("  Duration per directory: {}s", args.duration);
         println!("  Navigation interval: {}ms", args.nav_interval);
-        println!("  Directions: {:?}", directions);
-        println!("  Navigation mode: {:?}", navigation_mode);
+        println!("  Directions: {directions:?}");
+        println!("  Navigation mode: {navigation_mode:?}");
         if navigation_mode == replay::NavigationMode::Slider {
             println!("  Slider step: {}", args.slider_step);
         }
@@ -453,8 +453,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
         crate::logging::write_crash_debug_log("MAIN: About to restore full disk access");
         debug!("🔍 Attempting to restore full disk access on startup");
         let restore_result = macos_file_access::macos_file_handler::restore_full_disk_access();
-        debug!("🔍 Restore full disk access result: {}", restore_result);
-        crate::logging::write_crash_debug_log(&format!("MAIN: Restore full disk access result: {}", restore_result));
+        debug!("🔍 Restore full disk access result: {restore_result}");
+        crate::logging::write_crash_debug_log(&format!("MAIN: Restore full disk access result: {restore_result}"));
 
         println!("macOS file handler registered");
         crate::logging::write_crash_debug_log("MAIN: macOS file handler registration completed");
@@ -786,7 +786,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             while let Ok(request) = renderer_request_receiver.try_recv() {
                                 match request {
                                     RendererRequest::UpdateCompressionStrategy(strategy) => {
-                                        debug!("Main thread handling compression strategy update to {:?}", strategy);
+                                        debug!("Main thread handling compression strategy update to {strategy:?}");
 
                                         let config = ImageConfig {
                                             atlas_size: CONFIG.atlas_size,
@@ -872,22 +872,22 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                                         // Always log these if they're abnormally long
                                         if present_time.as_millis() > 50 {
-                                            warn!("BOTTLENECK: Renderer present took {:?}", present_time);
+                                            warn!("BOTTLENECK: Renderer present took {present_time:?}");
                                         }
 
                                         if submit_time.as_millis() > 50 {
-                                            warn!("BOTTLENECK: Command submission took {:?}", submit_time);
+                                            warn!("BOTTLENECK: Command submission took {submit_time:?}");
                                         }
 
                                         if present_frame_time.as_millis() > 50 {
-                                            warn!("BOTTLENECK: Frame presentation took {:?}", present_frame_time);
+                                            warn!("BOTTLENECK: Frame presentation took {present_frame_time:?}");
                                         }
 
                                         // Original debug logging
                                         if *debug {
-                                            trace!("Renderer present took {:?}", present_time);
-                                            trace!("Command submission took {:?}", submit_time);
-                                            trace!("Frame presentation took {:?}", present_frame_time);
+                                            trace!("Renderer present took {present_time:?}");
+                                            trace!("Command submission took {submit_time:?}");
+                                            trace!("Frame presentation took {present_frame_time:?}");
                                         }
 
                                         // Update the mouse cursor
@@ -908,7 +908,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                                         if *debug {
                                             let total_frame_time = frame_start.elapsed();
-                                            trace!("Total frame time: {:?}", total_frame_time);
+                                            trace!("Total frame time: {total_frame_time:?}");
                                         }
                                     }
                                     Err(error) => match error {
@@ -948,7 +948,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                                         // Calculate FPS
                                         let fps = frame_times.len() as f32;
-                                        trace!("Current FPS: {:.1}", fps);
+                                        trace!("Current FPS: {fps:.1}");
 
                                         // Store the current FPS value
                                         if let Ok(mut current_fps) = CURRENT_FPS.lock() {
@@ -983,20 +983,20 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 Action::Clipboard(action) => {
                                     match action {
                                         iced_runtime::clipboard::Action::Write { target, contents } => {
-                                            debug!("Main thread received clipboard write request: {:?}, {:?}", target, contents);
+                                            debug!("Main thread received clipboard write request: {target:?}, {contents:?}");
 
                                             // Write to the clipboard using the Clipboard instance
                                             clipboard.write(target, contents);
                                             debug!("Successfully wrote to clipboard");
                                         }
                                         iced_runtime::clipboard::Action::Read { target, channel } => {
-                                            debug!("Main thread received clipboard read request: {:?}", target);
+                                            debug!("Main thread received clipboard read request: {target:?}");
 
                                             // Read from clipboard and send result back through the channel
                                             let content = clipboard.read(target);
 
                                             if let Err(err) = channel.send(content) {
-                                                error!("Failed to send clipboard content through channel: {:?}", err);
+                                                error!("Failed to send clipboard content through channel: {err:?}");
                                             }
                                         }
                                     }
@@ -1032,13 +1032,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                             // Render directly for spinner animation (SpinnerTick is a Message,
                             // not an Event, so widgets won't redraw without this).
-                            if state.program().is_any_pane_loading() {
-                                if render::render_spinner_frame(
+                            if state.program().is_any_pane_loading()
+                                && render::render_spinner_frame(
                                     surface, device, queue, engine, renderer, viewport, debug_tool,
                                 ) {
                                     *redraw = false;
                                 }
-                            }
                         }
                         Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
                             // Process any pending control messages
@@ -1395,7 +1394,7 @@ fn track_render_cycle() {
 
         // Check for bottlenecks
         if elapsed.as_millis() > 50 {
-            warn!("LONG FRAME DETECTED: Render time: {:?}", elapsed);
+            warn!("LONG FRAME DETECTED: Render time: {elapsed:?}");
             warn!("Image stats: FPS={:.1}, Upload={:.2}ms, Render={:.2}ms, Min={:.2}ms, Max={:.2}ms",
                  fps, upload_secs * 1000.0, render_secs * 1000.0,
                  min_render * 1000.0, max_render * 1000.0);
@@ -1430,16 +1429,16 @@ fn track_async_delivery() {
         let now = Instant::now();
         let elapsed = now.duration_since(*time);
         *time = now;
-        trace!("TIMING: Interval time between async deliveries: {:?}", elapsed);
+        trace!("TIMING: Interval time between async deliveries: {elapsed:?}");
     }
 
     // Check image rendering FPS from custom iced_wgpu
     let image_fps = iced_wgpu::get_image_fps();
-    trace!("TIMING: Image FPS: {}", image_fps);
+    trace!("TIMING: Image FPS: {image_fps}");
 
     // Also check phase alignment
     if let (Ok(render_time), Ok(async_time)) = (LAST_RENDER_TIME.lock(), LAST_ASYNC_DELIVERY_TIME.lock()) {
         let phase_diff = async_time.duration_since(*render_time);
-        trace!("TIMING: Phase difference: {:?}", phase_diff);
+        trace!("TIMING: Phase difference: {phase_diff:?}");
     }
 }

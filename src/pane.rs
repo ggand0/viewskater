@@ -504,7 +504,7 @@ impl Pane {
                 debug!("Dropped path is a file: {}", path.display());
                 let directory = path.parent().unwrap_or(Path::new(""));
                 let dir = directory.to_string_lossy().to_string();
-                debug!("Parent directory path: {}", dir);
+                debug!("Parent directory path: {dir}");
                 
                 // First try to read the parent directory
                 let parent_result = file_io::get_image_paths(Path::new(&dir));
@@ -516,16 +516,16 @@ impl Pane {
                     }
                     Err(ImageError::DirectoryError(e)) => {
                         // Parent directory access failed (likely sandboxed), create a single-file list
-                        debug!("❌ Parent directory access denied (error: {}), creating single-file cache", e);
+                        debug!("❌ Parent directory access denied (error: {e}), creating single-file cache");
                         debug!("This is likely due to App Store sandboxing - only the selected file is accessible");
                         let file_path = path.to_string_lossy().to_string();
                         let single_file_list = vec![path.clone()];
-                        debug!("Single-file cache created with 1 image: {}", file_path);
+                        debug!("Single-file cache created with 1 image: {file_path}");
                         (file_path.clone(), Ok(single_file_list))
                     }
                     Err(e) => {
                         // Other error, try single file as fallback
-                        debug!("❌ Other error reading directory: {}, falling back to single file", e);
+                        debug!("❌ Other error reading directory: {e}, falling back to single file");
                         let file_path = path.to_string_lossy().to_string();
                         let single_file_list = vec![path.clone()];
                         (file_path.clone(), Ok(single_file_list))
@@ -567,7 +567,7 @@ impl Pane {
                 }).collect::<Vec<_>>(), path);
                 initial_index = match file_index {
                     Some(idx) => {
-                        debug!("File index: {}", idx);
+                        debug!("File index: {idx}");
                         idx
                     }
                     None => {
@@ -586,7 +586,7 @@ impl Pane {
         } else {
             file_paths.len() >= *longest_file_length
         };
-        debug!("longest_file_length: {:?}, is_dir_size_bigger: {:?}", longest_file_length, is_dir_size_bigger);
+        debug!("longest_file_length: {longest_file_length:?}, is_dir_size_bigger: {is_dir_size_bigger:?}");
 
         // Sort
         debug!("File paths: {}", file_paths.len());
@@ -619,7 +619,7 @@ impl Pane {
         };
 
         if let Err(e) = img_cache.load_single_image(archive_cache) {
-            error!("Failed to load initial image: {}", e);
+            error!("Failed to load initial image: {e}");
             drop(archive_guard); // Release the lock before returning
             return Task::none();
         }
@@ -631,11 +631,11 @@ impl Pane {
             match image_option {
                 Some(image_bytes) => {
                     let image_info = format!("Image {} - Index {} - Size: {} bytes", index, img_cache.cached_image_indices[index], image_bytes.len());
-                    debug!("{}", image_info);
+                    debug!("{image_info}");
                 }
                 None => {
-                    let no_image_info = format!("No image at index {}", index);
-                    debug!("{}", no_image_info);
+                    let no_image_info = format!("No image at index {index}");
+                    debug!("{no_image_info}");
                 }
             }
         }
@@ -655,7 +655,7 @@ impl Pane {
 
         // Update slider value
         let current_slider_value = initial_index as u16;
-        debug!("current_slider_value: {:?}", current_slider_value);
+        debug!("current_slider_value: {current_slider_value:?}");
         if is_slider_dual {
             *slider_value = current_slider_value;
             self.slider_value = current_slider_value;
@@ -742,7 +742,7 @@ impl Pane {
         // Load only the first/dropped image synchronously for immediate display
         // No archive cache since this is for regular directories
         if let Err(e) = img_cache.load_single_image(None) {
-            error!("Failed to load initial image: {}", e);
+            error!("Failed to load initial image: {e}");
             return;
         }
 
@@ -759,7 +759,7 @@ impl Pane {
 
         // Update slider value
         let current_slider_value = initial_index as u16;
-        debug!("current_slider_value: {:?}", current_slider_value);
+        debug!("current_slider_value: {current_slider_value:?}");
         if is_slider_dual {
             *slider_value = current_slider_value;
             self.slider_value = current_slider_value;
@@ -774,7 +774,7 @@ impl Pane {
     pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> iced_winit::core::Element<'_, Message, WinitTheme, Renderer> {
         use log::debug;
 
-        debug!("build_ui_container: use_nearest_filter = {}", use_nearest_filter);
+        debug!("build_ui_container: use_nearest_filter = {use_nearest_filter}");
 
         if self.dir_loaded {
             if use_slider_image_for_render && self.slider_image.is_some() {

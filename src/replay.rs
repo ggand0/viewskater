@@ -514,12 +514,12 @@ impl ReplayController {
             let min_ui_fps = self.completed_metrics.iter().map(|m| m.min_ui_fps).fold(f32::INFINITY, f32::min);
             let max_ui_fps = self.completed_metrics.iter().map(|m| m.max_ui_fps).fold(0.0, f32::max);
             
-            info!("UI FPS Range: {:.1} - {:.1}", min_ui_fps, max_ui_fps);
+            info!("UI FPS Range: {min_ui_fps:.1} - {max_ui_fps:.1}");
             
             // Export to file if requested
             if let Some(ref output_file) = self.config.output_file {
                 if let Err(e) = self.export_metrics_to_file(output_file) {
-                    warn!("Failed to export metrics to file: {}", e);
+                    warn!("Failed to export metrics to file: {e}");
                 } else {
                     info!("Metrics exported to: {}", output_file.display());
                 }
@@ -653,8 +653,8 @@ impl ReplayController {
 
             writeln!(file, "## Summary")?;
             writeln!(file)?;
-            writeln!(file, "- **Overall Avg UI FPS:** {:.1}", avg_ui_fps)?;
-            writeln!(file, "- **Overall Avg Image FPS:** {:.1}", avg_image_fps)?;
+            writeln!(file, "- **Overall Avg UI FPS:** {avg_ui_fps:.1}")?;
+            writeln!(file, "- **Overall Avg Image FPS:** {avg_image_fps:.1}")?;
         }
 
         Ok(())

@@ -48,31 +48,31 @@ impl TextureCache {
         let hash_start = Instant::now();
         let hash = self.hash_image(image_bytes);
         let hash_time = hash_start.elapsed();
-        debug!("TextureCache: Computed hash in {:?}", hash_time);
+        debug!("TextureCache: Computed hash in {hash_time:?}");
 
         if let Some(texture) = self.textures.get(&hash) {
             self.hits += 1;
             if self.hits.is_multiple_of(100) {
                 debug!("TextureCache: {} hits, {} misses", self.hits, self.misses);
             }
-            debug!("TextureCache: Cache hit for hash {}", hash);
+            debug!("TextureCache: Cache hit for hash {hash}");
             return Some(Arc::clone(texture));
         }
 
         // Cache miss - create new texture
         self.misses += 1;
-        debug!("TextureCache: Creating new texture (hash: {})", hash);
+        debug!("TextureCache: Creating new texture (hash: {hash})");
 
         let load_start = Instant::now();
         match crate::exif_utils::decode_with_exif_orientation(image_bytes) {
             Ok(img) => {
                 let load_time = load_start.elapsed();
-                debug!("TextureCache: Loaded image in {:?}", load_time);
+                debug!("TextureCache: Loaded image in {load_time:?}");
 
                 let rgba_start = Instant::now();
                 let rgba = img.to_rgba8();
                 let rgba_time = rgba_start.elapsed();
-                debug!("TextureCache: Converted to RGBA in {:?}", rgba_time);
+                debug!("TextureCache: Converted to RGBA in {rgba_time:?}");
 
                 let dimensions = img.dimensions();
 
@@ -100,7 +100,7 @@ impl TextureCache {
                     }
                 );
                 let texture_create_time = texture_start.elapsed();
-                debug!("TextureCache: Created texture in {:?}", texture_create_time);
+                debug!("TextureCache: Created texture in {texture_create_time:?}");
 
                 // Write the image data to the texture
                 let upload_start = Instant::now();
@@ -124,7 +124,7 @@ impl TextureCache {
                     },
                 );
                 let upload_time = upload_start.elapsed();
-                debug!("TextureCache: Uploaded texture data in {:?}", upload_time);
+                debug!("TextureCache: Uploaded texture data in {upload_time:?}");
 
                 let texture_arc = Arc::new(texture);
                 self.textures.insert(hash, Arc::clone(&texture_arc));
@@ -135,7 +135,7 @@ impl TextureCache {
                 Some(texture_arc)
             },
             Err(e) => {
-                warn!("TextureCache: Failed to load image: {:?}", e);
+                warn!("TextureCache: Failed to load image: {e:?}");
                 None
             }
         }

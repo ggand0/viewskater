@@ -128,9 +128,9 @@ impl BufferLogger {
             // Format the log message to include only line number to avoid duplication
             // The module is already in the target in most cases
             let formatted_message = if let Some(line_num) = line {
-                format!("{}:{} {}", target, line_num, message)
+                format!("{target}:{line_num} {message}")
             } else {
-                format!("{} {}", target, message)
+                format!("{target} {message}")
             };
 
             buffer.push_back(formatted_message);
@@ -225,11 +225,11 @@ pub fn setup_logger(_app_name: &str) -> Arc<Mutex<VecDeque<String>>> {
 
         // Create the module:line part
         let module_info = if let (Some(module), Some(line)) = (record.module_path(), record.line()) {
-            format!("{}:{}", module, line)
+            format!("{module}:{line}")
         } else if let Some(module) = record.module_path() {
             module.to_string()
         } else if let Some(line) = record.line() {
-            format!("line:{}", line)
+            format!("line:{line}")
         } else {
             "unknown".to_string()
         };
@@ -331,14 +331,14 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
     println!("DEBUG: About to write header");
 
-    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] ViewSkater Debug Log Export", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] Export timestamp: {}", timestamp, timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] ", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] IMPORTANT: This log captures output from Rust log macros", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] (debug!, info!, warn!, error!) but NOT raw println! statements.", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] Maximum captured entries: {}", timestamp, MAX_LOG_LINES)?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] =====================================")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] ViewSkater Debug Log Export")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] Export timestamp: {timestamp}")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] =====================================")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] ")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] IMPORTANT: This log captures output from Rust log macros")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] (debug!, info!, warn!, error!) but NOT raw println! statements.")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] Maximum captured entries: {MAX_LOG_LINES}")?;
     writeln!(file)?; // Empty line for readability
     println!("DEBUG: Header written");
 
@@ -354,36 +354,36 @@ pub fn export_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>
         buffer_size = buffer.len();
         buffer_empty = buffer.is_empty();
         log_entries = buffer.iter().cloned().collect();
-        println!("DEBUG: Copied {} entries, releasing lock", buffer_size);
+        println!("DEBUG: Copied {buffer_size} entries, releasing lock");
     } // Lock is dropped here
 
     println!("DEBUG: Buffer lock released");
 
     if buffer_empty {
         println!("DEBUG: Buffer is empty, writing empty message");
-        writeln!(file, "{} [DEBUG EXPORT] No log entries found in buffer", timestamp)?;
-        writeln!(file, "{} [DEBUG EXPORT] This may indicate that:", timestamp)?;
-        writeln!(file, "{} [DEBUG EXPORT] 1. No log macros have been called yet", timestamp)?;
-        writeln!(file, "{} [DEBUG EXPORT] 2. All logs were filtered out by log level settings", timestamp)?;
-        writeln!(file, "{} [DEBUG EXPORT] 3. The app just started and no logs have been generated", timestamp)?;
+        writeln!(file, "{timestamp} [DEBUG EXPORT] No log entries found in buffer")?;
+        writeln!(file, "{timestamp} [DEBUG EXPORT] This may indicate that:")?;
+        writeln!(file, "{timestamp} [DEBUG EXPORT] 1. No log macros have been called yet")?;
+        writeln!(file, "{timestamp} [DEBUG EXPORT] 2. All logs were filtered out by log level settings")?;
+        writeln!(file, "{timestamp} [DEBUG EXPORT] 3. The app just started and no logs have been generated")?;
     } else {
-        println!("DEBUG: Writing {} log entries", buffer_size);
-        writeln!(file, "{} [DEBUG EXPORT] Found {} log entries (showing last {} max):", timestamp, buffer_size, MAX_LOG_LINES)?;
-        writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
+        println!("DEBUG: Writing {buffer_size} log entries");
+        writeln!(file, "{timestamp} [DEBUG EXPORT] Found {buffer_size} log entries (showing last {MAX_LOG_LINES} max):")?;
+        writeln!(file, "{timestamp} [DEBUG EXPORT] =====================================")?;
         writeln!(file)?; // Empty line for readability
 
         for log_entry in log_entries.iter() {
-            writeln!(file, "{} {}", timestamp, log_entry)?;
+            writeln!(file, "{timestamp} {log_entry}")?;
         }
         println!("DEBUG: All entries written");
     }
 
     println!("DEBUG: Writing footer");
     writeln!(file)?; // Final empty line
-    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] Export completed successfully", timestamp)?;
-    writeln!(file, "{} [DEBUG EXPORT] Total entries exported: {}", timestamp, buffer_size)?;
-    writeln!(file, "{} [DEBUG EXPORT] =====================================", timestamp)?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] =====================================")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] Export completed successfully")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] Total entries exported: {buffer_size}")?;
+    writeln!(file, "{timestamp} [DEBUG EXPORT] =====================================")?;
 
     println!("DEBUG: About to flush file");
     file.flush()?;
@@ -414,7 +414,7 @@ pub fn export_and_open_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque
         if !buffer.is_empty() {
             println!("DEBUG: First few entries:");
             for (i, entry) in buffer.iter().take(3).enumerate() {
-                println!("DEBUG: Entry {}: {}", i, entry);
+                println!("DEBUG: Entry {i}: {entry}");
             }
         }
     }
@@ -429,8 +429,8 @@ pub fn export_and_open_debug_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque
             // open_in_file_explorer(&log_dir.to_string_lossy().to_string());
         }
         Err(e) => {
-            error!("Failed to export debug logs: {}", e);
-            eprintln!("Failed to export debug logs: {}", e);
+            error!("Failed to export debug logs: {e}");
+            eprintln!("Failed to export debug logs: {e}");
         }
     }
 }
@@ -459,22 +459,22 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
         };
 
         // Create formatted messages that we'll use for both console and file
-        let header_msg = format!("[PANIC] at {} - {}", location, info);
+        let header_msg = format!("[PANIC] at {location} - {info}");
         let backtrace_header = "[PANIC] Backtrace:";
 
         // Format backtrace lines
         let mut backtrace_lines = Vec::new();
-        for line in format!("{:?}", backtrace).lines() {
+        for line in format!("{backtrace:?}").lines() {
             backtrace_lines.push(format!("[BACKTRACE] {}", line.trim()));
         }
 
         // Log header to file
-        writeln!(file, "{} {}", timestamp, header_msg).expect("Failed to write panic info");
-        writeln!(file, "{} {}", timestamp, backtrace_header).expect("Failed to write backtrace header");
+        writeln!(file, "{timestamp} {header_msg}").expect("Failed to write panic info");
+        writeln!(file, "{timestamp} {backtrace_header}").expect("Failed to write backtrace header");
 
         // Log backtrace to file
         for line in &backtrace_lines {
-            writeln!(file, "{} {}", timestamp, line).expect("Failed to write backtrace line");
+            writeln!(file, "{timestamp} {line}").expect("Failed to write backtrace line");
         }
 
         // Add double linebreak between backtrace and log entries
@@ -482,20 +482,20 @@ pub fn setup_panic_hook(app_name: &str, log_buffer: Arc<Mutex<VecDeque<String>>>
         writeln!(file).expect("Failed to write second newline");
 
         // Dump the last N log lines from the buffer with timestamps
-        writeln!(file, "{} [PANIC] Last {} log entries:", timestamp, MAX_LOG_LINES)
+        writeln!(file, "{timestamp} [PANIC] Last {MAX_LOG_LINES} log entries:")
             .expect("Failed to write log header");
 
         let buffer = log_buffer.lock().unwrap();
         for log in buffer.iter() {
-            writeln!(file, "{} {}", timestamp, log).expect("Failed to write log entry");
+            writeln!(file, "{timestamp} {log}").expect("Failed to write log entry");
         }
 
         // ALSO PRINT TO CONSOLE (this is the new part)
         // Use eprintln! to print to stderr
-        eprintln!("\n\n{}", header_msg);
-        eprintln!("{}", backtrace_header);
+        eprintln!("\n\n{header_msg}");
+        eprintln!("{backtrace_header}");
         for line in &backtrace_lines {
-            eprintln!("{}", line);
+            eprintln!("{line}");
         }
         eprintln!("\nA complete crash log has been written to: {}", log_file_path.display());
     }));
@@ -509,24 +509,24 @@ pub fn open_in_file_explorer(path: &str) {
         match Command::new("explorer")
             .arg(path)
             .spawn() {
-                Ok(_) => println!("Opened directory in File Explorer: {}", path),
-                Err(e) => eprintln!("Failed to open directory in File Explorer: {}", e),
+                Ok(_) => println!("Opened directory in File Explorer: {path}"),
+                Err(e) => eprintln!("Failed to open directory in File Explorer: {e}"),
             }
     } else if cfg!(target_os = "macos") {
         // macOS: Use "open" to open the directory
         match Command::new("open")
             .arg(path)
             .spawn() {
-                Ok(_) => println!("Opened directory in Finder: {}", path),
-                Err(e) => eprintln!("Failed to open directory in Finder: {}", e),
+                Ok(_) => println!("Opened directory in Finder: {path}"),
+                Err(e) => eprintln!("Failed to open directory in Finder: {e}"),
             }
     } else if cfg!(target_os = "linux") {
         // Linux: Use "xdg-open" to open the directory (works with most desktop environments)
         match Command::new("xdg-open")
             .arg(path)
             .spawn() {
-                Ok(_) => println!("Opened directory in File Explorer: {}", path),
-                Err(e) => eprintln!("Failed to open directory in File Explorer: {}", e),
+                Ok(_) => println!("Opened directory in File Explorer: {path}"),
+                Err(e) => eprintln!("Failed to open directory in File Explorer: {e}"),
             }
     } else {
         error!("Opening directories is not supported on this OS.");
@@ -607,7 +607,7 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() {
                         // Write to original stdout (console)
-                        let _ = writeln!(original_stdout, "{}", trimmed);
+                        let _ = writeln!(original_stdout, "{trimmed}");
                         let _ = original_stdout.flush();
 
                         // Capture to buffer
@@ -616,7 +616,7 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
                                 buffer.pop_front();
                             }
                             let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-                            buffer.push_back(format!("{} [STDOUT] {}", timestamp, trimmed));
+                            buffer.push_back(format!("{timestamp} [STDOUT] {trimmed}"));
                         }
                     }
                 }
@@ -633,7 +633,7 @@ pub fn setup_stdout_capture() -> Arc<Mutex<VecDeque<String>>> {
     // Add initialization message to buffer
     if let Ok(mut buf) = STDOUT_BUFFER.lock() {
         let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-        buf.push_back(format!("{} [STDOUT] ViewSkater stdout capture initialized", timestamp));
+        buf.push_back(format!("{timestamp} [STDOUT] ViewSkater stdout capture initialized"));
     }
 
     // This println! should now be captured
@@ -688,36 +688,36 @@ pub fn export_stdout_logs(app_name: &str, stdout_buffer: Arc<Mutex<VecDeque<Stri
     // Write formatted timestamp
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
 
-    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] ViewSkater Stdout Log Export", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] Export timestamp: {}", timestamp, timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] ", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] This log captures stdout output including println! statements", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] Maximum captured entries: 1000", timestamp)?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] =====================================")?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] ViewSkater Stdout Log Export")?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] Export timestamp: {timestamp}")?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] =====================================")?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] ")?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] This log captures stdout output including println! statements")?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] Maximum captured entries: 1000")?;
     writeln!(file)?; // Empty line for readability
 
     // Export all stdout entries from the buffer
     let buffer = stdout_buffer.lock().unwrap();
     if buffer.is_empty() {
-        writeln!(file, "{} [STDOUT EXPORT] No stdout entries found in buffer", timestamp)?;
-        writeln!(file, "{} [STDOUT EXPORT] Note: Automatic stdout capture is disabled", timestamp)?;
-        writeln!(file, "{} [STDOUT EXPORT] Use debug logs (debug!, info!, etc.) for logging instead", timestamp)?;
+        writeln!(file, "{timestamp} [STDOUT EXPORT] No stdout entries found in buffer")?;
+        writeln!(file, "{timestamp} [STDOUT EXPORT] Note: Automatic stdout capture is disabled")?;
+        writeln!(file, "{timestamp} [STDOUT EXPORT] Use debug logs (debug!, info!, etc.) for logging instead")?;
     } else {
         writeln!(file, "{} [STDOUT EXPORT] Found {} stdout entries:", timestamp, buffer.len())?;
-        writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
+        writeln!(file, "{timestamp} [STDOUT EXPORT] =====================================")?;
         writeln!(file)?; // Empty line for readability
 
         for stdout_entry in buffer.iter() {
-            writeln!(file, "{}", stdout_entry)?;
+            writeln!(file, "{stdout_entry}")?;
         }
     }
 
     writeln!(file)?; // Final empty line
-    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
-    writeln!(file, "{} [STDOUT EXPORT] Export completed successfully", timestamp)?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] =====================================")?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] Export completed successfully")?;
     writeln!(file, "{} [STDOUT EXPORT] Total entries exported: {}", timestamp, buffer.len())?;
-    writeln!(file, "{} [STDOUT EXPORT] =====================================", timestamp)?;
+    writeln!(file, "{timestamp} [STDOUT EXPORT] =====================================")?;
 
     file.flush()?;
 
@@ -756,8 +756,8 @@ pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<S
             open_in_file_explorer(log_dir.to_string_lossy().as_ref());
         }
         Err(e) => {
-            error!("Failed to export debug logs: {}", e);
-            eprintln!("Failed to export debug logs: {}", e);
+            error!("Failed to export debug logs: {e}");
+            eprintln!("Failed to export debug logs: {e}");
         }
     }
 
@@ -776,29 +776,14 @@ pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<S
                 info!("Stdout logs successfully exported to: {}", stdout_log_path.display());
             }
             Err(e) => {
-                error!("Failed to export stdout logs: {}", e);
-                eprintln!("Failed to export stdout logs: {}", e);
+                error!("Failed to export stdout logs: {e}");
+                eprintln!("Failed to export stdout logs: {e}");
             }
         }
     } else {
         println!("Skipping stdout.log export - buffer is empty (stdout capture disabled)");
     }
 }
-
-
-/// macOS integration for opening image files via Finder.
-///
-/// This module handles cases where the user launches ViewSkater by double-clicking
-/// an image file or using "Open With" in Finder. macOS sends the file path through
-/// the `application:openFiles:` message, which is delivered to the app's delegate.
-///
-/// This code:
-/// - Subclasses the existing `NSApplicationDelegate` to override `application:openFiles:`
-/// - Forwards received file paths to Rust using an MPSC channel
-/// - Disables automatic argument parsing by setting `NSTreatUnknownArgumentsAsOpen = NO`
-///
-/// The channel is set up in `main.rs` and connected to the rest of the app so that
-/// the selected image can be loaded on startup.
 
 // ==================== CRASH DEBUG LOGGING ====================
 
@@ -807,12 +792,12 @@ pub fn export_and_open_all_logs(app_name: &str, log_buffer: Arc<Mutex<VecDeque<S
 pub fn write_crash_debug_log(message: &str) {
     // Simple immediate stderr logging
     let _ = std::panic::catch_unwind(|| {
-        eprintln!("CRASH_DEBUG: {}", message);
+        eprintln!("CRASH_DEBUG: {message}");
     });
 
     // Simple immediate stdout logging
     let _ = std::panic::catch_unwind(|| {
-        println!("CRASH_DEBUG: {}", message);
+        println!("CRASH_DEBUG: {message}");
     });
 
     // Simple NSUserDefaults logging
@@ -839,7 +824,7 @@ pub fn write_immediate_crash_log(message: &str) {
         .unwrap_or_default()
         .as_secs();
 
-    let formatted = format!("{} CRASH: {}\n", timestamp, message);
+    let formatted = format!("{timestamp} CRASH: {message}\n");
 
     // Use the same directory approach as file_io module
     let mut paths = Vec::new();
@@ -928,7 +913,7 @@ pub fn get_crash_debug_logs_from_userdefaults() -> Vec<String> {
         // Get the crash counter
         let counter_key = NSString::from_str("ViewSkaterCrashCounter");
         let crash_count: i64 = msg_send![&*defaults, integerForKey: &*counter_key];
-        results.push(format!("CRASH_COUNTER: {} crashes detected", crash_count));
+        results.push(format!("CRASH_COUNTER: {crash_count} crashes detected"));
 
         // Get the last crash log
         let log_key = NSString::from_str("ViewSkaterLastCrashLog");
@@ -937,7 +922,7 @@ pub fn get_crash_debug_logs_from_userdefaults() -> Vec<String> {
         if !last_log.is_null() {
             let log_nsstring = &*(last_log as *const NSString);
             let log_str = log_nsstring.as_str(pool).to_owned();
-            results.push(format!("LAST_CRASH_LOG: {}", log_str));
+            results.push(format!("LAST_CRASH_LOG: {log_str}"));
         } else {
             results.push("LAST_CRASH_LOG: No crash log found".to_string());
         }
@@ -962,8 +947,8 @@ pub fn setup_signal_crash_handler() {
 
         // Use the most basic logging possible since we're in a signal handler
         let _ = std::panic::catch_unwind(|| {
-            eprintln!("CRASH_DEBUG: SIGNAL CAUGHT: {} ({})", signal_name, signal);
-            println!("CRASH_DEBUG: SIGNAL CAUGHT: {} ({})", signal_name, signal);
+            eprintln!("CRASH_DEBUG: SIGNAL CAUGHT: {signal_name} ({signal})");
+            println!("CRASH_DEBUG: SIGNAL CAUGHT: {signal_name} ({signal})");
         });
 
         // Try to write to NSUserDefaults if possible
@@ -973,9 +958,9 @@ pub fn setup_signal_crash_handler() {
                 use objc2_foundation::{NSUserDefaults, NSString};
                 use objc2::{msg_send};
 
-                let message = format!("SIGNAL_CRASH: {} ({})", signal_name, signal);
+                let message = format!("SIGNAL_CRASH: {signal_name} ({signal})");
                 let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ");
-                let formatted_message = format!("{} CRASH_DEBUG: {}", timestamp, message);
+                let formatted_message = format!("{timestamp} CRASH_DEBUG: {message}");
 
                 let defaults = NSUserDefaults::standardUserDefaults();
                 let key = NSString::from_str("ViewSkaterLastCrashLog");

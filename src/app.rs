@@ -166,8 +166,8 @@ impl DataViewer {
         info!("  mouse_wheel_zoom: {}", settings.mouse_wheel_zoom);
         info!("  show_copy_buttons: {}", settings.show_copy_buttons);
         info!("  nearest_neighbor_filter: {}", settings.nearest_neighbor_filter);
-        info!("  cache_strategy: {:?}", cache_strategy);
-        info!("  compression_strategy: {:?}", compression_strategy);
+        info!("  cache_strategy: {cache_strategy:?}");
+        info!("  compression_strategy: {compression_strategy:?}");
         info!("  is_slider_dual: {}", settings.is_slider_dual);
 
         Self {
@@ -230,7 +230,7 @@ impl DataViewer {
 
     pub fn clear_primitive_storage(&self) {
         if let Err(e) = self.renderer_request_sender.send(RendererRequest::ClearPrimitiveStorage) {
-            error!("Failed to send ClearPrimitiveStorage request: {:?}", e);
+            error!("Failed to send ClearPrimitiveStorage request: {e:?}");
         }
     }
 
@@ -238,7 +238,7 @@ impl DataViewer {
     fn ensure_pane_exists(&mut self, pane_index: usize) {
         while self.panes.len() <= pane_index {
             let new_pane_id = self.panes.len();
-            debug!("Creating new pane at index {}", new_pane_id);
+            debug!("Creating new pane at index {new_pane_id}");
             self.panes.push(pane::Pane::new(
                 Arc::clone(&self.device),
                 Arc::clone(&self.queue),
@@ -274,7 +274,7 @@ impl DataViewer {
         // The first image is already displayed, now we load the rest in background
         if let Some(pane) = self.panes.get_mut(pane_index) {
             pane.loading_started_at = Some(std::time::Instant::now());
-            debug!("SPINNER: Set loading_started_at for neighbor loading (pane {})", pane_index);
+            debug!("SPINNER: Set loading_started_at for neighbor loading (pane {pane_index})");
         }
 
         let current_index = self.panes[pane_index].img_cache.current_index;
@@ -378,7 +378,7 @@ impl DataViewer {
         let archive_warning_threshold_mb = self.archive_warning_threshold_mb;
 
         let pane = &mut self.panes[pane_index];
-        debug!("pane_file_lengths: {:?}", pane_file_lengths);
+        debug!("pane_file_lengths: {pane_file_lengths:?}");
 
         // Load first image synchronously (archives are local, so this is fast)
         let _ = pane.initialize_dir_path(
@@ -437,7 +437,7 @@ impl DataViewer {
         );
 
         // start_neighbor_loading will set loading timer for neighbor loading phase
-        debug!("SPINNER: complete_dir_initialization calling start_neighbor_loading for pane {}", pane_index);
+        debug!("SPINNER: complete_dir_initialization calling start_neighbor_loading for pane {pane_index}");
         self.start_neighbor_loading(pane_index)
     }
 
@@ -529,7 +529,7 @@ impl DataViewer {
                     String::from("No File")
                 };
 
-                format!("{}: {} | {}: {}", first_label, first_pane_filename, second_label, second_pane_filename)
+                format!("{first_label}: {first_pane_filename} | {second_label}: {second_pane_filename}")
             }
         }
     }
@@ -586,13 +586,13 @@ impl DataViewer {
         if self.compression_strategy != strategy {
             self.compression_strategy = strategy;
 
-            debug!("Queuing compression strategy change to {:?}", strategy);
+            debug!("Queuing compression strategy change to {strategy:?}");
 
             // Instead of trying to lock renderer directly, send a request to the main thread
             if let Err(e) = self.renderer_request_sender.send(
                 RendererRequest::UpdateCompressionStrategy(strategy)
             ) {
-                error!("Failed to queue compression strategy change: {:?}", e);
+                error!("Failed to queue compression strategy change: {e:?}");
             } else {
                 debug!("Compression strategy change request sent successfully");
 
@@ -651,7 +651,7 @@ impl iced_winit::runtime::Program for DataViewer {
         // Check for any file paths received from the background thread
         let mut cli_tasks: Vec<Task<Message>> = Vec::new();
         while let Ok(path) = self.file_receiver.try_recv() {
-            println!("Processing file path in main thread: {}", path);
+            println!("Processing file path in main thread: {path}");
             // Reset state and initialize the directory path
             self.reset_state(-1);
             println!("State reset complete, initializing directory path");
@@ -800,7 +800,7 @@ impl iced_winit::runtime::Program for DataViewer {
             let bundle_info = BuildInfo::bundle_version_display();
             if !bundle_info.is_empty() {
                 info_column = info_column.push(
-                    text(format!("Bundle: {}", bundle_info)).size(12)
+                    text(format!("Bundle: {bundle_info}")).size(12)
                     .style(|theme: &WinitTheme| {
                         iced_widget::text::Style {
                             color: Some(theme.extended_palette().background.weak.color),

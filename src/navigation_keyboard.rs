@@ -91,7 +91,7 @@ pub fn render_next_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
     // Render the next image for all panes
     for pane in panes.iter_mut() {
         let render_happened = pane.render_next_image(_pane_layout, is_slider_dual);
-        debug!("render_next_image_all - render_happened: {}", render_happened);
+        debug!("render_next_image_all - render_happened: {render_happened}");
 
         if render_happened {
             did_render_happen = true;
@@ -153,7 +153,7 @@ pub fn render_prev_image_all(panes: &mut Vec<&mut Pane>, _pane_layout: &PaneLayo
     for pane in panes.iter_mut() {
         let render_happened = pane.render_prev_image(_pane_layout, is_slider_dual);
         if render_happened {
-            debug!("render_prev_image_all - render_happened: {}", render_happened);
+            debug!("render_prev_image_all - render_happened: {render_happened}");
             did_render_happen = true;
         }
     }
@@ -210,20 +210,20 @@ pub fn load_next_images_all(
 ) -> Task<Message> {
     // The updated get_target_indices_for_next function now returns Vec<Option<isize>>
     let target_indices = get_target_indices_for_next(panes);
-    debug!("load_next_images_all - target_indices: {:?}", target_indices);
+    debug!("load_next_images_all - target_indices: {target_indices:?}");
 
     if target_indices.is_empty() {
         return Task::none();
     }
 
     // Updated calculate_loading_conditions_for_next to work with Vec<Option<isize>>
-    debug!("load_next_images_all - target_indices: {:?}", target_indices);
+    debug!("load_next_images_all - target_indices: {target_indices:?}");
     if let Some((next_image_indices_to_load, is_image_index_within_bounds, any_out_of_bounds)) =
         calculate_loading_conditions_for_next(panes, &target_indices)
     {
         // The LoadOperation::LoadNext variant now takes Vec<Option<isize>>
         let load_next_operation = LoadOperation::LoadNext((pane_indices.clone(), next_image_indices_to_load.clone()));
-        debug!("load_next_images_all - next_image_indices_to_load: {:?}", next_image_indices_to_load);
+        debug!("load_next_images_all - next_image_indices_to_load: {next_image_indices_to_load:?}");
 
 
         if should_enqueue_loading(
@@ -233,7 +233,7 @@ pub fn load_next_images_all(
             &load_next_operation,
             panes,
         ) {
-            debug!("load_next_images_all - should_enqueue_loading passed  - any_out_of_bounds: {}", any_out_of_bounds);
+            debug!("load_next_images_all - should_enqueue_loading passed  - any_out_of_bounds: {any_out_of_bounds}");
             if any_out_of_bounds {
                 // Now that we use the integration setup, can we disable this?
                 loading_status.enqueue_image_load(LoadOperation::ShiftNext((
@@ -289,8 +289,8 @@ fn calculate_loading_conditions_for_next(
             next_image_indices_to_load.push(None);
         }
     }
-    debug!("calculate_loading_conditions_for_next - next_image_indices_to_load: {:?}", next_image_indices_to_load);
-    debug!("calculate_loading_conditions_for_next - is_image_index_within_bounds: {}", is_image_index_within_bounds);
+    debug!("calculate_loading_conditions_for_next - next_image_indices_to_load: {next_image_indices_to_load:?}");
+    debug!("calculate_loading_conditions_for_next - is_image_index_within_bounds: {is_image_index_within_bounds}");
 
     if next_image_indices_to_load.is_empty() {
         None
@@ -532,7 +532,7 @@ pub fn move_right_all(
     debug!("move_right_all() - panes[0].is_next_image_loaded: {}", panes_to_load[0].is_next_image_loaded);
     if !are_all_next_images_loaded(&panes_to_load, is_slider_dual, loading_status) {
         let did_render_happen: bool = render_next_image_all(&mut panes_to_load, pane_layout, is_slider_dual);
-        debug!("move_right_all() - did_render_happen = {}", did_render_happen);
+        debug!("move_right_all() - did_render_happen = {did_render_happen}");
 
         if did_render_happen {
             loading_status.is_next_image_loaded = true;

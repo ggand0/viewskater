@@ -125,9 +125,9 @@ impl shader::Primitive for TexturePrimitive {
         
         if debug {
             println!("###############PREPARE: Original bounds: {:?}", self.bounds);
-            println!("###############PREPARE: Content bounds (aspect-preserved): {:?}", content_bounds);
-            println!("###############PREPARE: Viewport size: {:?}", viewport_size);
-            println!("###############PREPARE: Scale factor: {}", scale_factor);
+            println!("###############PREPARE: Content bounds (aspect-preserved): {content_bounds:?}");
+            println!("###############PREPARE: Viewport size: {viewport_size:?}");
+            println!("###############PREPARE: Scale factor: {scale_factor}");
         }
         
         // CRITICAL FIX: Calculate normalized device coordinates properly
@@ -140,7 +140,7 @@ impl shader::Primitive for TexturePrimitive {
         let bounds_relative = (x_rel, y_rel, width_rel, height_rel);
         
         if debug {
-            println!("PREPARE: Relative bounds: {:?}", bounds_relative);
+            println!("PREPARE: Relative bounds: {bounds_relative:?}");
         }
 
         // Create a pipeline with exactly these bounds
@@ -158,7 +158,7 @@ impl shader::Primitive for TexturePrimitive {
         // Create or update pipeline
         if !registry.pipelines.contains_key(&pipeline_key) {
             if debug {
-                println!("Creating new TexturePipeline with bounds_relative: {:?}", bounds_relative);
+                println!("Creating new TexturePipeline with bounds_relative: {bounds_relative:?}");
             }
             
             let pipeline = TexturePipeline::new(
@@ -197,8 +197,7 @@ impl shader::Primitive for TexturePrimitive {
         let height_rel = content_bounds.height / 1.0;
         
         // Create a pipeline with exactly these bounds - need to match prepare exactly
-        let pipeline_key = format!("pipeline_{:.2}_{:.2}_{:.2}_{:.2}",
-                                 x_rel, y_rel, width_rel, height_rel);
+        let pipeline_key = format!("pipeline_{x_rel:.2}_{y_rel:.2}_{width_rel:.2}_{height_rel:.2}");
         
         // Simply retrieve the pipeline and call its render method
         let registry = storage.get::<PipelineRegistry>().unwrap();

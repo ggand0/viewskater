@@ -73,10 +73,10 @@ impl ImageCacheBackend for CpuImageCache {
                     cached_data[cache_slot] = Some(CachedData::Cpu(bytes));
                     cached_metadata[cache_slot] = Some(ImageMetadata::new(width, height, file_size));
                     cached_image_indices[cache_slot] = current_index as isize;
-                    debug!("CpuCache: Loaded single image at index {} into cache slot {}", current_index, cache_slot);
+                    debug!("CpuCache: Loaded single image at index {current_index} into cache slot {cache_slot}");
                 },
                 Err(e) => {
-                    warn!("Failed to load image at index {}: {}. Skipping...", current_index, e);
+                    warn!("Failed to load image at index {current_index}: {e}. Skipping...");
                     cached_data[cache_slot] = None;
                     cached_metadata[cache_slot] = None;
                     cached_image_indices[cache_slot] = -1;
@@ -142,7 +142,7 @@ impl ImageCacheBackend for CpuImageCache {
                         cached_image_indices[i] = cache_index;
                     },
                     Err(e) => {
-                        warn!("Failed to load image at index {}: {}. Skipping...", cache_index, e);
+                        warn!("Failed to load image at index {cache_index}: {e}. Skipping...");
                         cached_data[i] = None;
                         cached_metadata[i] = None;
                         cached_image_indices[i] = -1; // Mark as invalid
@@ -167,7 +167,7 @@ impl ImageCacheBackend for CpuImageCache {
     ) -> Result<bool, io::Error> {
         match new_image {
             Some(CachedData::Cpu(_)) => {
-                debug!("CpuCache: Setting image at position {}", pos);
+                debug!("CpuCache: Setting image at position {pos}");
                 Ok(pos == image_index as usize)
             }
             _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid data for CPU cache")),

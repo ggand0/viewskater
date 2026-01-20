@@ -184,7 +184,7 @@ pub mod macos_file_handler {
             .unwrap_or_default()
             .as_secs();
         
-        let log_message = format!("{} SECURITY_BOOKMARK: {}", timestamp, message);
+        let log_message = format!("{timestamp} SECURITY_BOOKMARK: {message}");
         
         // Try to write to a security bookmark debug log file in the app's documents directory
         if let Some(home_dir) = dirs::home_dir() {
@@ -194,13 +194,13 @@ pub mod macos_file_handler {
                 .create(true)
                 .append(true)
                 .open(&log_path) {
-                let _ = writeln!(file, "{}", log_message);
+                let _ = writeln!(file, "{log_message}");
                 let _ = file.flush();
             }
         }
         
         // Also print to stderr as backup
-        eprintln!("{}", log_message);
+        eprintln!("{log_message}");
     }
     
     /// Build stable UserDefaults keys for storing bookmarks
@@ -211,7 +211,7 @@ pub mod macos_file_handler {
         Retained<NSString>,
     ) {
         // Modern key retains full path
-        let modern_key = format!("VSBookmark|{}", directory_path);
+        let modern_key = format!("VSBookmark|{directory_path}");
         let modern_ns = NSString::from_str(&modern_key);
         
         // Legacy key: first 50 alnum/_ chars
@@ -220,7 +220,7 @@ pub mod macos_file_handler {
             .filter(|c| c.is_alphanumeric() || *c == '_')
             .take(50)
             .collect();
-        let legacy_key = format!("VSBookmark_{}", legacy_simple);
+        let legacy_key = format!("VSBookmark_{legacy_simple}");
         let legacy_ns = NSString::from_str(&legacy_key);
         
         (modern_ns, legacy_ns)
@@ -243,7 +243,7 @@ pub mod macos_file_handler {
 
     /// Stores a security-scoped URL with additional metadata
     fn store_security_scoped_url_with_info(path: &str, url: Retained<NSURL>, _from_bookmark: bool) {
-        debug!("Storing security-scoped URL for path: {}", path);
+        debug!("Storing security-scoped URL for path: {path}");
         
         let info = SecurityScopedURLInfo {
             url: url.clone(),
@@ -268,19 +268,19 @@ pub mod macos_file_handler {
                     autoreleasepool(|pool| unsafe {
                         if let Some(path_nsstring) = info.url.path() {
                             let resolved_path = path_nsstring.as_str(pool);
-                            debug!("Resolved security-scoped path: {} -> {}", original_path, resolved_path);
+                            debug!("Resolved security-scoped path: {original_path} -> {resolved_path}");
                             Some(resolved_path.to_string())
                         } else {
-                            debug!("No path available from security-scoped URL for: {}", original_path);
+                            debug!("No path available from security-scoped URL for: {original_path}");
                             None
                         }
                     })
                 } else {
-                    debug!("Security-scoped URL exists but scope is not active for: {}", original_path);
+                    debug!("Security-scoped URL exists but scope is not active for: {original_path}");
                     None
                 }
             } else {
-                debug!("No security-scoped URL found for: {}", original_path);
+                debug!("No security-scoped URL found for: {original_path}");
                 None
             }
         } else {
@@ -324,11 +324,11 @@ pub mod macos_file_handler {
                         let _: () = msg_send![&*info.url, stopAccessingSecurityScopedResource];
                         info.has_active_scope = false;
                         stopped_count += 1;
-                        debug!("Stopped security-scoped access for: {}", path);
+                        debug!("Stopped security-scoped access for: {path}");
                     }
                 }
             }
-            debug!("Cleaned up {} active security-scoped URLs", stopped_count);
+            debug!("Cleaned up {stopped_count} active security-scoped URLs");
         } else {
             error!("Failed to lock security-scoped URLs mutex during cleanup");
         }
@@ -337,7 +337,7 @@ pub mod macos_file_handler {
         if let Ok(mut session_cache) = SESSION_RESOLVED_URLS.lock() {
             let cache_size = session_cache.len();
             session_cache.clear();
-            debug!("Cleared session cache with {} resolved URLs", cache_size);
+            debug!("Cleared session cache with {cache_size} resolved URLs");
         }
     }
 
@@ -349,8 +349,8 @@ pub mod macos_file_handler {
             return true;
         }
         
-        write_security_bookmark_debug_log(&format!("Creating bookmark for path: {}", directory_path));
-        debug!("Creating security-scoped bookmark for: {}", directory_path);
+        write_security_bookmark_debug_log(&format!("Creating bookmark for path: {directory_path}"));
+        debug!("Creating security-scoped bookmark for: {directory_path}");
         
         let result = autoreleasepool(|_pool| unsafe {
             write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: Entered autoreleasepool");
@@ -395,7 +395,7 @@ pub mod macos_file_handler {
             
             // DIAGNOSTIC: Check the size and verify bookmark was created with security scope
             let bookmark_size: usize = msg_send![bookmark_data, length];
-            write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Created bookmark size: {} bytes", bookmark_size));
+            write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Created bookmark size: {bookmark_size} bytes"));
             
             // Test if we can immediately resolve this bookmark to verify it's valid
             let mut test_is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
@@ -417,7 +417,7 @@ pub mod macos_file_handler {
                 
                 // Test if the resolved URL can activate security scope
                 let test_access: bool = msg_send![test_resolved, startAccessingSecurityScopedResource];
-                write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Test startAccessingSecurityScopedResource={}", test_access));
+                write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Test startAccessingSecurityScopedResource={test_access}"));
                 if test_access {
                     let _: () = msg_send![test_resolved, stopAccessingSecurityScopedResource];
                     write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ✅ Test security scope works - bookmark is valid");
@@ -450,22 +450,22 @@ pub mod macos_file_handler {
                     let is_data: bool = msg_send![modern_obj, isKindOfClass: nsdata_class];
                     if is_data {
                         let len: usize = msg_send![modern_obj, length];
-                        write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: READBACK - modern key present, length={} bytes", len));
-                        crate::logging::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{}' sync_ok=true len={} bytes", directory_path, len));
+                        write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: READBACK - modern key present, length={len} bytes"));
+                        crate::logging::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{directory_path}' sync_ok=true len={len} bytes"));
                     } else {
                         write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: READBACK - modern key present but not NSData");
-                        crate::logging::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{}' sync_ok=true (non-NSData)", directory_path));
+                        crate::logging::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{directory_path}' sync_ok=true (non-NSData)"));
                     }
                 }
                 true
             } else {
                 write_security_bookmark_debug_log("BOOKMARK_CREATE_FIXED: ERROR - failed to synchronize");
-                crate::logging::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{}' sync_ok=false", directory_path));
+                crate::logging::write_immediate_crash_log(&format!("BOOKMARK_STORE: key='VSBookmark|{directory_path}' sync_ok=false"));
                 false
             }
         });
         
-        write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Final result: {}", result));
+        write_security_bookmark_debug_log(&format!("BOOKMARK_CREATE_FIXED: Final result: {result}"));
         result
     }
     
@@ -473,7 +473,7 @@ pub mod macos_file_handler {
     /// Public function to restore directory access for a specific path using stored bookmarks
     /// This is called when the app needs to regain access to a previously granted directory
     pub fn restore_directory_access_for_path(directory_path: &str) -> bool {
-        debug!("Restoring directory access for path: {}", directory_path);
+        debug!("Restoring directory access for path: {directory_path}");
         
         // Use the new simplified resolution function
         match get_resolved_security_scoped_url(directory_path) {
@@ -492,8 +492,8 @@ pub mod macos_file_handler {
     /// Requests directory access via NSOpenPanel and creates persistent bookmark
     /// Optimized single-dialog approach that feels like a yes/no confirmation
     fn request_directory_access_with_optimized_dialog(requested_path: &str) -> bool {
-        crate::logging::write_immediate_crash_log(&format!("OPTIMIZED_DIALOG: Starting for path: {}", requested_path));
-        debug!("Requesting directory access via optimized dialog for: {}", requested_path);
+        crate::logging::write_immediate_crash_log(&format!("OPTIMIZED_DIALOG: Starting for path: {requested_path}"));
+        debug!("Requesting directory access via optimized dialog for: {requested_path}");
         
         let result = autoreleasepool(|_pool| unsafe {
             crate::logging::write_immediate_crash_log("OPTIMIZED_DIALOG: Showing single optimized dialog");
@@ -526,8 +526,7 @@ pub mod macos_file_handler {
             let _: () = msg_send![panel, setTitle: &*title];
                 
             let message = NSString::from_str(&format!(
-                "ViewSkater needs access to the \"{}\" folder to browse your images.\n\n✓ The folder is already selected below\n✓ Click \"Allow Access\" to confirm",
-                directory_name
+                "ViewSkater needs access to the \"{directory_name}\" folder to browse your images.\n\n✓ The folder is already selected below\n✓ Click \"Allow Access\" to confirm"
             ));
             let _: () = msg_send![panel, setMessage: &*message];
             
@@ -568,7 +567,7 @@ pub mod macos_file_handler {
                 
                 // Cast to NSArray and get first URL
                 let urls_array = &*(selected_urls as *const NSArray<NSURL>);
-                if urls_array.len() == 0 {
+                if urls_array.is_empty() {
                     eprintln!("PANEL_FIXED: ERROR - URLs array is empty");
                     return false;
                 }
@@ -578,13 +577,13 @@ pub mod macos_file_handler {
                 // Get the path string
                 if let Some(path_nsstring) = selected_url.path() {
                     let selected_path = path_nsstring.as_str(_pool);
-                    eprintln!("PANEL_FIXED: Selected path: '{}'", selected_path);
-                    debug!("Selected directory: {}", selected_path);
+                    eprintln!("PANEL_FIXED: Selected path: '{selected_path}'");
+                    debug!("Selected directory: {selected_path}");
                     
                     // Ensure we have active scope before creating the bookmark
                     eprintln!("PANEL_FIXED: Ensuring active scope on selected URL prior to bookmark creation");
-                    let started: bool = msg_send![&*selected_url, startAccessingSecurityScopedResource];
-                    crate::logging::write_immediate_crash_log(&format!("PANEL: startAccessing on selected dir={}", started));
+                    let started: bool = msg_send![selected_url, startAccessingSecurityScopedResource];
+                    crate::logging::write_immediate_crash_log(&format!("PANEL: startAccessing on selected dir={started}"));
                     
                     // Convert &NSURL to Retained<NSURL>
                     let _: *mut AnyObject = msg_send![selected_url, retain];
@@ -599,7 +598,7 @@ pub mod macos_file_handler {
                     let store_ok = create_and_store_security_scoped_bookmark(&retained_url, selected_path);
                     if started {
                         // Balance the initial startAccessing call for the panel URL
-                        let _: () = msg_send![&*selected_url, stopAccessingSecurityScopedResource];
+                        let _: () = msg_send![selected_url, stopAccessingSecurityScopedResource];
                         crate::logging::write_immediate_crash_log("PANEL: stopAccessing on selected dir (balanced)");
                     }
                     if store_ok {
@@ -623,20 +622,20 @@ pub mod macos_file_handler {
             }
         });
         
-        eprintln!("PANEL_FIXED: Final result: {}", result);
+        eprintln!("PANEL_FIXED: Final result: {result}");
         result
     }
 
 
     /// Helper function to request parent directory access for a file
     pub fn request_parent_directory_permission_dialog(file_path: &str) -> bool {
-        debug!("🔍 Requesting parent directory access for file: {}", file_path);
+        debug!("🔍 Requesting parent directory access for file: {file_path}");
         
         if let Some(parent_dir) = std::path::Path::new(file_path).parent() {
             let parent_dir_str = parent_dir.to_string_lossy();
             request_directory_access_with_optimized_dialog(&parent_dir_str)
         } else {
-            debug!("Could not determine parent directory for: {}", file_path);
+            debug!("Could not determine parent directory for: {file_path}");
             false
         }
     }
@@ -698,23 +697,23 @@ pub mod macos_file_handler {
                 write_security_bookmark_debug_log(&format!("FINDER_OPEN: Processing file {} of {}", i + 1, files.len()));
                 
                 let path = file.as_str(pool).to_owned();
-                crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: File path: {}", path));
-                debug!("Processing file: {}", path);
-                write_security_bookmark_debug_log(&format!("FINDER_OPEN: File path: {}", path));
+                crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: File path: {path}"));
+                debug!("Processing file: {path}");
+                write_security_bookmark_debug_log(&format!("FINDER_OPEN: File path: {path}"));
                 
                 crate::logging::write_immediate_crash_log("HANDLE_OPENED_FILE: About to create NSURL");
                 write_security_bookmark_debug_log("FINDER_OPEN: About to create NSURL");
                 // Create NSURL and try to get security-scoped access
-                let url = NSURL::fileURLWithPath(&file);
+                let url = NSURL::fileURLWithPath(file);
                 crate::logging::write_immediate_crash_log("HANDLE_OPENED_FILE: NSURL created");
                 write_security_bookmark_debug_log("FINDER_OPEN: NSURL created, about to call startAccessingSecurityScopedResource");
                 let file_accessed: bool = msg_send![&*url, startAccessingSecurityScopedResource];
-                crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Security access result: {}", file_accessed));
-                write_security_bookmark_debug_log(&format!("FINDER_OPEN: Security access result: {}", file_accessed));
+                crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Security access result: {file_accessed}"));
+                write_security_bookmark_debug_log(&format!("FINDER_OPEN: Security access result: {file_accessed}"));
                 
                 if file_accessed {
                     crate::logging::write_immediate_crash_log("HANDLE_OPENED_FILE: Security access granted");
-                    debug!("Gained security-scoped access to file: {}", path);
+                    debug!("Gained security-scoped access to file: {path}");
                     
                     crate::logging::write_immediate_crash_log("HANDLE_OPENED_FILE: About to store file URL");
                     write_security_bookmark_debug_log("FINDER_OPEN: About to store file URL");
@@ -731,9 +730,9 @@ pub mod macos_file_handler {
                         write_security_bookmark_debug_log("FINDER_OPEN: Got parent URL, about to get path");
                         if let Some(parent_path) = parent_url.path() {
                             let parent_path_str = parent_path.as_str(pool).to_owned();
-                            crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Parent directory: {}", parent_path_str));
-                            debug!("Checking parent directory: {}", parent_path_str);
-                            write_security_bookmark_debug_log(&format!("FINDER_OPEN: Parent directory: {}", parent_path_str));
+                            crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Parent directory: {parent_path_str}"));
+                            debug!("Checking parent directory: {parent_path_str}");
+                            write_security_bookmark_debug_log(&format!("FINDER_OPEN: Parent directory: {parent_path_str}"));
                             
                             crate::logging::write_immediate_crash_log("HANDLE_OPENED_FILE: About to test directory access");
                             write_security_bookmark_debug_log("FINDER_OPEN: About to test directory access");
@@ -757,15 +756,15 @@ pub mod macos_file_handler {
                                         crate::logging::write_immediate_crash_log("HANDLE_OPENED_FILE: Early restore succeeded");
                                         debug!("Early bookmark restoration for parent directory succeeded");
                                         if let Some(resolved_parent) = get_security_scoped_path(&parent_path_str) {
-                                            crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Using resolved parent path: {}", resolved_parent));
+                                            crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Using resolved parent path: {resolved_parent}"));
                                             match std::fs::read_dir(&resolved_parent) {
                                                 Ok(_) => {
                                                     crate::logging::write_immediate_crash_log("HANDLE_OPENED_FILE: Directory read successful after early restore");
                                                     debug!("Directory access confirmed after early restore");
                                                 }
                                                 Err(e2) => {
-                                                    crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Directory read still failed after early restore: {}", e2));
-                                                    debug!("Directory read still failed after early restore: {}", e2);
+                                                    crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Directory read still failed after early restore: {e2}"));
+                                                    debug!("Directory read still failed after early restore: {e2}");
                                                 }
                                             }
                                         } else {
@@ -797,9 +796,9 @@ pub mod macos_file_handler {
                                 write_security_bookmark_debug_log("FINDER_OPEN: Successfully sent to main thread");
                             },
                             Err(e) => {
-                                crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Failed to send: {}", e));
-                                error!("Failed to send file path: {}", e);
-                                write_security_bookmark_debug_log(&format!("FINDER_OPEN: Failed to send: {}", e));
+                                crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Failed to send: {e}"));
+                                error!("Failed to send file path: {e}");
+                                write_security_bookmark_debug_log(&format!("FINDER_OPEN: Failed to send: {e}"));
                             },
                         }
                     } else {
@@ -807,9 +806,9 @@ pub mod macos_file_handler {
                         write_security_bookmark_debug_log("FINDER_OPEN: FILE_CHANNEL is None");
                     }
                 } else {
-                    crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Failed security access for: {}", path));
-                    debug!("Failed to get security-scoped access for file: {}", path);
-                    write_security_bookmark_debug_log(&format!("FINDER_OPEN: Failed security access for: {}", path));
+                    crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Failed security access for: {path}"));
+                    debug!("Failed to get security-scoped access for file: {path}");
+                    write_security_bookmark_debug_log(&format!("FINDER_OPEN: Failed security access for: {path}"));
                 }
                 
                 crate::logging::write_immediate_crash_log(&format!("HANDLE_OPENED_FILE: Completed file {} of {}", i + 1, files.len()));
@@ -835,10 +834,10 @@ pub mod macos_file_handler {
         
         autoreleasepool(|pool| {
             let path = filename.as_str(pool).to_owned();
-            debug!("Processing single file: {}", path);
+            debug!("Processing single file: {path}");
             
             // Create NSURL and try to get security-scoped access
-            let url = NSURL::fileURLWithPath(&filename);
+            let url = NSURL::fileURLWithPath(filename);
             let file_accessed: bool = msg_send![&*url, startAccessingSecurityScopedResource];
             
             if file_accessed {
@@ -849,11 +848,11 @@ pub mod macos_file_handler {
                 if let Some(ref sender) = FILE_CHANNEL {
                     match sender.send(path.clone()) {
                         Ok(_) => debug!("Successfully sent single file path to main thread"),
-                        Err(e) => error!("Failed to send single file path: {}", e),
+                        Err(e) => error!("Failed to send single file path: {e}"),
                     }
                 }
             } else {
-                debug!("Failed to get security-scoped access for single file: {}", path);
+                debug!("Failed to get security-scoped access for single file: {path}");
             }
         });
     }
@@ -872,7 +871,7 @@ pub mod macos_file_handler {
         
         for (i, arg) in args.iter().enumerate() {
             if i > 0 && std::path::Path::new(arg).exists() {
-                debug!("Found potential file argument: {}", arg);
+                debug!("Found potential file argument: {arg}");
             }
         }
     }
@@ -958,18 +957,18 @@ pub mod macos_file_handler {
             return None;
         }
         
-        crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Starting for path: {}", directory_path));
+        crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Starting for path: {directory_path}"));
         
         // STEP 1: Check session cache first - this is the key to "resolve once per session"
         if let Ok(session_cache) = SESSION_RESOLVED_URLS.lock() {
             if let Some(cached_url) = session_cache.get(directory_path) {
-                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: CACHE HIT - Using cached resolved URL for: {}", directory_path));
+                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: CACHE HIT - Using cached resolved URL for: {directory_path}"));
                 
                 // Try to activate security scope on the cached URL
                 let access_granted: bool = unsafe { 
                     msg_send![&**cached_url, startAccessingSecurityScopedResource] 
                 };
-                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: startAccessingSecurityScopedResource on cached URL = {}", access_granted));
+                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: startAccessingSecurityScopedResource on cached URL = {access_granted}"));
                 
                 if access_granted {
                     crate::logging::write_immediate_crash_log("SESSION_RESOLVE: SUCCESS - Using cached URL with active scope");
@@ -1021,7 +1020,7 @@ pub mod macos_file_handler {
             }
             
             let bookmark_size: usize = msg_send![bookmark_data, length];
-            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Bookmark data is valid NSData, size={} bytes", bookmark_size));
+            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Bookmark data is valid NSData, size={bookmark_size} bytes"));
             
             // CRITICAL: Resolve bookmark to get NEW URL instance - MUST use this exact instance
             let mut is_stale: objc2::runtime::Bool = objc2::runtime::Bool::new(false);
@@ -1044,7 +1043,7 @@ pub mod macos_file_handler {
                 if !error_desc.is_null() {
                     let desc_nsstring = &*(error_desc as *const NSString);
                     let error_msg = desc_nsstring.as_str(pool);
-                    crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: URLByResolvingBookmarkData ERROR: {}", error_msg));
+                    crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: URLByResolvingBookmarkData ERROR: {error_msg}"));
                 } else {
                     crate::logging::write_immediate_crash_log("SESSION_RESOLVE: URLByResolvingBookmarkData failed with unknown error");
                 }
@@ -1069,12 +1068,12 @@ pub mod macos_file_handler {
             // Get resolved path for logging
             if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
                 let resolved_path = path_nsstring.as_str(pool);
-                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Resolved URL path: '{}'", resolved_path));
+                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Resolved URL path: '{resolved_path}'"));
                 
                 // Check if path exists and is accessible
                 let path_exists = std::path::Path::new(resolved_path).exists();
                 let path_is_dir = std::path::Path::new(resolved_path).is_dir();
-                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Path diagnostics - exists={} is_dir={}", path_exists, path_is_dir));
+                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Path diagnostics - exists={path_exists} is_dir={path_is_dir}"));
             } else {
                 crate::logging::write_immediate_crash_log("SESSION_RESOLVE: WARNING - resolved URL has no path");
             }
@@ -1082,8 +1081,7 @@ pub mod macos_file_handler {
             // URL property diagnostics
             let url_is_file_url: bool = msg_send![resolved_url, isFileURL];
             let url_has_directory_path: bool = msg_send![resolved_url, hasDirectoryPath];
-            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: URL properties - isFileURL={} hasDirectoryPath={}", 
-                url_is_file_url, url_has_directory_path));
+            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: URL properties - isFileURL={url_is_file_url} hasDirectoryPath={url_has_directory_path}"));
             
             // CRITICAL: Call startAccessingSecurityScopedResource on the EXACT SAME instance
             crate::logging::write_immediate_crash_log("SESSION_RESOLVE: About to call startAccessingSecurityScopedResource on resolved URL instance");
@@ -1095,12 +1093,12 @@ pub mod macos_file_handler {
             
             if let Some(path_nsstring) = (&*(resolved_url as *const NSURL)).path() {
                 let resolved_path = path_nsstring.as_str(pool);
-                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Testing access to path: {}", resolved_path));
+                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Testing access to path: {resolved_path}"));
                 
                 // TEST 1: Can we read the directory without any security scope calls?
                 let can_read_directly = std::fs::read_dir(resolved_path).is_ok();
-                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 1 - Direct read (no security scope): {}", can_read_directly));
-                diagnostic_info.push_str(&format!("DirectRead={}, ", can_read_directly));
+                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 1 - Direct read (no security scope): {can_read_directly}"));
+                diagnostic_info.push_str(&format!("DirectRead={can_read_directly}, "));
                 
                 if can_read_directly {
                     access_granted = true;
@@ -1109,14 +1107,14 @@ pub mod macos_file_handler {
                     // TEST 2: Try explicit startAccessingSecurityScopedResource
                     crate::logging::write_immediate_crash_log("SESSION_RESOLVE: TEST 2 - Trying explicit startAccessingSecurityScopedResource");
                     let explicit_access: bool = msg_send![resolved_url, startAccessingSecurityScopedResource];
-                    crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 2 - startAccessingSecurityScopedResource={}", explicit_access));
-                    diagnostic_info.push_str(&format!("ExplicitStart={}, ", explicit_access));
+                    crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 2 - startAccessingSecurityScopedResource={explicit_access}"));
+                    diagnostic_info.push_str(&format!("ExplicitStart={explicit_access}, "));
                     
                     if explicit_access {
                         // TEST 3: Can we read after explicit call?
                         let can_read_after_explicit = std::fs::read_dir(resolved_path).is_ok();
-                        crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 3 - Read after explicit start: {}", can_read_after_explicit));
-                        diagnostic_info.push_str(&format!("ReadAfterExplicit={}, ", can_read_after_explicit));
+                        crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: TEST 3 - Read after explicit start: {can_read_after_explicit}"));
+                        diagnostic_info.push_str(&format!("ReadAfterExplicit={can_read_after_explicit}, "));
                         
                         if can_read_after_explicit {
                             access_granted = true;
@@ -1132,15 +1130,15 @@ pub mod macos_file_handler {
                 // Additional diagnostics
                 let path_exists = std::path::Path::new(resolved_path).exists();
                 let path_is_dir = std::path::Path::new(resolved_path).is_dir();
-                diagnostic_info.push_str(&format!("PathExists={}, IsDir={}", path_exists, path_is_dir));
+                diagnostic_info.push_str(&format!("PathExists={path_exists}, IsDir={path_is_dir}"));
                 
             } else {
                 crate::logging::write_immediate_crash_log("SESSION_RESOLVE: ERROR - resolved URL has no path");
                 diagnostic_info.push_str("NoPath=true");
             }
             
-            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: DIAGNOSTIC SUMMARY - {}", diagnostic_info));
-            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: FINAL RESULT - access_granted={}", access_granted));
+            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: DIAGNOSTIC SUMMARY - {diagnostic_info}"));
+            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: FINAL RESULT - access_granted={access_granted}"));
             
             if access_granted {
                 crate::logging::write_immediate_crash_log("SESSION_RESOLVE: Security scope activated successfully");
@@ -1160,7 +1158,7 @@ pub mod macos_file_handler {
                         let _: () = msg_send![&*defaults, setObject: fresh_bookmark forKey: &*modern_key];
                         let _: () = msg_send![&*defaults, setObject: fresh_bookmark forKey: &*legacy_key];
                         let sync_result: bool = msg_send![&*defaults, synchronize];
-                        crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Refreshed stale bookmark, sync_result={}", sync_result));
+                        crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Refreshed stale bookmark, sync_result={sync_result}"));
                     } else {
                         crate::logging::write_immediate_crash_log("SESSION_RESOLVE: WARNING - failed to create fresh bookmark for stale data");
                     }
@@ -1186,7 +1184,7 @@ pub mod macos_file_handler {
                 // Check macOS version for known issues
                 if let Ok(output) = std::process::Command::new("sw_vers").arg("-productVersion").output() {
                     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: macOS version: {}", version));
+                    crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: macOS version: {version}"));
                     
                     if version.starts_with("15.0") {
                         crate::logging::write_immediate_crash_log("SESSION_RESOLVE: WARNING - macOS 15.0 has known ScopedBookmarksAgent bugs");
@@ -1204,7 +1202,7 @@ pub mod macos_file_handler {
                 
                 if !test_bookmark.is_null() {
                     let test_size: usize = msg_send![test_bookmark, length];
-                    crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Non-security-scoped bookmark creation succeeded (size={})", test_size));
+                    crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: Non-security-scoped bookmark creation succeeded (size={test_size})"));
                     crate::logging::write_immediate_crash_log("SESSION_RESOLVE: This suggests the URL is valid but security scope activation failed");
                 } else {
                     crate::logging::write_immediate_crash_log("SESSION_RESOLVE: Even non-security-scoped bookmark creation failed");
@@ -1219,10 +1217,10 @@ pub mod macos_file_handler {
         if let Some(ref url) = resolved_url {
             if let Ok(mut session_cache) = SESSION_RESOLVED_URLS.lock() {
                 session_cache.insert(directory_path.to_string(), url.clone());
-                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: CACHED - Stored resolved URL in session cache for: {}", directory_path));
+                crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: CACHED - Stored resolved URL in session cache for: {directory_path}"));
             }
         } else {
-            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: FAILED - No URL to cache for: {}", directory_path));
+            crate::logging::write_immediate_crash_log(&format!("SESSION_RESOLVE: FAILED - No URL to cache for: {directory_path}"));
         }
         
         resolved_url
@@ -1299,7 +1297,7 @@ pub fn test_crash_logging_methods() {
         let logs = crate::logging::get_crash_debug_logs_from_userdefaults();
         println!("Retrieved logs from UserDefaults:");
         for log in logs {
-            println!("  {}", log);
+            println!("  {log}");
         }
     }
 }
