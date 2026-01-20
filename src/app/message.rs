@@ -77,6 +77,7 @@ pub enum Message {
     BackgroundColorChanged(Color),
     #[allow(dead_code)]
     TimerTick,
+    SpinnerTick,  // Periodic tick to update spinner animation during loading
     SetCacheStrategy(CacheStrategy),
     SetCompressionStrategy(CompressionStrategy),
     ToggleFpsDisplay(bool),
@@ -86,6 +87,7 @@ pub enum Message {
     ToggleCopyButtons(bool),
     ToggleMetadataDisplay(bool),
     ToggleNearestNeighborFilter(bool),
+    SetSpinnerLocation(crate::settings::SpinnerLocation),
     #[cfg(feature = "coco")]
     ToggleCocoSimplification(bool),
     #[cfg(feature = "coco")]

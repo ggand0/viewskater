@@ -43,6 +43,31 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
             debug!("TimerTick received");
             Task::none()
         }
+        Message::SpinnerTick => {
+            // Reset pending flag since we received the tick
+            app.spinner_tick_pending = false;
+
+            // Check if any pane is still loading - if so, schedule another tick
+            // The Circular Widget now handles its own animation via on_event(RedrawRequested)
+            // We just need to keep sending SpinnerTicks to trigger RedrawRequested events
+            let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
+            if is_loading {
+                // Schedule another tick in 16ms (~60fps) using blocking sleep
+                // Store in app struct so it gets returned from update()
+                app.spinner_tick_task = Some(Task::perform(
+                    async {
+                        tokio::task::spawn_blocking(|| {
+                            std::thread::sleep(std::time::Duration::from_millis(16));
+                        }).await.ok();
+                    },
+                    |_| Message::SpinnerTick
+                ));
+                Task::none()
+            } else {
+                debug!("SPINNER: SpinnerTick stopped - loading complete");
+                Task::none()
+            }
+        }
         Message::Quit => {
             std::process::exit(0);
         }
@@ -88,6 +113,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
         Message::TogglePaneLayout(_) | Message::ToggleFooter(_) | Message::ToggleSyncedZoom(_) |
         Message::ToggleMouseWheelZoom(_) | Message::ToggleCopyButtons(_) | Message::ToggleMetadataDisplay(_) | Message::ToggleNearestNeighborFilter(_) |
+        Message::SetSpinnerLocation(_) |
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
@@ -330,6 +356,14 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     &cloned_op,
                                     operation_type,
                                 );
+
+                                // Clear loading timer for the panes that completed
+                                // (clear per-pane, not based on global queue state)
+                                for &pane_idx in pane_indices {
+                                    if let Some(pane) = app.panes.get_mut(pane_idx) {
+                                        pane.loading_started_at = None;
+                                    }
+                                }
                             }
                             LoadOperation::LoadPos((pane_index, target_indices_and_cache)) => {
                                 loading_handler::handle_load_pos_operation(
@@ -340,6 +374,11 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                                     &image_data,
                                     &metadata,
                                 );
+
+                                // Clear loading timer for this pane
+                                if let Some(pane) = app.panes.get_mut(pane_index) {
+                                    pane.loading_started_at = None;
+                                }
 
                                 // Signal replay controller that initial load is complete
                                 if let Some(ref mut replay_controller) = app.replay_controller {
@@ -369,6 +408,20 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                 Err(err) => {
                     debug!("Image load failed: {:?}", err);
                 }
+            }
+            // Check if loading is still ongoing - if so, start spinner tick loop
+            let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
+            debug!("SPINNER: ImagesLoaded handler end - is_loading={}, pending={}", is_loading, app.spinner_tick_pending);
+            if is_loading && !app.spinner_tick_pending {
+                debug!("SPINNER: ImagesLoaded - starting spinner tick");
+                app.spinner_tick_task = Some(Task::perform(
+                    async {
+                        tokio::task::spawn_blocking(|| {
+                            std::thread::sleep(std::time::Duration::from_millis(16));
+                        }).await.ok();
+                    },
+                    |_| Message::SpinnerTick
+                ));
             }
             Task::none()
         }
@@ -607,6 +660,11 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             }
 
             Task::batch(tasks)
+        }
+        Message::SetSpinnerLocation(location) => {
+            debug!("SetSpinnerLocation: setting to {:?}", location);
+            app.spinner_location = location;
+            Task::none()
         }
         #[cfg(feature = "coco")]
         Message::ToggleCocoSimplification(enabled) => {
@@ -1018,6 +1076,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         #[cfg(not(feature = "coco"))]
         coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
         use_binary_size: app.use_binary_size,
+        spinner_location: app.spinner_location,
     };
 
     let old_settings = UserSettings::load(None);

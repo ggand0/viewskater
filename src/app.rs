@@ -107,12 +107,15 @@ pub struct DataViewer {
     pub replay_controller: Option<crate::replay::ReplayController>,
     pub replay_keep_alive_task: Option<Task<Message>>,
     pub replay_keep_alive_pending: bool,  // Track if a keep-alive is in flight to prevent flooding
+    pub spinner_tick_task: Option<Task<Message>>,
+    pub spinner_tick_pending: bool,  // Track if a spinner tick is in flight
     pub is_fullscreen: bool,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
     pub(crate) ctrl_pressed: bool,                                 // Flag to save ctrl/cmd(macOS) press state
     pub use_binary_size: bool,                          // Use binary (KiB/MiB) vs decimal (KB/MB) for file sizes
+    pub spinner_location: crate::settings::SpinnerLocation,  // Where to show loading spinner
     pub window_width: f32,                              // Current window width for responsive layout
     #[cfg(feature = "selection")]
     pub selection_manager: SelectionManager,            // Manages image selections/exclusions
@@ -204,12 +207,15 @@ impl DataViewer {
             replay_controller: replay_config.map(crate::replay::ReplayController::new),
             replay_keep_alive_task: None,
             replay_keep_alive_pending: false,
+            spinner_tick_task: None,
+            spinner_tick_pending: false,
             is_fullscreen: false,
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,
             ctrl_pressed: false,
             use_binary_size: settings.use_binary_size,
+            spinner_location: settings.spinner_location,
             window_width: settings.window_width as f32,
             #[cfg(feature = "selection")]
             selection_manager: SelectionManager::new(),
@@ -264,8 +270,15 @@ impl DataViewer {
             }
         }
 
+        // Set loading timer for spinner display during neighbor loading
+        // The first image is already displayed, now we load the rest in background
+        if let Some(pane) = self.panes.get_mut(pane_index) {
+            pane.loading_started_at = Some(std::time::Instant::now());
+            debug!("SPINNER: Set loading_started_at for neighbor loading (pane {})", pane_index);
+        }
+
         let current_index = self.panes[pane_index].img_cache.current_index;
-        crate::navigation_slider::load_initial_neighbors(
+        let load_task = crate::navigation_slider::load_initial_neighbors(
             &self.device,
             &self.queue,
             self.is_gpu_supported,
@@ -275,7 +288,21 @@ impl DataViewer {
             &mut self.loading_status,
             pane_index,
             current_index,
-        )
+        );
+
+        // Start spinner tick immediately - don't wait for ImagesLoaded
+        // The spinner should animate as soon as loading begins
+        debug!("SPINNER: Starting spinner tick immediately with load_task");
+        self.spinner_tick_pending = true;
+        let spinner_task = Task::perform(
+            async {
+                tokio::task::spawn_blocking(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(16));
+                }).await.ok();
+            },
+            |_| Message::SpinnerTick
+        );
+        Task::batch([load_task, spinner_task])
     }
 
     pub fn reset_state(&mut self, pane_index: isize) {
@@ -327,6 +354,7 @@ impl DataViewer {
         self.clear_slider_images();
 
         // Dispatch async directory enumeration (Issue #73 - NFS performance fix)
+        // Note: Loading spinner will be shown during neighbor loading phase (after first image displays)
         let path_clone = path.clone();
         Task::perform(
             crate::file_io::enumerate_directory_async(path_clone),
@@ -352,6 +380,7 @@ impl DataViewer {
         let pane = &mut self.panes[pane_index];
         debug!("pane_file_lengths: {:?}", pane_file_lengths);
 
+        // Load first image synchronously (archives are local, so this is fast)
         let _ = pane.initialize_dir_path(
             &Arc::clone(&self.device),
             &Arc::clone(&self.queue),
@@ -369,6 +398,7 @@ impl DataViewer {
             archive_warning_threshold_mb,
         );
 
+        // start_neighbor_loading will set loading timer for neighbor loading phase
         self.start_neighbor_loading(pane_index)
     }
 
@@ -388,7 +418,7 @@ impl DataViewer {
 
         let pane = &mut self.panes[pane_index];
 
-        // Initialize pane with pre-enumerated paths
+        // Initialize pane with pre-enumerated paths (loads first image synchronously)
         pane.initialize_with_paths(
             &Arc::clone(&self.device),
             &Arc::clone(&self.queue),
@@ -406,6 +436,8 @@ impl DataViewer {
             cache_size,
         );
 
+        // start_neighbor_loading will set loading timer for neighbor loading phase
+        debug!("SPINNER: complete_dir_initialization calling start_neighbor_loading for pane {}", pane_index);
         self.start_neighbor_loading(pane_index)
     }
 
@@ -502,6 +534,11 @@ impl DataViewer {
         }
     }
 
+    /// Returns true if any pane has active loading (for animation loop)
+    /// This returns true as soon as loading starts, to keep the redraw loop active
+    pub fn is_any_pane_loading(&self) -> bool {
+        self.panes.iter().any(|pane| pane.loading_started_at.is_some())
+    }
 
     pub(crate) fn update_cache_strategy(&mut self, strategy: CacheStrategy) {
         debug!("Changing cache strategy from {:?} to {:?}", self.cache_strategy, strategy);
@@ -638,6 +675,13 @@ impl iced_winit::runtime::Program for DataViewer {
         // Check if we have a keep-alive task to return (for replay mode timing)
         let keep_alive_task = self.replay_keep_alive_task.take();
 
+        // Check if we have a spinner tick task to return (from SpinnerTick handler)
+        let spinner_task = self.spinner_tick_task.take();
+        if spinner_task.is_some() {
+            debug!("SPINNER: update() found stored spinner_tick_task");
+            self.spinner_tick_pending = true;
+        }
+
         // Return the task if it's not skate mode
         // Skate mode overrides normal task handling for continuous navigation
         if self.skate_right {
@@ -683,14 +727,22 @@ impl iced_winit::runtime::Program for DataViewer {
             } else {
                 nav_task
             }
-        } else if let Some(keep_alive) = keep_alive_task {
-            // Not in skate mode, return keep-alive task for replay timing
-            self.replay_keep_alive_pending = true;
-            if !cli_tasks.is_empty() {
-                cli_tasks.push(keep_alive);
-                Task::batch(cli_tasks)
+        } else if keep_alive_task.is_some() || spinner_task.is_some() {
+            // Batch keep-alive and spinner tasks together if present
+            let mut batch_tasks = cli_tasks;
+            if let Some(keep_alive) = keep_alive_task {
+                self.replay_keep_alive_pending = true;
+                batch_tasks.push(keep_alive);
+            }
+            if let Some(spinner) = spinner_task {
+                debug!("SPINNER: update() returning spinner task (batched)");
+                batch_tasks.push(spinner);
+            }
+            if batch_tasks.is_empty() {
+                task
             } else {
-                keep_alive
+                batch_tasks.push(task);
+                Task::batch(batch_tasks)
             }
         } else {
             // No skate mode, return the task from message handler

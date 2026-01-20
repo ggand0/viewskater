@@ -10,6 +10,7 @@ use iced_aw::tabs::Tabs;
 use crate::app::{Message, DataViewer};
 use crate::cache::img_cache::CacheStrategy;
 use crate::widgets;
+use crate::settings::SpinnerLocation;
 
 /// Builds the settings modal dialog with tabs
 pub fn view_settings_modal<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTheme, Renderer> {
@@ -218,6 +219,39 @@ fn view_general_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitThe
             text_color: Some(Color::from_rgb(0.878, 0.878, 0.878)),
             ..container::Style::default()
         }),
+
+        Space::with_height(5),
+
+        container(
+            text("Loading Spinner").size(13)
+        ).style(|_theme: &WinitTheme| container::Style {
+            text_color: Some(Color::from_rgb(0.878, 0.878, 0.878)),
+            ..container::Style::default()
+        }),
+
+        container(
+            row![
+                iced_widget::Radio::new(
+                    "Footer",
+                    SpinnerLocation::Footer,
+                    Some(viewer.spinner_location),
+                    Message::SetSpinnerLocation,
+                ),
+                iced_widget::Radio::new(
+                    "Menu Bar",
+                    SpinnerLocation::MenuBar,
+                    Some(viewer.spinner_location),
+                    Message::SetSpinnerLocation,
+                ),
+                iced_widget::Radio::new(
+                    "None",
+                    SpinnerLocation::None,
+                    Some(viewer.spinner_location),
+                    Message::SetSpinnerLocation,
+                ),
+            ]
+            .spacing(15)
+        ).padding([0, 10]),
 
         container(
             widgets::toggler::Toggler::new(

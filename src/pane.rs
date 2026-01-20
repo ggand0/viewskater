@@ -15,7 +15,7 @@ use iced_wgpu::wgpu;
 use iced_core::image::{Handle, FilterMethod};
 #[cfg(feature = "coco")]
 use iced_core::Vector;
-use iced_widget::{center, Container};
+use iced_widget::center;
 
 use crate::cache::img_cache::PathSource;
 use crate::config::CONFIG;
@@ -79,6 +79,7 @@ pub struct Pane {
     pub zoom_scale: f32,  // Current zoom scale for bbox rendering
     #[cfg(feature = "coco")]
     pub zoom_offset: Vector,  // Current pan offset for bbox rendering
+    pub loading_started_at: Option<Instant>,  // When loading started (for spinner delay)
 }
 
 impl Default for Pane {
@@ -120,6 +121,7 @@ impl Default for Pane {
             zoom_scale: 1.0,
             #[cfg(feature = "coco")]
             zoom_offset: Vector::default(),
+            loading_started_at: None,
         }
     }
 }
@@ -173,6 +175,7 @@ impl Pane {
             zoom_scale: 1.0,
             #[cfg(feature = "coco")]
             zoom_offset: Vector::default(),
+            loading_started_at: None,
         }
     }
 
@@ -768,9 +771,11 @@ impl Pane {
         debug!("img_cache.cache_count {:?}", self.img_cache.cache_count);
     }
 
-    pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> Container<'_, Message, WinitTheme, Renderer> {
+    pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> iced_winit::core::Element<'_, Message, WinitTheme, Renderer> {
         use log::debug;
+
         debug!("build_ui_container: use_nearest_filter = {}", use_nearest_filter);
+
         if self.dir_loaded {
             if use_slider_image_for_render && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)
@@ -789,6 +794,7 @@ impl Pane {
                 )
                 .width(Length::Fill)
                 .height(Length::Fill)
+                .into()
             } else if let Some(scene) = &self.scene {
                 #[cfg(feature = "coco")]
                 let mut shader_widget = ImageShader::new(Some(scene))
@@ -827,15 +833,18 @@ impl Pane {
                 container(center(shader_widget))
                     .width(Length::Fill)
                     .height(Length::Fill)
+                    .into()
             } else {
                 container(text("No image loaded"))
                     .width(Length::Fill)
                     .height(Length::Fill)
+                    .into()
             }
         } else {
             container(text(""))
                 .width(Length::Fill)
                 .height(Length::Fill)
+                .into()
         }
     }
 }

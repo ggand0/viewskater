@@ -23,6 +23,7 @@ mod coco;
 mod settings_modal;
 mod replay;
 mod exif_utils;
+mod render;
 
 #[cfg(target_os = "macos")]
 mod macos_file_access;
@@ -900,6 +901,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         state.queue_message(Message::CursorOnMenu(
                                             !state.program().cursor_on_footer && state.mouse_interaction() == mouse::Interaction::Pointer));
 
+                                        // Continue animation loop if spinner is active
+                                        if state.program().is_any_pane_loading() {
+                                            window.request_redraw();
+                                        }
+
                                         if *debug {
                                             let total_frame_time = frame_start.elapsed();
                                             trace!("Total frame time: {:?}", total_frame_time);
@@ -997,10 +1003,42 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 Action::Output(message) => {
                                     state.queue_message(message);
+
+                                    // Process immediately
+                                    if !state.is_queue_empty() {
+                                        let (_, task) = state.update(
+                                            viewport.logical_size(),
+                                            cursor_position
+                                                .map(|p| conversion::cursor_position(p, viewport.scale_factor()))
+                                                .map(mouse::Cursor::Available)
+                                                .unwrap_or(mouse::Cursor::Unavailable),
+                                            &mut *renderer.lock().unwrap(),
+                                            custom_theme,
+                                            &renderer::Style { text_color: Color::WHITE },
+                                            clipboard,
+                                            debug_tool,
+                                        );
+
+                                        if let Some(t) = task {
+                                            if let Some(stream) = into_stream(t) {
+                                                runtime.run(stream);
+                                            }
+                                        }
+                                    }
                                 }
                                 _ => {}
                             }
                             *redraw = true;
+
+                            // Render directly for spinner animation (SpinnerTick is a Message,
+                            // not an Event, so widgets won't redraw without this).
+                            if state.program().is_any_pane_loading() {
+                                if render::render_spinner_frame(
+                                    surface, device, queue, engine, renderer, viewport, debug_tool,
+                                ) {
+                                    *redraw = false;
+                                }
+                            }
                         }
                         Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
                             // Process any pending control messages
