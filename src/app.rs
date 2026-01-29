@@ -228,7 +228,7 @@ impl DataViewer {
             coco_disable_simplification: settings.coco_disable_simplification,
             #[cfg(feature = "coco")]
             coco_mask_render_mode: settings.coco_mask_render_mode,
-            window_position: PhysicalPosition { x: 0, y: 0 },
+            window_position: PhysicalPosition { x: crate::config::CONFIG.window_position_x, y: crate::config::CONFIG.window_position_y },
             window_size: PhysicalSize { width: settings.window_width,
                 height: settings.window_height },
         }
