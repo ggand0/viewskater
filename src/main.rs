@@ -1160,6 +1160,24 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         window.set_window_icon(Some(icon));
                     }
 
+                    // Use macOS native frame autosave for window state
+                    #[cfg(target_os = "macos")]
+                    {
+                        use objc2_app_kit::NSView;
+                        use objc2_foundation::NSString;
+                        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                        if let Ok(handle) = window.window_handle() {
+                            if let RawWindowHandle::AppKit(appkit) = handle.as_raw() {
+                                let ns_view = appkit.ns_view.as_ptr() as *mut objc2::runtime::AnyObject;
+                                let ns_view: &NSView = unsafe { &*(ns_view as *const NSView) };
+                                if let Some(ns_window) = ns_view.window() {
+                                    let name = NSString::from_str("ViewSkaterMainWindow");
+                                    unsafe { ns_window.setFrameAutosaveName(&name) };
+                                }
+                            }
+                        }
+                    }
+
                     let physical_size = window.inner_size();
                     let viewport = Viewport::with_physical_size(
                         Size::new(physical_size.width, physical_size.height),
