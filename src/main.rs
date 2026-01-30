@@ -29,6 +29,7 @@ mod render;
 mod macos_file_access;
 mod archive_cache;
 
+use iced_winit::winit::dpi::PhysicalPosition;
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};
 
@@ -602,16 +603,18 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         // Update app's window width for responsive layout
                                         // Divide by scale factor to get logical pixels (important for macOS Retina)
                                         let logical_width = size.width as f32 / window.scale_factor() as f32;
-                                        state.queue_message(Message::WindowResized(logical_width));
+                                        state.queue_message(Message::WindowResized(logical_width, size));
                                     } else {
                                         // Skip resizing and avoid configuring the surface
                                         *resized = false;
                                     }
                                 }
-                                WindowEvent::Moved(_) => {
+                                WindowEvent::Moved(position) => {
+                                    state.queue_message(Message::PositionChanged(position));
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
+                                    state.queue_message(Message::SaveWindowState);
                                     #[cfg(target_os = "macos")]
                                     {
                                         // Clean up all active security-scoped access before shutdown
@@ -1062,6 +1065,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         }
                                     }
                                     Control::Exit => {
+                                        state.queue_message(Message::SaveWindowState);
                                         #[cfg(target_os = "macos")]
                                         {
                                             // Clean up all active security-scoped access before shutdown
@@ -1110,22 +1114,68 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         }
                     );
 
+                    let monitor_size = event_loop.primary_monitor().or_else(|| event_loop.available_monitors().next()).unwrap().size();
+                    let should_maximize = CONFIG.window_width >= monitor_size.width && CONFIG.window_height > (monitor_size.height - 80);
+                    // Platform-specific window creation:
+                    // Platform-specific window positioning:
+                    // - X11: with_position() works, set_outer_position() doesn't
+                    // - macOS: set_outer_position() works, with_position() causes issues
+                    // - Windows: set_outer_position() works
+                    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+                    let mut window_attrs = winit::window::WindowAttributes::default()
+                        .with_inner_size(winit::dpi::PhysicalSize::new(
+                            CONFIG.window_width,
+                            CONFIG.window_height
+                        ))
+                        .with_maximized(should_maximize)
+                        .with_title("ViewSkater")
+                        .with_resizable(true);
+
+                    // Only use with_position on Linux (X11 needs it)
+                    #[cfg(target_os = "linux")]
+                    {
+                        window_attrs = window_attrs
+                            .with_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y));
+                    }
+
                     let window = Arc::new(
                         event_loop
-                        .create_window(
-                            winit::window::WindowAttributes::default()
-                                .with_inner_size(winit::dpi::PhysicalSize::new(
-                                    CONFIG.window_width,
-                                    CONFIG.window_height
-                                ))
-                                .with_title("ViewSkater")
-                                .with_resizable(true)
-                        )
+                        .create_window(window_attrs)
                         .expect("Create window"),
                     );
 
+                    // Set position after creation for macOS/Windows
+                    #[cfg(not(target_os = "linux"))]
+                    window.set_outer_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y));
+
+                    let size = window.current_monitor().unwrap_or(
+                        window.available_monitors().collect::<Vec<_>>().first().unwrap().clone()).size();
+                    // If window size is larger than current monitor size, simply maximized the window
+                    // TODO: workaround for https://github.com/rust-windowing/winit/issues/2494
+                    if CONFIG.window_width >= size.width && CONFIG.window_height > (size.height - 80) {
+                        window.set_maximized(true);
+                    }
+
                     if let Some(icon) = load_icon() {
                         window.set_window_icon(Some(icon));
+                    }
+
+                    // Use macOS native frame autosave for window state
+                    #[cfg(target_os = "macos")]
+                    {
+                        use objc2_app_kit::NSView;
+                        use objc2_foundation::NSString;
+                        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                        if let Ok(handle) = window.window_handle() {
+                            if let RawWindowHandle::AppKit(appkit) = handle.as_raw() {
+                                let ns_view = appkit.ns_view.as_ptr() as *mut objc2::runtime::AnyObject;
+                                let ns_view: &NSView = unsafe { &*(ns_view as *const NSView) };
+                                if let Some(ns_window) = ns_view.window() {
+                                    let name = NSString::from_str("ViewSkaterMainWindow");
+                                    unsafe { ns_window.setFrameAutosaveName(&name) };
+                                }
+                            }
+                        }
                     }
 
                     let physical_size = window.inner_size();
@@ -1246,12 +1296,24 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     // Update state creation to lock renderer
                     let mut renderer_guard = renderer.lock().unwrap();
-                    let state = program::State::new(
+                    let mut state = program::State::new(
                         shader_widget,
                         viewport.logical_size(),
                         &mut *renderer_guard,
                         &mut debug_tool,
                     );
+
+                    if CONFIG.is_fullscreen {
+                        let fullscreen = Some(winit::window::Fullscreen::Borderless(None));
+                        state.queue_message(Message::ToggleFullScreen(true));
+                        #[cfg(target_os = "macos")] {
+                            use iced_winit::winit::platform::macos::WindowExtMacOS;
+                            window.set_simple_fullscreen(fullscreen.is_some());
+                        }
+                        #[cfg(not(target_os = "macos"))] {
+                            window.set_fullscreen(fullscreen);
+                        }
+                    }
 
                     // Set control flow
                     event_loop.set_control_flow(ControlFlow::Poll);

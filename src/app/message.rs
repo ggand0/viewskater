@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use iced_core::Event;
 use iced_core::image::Handle;
 use iced_core::Color;
+use iced_winit::winit::dpi::{PhysicalPosition, PhysicalSize};
 
 use crate::cache::img_cache::{CachedData, CacheStrategy, ImageMetadata, LoadOperation};
 use crate::menu::PaneLayout;
@@ -39,6 +40,7 @@ pub enum Message {
     HideAbout,
     ShowOptions,
     HideOptions,
+    SaveWindowState,
     SaveSettings,
     ClearSettingsStatus,
     SettingsTabSelected(usize),
@@ -104,5 +106,6 @@ pub enum Message {
     AdvancedSettingChanged(String, String),  // (field_name, value)
     ResetAdvancedSettings,
     // Window resize
-    WindowResized(f32),  // new width
+    WindowResized(f32, PhysicalSize<u32>),  // new width, window size
+    PositionChanged(PhysicalPosition<i32>),
 }

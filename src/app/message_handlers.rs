@@ -87,8 +87,9 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         }
 
         // Settings messages
-        Message::SaveSettings | Message::ClearSettingsStatus | Message::SettingsTabSelected(_) |
-        Message::AdvancedSettingChanged(_, _) | Message::ResetAdvancedSettings => {
+        Message::SaveWindowState | Message::SaveSettings | Message::ClearSettingsStatus |
+        Message::SettingsTabSelected(_) | Message::AdvancedSettingChanged(_, _) |
+        Message::ResetAdvancedSettings => {
             handle_settings_messages(app, message)
         }
 
@@ -117,7 +118,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
-        Message::WindowResized(_) => {
+        Message::WindowResized(_, _) | Message::PositionChanged(_)=> {
             handle_toggle_messages(app, message)
         }
 
@@ -221,6 +222,7 @@ pub fn handle_ui_messages(app: &mut DataViewer, message: Message) -> Task<Messag
 /// Routes settings-related messages
 pub fn handle_settings_messages(app: &mut DataViewer, message: Message) -> Task<Message> {
     match message {
+        Message::SaveWindowState => handle_save_window_state(app),
         Message::SaveSettings => handle_save_settings(app),
         Message::ClearSettingsStatus => {
             app.settings.clear_save_status();
@@ -715,8 +717,13 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.update_compression_strategy(strategy);
             Task::none()
         }
-        Message::WindowResized(width) => {
+        Message::WindowResized(width, size) => {
             app.window_width = width;
+            app.window_size = size;
+            Task::none()
+        }
+        Message::PositionChanged(position) => {
+            app.window_position = position;
             Task::none()
         }
         _ => Task::none()
@@ -1061,8 +1068,8 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         cache_size,
         max_loading_queue_size,
         max_being_loaded_queue_size,
-        window_width,
-        window_height,
+        window_width: app.window_size.width,
+        window_height: app.window_size.height,
         atlas_size,
         double_click_threshold_ms,
         archive_cache_size,
@@ -1077,6 +1084,9 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
         use_binary_size: app.use_binary_size,
         spinner_location: app.spinner_location,
+        is_fullscreen: app.is_fullscreen,
+        window_position_x: app.window_position.x,
+        window_position_y: app.window_position.y,
     };
 
     let old_settings = UserSettings::load(None);
@@ -1164,6 +1174,27 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             Task::perform(async {
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }, |_| Message::ClearSettingsStatus)
+        }
+    }
+}
+
+fn handle_save_window_state(app: &mut DataViewer) -> Task<Message> {
+    let mut old_settings = UserSettings::load(None);
+    old_settings.window_position_x = app.window_position.x;
+    old_settings.window_position_y = app.window_position.y;
+    if !app.is_fullscreen {
+        old_settings.window_width = app.window_size.width;
+        old_settings.window_height = app.window_size.height;
+    }
+    old_settings.is_fullscreen = app.is_fullscreen;
+    match old_settings.save() {
+        Ok(_) => {
+            info!("Window state saved successfully.");
+            Task::none()
+        }
+        Err(e) => {
+            error!("Failed to save window state: {e}");
+            Task::none()
         }
     }
 }
