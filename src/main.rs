@@ -1116,21 +1116,37 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     let monitor_size = event_loop.primary_monitor().or_else(|| event_loop.available_monitors().next()).unwrap().size();
                     let should_maximize = CONFIG.window_width >= monitor_size.width && CONFIG.window_height > (monitor_size.height - 80);
+                    // Platform-specific window creation:
+                    // Platform-specific window positioning:
+                    // - X11: with_position() works, set_outer_position() doesn't
+                    // - macOS: set_outer_position() works, with_position() causes issues
+                    // - Windows: set_outer_position() works
+                    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+                    let mut window_attrs = winit::window::WindowAttributes::default()
+                        .with_inner_size(winit::dpi::PhysicalSize::new(
+                            CONFIG.window_width,
+                            CONFIG.window_height
+                        ))
+                        .with_maximized(should_maximize)
+                        .with_title("ViewSkater")
+                        .with_resizable(true);
+
+                    // Only use with_position on Linux (X11 needs it)
+                    #[cfg(target_os = "linux")]
+                    {
+                        window_attrs = window_attrs
+                            .with_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y));
+                    }
+
                     let window = Arc::new(
                         event_loop
-                        .create_window(
-                            winit::window::WindowAttributes::default()
-                                .with_inner_size(winit::dpi::PhysicalSize::new(
-                                    CONFIG.window_width,
-                                    CONFIG.window_height
-                                ))
-                                .with_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y))
-                                .with_maximized(should_maximize)
-                                .with_title("ViewSkater")
-                                .with_resizable(true)
-                        )
+                        .create_window(window_attrs)
                         .expect("Create window"),
                     );
+
+                    // Set position after creation for macOS/Windows
+                    #[cfg(not(target_os = "linux"))]
+                    window.set_outer_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y));
 
                     let size = window.current_monitor().unwrap_or(
                         window.available_monitors().collect::<Vec<_>>().first().unwrap().clone()).size();
