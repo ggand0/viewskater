@@ -739,6 +739,9 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 WindowState::Window => {
                     if is_maximized {
                         app.window_state = WindowState::Maximized;
+                        // Windows workaround: PositionChanged(0,0) fires before this event,
+                        // corrupting last_windowed_position. Restore from backup.
+                        app.last_windowed_position = app.position_before_transition;
                     }
                 },
                 WindowState::Maximized => {
@@ -759,8 +762,10 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
         Message::PositionChanged(position, _is_maximized) => {
             app.window_position = position;
             // Only track last_windowed_position when in windowed state
-            // This avoids the Windows timing issue where is_maximized is false during maximize transition
+            // Save previous value first (Windows workaround: PositionChanged fires before WindowResized
+            // during maximize, so we need to be able to restore if transition is detected)
             if app.window_state == WindowState::Window {
+                app.position_before_transition = app.last_windowed_position;
                 app.last_windowed_position = position;
             }
             Task::none()
