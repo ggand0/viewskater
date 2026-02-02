@@ -974,38 +974,6 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         }
     };
 
-    let window_width = match parse_value("window_width", 1200) {
-        Ok(v) if (400..=10000).contains(&v) => v as u32,
-        Ok(_) => {
-            app.settings.set_save_status(Some("Error: Window width must be between 400 and 10000".to_string()));
-            return Task::perform(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            }, |_| Message::ClearSettingsStatus);
-        }
-        Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing window_width: {}", e)));
-            return Task::perform(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            }, |_| Message::ClearSettingsStatus);
-        }
-    };
-
-    let window_height = match parse_value("window_height", 800) {
-        Ok(v) if (300..=10000).contains(&v) => v as u32,
-        Ok(_) => {
-            app.settings.set_save_status(Some("Error: Window height must be between 300 and 10000".to_string()));
-            return Task::perform(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            }, |_| Message::ClearSettingsStatus);
-        }
-        Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing window_height: {}", e)));
-            return Task::perform(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            }, |_| Message::ClearSettingsStatus);
-        }
-    };
-
     let atlas_size = match parse_value("atlas_size", 2048) {
         Ok(v) if (256..=8192).contains(&v) && v.is_power_of_two() => v as u32,
         Ok(_) => {
@@ -1113,9 +1081,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
     };
 
     let old_settings = UserSettings::load(None);
-    let window_settings_changed = window_width != old_settings.window_width ||
-                                  window_height != old_settings.window_height ||
-                                  atlas_size != old_settings.atlas_size;
+    let window_settings_changed = atlas_size != old_settings.atlas_size;
 
     match settings.save() {
         Ok(_) => {

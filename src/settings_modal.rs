@@ -438,8 +438,6 @@ fn view_advanced_tab<'a>(viewer: &'a DataViewer) -> Element<'a, Message, WinitTh
                 stretch: iced_winit::core::font::Stretch::Normal,
                 style: iced_winit::core::font::Style::Normal,
             }),
-        labeled_text_input_row("Default Window Width (px):", "window_width", get_value("window_width")),
-        labeled_text_input_row("Default Window Height (px):", "window_height", get_value("window_height")),
         labeled_text_input_row("Texture Atlas Size:", "atlas_size", get_value("atlas_size")),
 
         Space::with_height(10),
