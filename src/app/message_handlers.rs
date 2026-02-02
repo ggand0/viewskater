@@ -724,6 +724,17 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
         Message::WindowResized(width, size, is_maximized) => {
             app.window_width = width;
             app.window_size = size;
+
+            // Track the largest size seen while maximized (the actual maximized size)
+            if is_maximized {
+                let should_update = app.maximized_size.map_or(true, |max_size| {
+                    size.width > max_size.width || size.height > max_size.height
+                });
+                if should_update {
+                    app.maximized_size = Some(size);
+                }
+            }
+
             match app.window_state {
                 WindowState::Window => {
                     if is_maximized {
@@ -731,21 +742,26 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                     }
                 },
                 WindowState::Maximized => {
-                    if !is_maximized {
-                        app.window_state = WindowState::Window
+                    // X11 workaround: is_maximized() may still return true when un-maximizing
+                    // Detect un-maximize by checking if size dropped significantly from maximized size
+                    let size_dropped = app.maximized_size.map_or(false, |max_size| {
+                        size.width < max_size.width.saturating_sub(100) ||
+                        size.height < max_size.height.saturating_sub(100)
+                    });
+                    if !is_maximized || size_dropped {
+                        app.window_state = WindowState::Window;
                     }
                 },
                 _ => {},
             }
-            if is_maximized && app.window_state != WindowState::FullScreen {
-                app.window_state = WindowState::Maximized;
-            }
             Task::none()
         }
-        Message::PositionChanged(position, is_maximized) => {
-            if !is_maximized && app.window_state == WindowState::Window  {
-                // TODO: Fix maxmize window button on Windows still trigger this
-                app.window_position = position;
+        Message::PositionChanged(position, _is_maximized) => {
+            app.window_position = position;
+            // Only track last_windowed_position when in windowed state
+            // This avoids the Windows timing issue where is_maximized is false during maximize transition
+            if app.window_state == WindowState::Window {
+                app.last_windowed_position = position;
             }
             Task::none()
         }
@@ -1169,23 +1185,18 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
 
 fn handle_save_window_state(app: &mut DataViewer) -> Task<Message> {
     let mut old_settings = UserSettings::load(None);
-    old_settings.window_position_x = app.window_position.x;
-    old_settings.window_position_y = app.window_position.y;
+    // Use last_windowed_position to avoid saving maximized position (0,0) on Windows
+    old_settings.window_position_x = app.last_windowed_position.x;
+    old_settings.window_position_y = app.last_windowed_position.y;
     if app.window_state == WindowState::Window {
         old_settings.window_width = app.window_size.width;
         old_settings.window_height = app.window_size.height;
     }
     old_settings.window_state = app.window_state;
-    match old_settings.save() {
-        Ok(_) => {
-            info!("Window state saved successfully.");
-            Task::none()
-        }
-        Err(e) => {
-            error!("Failed to save window state: {e}");
-            Task::none()
-        }
+    if let Err(e) = old_settings.save() {
+        error!("Failed to save window state: {e}");
     }
+    Task::none()
 }
 
 fn handle_reset_advanced_settings(app: &mut DataViewer) {

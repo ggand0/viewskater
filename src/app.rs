@@ -128,7 +128,9 @@ pub struct DataViewer {
     #[cfg(feature = "coco")]
     pub coco_mask_render_mode: crate::settings::CocoMaskRenderMode,  // COCO: Mask rendering mode (Polygon or Pixel)
     pub window_size: PhysicalSize<u32>,
+    pub maximized_size: Option<PhysicalSize<u32>>,  // Tracks size when maximized (for X11 un-maximize detection)
     pub window_position: PhysicalPosition<i32>,
+    pub last_windowed_position: PhysicalPosition<i32>,  // Tracks position when in windowed mode (for Windows maximize fix)
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -213,7 +215,7 @@ impl DataViewer {
             replay_keep_alive_pending: false,
             spinner_tick_task: None,
             spinner_tick_pending: false,
-            window_state: WindowState::default(),
+            window_state: crate::config::CONFIG.window_state,
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,
@@ -230,8 +232,10 @@ impl DataViewer {
             #[cfg(feature = "coco")]
             coco_mask_render_mode: settings.coco_mask_render_mode,
             window_position: PhysicalPosition { x: crate::config::CONFIG.window_position_x, y: crate::config::CONFIG.window_position_y },
+            last_windowed_position: PhysicalPosition { x: crate::config::CONFIG.window_position_x, y: crate::config::CONFIG.window_position_y },
             window_size: PhysicalSize { width: settings.window_width,
                 height: settings.window_height },
+            maximized_size: None,
         }
     }
 

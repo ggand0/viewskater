@@ -1116,7 +1116,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     );
 
                     let monitor_size = event_loop.primary_monitor().or_else(|| event_loop.available_monitors().next()).unwrap().size();
-                    let should_maximize = CONFIG.window_width >= monitor_size.width && CONFIG.window_height > (monitor_size.height - 80);
+                    // Maximize if: saved state was Maximized, OR saved size exceeds current monitor
+                    let size_exceeds_monitor = CONFIG.window_width >= monitor_size.width && CONFIG.window_height > (monitor_size.height - 80);
+                    let should_maximize = CONFIG.window_state == crate::settings::WindowState::Maximized || size_exceeds_monitor;
                     // Platform-specific window creation:
                     // Platform-specific window positioning:
                     // - X11: with_position() works, set_outer_position() doesn't
