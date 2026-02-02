@@ -71,6 +71,7 @@ use iced_winit::core::window;
 use iced_futures::futures::channel::oneshot;
 use iced_wgpu::engine::CompressionStrategy;
 
+use crate::settings::WindowState;
 use crate::utils::timing::TimingStats;
 use crate::app::{Message, DataViewer};
 use crate::widgets::shader::scene::Scene;
@@ -603,14 +604,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         // Update app's window width for responsive layout
                                         // Divide by scale factor to get logical pixels (important for macOS Retina)
                                         let logical_width = size.width as f32 / window.scale_factor() as f32;
-                                        state.queue_message(Message::WindowResized(logical_width, size));
+                                        state.queue_message(Message::WindowResized(logical_width, size, window.is_maximized()));
                                     } else {
                                         // Skip resizing and avoid configuring the surface
                                         *resized = false;
                                     }
                                 }
                                 WindowEvent::Moved(position) => {
-                                    state.queue_message(Message::PositionChanged(position));
+                                    state.queue_message(Message::PositionChanged(position, window.is_maximized()));
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
@@ -623,7 +624,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     event_loop.exit();
                                 }
                                 WindowEvent::CursorMoved { position, .. } => {
-                                    if state.program().is_fullscreen {
+                                    if state.program().window_state == WindowState::FullScreen {
                                         state.queue_message(Message::CursorOnTop(position.y < FULLSCREEN_TOP_ZONE_HEIGHT));
                                         state.queue_message(Message::CursorOnFooter(
                                             position.y > (window.inner_size().height as f64 - FULLSCREEN_BOTTOM_ZONE_HEIGHT)));
@@ -1148,14 +1149,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     #[cfg(not(target_os = "linux"))]
                     window.set_outer_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y));
 
-                    let size = window.current_monitor().unwrap_or(
-                        window.available_monitors().collect::<Vec<_>>().first().unwrap().clone()).size();
-                    // If window size is larger than current monitor size, simply maximized the window
-                    // TODO: workaround for https://github.com/rust-windowing/winit/issues/2494
-                    if CONFIG.window_width >= size.width && CONFIG.window_height > (size.height - 80) {
-                        window.set_maximized(true);
-                    }
-
                     if let Some(icon) = load_icon() {
                         window.set_window_icon(Some(icon));
                     }
@@ -1303,16 +1296,22 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         &mut debug_tool,
                     );
 
-                    if CONFIG.is_fullscreen {
-                        let fullscreen = Some(winit::window::Fullscreen::Borderless(None));
-                        state.queue_message(Message::ToggleFullScreen(true));
-                        #[cfg(target_os = "macos")] {
-                            use iced_winit::winit::platform::macos::WindowExtMacOS;
-                            window.set_simple_fullscreen(fullscreen.is_some());
-                        }
-                        #[cfg(not(target_os = "macos"))] {
-                            window.set_fullscreen(fullscreen);
-                        }
+                    match CONFIG.window_state {
+                        settings::WindowState::Maximized => {
+                            window.set_maximized(true);
+                        },
+                        settings::WindowState::FullScreen => {
+                            let fullscreen = Some(winit::window::Fullscreen::Borderless(None));
+                            state.queue_message(Message::ToggleFullScreen(true));
+                            #[cfg(target_os = "macos")] {
+                                use iced_winit::winit::platform::macos::WindowExtMacOS;
+                                window.set_simple_fullscreen(fullscreen.is_some());
+                            }
+                            #[cfg(not(target_os = "macos"))] {
+                                window.set_fullscreen(fullscreen);
+                            }
+                        },
+                        _ => {},
                     }
 
                     // Set control flow

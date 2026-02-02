@@ -12,7 +12,7 @@ use iced_runtime::clipboard;
 
 use crate::app::{DataViewer, Message};
 use crate::cache::img_cache::{CacheStrategy, CachedData, LoadOperation};
-use crate::settings::UserSettings;
+use crate::settings::{UserSettings, WindowState};
 use crate::file_io;
 use crate::loading_handler;
 use crate::navigation_slider;
@@ -118,7 +118,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
-        Message::WindowResized(_, _) | Message::PositionChanged(_)=> {
+        Message::WindowResized(_, _, _) | Message::PositionChanged(_, _)=> {
             handle_toggle_messages(app, message)
         }
 
@@ -679,7 +679,11 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             Task::none()
         }
         Message::ToggleFullScreen(enabled) => {
-            app.is_fullscreen = enabled;
+            if enabled {
+                app.window_state = WindowState::FullScreen;
+            } else {
+                app.window_state = WindowState::Window;
+            }
             Task::none()
         }
         Message::ToggleFpsDisplay(value) => {
@@ -717,13 +721,32 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.update_compression_strategy(strategy);
             Task::none()
         }
-        Message::WindowResized(width, size) => {
+        Message::WindowResized(width, size, is_maximized) => {
             app.window_width = width;
             app.window_size = size;
+            match app.window_state {
+                WindowState::Window => {
+                    if is_maximized {
+                        app.window_state = WindowState::Maximized;
+                    }
+                },
+                WindowState::Maximized => {
+                    if !is_maximized {
+                        app.window_state = WindowState::Window
+                    }
+                },
+                _ => {},
+            }
+            if is_maximized && app.window_state != WindowState::FullScreen {
+                app.window_state = WindowState::Maximized;
+            }
             Task::none()
         }
-        Message::PositionChanged(position) => {
-            app.window_position = position;
+        Message::PositionChanged(position, is_maximized) => {
+            if !is_maximized && app.window_state == WindowState::Window  {
+                // TODO: Fix maxmize window button on Windows still trigger this
+                app.window_position = position;
+            }
             Task::none()
         }
         _ => Task::none()
@@ -1084,7 +1107,7 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
         use_binary_size: app.use_binary_size,
         spinner_location: app.spinner_location,
-        is_fullscreen: app.is_fullscreen,
+        window_state: app.window_state,
         window_position_x: app.window_position.x,
         window_position_y: app.window_position.y,
     };
@@ -1182,11 +1205,11 @@ fn handle_save_window_state(app: &mut DataViewer) -> Task<Message> {
     let mut old_settings = UserSettings::load(None);
     old_settings.window_position_x = app.window_position.x;
     old_settings.window_position_y = app.window_position.y;
-    if !app.is_fullscreen {
+    if app.window_state == WindowState::Window {
         old_settings.window_width = app.window_size.width;
         old_settings.window_height = app.window_size.height;
     }
-    old_settings.is_fullscreen = app.is_fullscreen;
+    old_settings.window_state = app.window_state;
     match old_settings.save() {
         Ok(_) => {
             info!("Window state saved successfully.");

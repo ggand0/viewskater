@@ -54,6 +54,7 @@ use crate::navigation_keyboard::{move_right_all, move_left_all};
 use crate::cache::img_cache::CacheStrategy;
 use crate::menu::PaneLayout;
 use crate::pane::{self, Pane};
+use crate::settings::WindowState;
 use crate::ui;
 use crate::widgets;
 use crate::loading_status;
@@ -110,7 +111,7 @@ pub struct DataViewer {
     pub replay_keep_alive_pending: bool,  // Track if a keep-alive is in flight to prevent flooding
     pub spinner_tick_task: Option<Task<Message>>,
     pub spinner_tick_pending: bool,  // Track if a spinner tick is in flight
-    pub is_fullscreen: bool,
+    pub window_state: WindowState,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
@@ -212,7 +213,7 @@ impl DataViewer {
             replay_keep_alive_pending: false,
             spinner_tick_task: None,
             spinner_tick_pending: false,
-            is_fullscreen: false,
+            window_state: WindowState::default(),
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,

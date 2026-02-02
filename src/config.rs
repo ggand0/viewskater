@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use crate::settings::UserSettings;
+use crate::settings::{UserSettings, WindowState};
 
 // Default values for configuration
 // These serve as fallback values and can be used for "reset to defaults" functionality
@@ -24,7 +24,7 @@ pub struct Config {
     pub double_click_threshold_ms: u16,     // Double-click detection threshold in milliseconds
     pub window_position_x: i32,
     pub window_position_y: i32,
-    pub is_fullscreen: bool,
+    pub window_state: WindowState,
 }
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| {
@@ -41,6 +41,6 @@ pub static CONFIG: Lazy<Config> = Lazy::new(|| {
         double_click_threshold_ms: settings.double_click_threshold_ms,
         window_position_x: settings.window_position_x,
         window_position_y: settings.window_position_y,
-        is_fullscreen: settings.is_fullscreen,
+        window_state: settings.window_state,
     }
 });

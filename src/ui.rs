@@ -42,7 +42,7 @@ use crate::menu::MENU_BAR_HEIGHT;
 use iced_widget::tooltip;
 use crate::widgets::synced_image_split::SyncedImageSplit;
 use crate::widgets::circular::mini_circular;
-use crate::settings::SpinnerLocation;
+use crate::settings::{SpinnerLocation, WindowState};
 #[cfg(feature = "selection")]
 use crate::selection_manager::ImageMark;
 
@@ -485,7 +485,7 @@ pub fn build_ui(app: &DataViewer) -> Container<'_, Message, WinitTheme, Renderer
 
     let mb = app_menu::build_menu(app);
 
-    let is_fullscreen = app.is_fullscreen;
+    let is_fullscreen = app.window_state == WindowState::FullScreen;
     let cursor_on_top = app.cursor_on_top;
     let cursor_on_menu = app.cursor_on_menu;
     let cursor_on_footer = app.cursor_on_footer;
