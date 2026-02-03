@@ -745,14 +745,21 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                     }
                 },
                 WindowState::Maximized => {
-                    // X11 workaround: is_maximized() may still return true when un-maximizing
-                    // Detect un-maximize by checking if size dropped significantly from maximized size
-                    let size_dropped = app.maximized_size.map_or(false, |max_size| {
-                        size.width < max_size.width.saturating_sub(100) ||
-                        size.height < max_size.height.saturating_sub(100)
-                    });
-                    if !is_maximized || size_dropped {
+                    if !is_maximized {
+                        // Primary detection: is_maximized() returned false (works on Windows/macOS)
                         app.window_state = WindowState::Window;
+                    } else {
+                        // X11 workaround: is_maximized() returns stale true during un-maximize transition
+                        // On X11, maximized windows cannot be resized - any size change means un-maximize
+                        #[cfg(target_os = "linux")]
+                        {
+                            let size_changed = app.maximized_size.map_or(false, |max_size| size != max_size);
+                            if size_changed {
+                                debug!("X11: Size changed while is_maximized=true, detecting un-maximize");
+                                app.window_state = WindowState::Window;
+                                app.maximized_size = None;
+                            }
+                        }
                     }
                 },
                 _ => {},
