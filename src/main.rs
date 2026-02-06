@@ -77,6 +77,9 @@ use crate::app::{Message, DataViewer};
 use crate::widgets::shader::scene::Scene;
 use crate::config::CONFIG;
 use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
+
+// Maximum texture size supported by most GPUs (prevents wgpu surface configuration panic)
+const MAX_TEXTURE_SIZE: u32 = 8192;
 use iced_wgpu::{get_image_rendering_diagnostics, log_image_rendering_stats};
 use iced_wgpu::engine::ImageConfig;
 use std::sync::mpsc::{self, Receiver};
@@ -761,8 +764,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             if *resized {
                                 let size = window.inner_size();
 
+                                // Cap to wgpu texture limits to prevent panic
+                                let capped_width = size.width.min(MAX_TEXTURE_SIZE);
+                                let capped_height = size.height.min(MAX_TEXTURE_SIZE);
+
                                 *viewport = Viewport::with_physical_size(
-                                    Size::new(size.width, size.height),
+                                    Size::new(capped_width, capped_height),
                                     window.scale_factor(),
                                 );
 
@@ -771,8 +778,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     &wgpu::SurfaceConfiguration {
                                         format: *format,
                                         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                                        width: size.width,
-                                        height: size.height,
+                                        width: capped_width,
+                                        height: capped_height,
                                         present_mode: wgpu::PresentMode::AutoVsync,
                                         alpha_mode: wgpu::CompositeAlphaMode::Auto,
                                         view_formats: vec![],
@@ -1119,6 +1126,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     // Maximize if: saved state was Maximized, OR saved size exceeds current monitor
                     let size_exceeds_monitor = CONFIG.window_width >= monitor_size.width && CONFIG.window_height > (monitor_size.height - 80);
                     let should_maximize = CONFIG.window_state == crate::settings::WindowState::Maximized || size_exceeds_monitor;
+
+                    // Cap window size to wgpu texture limits to prevent surface configuration panic
+                    let capped_width = CONFIG.window_width.min(MAX_TEXTURE_SIZE);
+                    let capped_height = CONFIG.window_height.min(MAX_TEXTURE_SIZE);
+
                     // Platform-specific window creation:
                     // Platform-specific window positioning:
                     // - X11: with_position() works, set_outer_position() doesn't
@@ -1127,8 +1139,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
                     let mut window_attrs = winit::window::WindowAttributes::default()
                         .with_inner_size(winit::dpi::PhysicalSize::new(
-                            CONFIG.window_width,
-                            CONFIG.window_height
+                            capped_width,
+                            capped_height
                         ))
                         .with_maximized(should_maximize)
                         .with_title("ViewSkater")
@@ -1174,8 +1186,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     }
 
                     let physical_size = window.inner_size();
+                    // Cap to wgpu texture limits
+                    let capped_width = physical_size.width.min(MAX_TEXTURE_SIZE);
+                    let capped_height = physical_size.height.min(MAX_TEXTURE_SIZE);
                     let viewport = Viewport::with_physical_size(
-                        Size::new(physical_size.width, physical_size.height),
+                        Size::new(capped_width, capped_height),
                         window.scale_factor(),
                     );
                     let clipboard = Clipboard::connect(window.clone());
@@ -1234,8 +1249,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         &wgpu::SurfaceConfiguration {
                             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                             format,
-                            width: physical_size.width,
-                            height: physical_size.height,
+                            width: capped_width,
+                            height: capped_height,
                             present_mode: wgpu::PresentMode::AutoVsync,
                             alpha_mode: wgpu::CompositeAlphaMode::Auto,
                             view_formats: vec![],
