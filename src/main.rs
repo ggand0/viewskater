@@ -503,6 +503,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             queue: Arc<wgpu::Queue>,
             surface: wgpu::Surface<'static>,
             format: wgpu::TextureFormat,
+            present_mode: wgpu::PresentMode,
             engine: Arc<Mutex<Engine>>,
             renderer: std::rc::Rc<Mutex<Renderer>>,
             state: program::State<DataViewer>,
@@ -558,6 +559,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     queue,
                     surface,
                     format,
+                    present_mode,
                     engine,
                     renderer,
                     state,
@@ -769,10 +771,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                                         width: size.width,
                                         height: size.height,
-                                        present_mode: wgpu::PresentMode::AutoVsync,
+                                        present_mode: *present_mode,
                                         alpha_mode: wgpu::CompositeAlphaMode::Auto,
                                         view_formats: vec![],
-                                        desired_maximum_frame_latency: 2,
+                                        desired_maximum_frame_latency: 1,
                                     },
                                 );
 
@@ -1144,7 +1146,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         .create_surface(window.clone())
                         .expect("Create window surface");
 
-                    let (format, adapter, device, queue) =
+                    let (format, adapter, device, queue, present_mode) =
                         futures::futures::executor::block_on(async {
                             let adapter =
                                 wgpu::util::initialize_adapter_from_env_or_default(
@@ -1155,6 +1157,22 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .expect("Create adapter");
 
                                 let capabilities = surface.get_capabilities(&adapter);
+
+                                // Select non-blocking present mode to prevent frame.present()
+                                // from stalling the event loop on NVIDIA GPUs (strict FIFO queue).
+                                // Mailbox: non-blocking, replaces pending frame with latest (ideal)
+                                // Immediate: non-blocking, no VSync (fallback)
+                                // AutoNoVsync: auto-selects Mailbox or Immediate
+                                let present_mode = if capabilities.present_modes.contains(&wgpu::PresentMode::Mailbox) {
+                                    info!("Using Mailbox present mode (non-blocking)");
+                                    wgpu::PresentMode::Mailbox
+                                } else if capabilities.present_modes.contains(&wgpu::PresentMode::Immediate) {
+                                    info!("Mailbox not available, using Immediate present mode");
+                                    wgpu::PresentMode::Immediate
+                                } else {
+                                    info!("Using AutoNoVsync present mode (fallback)");
+                                    wgpu::PresentMode::AutoNoVsync
+                                };
 
                                 let (device, queue) = adapter
                                     .request_device(
@@ -1181,6 +1199,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     adapter,
                                     device,
                                     queue,
+                                    present_mode,
                                 )
                         });
 
@@ -1191,10 +1210,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             format,
                             width: physical_size.width,
                             height: physical_size.height,
-                            present_mode: wgpu::PresentMode::AutoVsync,
+                            present_mode,
                             alpha_mode: wgpu::CompositeAlphaMode::Auto,
                             view_formats: vec![],
-                            desired_maximum_frame_latency: 2,
+                            desired_maximum_frame_latency: 1,
                         },
                     );
 
@@ -1295,6 +1314,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         queue,
                         surface,
                         format,
+                        present_mode,
                         engine,
                         renderer: renderer.clone(),
                         state,
