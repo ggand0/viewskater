@@ -1158,19 +1158,22 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                                 let capabilities = surface.get_capabilities(&adapter);
 
+                                info!("GPU: {:?}", adapter.get_info().name);
+                                info!("Available present modes: {:?}", capabilities.present_modes);
+
                                 // Select non-blocking present mode to prevent frame.present()
                                 // from stalling the event loop on NVIDIA GPUs (strict FIFO queue).
                                 // Mailbox: non-blocking, replaces pending frame with latest (ideal)
                                 // Immediate: non-blocking, no VSync (fallback)
                                 // AutoNoVsync: auto-selects Mailbox or Immediate
                                 let present_mode = if capabilities.present_modes.contains(&wgpu::PresentMode::Mailbox) {
-                                    info!("Using Mailbox present mode (non-blocking)");
+                                    info!("Selected Mailbox present mode (non-blocking)");
                                     wgpu::PresentMode::Mailbox
                                 } else if capabilities.present_modes.contains(&wgpu::PresentMode::Immediate) {
-                                    info!("Mailbox not available, using Immediate present mode");
+                                    info!("Mailbox not available, selected Immediate present mode");
                                     wgpu::PresentMode::Immediate
                                 } else {
-                                    info!("Using AutoNoVsync present mode (fallback)");
+                                    info!("Selected AutoNoVsync present mode (fallback)");
                                     wgpu::PresentMode::AutoNoVsync
                                 };
 
