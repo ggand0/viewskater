@@ -107,5 +107,5 @@ pub enum Message {
     ResetAdvancedSettings,
     // Window resize
     WindowResized(f32, PhysicalSize<u32>, bool),  // (new width, window size, is window maximized)
-    PositionChanged(PhysicalPosition<i32>, bool), // (window position, is winodw maximized)
+    PositionChanged(PhysicalPosition<i32>, String), // (window position, current monitor name)
 }

@@ -766,14 +766,16 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             }
             Task::none()
         }
-        Message::PositionChanged(position, _is_maximized) => {
+        Message::PositionChanged(position, monitor) => {
             app.window_position = position;
-            // Only track last_windowed_position when in windowed state
+            let is_same_monitor = app.last_monitor == monitor;
+            // Only track last_windowed_position when in windowed state or moving across different monitors
             // Save previous value first (Windows workaround: PositionChanged fires before WindowResized
             // during maximize, so we need to be able to restore if transition is detected)
-            if app.window_state == WindowState::Window {
+            if app.window_state == WindowState::Window || !is_same_monitor {
                 app.position_before_transition = app.last_windowed_position;
                 app.last_windowed_position = position;
+                app.last_monitor = monitor;
             }
             Task::none()
         }

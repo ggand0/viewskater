@@ -132,6 +132,7 @@ pub struct DataViewer {
     pub window_position: PhysicalPosition<i32>,
     pub last_windowed_position: PhysicalPosition<i32>,  // Tracks position when in windowed mode
     pub position_before_transition: PhysicalPosition<i32>,  // Backup for Windows maximize fix
+    pub last_monitor: String, // Track position when not in windowed mode with multiple monitors
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -238,6 +239,7 @@ impl DataViewer {
             window_size: PhysicalSize { width: settings.window_width,
                 height: settings.window_height },
             maximized_size: None,
+            last_monitor: String::new()
         }
     }
 

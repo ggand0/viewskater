@@ -614,7 +614,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     }
                                 }
                                 WindowEvent::Moved(position) => {
-                                    state.queue_message(Message::PositionChanged(position, window.is_maximized()));
+                                    let monitor_name = match window.current_monitor() {
+                                        Some(mh) => mh.name().unwrap_or_default(),
+                                        None => String::new(),
+                                    };
+                                    state.queue_message(Message::PositionChanged(position, monitor_name));
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
@@ -1294,7 +1298,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     let (renderer_request_sender, renderer_request_receiver) = mpsc::channel();
 
                     // Pass a cloned Arc reference to DataViewer
-                    let shader_widget = DataViewer::new(
+                    let mut shader_widget = DataViewer::new(
                         Arc::clone(&device),
                         Arc::clone(&queue),
                         backend,
@@ -1303,6 +1307,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         settings_path.as_deref(),
                         std::mem::take(replay_config),
                     );
+
+                    shader_widget.last_monitor = match window.current_monitor() {
+                        Some(mh) => mh.name().unwrap_or_default(),
+                        None => String::new(),
+                    };
 
                     // Update state creation to lock renderer
                     let mut renderer_guard = renderer.lock().unwrap();
