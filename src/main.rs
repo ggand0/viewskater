@@ -30,6 +30,8 @@ mod macos_file_access;
 mod archive_cache;
 
 use iced_winit::winit::dpi::PhysicalPosition;
+use iced_winit::winit::dpi::PhysicalSize;
+use iced_winit::winit::monitor::MonitorHandle;
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};
 
@@ -153,6 +155,35 @@ pub fn get_shared_stdout_buffer() -> Option<Arc<Mutex<VecDeque<String>>>> {
 
 pub fn set_shared_stdout_buffer(buffer: Arc<Mutex<VecDeque<String>>>) {
     *SHARED_STDOUT_BUFFER.lock().unwrap() = Some(buffer);
+}
+
+/// Constant for define window is in the monitor
+const VISIBLE_SIZE : i32 = 30;
+/// Returns current window is in monitor
+///
+/// true: current window position
+/// false: closest monitor position
+pub fn get_window_visible(current_position: PhysicalPosition<i32>, current_size: PhysicalSize<u32>,
+    monitor: Option<MonitorHandle>) -> (bool, PhysicalPosition<i32>) {
+    let mut cx = current_position.x;
+    let mut cy = current_position.y;
+    let mut visible = true;
+
+    if let Some(mh) = monitor {
+        let mut plus_area = mh.position();
+        let mut minus_area = mh.position();
+        plus_area.x += mh.size().width as i32 - VISIBLE_SIZE;
+        plus_area.y += mh.size().height as i32 - VISIBLE_SIZE;
+        minus_area.x -= current_size.width as i32 - VISIBLE_SIZE;
+        minus_area.y -= current_size.height as i32 - VISIBLE_SIZE;
+        if cx >= plus_area.x || cy >= plus_area.y || cx <= minus_area.x || cy <= minus_area.y {
+            visible = false;
+            cx = mh.position().x;
+            cy = mh.position().y;
+        }
+    }
+
+    (visible, PhysicalPosition::new(cx, cy))
 }
 
 fn load_icon() -> Option<winit::window::Icon> {
@@ -614,11 +645,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     }
                                 }
                                 WindowEvent::Moved(position) => {
-                                    let monitor_name = match window.current_monitor() {
-                                        Some(mh) => mh.name().unwrap_or_default(),
-                                        None => String::new(),
-                                    };
-                                    state.queue_message(Message::PositionChanged(position, monitor_name));
+                                    state.queue_message(Message::PositionChanged(position, window.current_monitor()));
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
@@ -660,7 +687,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     #[cfg(target_os = "macos")] {
                                         // On macOS, window.fullscreen().is_some() doesn't work with set_simple_fullscreen()
                                         // so we need to use the application's internal state
-                                        let fullscreen = if state.program().is_fullscreen {
+                                        let fullscreen = if state.program().window_state == WindowState::FullScreen {
                                             state.queue_message(Message::ToggleFullScreen(false));
                                             None
                                         } else {
@@ -694,7 +721,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 } => {
                                     // Handle Escape key to exit fullscreen on macOS
                                     #[cfg(target_os = "macos")] {
-                                        if window.fullscreen().is_some() || state.program().is_fullscreen {
+                                        if window.fullscreen().is_some() || state.program().window_state == WindowState::FullScreen {
                                             state.queue_message(Message::ToggleFullScreen(false));
                                             use iced_winit::winit::platform::macos::WindowExtMacOS;
                                             window.set_simple_fullscreen(false);
@@ -1126,11 +1153,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         }
                     );
 
-                    let monitor_size = event_loop.primary_monitor().or_else(|| event_loop.available_monitors().next()).unwrap().size();
-                    // Maximize if: saved state was Maximized, OR saved size exceeds current monitor
-                    let size_exceeds_monitor = CONFIG.window_width >= monitor_size.width && CONFIG.window_height > (monitor_size.height - 80);
-                    let should_maximize = CONFIG.window_state == crate::settings::WindowState::Maximized || size_exceeds_monitor;
-
+                    let should_maximize = CONFIG.window_state == WindowState::Maximized;
                     // Cap window size to wgpu texture limits to prevent surface configuration panic
                     let capped_width = CONFIG.window_width.min(MAX_TEXTURE_SIZE);
                     let capped_height = CONFIG.window_height.min(MAX_TEXTURE_SIZE);
@@ -1150,11 +1173,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         .with_title("ViewSkater")
                         .with_resizable(true);
 
+                    let config_position = PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y);
                     // Only use with_position on Linux (X11 needs it)
                     #[cfg(target_os = "linux")]
                     {
                         window_attrs = window_attrs
-                            .with_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y));
+                            .with_position(position);
                     }
 
                     let window = Arc::new(
@@ -1164,8 +1188,18 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     );
 
                     // Set position after creation for macOS/Windows
-                    #[cfg(not(target_os = "linux"))]
-                    window.set_outer_position(PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y));
+                    #[cfg(not(target_os = "linux"))] {
+                        window.set_outer_position(config_position);
+
+                        // Prevents window appearing outside of monitor
+                        #[cfg(target_os = "windows")] {
+                            let tuple = get_window_visible(config_position, window.outer_size(),
+                                 window.current_monitor());
+                            if !tuple.0 {
+                                window.set_outer_position(tuple.1);
+                            }
+                        }
+                    }
 
                     if let Some(icon) = load_icon() {
                         window.set_window_icon(Some(icon));
@@ -1308,10 +1342,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         std::mem::take(replay_config),
                     );
 
-                    shader_widget.last_monitor = match window.current_monitor() {
-                        Some(mh) => mh.name().unwrap_or_default(),
-                        None => String::new(),
-                    };
+                    shader_widget.last_monitor = window.current_monitor();
 
                     // Update state creation to lock renderer
                     let mut renderer_guard = renderer.lock().unwrap();
@@ -1323,10 +1354,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     );
 
                     match CONFIG.window_state {
-                        settings::WindowState::Maximized => {
+                        WindowState::Maximized => {
                             window.set_maximized(true);
                         },
-                        settings::WindowState::FullScreen => {
+                        WindowState::FullScreen => {
                             let fullscreen = Some(winit::window::Fullscreen::Borderless(None));
                             state.queue_message(Message::ToggleFullScreen(true));
                             #[cfg(target_os = "macos")] {

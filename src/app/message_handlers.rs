@@ -13,7 +13,7 @@ use iced_runtime::clipboard;
 use crate::app::{DataViewer, Message};
 use crate::cache::img_cache::{CacheStrategy, CachedData, LoadOperation};
 use crate::settings::{UserSettings, WindowState};
-use crate::file_io;
+use crate::{file_io, get_window_visible};
 use crate::loading_handler;
 use crate::navigation_slider;
 use crate::navigation_keyboard::{move_left_all, move_right_all};
@@ -1199,6 +1199,12 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
 
 fn handle_save_window_state(app: &mut DataViewer) -> Task<Message> {
     let mut old_settings = UserSettings::load(None);
+    let tuple = get_window_visible(app.last_windowed_position, app.window_size,
+        app.last_monitor.clone());
+    // Prevents the saved position from being outside of the monitor
+    if !tuple.0 {
+        app.last_windowed_position = tuple.1;
+    }
     // Use last_windowed_position to avoid saving maximized position (0,0) on Windows
     old_settings.window_position_x = app.last_windowed_position.x;
     old_settings.window_position_y = app.last_windowed_position.y;
