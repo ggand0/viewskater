@@ -1178,7 +1178,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     #[cfg(target_os = "linux")]
                     {
                         window_attrs = window_attrs
-                            .with_position(position);
+                            .with_maximized(CONFIG.window_state == WindowState::Maximized)
+                            .with_position(config_position);
                     }
 
                     let window = Arc::new(
