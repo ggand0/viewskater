@@ -1153,6 +1153,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         }
                     );
 
+                    // On macOS, setFrameAutosaveName handles window state - don't force maximize
+                    #[cfg(target_os = "macos")]
+                    let should_maximize = false;
+                    #[cfg(not(target_os = "macos"))]
                     let should_maximize = CONFIG.window_state == WindowState::Maximized;
                     // Cap window size to wgpu texture limits to prevent surface configuration panic
                     let capped_width = CONFIG.window_width.min(MAX_TEXTURE_SIZE);
@@ -1206,19 +1210,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         window.set_window_icon(Some(icon));
                     }
 
-                    // Use macOS native frame autosave for window state
+                    // On macOS, use CONFIG for position/size and zoom() for maximize
+                    // This properly establishes _savedFrame for double-click unzoom
                     #[cfg(target_os = "macos")]
                     {
-                        use objc2_app_kit::NSView;
-                        use objc2_foundation::NSString;
-                        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-                        if let Ok(handle) = window.window_handle() {
-                            if let RawWindowHandle::AppKit(appkit) = handle.as_raw() {
-                                let ns_view = appkit.ns_view.as_ptr() as *mut objc2::runtime::AnyObject;
-                                let ns_view: &NSView = unsafe { &*(ns_view as *const NSView) };
-                                if let Some(ns_window) = ns_view.window() {
-                                    let name = NSString::from_str("ViewSkaterMainWindow");
-                                    unsafe { ns_window.setFrameAutosaveName(&name) };
+                        if CONFIG.window_state == WindowState::Maximized {
+                            use objc2_app_kit::NSView;
+                            use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                            if let Ok(handle) = window.window_handle() {
+                                if let RawWindowHandle::AppKit(appkit) = handle.as_raw() {
+                                    let ns_view = appkit.ns_view.as_ptr() as *mut objc2::runtime::AnyObject;
+                                    let ns_view: &NSView = unsafe { &*(ns_view as *const NSView) };
+                                    if let Some(ns_window) = ns_view.window() {
+                                        // zoom() saves current frame to _savedFrame, then zooms
+                                        ns_window.zoom(None);
+                                    }
                                 }
                             }
                         }
@@ -1356,6 +1362,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     match CONFIG.window_state {
                         WindowState::Maximized => {
+                            // On macOS, setFrameAutosaveName handles this
+                            #[cfg(not(target_os = "macos"))]
                             window.set_maximized(true);
                         },
                         WindowState::FullScreen => {
