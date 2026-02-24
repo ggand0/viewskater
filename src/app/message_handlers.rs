@@ -13,7 +13,7 @@ use iced_runtime::clipboard;
 use crate::app::{DataViewer, Message};
 use crate::cache::img_cache::{CacheStrategy, CachedData, LoadOperation};
 use crate::settings::{UserSettings, WindowState};
-use crate::{file_io, get_window_visible};
+use crate::{file_io, window_state::get_window_visible};
 use crate::loading_handler;
 use crate::navigation_slider;
 use crate::navigation_keyboard::{move_left_all, move_right_all};
@@ -736,8 +736,6 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 }
             }
 
-            let _prev_state = app.window_state;
-
             // macOS: isZoomed() is unreliable (flickers during animation, may never
             // return true for user-initiated zooms). Detect maximize by comparing
             // window size to the monitor's physical size instead.
@@ -796,17 +794,6 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 _ => {},
             }
 
-            // Update the global pending save (flushed to disk by atexit on Cmd+Q).
-            // Only update size/position when in confirmed Window state (after
-            // state detection above), so animation frames never leak through.
-            if let Ok(mut guard) = crate::PENDING_WINDOW_SAVE.lock() {
-                if let Some(pending) = guard.as_mut() {
-                    pending.state = app.window_state;
-                    if app.window_state == WindowState::Window {
-                        pending.size = size;
-                    }
-                }
-            }
             Task::none()
         }
         Message::PositionChanged(position, monitor) => {
@@ -819,14 +806,6 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 app.position_before_transition = app.last_windowed_position;
                 app.last_windowed_position = position;
                 app.last_monitor = monitor;
-            }
-            // Update the global pending save with position when in windowed mode.
-            if app.window_state == WindowState::Window {
-                if let Ok(mut guard) = crate::PENDING_WINDOW_SAVE.lock() {
-                    if let Some(pending) = guard.as_mut() {
-                        pending.position = app.last_windowed_position;
-                    }
-                }
             }
             Task::none()
         }
