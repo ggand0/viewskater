@@ -69,6 +69,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
             }
         }
         Message::Quit => {
+            let _ = handle_save_window_state(app);
             std::process::exit(0);
         }
         Message::ReplayKeepAlive => {
@@ -726,7 +727,7 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.window_size = size;
 
             // Track the largest size seen while maximized (the actual maximized size)
-            if is_maximized {
+            if is_maximized || app.window_state == WindowState::Maximized {
                 let should_update = app.maximized_size.map_or(true, |max_size| {
                     size.width > max_size.width || size.height > max_size.height
                 });
@@ -735,27 +736,57 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 }
             }
 
+            let _prev_state = app.window_state;
+
+            // macOS: isZoomed() is unreliable (flickers during animation, may never
+            // return true for user-initiated zooms). Detect maximize by comparing
+            // window size to the monitor's physical size instead.
+            // Use percentages because monitor.size() includes non-usable area (notch, etc.)
+            #[cfg(target_os = "macos")]
+            match app.window_state {
+                WindowState::Window => {
+                    let near_screen = app.last_monitor.as_ref().map_or(false, |monitor| {
+                        let screen = monitor.size();
+                        size.width as f64 >= screen.width as f64 * 0.85
+                            && size.height as f64 >= screen.height as f64 * 0.70
+                    });
+                    if near_screen {
+                        app.window_state = WindowState::Maximized;
+                        app.last_windowed_position = app.position_before_transition;
+                    }
+                },
+                WindowState::Maximized => {
+                    // Detect unmaximize: size dropped significantly from peak
+                    if let Some(max_size) = app.maximized_size {
+                        let width_diff = max_size.width.saturating_sub(size.width);
+                        let height_diff = max_size.height.saturating_sub(size.height);
+                        if width_diff > 100 || height_diff > 100 {
+                            app.window_state = WindowState::Window;
+                        }
+                    }
+                },
+                _ => {},
+            }
+
+            // Windows/Linux: use winit's is_maximized() (reliable on these platforms)
+            #[cfg(not(target_os = "macos"))]
             match app.window_state {
                 WindowState::Window => {
                     if is_maximized {
                         app.window_state = WindowState::Maximized;
-                        // Windows workaround: PositionChanged(0,0) fires before this event,
-                        // corrupting last_windowed_position. Restore from backup.
                         app.last_windowed_position = app.position_before_transition;
                     }
                 },
                 WindowState::Maximized => {
                     if !is_maximized {
-                        // Primary detection: is_maximized() returned false (works on Windows/macOS)
                         app.window_state = WindowState::Window;
                     } else {
-                        // X11 workaround: is_maximized() returns stale true during un-maximize transition
-                        // On X11, maximized windows cannot be resized - any size change means un-maximize
+                        // X11: is_maximized() returns stale true during un-maximize.
+                        // Any size change while maximized means un-maximize.
                         #[cfg(target_os = "linux")]
                         {
                             let size_changed = app.maximized_size.map_or(false, |max_size| size != max_size);
                             if size_changed {
-                                debug!("X11: Size changed while is_maximized=true, detecting un-maximize");
                                 app.window_state = WindowState::Window;
                                 app.maximized_size = None;
                             }
@@ -763,6 +794,18 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                     }
                 },
                 _ => {},
+            }
+
+            // Update the global pending save (flushed to disk by atexit on Cmd+Q).
+            // Only update size/position when in confirmed Window state (after
+            // state detection above), so animation frames never leak through.
+            if let Ok(mut guard) = crate::PENDING_WINDOW_SAVE.lock() {
+                if let Some(pending) = guard.as_mut() {
+                    pending.state = app.window_state;
+                    if app.window_state == WindowState::Window {
+                        pending.size = size;
+                    }
+                }
             }
             Task::none()
         }
@@ -776,6 +819,14 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 app.position_before_transition = app.last_windowed_position;
                 app.last_windowed_position = position;
                 app.last_monitor = monitor;
+            }
+            // Update the global pending save with position when in windowed mode.
+            if app.window_state == WindowState::Window {
+                if let Ok(mut guard) = crate::PENDING_WINDOW_SAVE.lock() {
+                    if let Some(pending) = guard.as_mut() {
+                        pending.position = app.last_windowed_position;
+                    }
+                }
             }
             Task::none()
         }

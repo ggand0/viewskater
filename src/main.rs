@@ -88,6 +88,32 @@ use std::sync::mpsc::{self, Receiver};
 
 static ICON: &[u8] = include_bytes!("../assets/icon_48.png");
 
+/// Window state saved to a global so the `atexit` handler can flush it to disk.
+/// On macOS, Cmd+Q calls exit() without firing any winit event handlers, so this
+/// is the only reliable way to persist window state before termination.
+pub struct PendingWindowSave {
+    pub position: PhysicalPosition<i32>,
+    pub size: PhysicalSize<u32>,
+    pub state: WindowState,
+}
+pub static PENDING_WINDOW_SAVE: Mutex<Option<PendingWindowSave>> = Mutex::new(None);
+
+extern "C" fn flush_pending_window_save() {
+    if let Ok(guard) = PENDING_WINDOW_SAVE.lock() {
+        if let Some(pending) = &*guard {
+            let mut settings = crate::settings::UserSettings::load(None);
+            settings.window_state = pending.state;
+            if pending.state == WindowState::Window {
+                settings.window_width = pending.size.width;
+                settings.window_height = pending.size.height;
+                settings.window_position_x = pending.position.x;
+                settings.window_position_y = pending.position.y;
+            }
+            let _ = settings.save();
+        }
+    }
+}
+
 pub static FRAME_TIMES: Lazy<Mutex<Vec<Instant>>> = Lazy::new(|| {
     Mutex::new(Vec::with_capacity(120))
 });
@@ -332,6 +358,17 @@ fn update_memory_usage() {
 
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
+    // Register atexit handler to save window state on macOS Cmd+Q.
+    // Cmd+Q calls [NSApp terminate:] → exit() → atexit handlers.
+    unsafe { libc::atexit(flush_pending_window_save); }
+
+    // Initialize the global with CONFIG values
+    *PENDING_WINDOW_SAVE.lock().unwrap() = Some(PendingWindowSave {
+        position: PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y),
+        size: PhysicalSize::new(CONFIG.window_width, CONFIG.window_height),
+        state: CONFIG.window_state,
+    });
+
     // CRITICAL: Write to crash log IMMEDIATELY - before any other operations
     crate::logging::write_crash_debug_log("MAIN: App startup initiated");
 
@@ -631,6 +668,29 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::Focused(false) => {
                                     event_loop.set_control_flow(ControlFlow::Wait);
+                                    // Save window state when losing focus — on macOS, Cmd+Q
+                                    // kills the process before quit handlers run, so this
+                                    // ensures position/size are persisted.
+                                    {
+                                        let app = state.program();
+                                        let mut settings = crate::settings::UserSettings::load(None);
+                                        let mut pos = app.last_windowed_position;
+                                        let tuple = get_window_visible(pos, app.window_size,
+                                            app.last_monitor.clone());
+                                        if !tuple.0 {
+                                            pos = tuple.1;
+                                        }
+                                        settings.window_position_x = pos.x;
+                                        settings.window_position_y = pos.y;
+                                        if app.window_state == WindowState::Window {
+                                            settings.window_width = app.window_size.width;
+                                            settings.window_height = app.window_size.height;
+                                        }
+                                        settings.window_state = app.window_state;
+                                        if let Err(e) = settings.save() {
+                                            error!("Failed to save window state: {e}");
+                                        }
+                                    }
                                 }
                                 WindowEvent::Resized(size) => {
                                     if size.width > 0 && size.height > 0 {
@@ -639,6 +699,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         // Divide by scale factor to get logical pixels (important for macOS Retina)
                                         let logical_width = size.width as f32 / window.scale_factor() as f32;
                                         state.queue_message(Message::WindowResized(logical_width, size, window.is_maximized()));
+
                                     } else {
                                         // Skip resizing and avoid configuring the surface
                                         *resized = false;
@@ -647,9 +708,31 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 WindowEvent::Moved(position) => {
                                     state.queue_message(Message::PositionChanged(position, window.current_monitor()));
                                     *moved = true;
+
                                 }
                                 WindowEvent::CloseRequested => {
-                                    state.queue_message(Message::SaveWindowState);
+                                    // Save window state directly (not via message queue, which
+                                    // won't be processed after event_loop.exit())
+                                    {
+                                        let app = state.program();
+                                        let mut settings = crate::settings::UserSettings::load(None);
+                                        let mut pos = app.last_windowed_position;
+                                        let tuple = get_window_visible(pos, app.window_size,
+                                            app.last_monitor.clone());
+                                        if !tuple.0 {
+                                            pos = tuple.1;
+                                        }
+                                        settings.window_position_x = pos.x;
+                                        settings.window_position_y = pos.y;
+                                        if app.window_state == WindowState::Window {
+                                            settings.window_width = app.window_size.width;
+                                            settings.window_height = app.window_size.height;
+                                        }
+                                        settings.window_state = app.window_state;
+                                        if let Err(e) = settings.save() {
+                                            error!("Failed to save window state: {e}");
+                                        }
+                                    }
                                     #[cfg(target_os = "macos")]
                                     {
                                         // Clean up all active security-scoped access before shutdown
@@ -1104,7 +1187,27 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         }
                                     }
                                     Control::Exit => {
-                                        state.queue_message(Message::SaveWindowState);
+                                        // Save window state directly (not via message queue)
+                                        {
+                                            let app = state.program();
+                                            let mut settings = crate::settings::UserSettings::load(None);
+                                            let mut pos = app.last_windowed_position;
+                                            let tuple = get_window_visible(pos, app.window_size,
+                                                app.last_monitor.clone());
+                                            if !tuple.0 {
+                                                pos = tuple.1;
+                                            }
+                                            settings.window_position_x = pos.x;
+                                            settings.window_position_y = pos.y;
+                                            if app.window_state == WindowState::Window {
+                                                settings.window_width = app.window_size.width;
+                                                settings.window_height = app.window_size.height;
+                                            }
+                                            settings.window_state = app.window_state;
+                                            if let Err(e) = settings.save() {
+                                                error!("Failed to save window state: {e}");
+                                            }
+                                        }
                                         #[cfg(target_os = "macos")]
                                         {
                                             // Clean up all active security-scoped access before shutdown
@@ -1153,7 +1256,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         }
                     );
 
-                    // On macOS, setFrameAutosaveName handles window state - don't force maximize
+                    // On macOS, NSWindow.zoom() handles maximize instead of winit's set_maximized
                     #[cfg(target_os = "macos")]
                     let should_maximize = false;
                     #[cfg(not(target_os = "macos"))]
@@ -1197,12 +1300,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         window.set_outer_position(config_position);
 
                         // Prevents window appearing outside of monitor
-                        #[cfg(target_os = "windows")] {
-                            let tuple = get_window_visible(config_position, window.outer_size(),
-                                 window.current_monitor());
-                            if !tuple.0 {
-                                window.set_outer_position(tuple.1);
-                            }
+                        let tuple = get_window_visible(config_position, window.outer_size(),
+                             window.current_monitor());
+                        if !tuple.0 {
+                            window.set_outer_position(tuple.1);
                         }
                     }
 
@@ -1210,8 +1311,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         window.set_window_icon(Some(icon));
                     }
 
-                    // On macOS, use CONFIG for position/size and zoom() for maximize
-                    // This properly establishes _savedFrame for double-click unzoom
+                    // On macOS: use CONFIG for position/size (same as Win/Linux),
+                    // then zoom() to maximize. zoom() saves the current (unzoomed) frame
+                    // to NSWindow._savedFrame, so double-click title bar unzoom works.
                     #[cfg(target_os = "macos")]
                     {
                         if CONFIG.window_state == WindowState::Maximized {
@@ -1222,7 +1324,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     let ns_view = appkit.ns_view.as_ptr() as *mut objc2::runtime::AnyObject;
                                     let ns_view: &NSView = unsafe { &*(ns_view as *const NSView) };
                                     if let Some(ns_window) = ns_view.window() {
-                                        // zoom() saves current frame to _savedFrame, then zooms
                                         ns_window.zoom(None);
                                     }
                                 }
