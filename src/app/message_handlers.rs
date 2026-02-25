@@ -726,8 +726,8 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.window_width = width;
             app.window_size = size;
 
-            // Track the largest size seen while maximized (the actual maximized size)
-            if is_maximized || app.window_state == WindowState::Maximized {
+            // Track the largest size seen while maximized (used by Linux X11 un-maximize workaround)
+            if is_maximized {
                 let should_update = app.maximized_size.map_or(true, |max_size| {
                     size.width > max_size.width || size.height > max_size.height
                 });
@@ -736,31 +736,20 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 }
             }
 
-            // macOS: isZoomed() is unreliable (flickers during animation, may never
-            // return true for user-initiated zooms). Detect maximize by comparing
-            // window size to the monitor's physical size instead.
-            // Use percentages because monitor.size() includes non-usable area (notch, etc.)
+            // macOS: use is_maximized (winit's isZoomed() wrapper), same as other platforms.
+            // isZoomed() may be unreliable mid-animation, but save_window_state_to_disk
+            // queries it authoritatively post-animation as a safety net.
             #[cfg(target_os = "macos")]
             match app.window_state {
                 WindowState::Window => {
-                    let near_screen = app.last_monitor.as_ref().map_or(false, |monitor| {
-                        let screen = monitor.size();
-                        size.width as f64 >= screen.width as f64 * 0.85
-                            && size.height as f64 >= screen.height as f64 * 0.70
-                    });
-                    if near_screen {
+                    if is_maximized {
                         app.window_state = WindowState::Maximized;
                         app.last_windowed_position = app.position_before_transition;
                     }
                 },
                 WindowState::Maximized => {
-                    // Detect unmaximize: size dropped significantly from peak
-                    if let Some(max_size) = app.maximized_size {
-                        let width_diff = max_size.width.saturating_sub(size.width);
-                        let height_diff = max_size.height.saturating_sub(size.height);
-                        if width_diff > 100 || height_diff > 100 {
-                            app.window_state = WindowState::Window;
-                        }
+                    if !is_maximized {
+                        app.window_state = WindowState::Window;
                     }
                 },
                 _ => {},
@@ -772,15 +761,18 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
                 WindowState::Window => {
                     if is_maximized {
                         app.window_state = WindowState::Maximized;
+                        // Windows workaround: PositionChanged(0,0) fires before this event,
+                        // corrupting last_windowed_position. Restore from backup.
                         app.last_windowed_position = app.position_before_transition;
                     }
                 },
                 WindowState::Maximized => {
                     if !is_maximized {
+                        // Primary detection: is_maximized() returned false (works on Windows/macOS)
                         app.window_state = WindowState::Window;
                     } else {
-                        // X11: is_maximized() returns stale true during un-maximize.
-                        // Any size change while maximized means un-maximize.
+                        // X11 workaround: is_maximized() returns stale true during un-maximize transition
+                        // On X11, maximized windows cannot be resized - any size change means un-maximize
                         #[cfg(target_os = "linux")]
                         {
                             let size_changed = app.maximized_size.map_or(false, |max_size| size != max_size);

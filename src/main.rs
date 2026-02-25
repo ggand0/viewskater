@@ -601,7 +601,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::Focused(false) => {
                                     event_loop.set_control_flow(ControlFlow::Wait);
-                                    window_state::save_window_state_to_disk(state.program());
+                                    window_state::save_window_state_to_disk(state.program(), &window);
                                 }
                                 WindowEvent::Resized(size) => {
                                     if size.width > 0 && size.height > 0 {
@@ -620,7 +620,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
-                                    window_state::save_window_state_to_disk(state.program());
+                                    window_state::save_window_state_to_disk(state.program(), &window);
                                     #[cfg(target_os = "macos")]
                                     {
                                         // Clean up all active security-scoped access before shutdown
@@ -1075,7 +1075,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         }
                                     }
                                     Control::Exit => {
-                                        window_state::save_window_state_to_disk(state.program());
+                                        window_state::save_window_state_to_disk(state.program(), &window);
                                         #[cfg(target_os = "macos")]
                                         {
                                             // Clean up all active security-scoped access before shutdown
@@ -1168,10 +1168,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         window.set_outer_position(config_position);
 
                         // Prevents window appearing outside of monitor
-                        let tuple = window_state::get_window_visible(config_position, window.outer_size(),
-                             window.current_monitor());
-                        if !tuple.0 {
-                            window.set_outer_position(tuple.1);
+                        #[cfg(target_os = "windows")] {
+                            let tuple = window_state::get_window_visible(config_position, window.outer_size(),
+                                 window.current_monitor());
+                            if !tuple.0 {
+                                window.set_outer_position(tuple.1);
+                            }
                         }
                     }
 
@@ -1314,7 +1316,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     match CONFIG.window_state {
                         WindowState::Maximized => {
-                            // On macOS, setFrameAutosaveName handles this
+                            // On macOS, setup_macos_window() calls NSWindow.zoom() instead —
+                            // set_maximized() doesn't establish _savedFrame for unzoom
                             #[cfg(not(target_os = "macos"))]
                             window.set_maximized(true);
                         },

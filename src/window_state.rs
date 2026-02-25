@@ -6,12 +6,12 @@ use log::error;
 use crate::settings::WindowState;
 use crate::app::DataViewer;
 
-/// Minimum visible pixels required to consider a window on-screen.
+/// Constant for define window is in the monitor
 const VISIBLE_SIZE: i32 = 30;
-
-/// Checks whether a window is visible on its monitor.
-/// Returns (is_visible, corrected_position). If not visible,
-/// corrected_position is snapped to the monitor's origin.
+/// Returns current window is in monitor
+///
+/// true: current window position
+/// false: closest monitor position
 pub fn get_window_visible(
     current_position: PhysicalPosition<i32>,
     current_size: PhysicalSize<u32>,
@@ -38,21 +38,61 @@ pub fn get_window_visible(
     (visible, PhysicalPosition::new(cx, cy))
 }
 
+/// Queries NSWindow.isZoomed() directly via objc2.
+/// Reliable when called outside of zoom animation (i.e. at save time).
+#[cfg(target_os = "macos")]
+pub fn query_is_zoomed(window: &winit::window::Window) -> bool {
+    use objc2_app_kit::NSView;
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let Ok(handle) = window.window_handle() else { return false };
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else { return false };
+
+    let ns_view = appkit.ns_view.as_ptr() as *mut objc2::runtime::AnyObject;
+    let ns_view: &NSView = unsafe { &*(ns_view as *const NSView) };
+    let Some(ns_window) = ns_view.window() else { return false };
+
+    ns_window.isZoomed()
+}
+
 /// Saves the current window state from the iced application state to disk.
-pub fn save_window_state_to_disk(app: &DataViewer) {
+/// On macOS, queries NSWindow.isZoomed() directly for authoritative state
+/// (the heuristic-based app.window_state may be stale mid-animation).
+pub fn save_window_state_to_disk(app: &DataViewer, window: &winit::window::Window) {
     let mut settings = crate::settings::UserSettings::load(None);
-    let mut pos = app.last_windowed_position;
+
+    // On macOS, query isZoomed() at save time — authoritative post-animation.
+    // If zoom was missed during WindowResized (isZoomed() unreliable mid-animation),
+    // this corrects the state and uses position_before_transition as the windowed position.
+    #[cfg(target_os = "macos")]
+    let (window_state, pos_source) = {
+        let is_zoomed = query_is_zoomed(window);
+        if is_zoomed {
+            // Zoomed: use position_before_transition (the pre-zoom windowed position)
+            (WindowState::Maximized, app.position_before_transition)
+        } else {
+            (WindowState::Window, app.last_windowed_position)
+        }
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let (window_state, pos_source) = {
+        let _ = window; // suppress unused warning
+        (app.window_state, app.last_windowed_position)
+    };
+
+    let mut pos = pos_source;
     let tuple = get_window_visible(pos, app.window_size, app.last_monitor.clone());
     if !tuple.0 {
         pos = tuple.1;
     }
     settings.window_position_x = pos.x;
     settings.window_position_y = pos.y;
-    if app.window_state == WindowState::Window {
+    if window_state == WindowState::Window {
         settings.window_width = app.window_size.width;
         settings.window_height = app.window_size.height;
     }
-    settings.window_state = app.window_state;
+    settings.window_state = window_state;
     if let Err(e) = settings.save() {
         error!("Failed to save window state: {e}");
     }
