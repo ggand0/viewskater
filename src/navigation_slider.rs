@@ -456,7 +456,7 @@ pub async fn create_async_image_widget_task(
 
     // Measure file reading time
     let read_time = read_start.elapsed();
-    trace!("PERF: File read time for pos {}: {:?}", pos, read_time);
+    debug!("PERF: File read time for pos {}: {:?}", pos, read_time);
 
     match bytes_result {
         Ok(bytes) => {
@@ -486,11 +486,11 @@ pub async fn create_async_image_widget_task(
 
             // Measure handle creation time
             let handle_time = handle_start.elapsed();
-            trace!("PERF: Handle creation time for pos {}: {:?}", pos, handle_time);
+            debug!("PERF: Handle creation time for pos {} (dims {}x{}): {:?}", pos, dimensions.0, dimensions.1, handle_time);
 
             // Measure total function time
             let total_time = task_start.elapsed();
-            trace!("PERF: Total async task time for pos {}: {:?}", pos, total_time);
+            debug!("PERF: Total async slider task for pos {}: {:?} (file_size={}KB)", pos, total_time, file_size / 1024);
 
             Ok((pane_idx, pos, handle, dimensions, file_size))
         },
@@ -546,9 +546,10 @@ pub fn update_pos(
 
     // Skip processing if we're throttling
     if !should_process {
-        //debug!("Throttling slider image load at position {}", pos);
         return Task::none();
     }
+
+    info!("SLIDER_TRACE: update_pos SPAWNING task for pos={}", pos);
 
     if use_async {
         // Collect tasks for all applicable panes

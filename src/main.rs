@@ -119,6 +119,17 @@ static LAST_QUEUE_LENGTH: AtomicUsize = AtomicUsize::new(0);
 const QUEUE_LOG_THRESHOLD: usize = 20;
 const QUEUE_RESET_THRESHOLD: usize = 50;
 
+const MIN_FRAME_INTERVAL: Duration = Duration::from_millis(8);
+// During slider drag, render at reduced rate for UI updates (slider knob, footer)
+// but render immediately when a new slider image arrives
+const SLIDER_UI_FRAME_INTERVAL: Duration = Duration::from_millis(33);
+
+use std::sync::atomic::AtomicBool;
+/// Set to true when a new slider image has been loaded and is ready to display.
+/// The render loop checks this to render immediately for new images during slider drag,
+/// rather than waiting for the next frame interval.
+pub static SLIDER_IMAGE_DIRTY: AtomicBool = AtomicBool::new(false);
+
 // Fullscreen UI detection zones
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const FULLSCREEN_TOP_ZONE_HEIGHT: f64 = 200.0;  // Larger zone for menu interactions in fullscreen mode
@@ -533,6 +544,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             _context: task::Context<'static>,
             custom_theme: Theme,
             renderer_request_receiver: Receiver<RendererRequest>,
+            last_render_time: Instant,
         },
     }
 
@@ -583,6 +595,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     control_receiver,
                     custom_theme,
                     renderer_request_receiver,
+                    last_render_time,
                     ..
                 } => {
                     // Handle events in ready state
@@ -712,56 +725,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                             *redraw = true;
 
-                            // Map window event to iced event
+                            // Map window event to iced event and queue it.
+                            // Events are batched and processed in a single state.update()
+                            // call before rendering, rather than per-event. This prevents
+                            // 60+ individual view()/layout() rebuilds between renders when
+                            // mouse events pile up during a 4K image decode (60ms render).
+                            // Without batching, UserEvents (async slider image loads) are
+                            // delayed behind the wall of per-event WindowEvent processing.
                             if let Some(event) = iced_winit::conversion::window_event(
                                 window_event,
                                 window.scale_factor(),
                                 *modifiers,
                             ) {
-                                {
-                                    state.queue_message(Message::Event(event.clone()));
-                                }
+                                state.queue_message(Message::Event(event.clone()));
                                 state.queue_event(event);
                                 *redraw = true;
-                            }
-
-                            // If there are events pending
-                            if !state.is_queue_empty() {
-                                // We update iced
-                                //let update_start = Instant::now();
-                                let (_, task) = state.update(
-                                    viewport.logical_size(),
-                                    cursor_position
-                                        .map(|p| {
-                                            conversion::cursor_position(
-                                                p,
-                                                viewport.scale_factor(),
-                                            )
-                                        })
-                                        .map(mouse::Cursor::Available)
-                                        .unwrap_or(mouse::Cursor::Unavailable),
-                                    &mut *renderer.lock().unwrap(),
-                                    custom_theme,
-                                    &renderer::Style {
-                                        text_color: Color::WHITE,
-                                    },
-                                    clipboard,
-                                    debug_tool,
-                                );
-                                //let update_time = update_start.elapsed();
-                                //STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
-
-                                let _ = 'runtime_call: {
-                                    let Some(t) = task else {
-                                        break 'runtime_call 1;
-                                    };
-                                    let Some(stream) = into_stream(t) else {
-                                        break 'runtime_call 1;
-                                    };
-
-                                    runtime.run(stream);
-                                    0
-                                };
                             }
 
                             // Handle resizing
@@ -787,7 +765,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         present_mode: *present_mode,
                                         alpha_mode: wgpu::CompositeAlphaMode::Auto,
                                         view_formats: vec![],
-                                        desired_maximum_frame_latency: 1,
+                                        desired_maximum_frame_latency: 2,
                                     },
                                 );
 
@@ -830,11 +808,64 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                             }
 
-                            // Render if needed
-                            if *redraw {
+                            // Process all queued events and messages in one batch.
+                            // This is called once per render frame instead of per-event,
+                            // so 60+ mouse events are processed in a single view()/layout() pass.
+                            if !state.is_queue_empty() {
+                                let update_start = Instant::now();
+                                let (_, task) = state.update(
+                                    viewport.logical_size(),
+                                    cursor_position
+                                        .map(|p| {
+                                            conversion::cursor_position(
+                                                p,
+                                                viewport.scale_factor(),
+                                            )
+                                        })
+                                        .map(mouse::Cursor::Available)
+                                        .unwrap_or(mouse::Cursor::Unavailable),
+                                    &mut *renderer.lock().unwrap(),
+                                    custom_theme,
+                                    &renderer::Style {
+                                        text_color: Color::WHITE,
+                                    },
+                                    clipboard,
+                                    debug_tool,
+                                );
+
+                                let update_time = update_start.elapsed();
+                                if update_time.as_millis() > 1 {
+                                    info!("GAP_TRACE: state.update() took {:?}", update_time);
+                                }
+
+                                let _ = 'runtime_call: {
+                                    let Some(t) = task else {
+                                        break 'runtime_call 1;
+                                    };
+                                    let Some(stream) = into_stream(t) else {
+                                        break 'runtime_call 1;
+                                    };
+
+                                    runtime.run(stream);
+                                    0
+                                };
+                            }
+
+                            // Render with frame pacing
+                            let new_slider_image = SLIDER_IMAGE_DIRTY.load(Ordering::Relaxed);
+                            let frame_interval = if state.program().is_slider_moving && !new_slider_image {
+                                SLIDER_UI_FRAME_INTERVAL
+                            } else {
+                                MIN_FRAME_INTERVAL
+                            };
+                            if *redraw && last_render_time.elapsed() >= frame_interval {
+                                if new_slider_image {
+                                    SLIDER_IMAGE_DIRTY.store(false, Ordering::Relaxed);
+                                }
                                 *redraw = false;
 
                                 let frame_start = Instant::now();
+                                *last_render_time = frame_start;
 
                                 // Set window title when the title is actually changed
                                 let new_title = state.program().title();
@@ -843,8 +874,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     *last_title = new_title;
                                 }
 
+                                let get_texture_start = Instant::now();
                                 match surface.get_current_texture() {
                                     Ok(frame) => {
+                                        let get_texture_time = get_texture_start.elapsed();
+                                        if get_texture_time.as_millis() > 5 {
+                                            warn!("BOTTLENECK: get_current_texture took {:?}", get_texture_time);
+                                        }
+
                                         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
                                         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                                             label: Some("Render Encoder"),
@@ -883,6 +920,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         // Add tracking here to monitor the render cycle
                                         if *debug {
                                             track_render_cycle();
+                                        }
+
+                                        // Log every render during slider movement
+                                        if state.program().is_slider_moving {
+                                            info!("GAP_TRACE: render present={:?} heavy={}", present_time, present_time.as_millis() > 50);
                                         }
 
                                         // Always log these if they're abnormally long
@@ -1018,28 +1060,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 Action::Output(message) => {
                                     state.queue_message(message);
-
-                                    // Process immediately
-                                    if !state.is_queue_empty() {
-                                        let (_, task) = state.update(
-                                            viewport.logical_size(),
-                                            cursor_position
-                                                .map(|p| conversion::cursor_position(p, viewport.scale_factor()))
-                                                .map(mouse::Cursor::Available)
-                                                .unwrap_or(mouse::Cursor::Unavailable),
-                                            &mut *renderer.lock().unwrap(),
-                                            custom_theme,
-                                            &renderer::Style { text_color: Color::WHITE },
-                                            clipboard,
-                                            debug_tool,
-                                        );
-
-                                        if let Some(t) = task {
-                                            if let Some(stream) = into_stream(t) {
-                                                runtime.run(stream);
-                                            }
-                                        }
-                                    }
                                 }
                                 _ => {}
                             }
@@ -1275,7 +1295,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             present_mode,
                             alpha_mode: wgpu::CompositeAlphaMode::Auto,
                             view_formats: vec![],
-                            desired_maximum_frame_latency: 1,
+                            desired_maximum_frame_latency: 2,
                         },
                     );
 
@@ -1419,6 +1439,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         _context: context,
                         custom_theme,
                         renderer_request_receiver,
+                        last_render_time: Instant::now() - Duration::from_secs(1),
                     };
                 }
                 Self::Ready { .. } => {

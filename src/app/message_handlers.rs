@@ -445,7 +445,10 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                         // load after slider release. The slider position is tracked in slider_image_position instead.
                         // pane.img_cache.current_index = pos;
 
-                        debug!("Slider image loaded for pane {} at position {} with dimensions {:?}", pane_idx, pos, dimensions);
+                        // Signal the render loop that a new image is ready to display
+                        crate::SLIDER_IMAGE_DIRTY.store(true, std::sync::atomic::Ordering::Relaxed);
+
+                        info!("SLIDER_TRACE: ImageLoaded pos={} dims={}x{}", pos, dimensions.0, dimensions.1);
                     } else {
                         warn!("SliderImageWidgetLoaded: Invalid pane index {}", pane_idx);
                     }
@@ -492,6 +495,7 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
 pub fn handle_slider_messages(app: &mut DataViewer, message: Message) -> Task<Message> {
     match message {
         Message::SliderChanged(pane_index, value) => {
+            debug!("SLIDER_TRACE: SliderChanged pos={}", value);
             app.is_slider_moving = true;
             app.use_slider_image_for_render = true;
             app.last_slider_update = Instant::now();
