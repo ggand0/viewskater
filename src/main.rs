@@ -23,7 +23,6 @@ mod coco;
 mod settings_modal;
 mod replay;
 mod exif_utils;
-mod render;
 mod window_state;
 
 #[cfg(target_os = "macos")]
@@ -1023,16 +1022,6 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 _ => {}
                             }
                             *redraw = true;
-
-                            // Render directly for spinner animation (SpinnerTick is a Message,
-                            // not an Event, so widgets won't redraw without this).
-                            if state.program().is_any_pane_loading() {
-                                if render::render_spinner_frame(
-                                    surface, device, queue, engine, renderer, viewport, debug_tool,
-                                ) {
-                                    *redraw = false;
-                                }
-                            }
                         }
                         Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
                             // Process any pending control messages
