@@ -24,11 +24,13 @@ mod settings_modal;
 mod replay;
 mod exif_utils;
 mod render;
+mod window_state;
 
 #[cfg(target_os = "macos")]
 mod macos_file_access;
 mod archive_cache;
 
+use iced_winit::winit::dpi::PhysicalPosition;
 #[allow(unused_imports)]
 use log::{Level, trace, debug, info, warn, error};
 
@@ -70,11 +72,15 @@ use iced_winit::core::window;
 use iced_futures::futures::channel::oneshot;
 use iced_wgpu::engine::CompressionStrategy;
 
+use crate::settings::WindowState;
 use crate::utils::timing::TimingStats;
 use crate::app::{Message, DataViewer};
 use crate::widgets::shader::scene::Scene;
 use crate::config::CONFIG;
 use std::sync::mpsc::{self as std_mpsc, Receiver as StdReceiver, Sender as StdSender};
+
+// Maximum texture size supported by most GPUs (prevents wgpu surface configuration panic)
+const MAX_TEXTURE_SIZE: u32 = 8192;
 use iced_wgpu::{get_image_rendering_diagnostics, log_image_rendering_stats};
 use iced_wgpu::engine::ImageConfig;
 use std::sync::mpsc::{self, Receiver};
@@ -597,6 +603,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 WindowEvent::Focused(false) => {
                                     event_loop.set_control_flow(ControlFlow::Wait);
+                                    window_state::save_window_state_to_disk(state.program(), &window);
                                 }
                                 WindowEvent::Resized(size) => {
                                     if size.width > 0 && size.height > 0 {
@@ -604,16 +611,18 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         // Update app's window width for responsive layout
                                         // Divide by scale factor to get logical pixels (important for macOS Retina)
                                         let logical_width = size.width as f32 / window.scale_factor() as f32;
-                                        state.queue_message(Message::WindowResized(logical_width));
+                                        state.queue_message(Message::WindowResized(logical_width, size, window.is_maximized()));
                                     } else {
                                         // Skip resizing and avoid configuring the surface
                                         *resized = false;
                                     }
                                 }
-                                WindowEvent::Moved(_) => {
+                                WindowEvent::Moved(position) => {
+                                    state.queue_message(Message::PositionChanged(position, window.current_monitor()));
                                     *moved = true;
                                 }
                                 WindowEvent::CloseRequested => {
+                                    window_state::save_window_state_to_disk(state.program(), &window);
                                     #[cfg(target_os = "macos")]
                                     {
                                         // Clean up all active security-scoped access before shutdown
@@ -622,7 +631,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     event_loop.exit();
                                 }
                                 WindowEvent::CursorMoved { position, .. } => {
-                                    if state.program().is_fullscreen {
+                                    if state.program().window_state == WindowState::FullScreen {
                                         state.queue_message(Message::CursorOnTop(position.y < FULLSCREEN_TOP_ZONE_HEIGHT));
                                         state.queue_message(Message::CursorOnFooter(
                                             position.y > (window.inner_size().height as f64 - FULLSCREEN_BOTTOM_ZONE_HEIGHT)));
@@ -651,7 +660,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     #[cfg(target_os = "macos")] {
                                         // On macOS, window.fullscreen().is_some() doesn't work with set_simple_fullscreen()
                                         // so we need to use the application's internal state
-                                        let fullscreen = if state.program().is_fullscreen {
+                                        let fullscreen = if state.program().window_state == WindowState::FullScreen {
                                             state.queue_message(Message::ToggleFullScreen(false));
                                             None
                                         } else {
@@ -685,7 +694,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 } => {
                                     // Handle Escape key to exit fullscreen on macOS
                                     #[cfg(target_os = "macos")] {
-                                        if window.fullscreen().is_some() || state.program().is_fullscreen {
+                                        if window.fullscreen().is_some() || state.program().window_state == WindowState::FullScreen {
                                             state.queue_message(Message::ToggleFullScreen(false));
                                             use iced_winit::winit::platform::macos::WindowExtMacOS;
                                             window.set_simple_fullscreen(false);
@@ -759,8 +768,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             if *resized {
                                 let size = window.inner_size();
 
+                                // Cap to wgpu texture limits to prevent panic
+                                let capped_width = size.width.min(MAX_TEXTURE_SIZE);
+                                let capped_height = size.height.min(MAX_TEXTURE_SIZE);
+
                                 *viewport = Viewport::with_physical_size(
-                                    Size::new(size.width, size.height),
+                                    Size::new(capped_width, capped_height),
                                     window.scale_factor(),
                                 );
 
@@ -769,8 +782,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     &wgpu::SurfaceConfiguration {
                                         format: *format,
                                         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                                        width: size.width,
-                                        height: size.height,
+                                        width: capped_width,
+                                        height: capped_height,
                                         present_mode: *present_mode,
                                         alpha_mode: wgpu::CompositeAlphaMode::Auto,
                                         view_formats: vec![],
@@ -1064,6 +1077,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         }
                                     }
                                     Control::Exit => {
+                                        window_state::save_window_state_to_disk(state.program(), &window);
                                         #[cfg(target_os = "macos")]
                                         {
                                             // Clean up all active security-scoped access before shutdown
@@ -1112,27 +1126,72 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         }
                     );
 
+                    // On macOS, NSWindow.zoom() handles maximize instead of winit's set_maximized
+                    #[cfg(target_os = "macos")]
+                    let should_maximize = false;
+                    #[cfg(not(target_os = "macos"))]
+                    let should_maximize = CONFIG.window_state == WindowState::Maximized;
+                    // Cap window size to wgpu texture limits to prevent surface configuration panic
+                    let capped_width = CONFIG.window_width.min(MAX_TEXTURE_SIZE);
+                    let capped_height = CONFIG.window_height.min(MAX_TEXTURE_SIZE);
+
+                    // Platform-specific window creation:
+                    // Platform-specific window positioning:
+                    // - X11: with_position() works, set_outer_position() doesn't
+                    // - macOS: set_outer_position() works, with_position() causes issues
+                    // - Windows: set_outer_position() works
+                    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+                    let mut window_attrs = winit::window::WindowAttributes::default()
+                        .with_inner_size(winit::dpi::PhysicalSize::new(
+                            capped_width,
+                            capped_height
+                        ))
+                        .with_maximized(should_maximize)
+                        .with_title("ViewSkater")
+                        .with_resizable(true);
+
+                    let config_position = PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y);
+                    // Only use with_position on Linux (X11 needs it)
+                    #[cfg(target_os = "linux")]
+                    {
+                        window_attrs = window_attrs
+                            .with_maximized(CONFIG.window_state == WindowState::Maximized)
+                            .with_position(config_position);
+                    }
+
                     let window = Arc::new(
                         event_loop
-                        .create_window(
-                            winit::window::WindowAttributes::default()
-                                .with_inner_size(winit::dpi::PhysicalSize::new(
-                                    CONFIG.window_width,
-                                    CONFIG.window_height
-                                ))
-                                .with_title("ViewSkater")
-                                .with_resizable(true)
-                        )
+                        .create_window(window_attrs)
                         .expect("Create window"),
                     );
+
+                    // Set position after creation for macOS/Windows
+                    #[cfg(not(target_os = "linux"))] {
+                        window.set_outer_position(config_position);
+
+                        // Prevents window appearing outside of monitor
+                        #[cfg(target_os = "windows")] {
+                            let tuple = window_state::get_window_visible(config_position, window.outer_size(),
+                                 window.current_monitor());
+                            if !tuple.0 {
+                                window.set_outer_position(tuple.1);
+                            }
+                        }
+                    }
 
                     if let Some(icon) = load_icon() {
                         window.set_window_icon(Some(icon));
                     }
 
+                    #[cfg(target_os = "macos")]
+                    window_state::setup_macos_window(&window);
+
                     let physical_size = window.inner_size();
+                    // Cap to wgpu texture limits
+                    let capped_width = physical_size.width.min(MAX_TEXTURE_SIZE);
+                    let capped_height = physical_size.height.min(MAX_TEXTURE_SIZE);
                     let viewport = Viewport::with_physical_size(
-                        Size::new(physical_size.width, physical_size.height),
+                        Size::new(capped_width, capped_height),
                         window.scale_factor(),
                     );
                     let clipboard = Clipboard::connect(window.clone());
@@ -1211,8 +1270,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         &wgpu::SurfaceConfiguration {
                             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                             format,
-                            width: physical_size.width,
-                            height: physical_size.height,
+                            width: capped_width,
+                            height: capped_height,
                             present_mode,
                             alpha_mode: wgpu::CompositeAlphaMode::Auto,
                             view_formats: vec![],
@@ -1256,7 +1315,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     let (renderer_request_sender, renderer_request_receiver) = mpsc::channel();
 
                     // Pass a cloned Arc reference to DataViewer
-                    let shader_widget = DataViewer::new(
+                    let mut shader_widget = DataViewer::new(
                         Arc::clone(&device),
                         Arc::clone(&queue),
                         backend,
@@ -1266,14 +1325,37 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         std::mem::take(replay_config),
                     );
 
+                    shader_widget.last_monitor = window.current_monitor();
+
                     // Update state creation to lock renderer
                     let mut renderer_guard = renderer.lock().unwrap();
-                    let state = program::State::new(
+                    let mut state = program::State::new(
                         shader_widget,
                         viewport.logical_size(),
                         &mut *renderer_guard,
                         &mut debug_tool,
                     );
+
+                    match CONFIG.window_state {
+                        WindowState::Maximized => {
+                            // On macOS, setup_macos_window() calls NSWindow.zoom() instead —
+                            // set_maximized() doesn't establish _savedFrame for unzoom
+                            #[cfg(not(target_os = "macos"))]
+                            window.set_maximized(true);
+                        },
+                        WindowState::FullScreen => {
+                            let fullscreen = Some(winit::window::Fullscreen::Borderless(None));
+                            state.queue_message(Message::ToggleFullScreen(true));
+                            #[cfg(target_os = "macos")] {
+                                use iced_winit::winit::platform::macos::WindowExtMacOS;
+                                window.set_simple_fullscreen(fullscreen.is_some());
+                            }
+                            #[cfg(not(target_os = "macos"))] {
+                                window.set_fullscreen(fullscreen);
+                            }
+                        },
+                        _ => {},
+                    }
 
                     // Set control flow
                     event_loop.set_control_flow(ControlFlow::Poll);

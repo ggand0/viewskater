@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use crate::settings::UserSettings;
+use crate::settings::{UserSettings, WindowState};
 
 // Default values for configuration
 // These serve as fallback values and can be used for "reset to defaults" functionality
@@ -22,6 +22,9 @@ pub struct Config {
     pub window_height: u32,                 // Default window height
     pub atlas_size: u32,                    // Size of the square texture atlas used in iced_wgpu (affects slider performance)
     pub double_click_threshold_ms: u16,     // Double-click detection threshold in milliseconds
+    pub window_position_x: i32,
+    pub window_position_y: i32,
+    pub window_state: WindowState,
 }
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| {
@@ -36,5 +39,8 @@ pub static CONFIG: Lazy<Config> = Lazy::new(|| {
         window_height: settings.window_height,
         atlas_size: settings.atlas_size,
         double_click_threshold_ms: settings.double_click_threshold_ms,
+        window_position_x: settings.window_position_x,
+        window_position_y: settings.window_position_y,
+        window_state: settings.window_state,
     }
 });
