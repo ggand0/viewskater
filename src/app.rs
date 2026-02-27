@@ -20,6 +20,7 @@ mod macos {
     pub use iced_custom as iced;
 }
 
+use iced_winit::winit::dpi::{ PhysicalPosition, PhysicalSize };
 #[cfg(target_os = "linux")]
 use other_os::*;
 
@@ -53,6 +54,7 @@ use crate::navigation_keyboard::{move_right_all, move_left_all};
 use crate::cache::img_cache::CacheStrategy;
 use crate::menu::PaneLayout;
 use crate::pane::{self, Pane};
+use crate::settings::WindowState;
 use crate::ui;
 use crate::widgets;
 use crate::loading_status;
@@ -109,7 +111,7 @@ pub struct DataViewer {
     pub replay_keep_alive_pending: bool,  // Track if a keep-alive is in flight to prevent flooding
     pub spinner_tick_task: Option<Task<Message>>,
     pub spinner_tick_pending: bool,  // Track if a spinner tick is in flight
-    pub is_fullscreen: bool,
+    pub window_state: WindowState,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
     pub cursor_on_footer: bool,                         // Flag to show footer when fullscreen
@@ -125,6 +127,12 @@ pub struct DataViewer {
     pub coco_disable_simplification: bool,              // COCO: Disable polygon simplification for RLE masks
     #[cfg(feature = "coco")]
     pub coco_mask_render_mode: crate::settings::CocoMaskRenderMode,  // COCO: Mask rendering mode (Polygon or Pixel)
+    pub window_size: PhysicalSize<u32>,
+    pub maximized_size: Option<PhysicalSize<u32>>,  // Tracks size when maximized (for X11 un-maximize detection)
+    pub window_position: PhysicalPosition<i32>,
+    pub last_windowed_position: PhysicalPosition<i32>,  // Tracks position when in windowed mode
+    pub position_before_transition: PhysicalPosition<i32>,  // Backup for Windows maximize fix
+    pub last_monitor: Option<iced_winit::winit::monitor::MonitorHandle>, // Track position when not in windowed mode with multiple monitors
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -209,7 +217,7 @@ impl DataViewer {
             replay_keep_alive_pending: false,
             spinner_tick_task: None,
             spinner_tick_pending: false,
-            is_fullscreen: false,
+            window_state: crate::config::CONFIG.window_state,
             cursor_on_top: false,
             cursor_on_menu: false,
             cursor_on_footer: false,
@@ -225,6 +233,13 @@ impl DataViewer {
             coco_disable_simplification: settings.coco_disable_simplification,
             #[cfg(feature = "coco")]
             coco_mask_render_mode: settings.coco_mask_render_mode,
+            window_position: PhysicalPosition { x: crate::config::CONFIG.window_position_x, y: crate::config::CONFIG.window_position_y },
+            last_windowed_position: PhysicalPosition { x: crate::config::CONFIG.window_position_x, y: crate::config::CONFIG.window_position_y },
+            position_before_transition: PhysicalPosition { x: crate::config::CONFIG.window_position_x, y: crate::config::CONFIG.window_position_y },
+            window_size: PhysicalSize { width: settings.window_width,
+                height: settings.window_height },
+            maximized_size: None,
+            last_monitor: None,
         }
     }
 

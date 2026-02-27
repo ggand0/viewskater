@@ -82,7 +82,7 @@ pub struct UserSettings {
     #[serde(default = "default_double_click_threshold_ms")]
     pub double_click_threshold_ms: u16,
 
-    /// Max size for compressed file cache (bytes)
+    /// Max size for compressed file cache (MB)
     #[serde(default = "default_archive_cache_size")]
     pub archive_cache_size: u64,
 
@@ -107,6 +107,14 @@ pub struct UserSettings {
     /// Location where loading spinner is displayed
     #[serde(default)]
     pub spinner_location: SpinnerLocation,
+
+    // Window position and state
+    #[serde(default)]
+    pub window_position_x: i32,
+    #[serde(default)]
+    pub window_position_y: i32,
+    #[serde(default)]
+    pub window_state: WindowState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,6 +147,15 @@ impl Default for SpinnerLocation {
         Self::Footer
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum WindowState {
+    #[default]
+    Window,
+    Maximized,
+    FullScreen,
+}
+
 
 fn default_show_footer() -> bool {
     true
@@ -228,6 +245,9 @@ impl Default for UserSettings {
             coco_mask_render_mode: CocoMaskRenderMode::default(),
             use_binary_size: false,  // Default to decimal (GNOME/macOS/Windows style)
             spinner_location: SpinnerLocation::default(),
+            window_position_x: 0,
+            window_position_y: 0,
+            window_state: WindowState::Window,
         }
     }
 }
@@ -370,6 +390,13 @@ impl UserSettings {
             SpinnerLocation::None => "None",
         }), &mut missing_keys);
 
+        result = Self::replace_yaml_value_or_track(&result, "window_position_x", &self.window_position_x.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "window_position_y", &self.window_position_y.to_string(), &mut missing_keys);
+        result = Self::replace_yaml_value_or_track(&result, "window_state", &format!("\"{}\"", match self.window_state {
+            WindowState::Window => "Window",
+            WindowState::Maximized => "Maximized",
+            WindowState::FullScreen => "FullScreen",
+        }), &mut missing_keys);
         // Append missing keys with comments
         if !missing_keys.is_empty() {
             // Check if we need to add the advanced settings header

@@ -772,10 +772,6 @@ impl Pane {
     }
 
     pub fn build_ui_container(&self, use_slider_image_for_render: bool, is_horizontal_split: bool, double_click_threshold_ms: u16, use_nearest_filter: bool) -> iced_winit::core::Element<'_, Message, WinitTheme, Renderer> {
-        use log::debug;
-
-        debug!("build_ui_container: use_nearest_filter = {}", use_nearest_filter);
-
         if self.dir_loaded {
             if use_slider_image_for_render && self.slider_image.is_some() {
                 // Use regular Image widget during slider movement (much faster)

@@ -12,8 +12,8 @@ use iced_runtime::clipboard;
 
 use crate::app::{DataViewer, Message};
 use crate::cache::img_cache::{CacheStrategy, CachedData, LoadOperation};
-use crate::settings::UserSettings;
-use crate::file_io;
+use crate::settings::{UserSettings, WindowState};
+use crate::{file_io, window_state::get_window_visible};
 use crate::loading_handler;
 use crate::navigation_slider;
 use crate::navigation_keyboard::{move_left_all, move_right_all};
@@ -69,6 +69,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
             }
         }
         Message::Quit => {
+            let _ = handle_save_window_state(app);
             std::process::exit(0);
         }
         Message::ReplayKeepAlive => {
@@ -87,8 +88,9 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         }
 
         // Settings messages
-        Message::SaveSettings | Message::ClearSettingsStatus | Message::SettingsTabSelected(_) |
-        Message::AdvancedSettingChanged(_, _) | Message::ResetAdvancedSettings => {
+        Message::SaveWindowState | Message::SaveSettings | Message::ClearSettingsStatus |
+        Message::SettingsTabSelected(_) | Message::AdvancedSettingChanged(_, _) |
+        Message::ResetAdvancedSettings => {
             handle_settings_messages(app, message)
         }
 
@@ -117,7 +119,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
-        Message::WindowResized(_) => {
+        Message::WindowResized(_, _, _) | Message::PositionChanged(_, _)=> {
             handle_toggle_messages(app, message)
         }
 
@@ -221,6 +223,7 @@ pub fn handle_ui_messages(app: &mut DataViewer, message: Message) -> Task<Messag
 /// Routes settings-related messages
 pub fn handle_settings_messages(app: &mut DataViewer, message: Message) -> Task<Message> {
     match message {
+        Message::SaveWindowState => handle_save_window_state(app),
         Message::SaveSettings => handle_save_settings(app),
         Message::ClearSettingsStatus => {
             app.settings.clear_save_status();
@@ -677,7 +680,11 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             Task::none()
         }
         Message::ToggleFullScreen(enabled) => {
-            app.is_fullscreen = enabled;
+            if enabled {
+                app.window_state = WindowState::FullScreen;
+            } else {
+                app.window_state = WindowState::Window;
+            }
             Task::none()
         }
         Message::ToggleFpsDisplay(value) => {
@@ -715,8 +722,83 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.update_compression_strategy(strategy);
             Task::none()
         }
-        Message::WindowResized(width) => {
+        Message::WindowResized(width, size, is_maximized) => {
             app.window_width = width;
+            app.window_size = size;
+
+            // Track the largest size seen while maximized (used by Linux X11 un-maximize workaround)
+            if is_maximized {
+                let should_update = app.maximized_size.map_or(true, |max_size| {
+                    size.width > max_size.width || size.height > max_size.height
+                });
+                if should_update {
+                    app.maximized_size = Some(size);
+                }
+            }
+
+            // macOS: use is_maximized (winit's isZoomed() wrapper), same as other platforms.
+            // isZoomed() may be unreliable mid-animation, but save_window_state_to_disk
+            // queries it authoritatively post-animation as a safety net.
+            #[cfg(target_os = "macos")]
+            match app.window_state {
+                WindowState::Window => {
+                    if is_maximized {
+                        app.window_state = WindowState::Maximized;
+                        app.last_windowed_position = app.position_before_transition;
+                    }
+                },
+                WindowState::Maximized => {
+                    if !is_maximized {
+                        app.window_state = WindowState::Window;
+                    }
+                },
+                _ => {},
+            }
+
+            // Windows/Linux: use winit's is_maximized() (reliable on these platforms)
+            #[cfg(not(target_os = "macos"))]
+            match app.window_state {
+                WindowState::Window => {
+                    if is_maximized {
+                        app.window_state = WindowState::Maximized;
+                        // Windows workaround: PositionChanged(0,0) fires before this event,
+                        // corrupting last_windowed_position. Restore from backup.
+                        app.last_windowed_position = app.position_before_transition;
+                    }
+                },
+                WindowState::Maximized => {
+                    if !is_maximized {
+                        // Primary detection: is_maximized() returned false (works on Windows/macOS)
+                        app.window_state = WindowState::Window;
+                    } else {
+                        // X11 workaround: is_maximized() returns stale true during un-maximize transition
+                        // On X11, maximized windows cannot be resized - any size change means un-maximize
+                        #[cfg(target_os = "linux")]
+                        {
+                            let size_changed = app.maximized_size.map_or(false, |max_size| size != max_size);
+                            if size_changed {
+                                app.window_state = WindowState::Window;
+                                app.maximized_size = None;
+                            }
+                        }
+                    }
+                },
+                _ => {},
+            }
+
+            Task::none()
+        }
+        Message::PositionChanged(position, monitor) => {
+            app.window_position = position;
+            let is_same_monitor = app.last_monitor == monitor;
+            // Only track last_windowed_position when in windowed state or moving across different monitors
+            // Save previous value first (Windows workaround: PositionChanged fires before WindowResized
+            // during maximize, so we need to be able to restore if transition is detected)
+            if app.window_state == WindowState::Window || !is_same_monitor {
+                app.position_before_transition = app.last_windowed_position;
+                app.last_windowed_position = position;
+                app.last_monitor = monitor;
+            }
             Task::none()
         }
         _ => Task::none()
@@ -944,38 +1026,6 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         }
     };
 
-    let window_width = match parse_value("window_width", 1200) {
-        Ok(v) if (400..=10000).contains(&v) => v as u32,
-        Ok(_) => {
-            app.settings.set_save_status(Some("Error: Window width must be between 400 and 10000".to_string()));
-            return Task::perform(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            }, |_| Message::ClearSettingsStatus);
-        }
-        Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing window_width: {}", e)));
-            return Task::perform(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            }, |_| Message::ClearSettingsStatus);
-        }
-    };
-
-    let window_height = match parse_value("window_height", 800) {
-        Ok(v) if (300..=10000).contains(&v) => v as u32,
-        Ok(_) => {
-            app.settings.set_save_status(Some("Error: Window height must be between 300 and 10000".to_string()));
-            return Task::perform(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            }, |_| Message::ClearSettingsStatus);
-        }
-        Err(e) => {
-            app.settings.set_save_status(Some(format!("Error parsing window_height: {}", e)));
-            return Task::perform(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            }, |_| Message::ClearSettingsStatus);
-        }
-    };
-
     let atlas_size = match parse_value("atlas_size", 2048) {
         Ok(v) if (256..=8192).contains(&v) && v.is_power_of_two() => v as u32,
         Ok(_) => {
@@ -1061,8 +1111,8 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         cache_size,
         max_loading_queue_size,
         max_being_loaded_queue_size,
-        window_width,
-        window_height,
+        window_width: app.window_size.width,
+        window_height: app.window_size.height,
         atlas_size,
         double_click_threshold_ms,
         archive_cache_size,
@@ -1077,12 +1127,13 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
         coco_mask_render_mode: crate::settings::CocoMaskRenderMode::default(),
         use_binary_size: app.use_binary_size,
         spinner_location: app.spinner_location,
+        window_state: app.window_state,
+        window_position_x: app.window_position.x,
+        window_position_y: app.window_position.y,
     };
 
     let old_settings = UserSettings::load(None);
-    let window_settings_changed = window_width != old_settings.window_width ||
-                                  window_height != old_settings.window_height ||
-                                  atlas_size != old_settings.atlas_size;
+    let window_settings_changed = atlas_size != old_settings.atlas_size;
 
     match settings.save() {
         Ok(_) => {
@@ -1166,6 +1217,28 @@ fn handle_save_settings(app: &mut DataViewer) -> Task<Message> {
             }, |_| Message::ClearSettingsStatus)
         }
     }
+}
+
+fn handle_save_window_state(app: &mut DataViewer) -> Task<Message> {
+    let mut old_settings = UserSettings::load(None);
+    let tuple = get_window_visible(app.last_windowed_position, app.window_size,
+        app.last_monitor.clone());
+    // Prevents the saved position from being outside of the monitor
+    if !tuple.0 {
+        app.last_windowed_position = tuple.1;
+    }
+    // Use last_windowed_position to avoid saving maximized position (0,0) on Windows
+    old_settings.window_position_x = app.last_windowed_position.x;
+    old_settings.window_position_y = app.last_windowed_position.y;
+    if app.window_state == WindowState::Window {
+        old_settings.window_width = app.window_size.width;
+        old_settings.window_height = app.window_size.height;
+    }
+    old_settings.window_state = app.window_state;
+    if let Err(e) = old_settings.save() {
+        error!("Failed to save window state: {e}");
+    }
+    Task::none()
 }
 
 fn handle_reset_advanced_settings(app: &mut DataViewer) {
