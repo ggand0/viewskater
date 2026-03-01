@@ -109,8 +109,6 @@ pub struct DataViewer {
     pub replay_controller: Option<crate::replay::ReplayController>,
     pub replay_keep_alive_task: Option<Task<Message>>,
     pub replay_keep_alive_pending: bool,  // Track if a keep-alive is in flight to prevent flooding
-    pub spinner_tick_task: Option<Task<Message>>,
-    pub spinner_tick_pending: bool,  // Track if a spinner tick is in flight
     pub window_state: WindowState,
     pub cursor_on_top: bool,
     pub cursor_on_menu: bool,                           // Flag to show menu when fullscreen
@@ -215,8 +213,6 @@ impl DataViewer {
             replay_controller: replay_config.map(crate::replay::ReplayController::new),
             replay_keep_alive_task: None,
             replay_keep_alive_pending: false,
-            spinner_tick_task: None,
-            spinner_tick_pending: false,
             window_state: crate::config::CONFIG.window_state,
             cursor_on_top: false,
             cursor_on_menu: false,
@@ -305,19 +301,7 @@ impl DataViewer {
             current_index,
         );
 
-        // Start spinner tick immediately - don't wait for ImagesLoaded
-        // The spinner should animate as soon as loading begins
-        debug!("SPINNER: Starting spinner tick immediately with load_task");
-        self.spinner_tick_pending = true;
-        let spinner_task = Task::perform(
-            async {
-                tokio::task::spawn_blocking(|| {
-                    std::thread::sleep(std::time::Duration::from_millis(16));
-                }).await.ok();
-            },
-            |_| Message::SpinnerTick
-        );
-        Task::batch([load_task, spinner_task])
+        load_task
     }
 
     pub fn reset_state(&mut self, pane_index: isize) {
@@ -690,13 +674,6 @@ impl iced_winit::runtime::Program for DataViewer {
         // Check if we have a keep-alive task to return (for replay mode timing)
         let keep_alive_task = self.replay_keep_alive_task.take();
 
-        // Check if we have a spinner tick task to return (from SpinnerTick handler)
-        let spinner_task = self.spinner_tick_task.take();
-        if spinner_task.is_some() {
-            debug!("SPINNER: update() found stored spinner_tick_task");
-            self.spinner_tick_pending = true;
-        }
-
         // Return the task if it's not skate mode
         // Skate mode overrides normal task handling for continuous navigation
         if self.skate_right {
@@ -742,16 +719,12 @@ impl iced_winit::runtime::Program for DataViewer {
             } else {
                 nav_task
             }
-        } else if keep_alive_task.is_some() || spinner_task.is_some() {
-            // Batch keep-alive and spinner tasks together if present
+        } else if keep_alive_task.is_some() {
+            // Batch keep-alive task if present (for replay mode timing)
             let mut batch_tasks = cli_tasks;
             if let Some(keep_alive) = keep_alive_task {
                 self.replay_keep_alive_pending = true;
                 batch_tasks.push(keep_alive);
-            }
-            if let Some(spinner) = spinner_task {
-                debug!("SPINNER: update() returning spinner task (batched)");
-                batch_tasks.push(spinner);
             }
             if batch_tasks.is_empty() {
                 task

@@ -43,31 +43,6 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
             debug!("TimerTick received");
             Task::none()
         }
-        Message::SpinnerTick => {
-            // Reset pending flag since we received the tick
-            app.spinner_tick_pending = false;
-
-            // Check if any pane is still loading - if so, schedule another tick
-            // The Circular Widget now handles its own animation via on_event(RedrawRequested)
-            // We just need to keep sending SpinnerTicks to trigger RedrawRequested events
-            let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
-            if is_loading {
-                // Schedule another tick in 16ms (~60fps) using blocking sleep
-                // Store in app struct so it gets returned from update()
-                app.spinner_tick_task = Some(Task::perform(
-                    async {
-                        tokio::task::spawn_blocking(|| {
-                            std::thread::sleep(std::time::Duration::from_millis(16));
-                        }).await.ok();
-                    },
-                    |_| Message::SpinnerTick
-                ));
-                Task::none()
-            } else {
-                debug!("SPINNER: SpinnerTick stopped - loading complete");
-                Task::none()
-            }
-        }
         Message::Quit => {
             let _ = handle_save_window_state(app);
             std::process::exit(0);
@@ -411,20 +386,6 @@ pub fn handle_image_loading_messages(app: &mut DataViewer, message: Message) -> 
                 Err(err) => {
                     debug!("Image load failed: {:?}", err);
                 }
-            }
-            // Check if loading is still ongoing - if so, start spinner tick loop
-            let is_loading = app.panes.iter().any(|p| p.loading_started_at.is_some());
-            debug!("SPINNER: ImagesLoaded handler end - is_loading={}, pending={}", is_loading, app.spinner_tick_pending);
-            if is_loading && !app.spinner_tick_pending {
-                debug!("SPINNER: ImagesLoaded - starting spinner tick");
-                app.spinner_tick_task = Some(Task::perform(
-                    async {
-                        tokio::task::spawn_blocking(|| {
-                            std::thread::sleep(std::time::Duration::from_millis(16));
-                        }).await.ok();
-                    },
-                    |_| Message::SpinnerTick
-                ));
             }
             Task::none()
         }

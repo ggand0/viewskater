@@ -23,7 +23,6 @@ mod coco;
 mod settings_modal;
 mod replay;
 mod exif_utils;
-mod render;
 mod window_state;
 
 #[cfg(target_os = "macos")]
@@ -509,6 +508,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             queue: Arc<wgpu::Queue>,
             surface: wgpu::Surface<'static>,
             format: wgpu::TextureFormat,
+            present_mode: wgpu::PresentMode,
             engine: Arc<Mutex<Engine>>,
             renderer: std::rc::Rc<Mutex<Renderer>>,
             state: program::State<DataViewer>,
@@ -564,6 +564,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     queue,
                     surface,
                     format,
+                    present_mode,
                     engine,
                     renderer,
                     state,
@@ -710,56 +711,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                             *redraw = true;
 
-                            // Map window event to iced event
+                            // Map window event to iced event and queue it.
+                            // Events are batched and processed in a single state.update()
+                            // call before rendering, rather than per-event. This prevents
+                            // 60+ individual view()/layout() rebuilds between renders when
+                            // mouse events pile up during a 4K image decode (60ms render).
+                            // Without batching, UserEvents (async slider image loads) are
+                            // delayed behind the wall of per-event WindowEvent processing.
                             if let Some(event) = iced_winit::conversion::window_event(
                                 window_event,
                                 window.scale_factor(),
                                 *modifiers,
                             ) {
-                                {
-                                    state.queue_message(Message::Event(event.clone()));
-                                }
+                                state.queue_message(Message::Event(event.clone()));
                                 state.queue_event(event);
                                 *redraw = true;
-                            }
-
-                            // If there are events pending
-                            if !state.is_queue_empty() {
-                                // We update iced
-                                //let update_start = Instant::now();
-                                let (_, task) = state.update(
-                                    viewport.logical_size(),
-                                    cursor_position
-                                        .map(|p| {
-                                            conversion::cursor_position(
-                                                p,
-                                                viewport.scale_factor(),
-                                            )
-                                        })
-                                        .map(mouse::Cursor::Available)
-                                        .unwrap_or(mouse::Cursor::Unavailable),
-                                    &mut *renderer.lock().unwrap(),
-                                    custom_theme,
-                                    &renderer::Style {
-                                        text_color: Color::WHITE,
-                                    },
-                                    clipboard,
-                                    debug_tool,
-                                );
-                                //let update_time = update_start.elapsed();
-                                //STATE_UPDATE_STATS.lock().unwrap().add_measurement(update_time);
-
-                                let _ = 'runtime_call: {
-                                    let Some(t) = task else {
-                                        break 'runtime_call 1;
-                                    };
-                                    let Some(stream) = into_stream(t) else {
-                                        break 'runtime_call 1;
-                                    };
-
-                                    runtime.run(stream);
-                                    0
-                                };
                             }
 
                             // Handle resizing
@@ -782,7 +748,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                                         width: capped_width,
                                         height: capped_height,
-                                        present_mode: wgpu::PresentMode::AutoVsync,
+                                        present_mode: *present_mode,
                                         alpha_mode: wgpu::CompositeAlphaMode::Auto,
                                         view_formats: vec![],
                                         desired_maximum_frame_latency: 2,
@@ -826,6 +792,45 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                         debug!("Primitive storage cleared successfully");
                                     },
                                 }
+                            }
+
+                            // Process events/messages, or refresh spinner animation during loading.
+                            // The spinner widget computes its angle from Instant::now() in draw(),
+                            // so state.update() must run each frame to call view()/draw() and
+                            // produce updated render output.
+                            if !state.is_queue_empty() || state.program().is_any_pane_loading() {
+                                // We update iced
+                                let (_, task) = state.update(
+                                    viewport.logical_size(),
+                                    cursor_position
+                                        .map(|p| {
+                                            conversion::cursor_position(
+                                                p,
+                                                viewport.scale_factor(),
+                                            )
+                                        })
+                                        .map(mouse::Cursor::Available)
+                                        .unwrap_or(mouse::Cursor::Unavailable),
+                                    &mut *renderer.lock().unwrap(),
+                                    custom_theme,
+                                    &renderer::Style {
+                                        text_color: Color::WHITE,
+                                    },
+                                    clipboard,
+                                    debug_tool,
+                                );
+
+                                let _ = 'runtime_call: {
+                                    let Some(t) = task else {
+                                        break 'runtime_call 1;
+                                    };
+                                    let Some(stream) = into_stream(t) else {
+                                        break 'runtime_call 1;
+                                    };
+
+                                    runtime.run(stream);
+                                    0
+                                };
                             }
 
                             // Render if needed
@@ -910,9 +915,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             ),
                                         );
 
-                                        // TODO: better way to track mouse on menu
-                                        state.queue_message(Message::CursorOnMenu(
-                                            !state.program().cursor_on_footer && state.mouse_interaction() == mouse::Interaction::Pointer));
+                                        // Only track menu cursor in fullscreen, and only when value changes
+                                        if state.program().window_state == WindowState::FullScreen {
+                                            let new_val = !state.program().cursor_on_footer
+                                                && state.mouse_interaction() == mouse::Interaction::Pointer;
+                                            if new_val != state.program().cursor_on_menu {
+                                                state.queue_message(Message::CursorOnMenu(new_val));
+                                            }
+                                        }
 
                                         // Continue animation loop if spinner is active
                                         if state.program().is_any_pane_loading() {
@@ -1016,42 +1026,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                                 Action::Output(message) => {
                                     state.queue_message(message);
-
-                                    // Process immediately
-                                    if !state.is_queue_empty() {
-                                        let (_, task) = state.update(
-                                            viewport.logical_size(),
-                                            cursor_position
-                                                .map(|p| conversion::cursor_position(p, viewport.scale_factor()))
-                                                .map(mouse::Cursor::Available)
-                                                .unwrap_or(mouse::Cursor::Unavailable),
-                                            &mut *renderer.lock().unwrap(),
-                                            custom_theme,
-                                            &renderer::Style { text_color: Color::WHITE },
-                                            clipboard,
-                                            debug_tool,
-                                        );
-
-                                        if let Some(t) = task {
-                                            if let Some(stream) = into_stream(t) {
-                                                runtime.run(stream);
-                                            }
-                                        }
-                                    }
                                 }
                                 _ => {}
                             }
                             *redraw = true;
-
-                            // Render directly for spinner animation (SpinnerTick is a Message,
-                            // not an Event, so widgets won't redraw without this).
-                            if state.program().is_any_pane_loading() {
-                                if render::render_spinner_frame(
-                                    surface, device, queue, engine, renderer, viewport, debug_tool,
-                                ) {
-                                    *redraw = false;
-                                }
-                            }
                         }
                         Event::EventLoopAwakened(winit::event::Event::AboutToWait) => {
                             // Process any pending control messages
@@ -1203,7 +1181,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         .create_surface(window.clone())
                         .expect("Create window surface");
 
-                    let (format, adapter, device, queue) =
+                    let (format, adapter, device, queue, present_mode) =
                         futures::futures::executor::block_on(async {
                             let adapter =
                                 wgpu::util::initialize_adapter_from_env_or_default(
@@ -1214,6 +1192,25 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .expect("Create adapter");
 
                                 let capabilities = surface.get_capabilities(&adapter);
+
+                                info!("GPU: {:?}", adapter.get_info().name);
+                                info!("Available present modes: {:?}", capabilities.present_modes);
+
+                                // Select non-blocking present mode to prevent frame.present()
+                                // from stalling the event loop on NVIDIA GPUs (strict FIFO queue).
+                                // Mailbox: non-blocking, replaces pending frame with latest (ideal)
+                                // Immediate: non-blocking, no VSync (fallback)
+                                // AutoNoVsync: auto-selects Mailbox or Immediate
+                                let present_mode = if capabilities.present_modes.contains(&wgpu::PresentMode::Mailbox) {
+                                    info!("Selected Mailbox present mode (non-blocking)");
+                                    wgpu::PresentMode::Mailbox
+                                } else if capabilities.present_modes.contains(&wgpu::PresentMode::Immediate) {
+                                    info!("Mailbox not available, selected Immediate present mode");
+                                    wgpu::PresentMode::Immediate
+                                } else {
+                                    info!("Selected AutoNoVsync present mode (fallback)");
+                                    wgpu::PresentMode::AutoNoVsync
+                                };
 
                                 let (device, queue) = adapter
                                     .request_device(
@@ -1240,6 +1237,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                     adapter,
                                     device,
                                     queue,
+                                    present_mode,
                                 )
                         });
 
@@ -1250,7 +1248,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             format,
                             width: capped_width,
                             height: capped_height,
-                            present_mode: wgpu::PresentMode::AutoVsync,
+                            present_mode,
                             alpha_mode: wgpu::CompositeAlphaMode::Auto,
                             view_formats: vec![],
                             desired_maximum_frame_latency: 2,
@@ -1377,6 +1375,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         queue,
                         surface,
                         format,
+                        present_mode,
                         engine,
                         renderer: renderer.clone(),
                         state,
