@@ -794,8 +794,11 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 }
                             }
 
-                            // If there are events pending
-                            if !state.is_queue_empty() {
+                            // Process events/messages, or refresh spinner animation during loading.
+                            // The spinner widget computes its angle from Instant::now() in draw(),
+                            // so state.update() must run each frame to call view()/draw() and
+                            // produce updated render output.
+                            if !state.is_queue_empty() || state.program().is_any_pane_loading() {
                                 // We update iced
                                 let (_, task) = state.update(
                                     viewport.logical_size(),
