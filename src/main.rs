@@ -912,9 +912,14 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                             ),
                                         );
 
-                                        // TODO: better way to track mouse on menu
-                                        state.queue_message(Message::CursorOnMenu(
-                                            !state.program().cursor_on_footer && state.mouse_interaction() == mouse::Interaction::Pointer));
+                                        // Only track menu cursor in fullscreen, and only when value changes
+                                        if state.program().window_state == WindowState::FullScreen {
+                                            let new_val = !state.program().cursor_on_footer
+                                                && state.mouse_interaction() == mouse::Interaction::Pointer;
+                                            if new_val != state.program().cursor_on_menu {
+                                                state.queue_message(Message::CursorOnMenu(new_val));
+                                            }
+                                        }
 
                                         // Continue animation loop if spinner is active
                                         if state.program().is_any_pane_loading() {
