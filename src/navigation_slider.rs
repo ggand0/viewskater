@@ -549,7 +549,6 @@ pub fn update_pos(
         return Task::none();
     }
 
-
     if use_async {
         // Collect tasks for all applicable panes
         let mut tasks = Vec::new();
