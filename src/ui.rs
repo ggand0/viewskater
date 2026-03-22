@@ -64,6 +64,10 @@ fn folder_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer>
     icon('\u{E805}')
 }
 
+fn image_copy_icon<'a, Message>() -> Element<'a, Message, WinitTheme, Renderer> {
+    icon('\u{E806}')
+}
+
 
 /// Helper struct to pass ML mark badge and COCO badge into footer function
 pub struct FooterOptions {
@@ -421,8 +425,29 @@ pub fn get_footer(
             tooltip::Position::Top,
         );
 
+        let copy_image_button = tooltip(
+            button(image_copy_icon())
+                .padding(iced::padding::all(2))
+                .style(|_theme: &WinitTheme, _status: button::Status| button_style(_theme, _status, "labeled"))
+                .on_press(Message::CopyImage(pane_index)),
+            container(text("Copy image").size(14))
+                .padding(5)
+                .style(|theme: &WinitTheme| container::Style {
+                    text_color: Some(Color::from([1.0, 1.0, 1.0])),
+                    background: Some(theme.extended_palette().background.strong.color.into()),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                    ..container::Style::default()
+                }),
+            tooltip::Position::Top,
+        );
+
         row![
             spinner_element,
+            copy_image_button,
             copy_filepath_button,
             copy_filename_button,
             mark_badge,
