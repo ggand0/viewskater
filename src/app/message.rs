@@ -75,6 +75,7 @@ pub enum Message {
     PaneSelected(usize, bool),
     CopyFilename(usize),
     CopyFilePath(usize),
+    CopyImage(usize),
     #[allow(dead_code)]
     BackgroundColorChanged(Color),
     #[allow(dead_code)]

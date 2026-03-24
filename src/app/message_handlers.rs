@@ -72,7 +72,7 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         // File operation messages
         Message::OpenFolder(_) | Message::OpenFile(_) | Message::FileDropped(_, _) |
         Message::Close | Message::FolderOpened(_, _) | Message::DirectoryEnumerated(_, _) |
-        Message::CopyFilename(_) | Message::CopyFilePath(_) => {
+        Message::CopyFilename(_) | Message::CopyFilePath(_) | Message::CopyImage(_) => {
             handle_file_messages(app, message)
         }
 
@@ -301,6 +301,54 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
                 let full_path = format!("{}/{}", dir_path, img_path);
                 debug!("Copying full path to clipboard: {}", full_path);
                 return clipboard::write(full_path);
+            }
+            Task::none()
+        }
+        Message::CopyImage(pane_index) => {
+            let cache = &app.panes[pane_index].img_cache;
+            // Try CPU cache first, fall back to reading from disk for GPU-cached images
+            let bytes = if let Ok(cached_data) = cache.get_current_image() {
+                cached_data.as_vec().ok()
+            } else {
+                None
+            };
+            let bytes = bytes.or_else(|| {
+                let path_source = &cache.image_paths[cache.current_index];
+                match path_source {
+                    crate::cache::img_cache::PathSource::Filesystem(path) => {
+                        std::fs::read(path).ok()
+                    }
+                    _ => {
+                        error!("Cannot copy image: archive images require CPU cache");
+                        None
+                    }
+                }
+            });
+            if let Some(bytes) = bytes {
+                std::thread::spawn(move || {
+                    match image::load_from_memory(&bytes) {
+                        Ok(img) => {
+                            let rgba = img.to_rgba8();
+                            let (w, h) = rgba.dimensions();
+                            let img_data = arboard::ImageData {
+                                width: w as usize,
+                                height: h as usize,
+                                bytes: std::borrow::Cow::Owned(rgba.into_raw()),
+                            };
+                            match arboard::Clipboard::new() {
+                                Ok(mut clip) => {
+                                    if let Err(e) = clip.set_image(img_data) {
+                                        error!("Failed to copy image to clipboard: {}", e);
+                                    } else {
+                                        debug!("Image copied to clipboard ({}x{})", w, h);
+                                    }
+                                }
+                                Err(e) => error!("Failed to open clipboard: {}", e),
+                            }
+                        }
+                        Err(e) => error!("Failed to decode image for clipboard: {}", e),
+                    }
+                });
             }
             Task::none()
         }
