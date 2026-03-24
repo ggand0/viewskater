@@ -473,23 +473,21 @@ where
             }
 
             #[cfg(target_os = "linux")]
-            Event::Window(iced::window::Event::FileDropped(path, _)) => {
+            Event::Window(iced::window::Event::FileDropped(path, position)) => {
                 let mut children = layout.children();
                 let first_layout = children.next().expect("Missing first layout");
                 let _divider_layout = children.next().expect("Missing divider layout");
                 let second_layout = children.next().expect("Missing second layout");
 
-                debug!("FileDropped Cursor position: {:?}", cursor.position().unwrap_or_default());
-
-                // Check which pane the cursor is over and use the correct index
-                let cursor_pos = cursor.position().unwrap_or_default();
+                let drop_position = Point::new(position.x as f32, position.y as f32);
+                debug!("FileDropped position: {:?}", drop_position);
 
                 // Check first pane (index 0)
-                if first_layout.bounds().contains(cursor_pos) {
+                if first_layout.bounds().contains(drop_position) {
                     shell.publish((self.on_drop)(0, path[0].to_string_lossy().to_string()));
                 }
                 // Check second pane (index 1)
-                else if second_layout.bounds().contains(cursor_pos) {
+                else if second_layout.bounds().contains(drop_position) {
                     shell.publish((self.on_drop)(1, path[0].to_string_lossy().to_string()));
                 }
             }
