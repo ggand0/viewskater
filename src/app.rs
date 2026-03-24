@@ -351,7 +351,9 @@ impl DataViewer {
 
         self.ensure_pane_exists(pane_index);
         self.reset_state(pane_index as isize);
-        self.clear_slider_images();
+        self.panes[pane_index].slider_image = None;
+        self.panes[pane_index].slider_image_position = None;
+        self.panes[pane_index].slider_scene = None;
 
         // Dispatch async directory enumeration (Issue #73 - NFS performance fix)
         // Note: Loading spinner will be shown during neighbor loading phase (after first image displays)
