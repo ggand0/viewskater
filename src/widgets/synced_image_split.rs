@@ -957,19 +957,19 @@ where
 
             // File drop for Linux
             #[cfg(target_os = "linux")]
-            Event::Window(iced::window::Event::FileDropped(paths, _)) => {
+            Event::Window(iced::window::Event::FileDropped(paths, position)) => {
                 if paths.is_empty() {
                     return event::Status::Ignored;
                 }
 
-                let cursor_pos = cursor.position().unwrap_or_default();
+                let drop_position = Point::new(position.x as f32, position.y as f32);
                 let path = &paths[0];
 
-                if first_layout.bounds().contains(cursor_pos) {
+                if first_layout.bounds().contains(drop_position) {
                     debug_log!("FileDropped - First pane");
                     shell.publish((self.on_drop)(0, path.to_string_lossy().to_string()));
                     event::Status::Captured
-                } else if second_layout.bounds().contains(cursor_pos) {
+                } else if second_layout.bounds().contains(drop_position) {
                     debug_log!("FileDropped - Second pane");
                     shell.publish((self.on_drop)(1, path.to_string_lossy().to_string()));
                     event::Status::Captured
