@@ -73,7 +73,7 @@ impl DataViewer {
                 }
 
                 // If shift+alt is pressed, load a file into pane1
-                if modifiers.shift() && modifiers.alt() {
+                if self.pane_layout == PaneLayout::DualPane && modifiers.shift() && modifiers.alt() {
                     debug!("Key2 Shift+Alt pressed");
                     tasks.push(Task::perform(file_io::pick_file(), move |result| {
                         Message::FolderOpened(result, 1)
@@ -81,7 +81,7 @@ impl DataViewer {
                 }
 
                 // If alt is pressed, load a folder into pane1
-                else if modifiers.alt() {
+                else if self.pane_layout == PaneLayout::DualPane && modifiers.alt() {
                     debug!("Key2 Alt pressed");
                     tasks.push(Task::perform(file_io::pick_folder(), move |result| {
                         Message::FolderOpened(result, 1)
