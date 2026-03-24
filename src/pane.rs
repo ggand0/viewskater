@@ -658,13 +658,8 @@ impl Pane {
         debug!("current_slider_value: {:?}", current_slider_value);
         if is_slider_dual {
             self.slider_value = current_slider_value;
-        } else if *pane_layout == PaneLayout::SinglePane {
+        } else if *pane_layout == PaneLayout::SinglePane || *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
             *slider_value = current_slider_value;
-        } else if *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
-            let other_panes_empty = pane_file_lengths.iter().all(|&len| len == 0);
-            if other_panes_empty {
-                *slider_value = current_slider_value;
-            }
         }
         debug!("slider_value: {:?}", *slider_value);
 
@@ -766,13 +761,8 @@ impl Pane {
         debug!("current_slider_value: {:?}", current_slider_value);
         if is_slider_dual {
             self.slider_value = current_slider_value;
-        } else if *pane_layout == PaneLayout::SinglePane {
+        } else if *pane_layout == PaneLayout::SinglePane || *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
             *slider_value = current_slider_value;
-        } else if *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
-            let other_panes_empty = pane_file_lengths.iter().all(|&len| len == 0);
-            if other_panes_empty {
-                *slider_value = current_slider_value;
-            }
         }
 
         self.img_cache = img_cache;
