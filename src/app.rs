@@ -308,34 +308,35 @@ impl DataViewer {
         // Reset loading status
         self.loading_status = loading_status::LoadingStatus::default();
 
-        // Reset all panes
         if pane_index == -1 {
+            // Reset all panes
             for pane in &mut self.panes {
                 pane.reset_state();
             }
+
+            // Reset app-level viewer state only when resetting all panes
+            self.title = String::from("ViewSkater");
+            self.directory_path = None;
+            self.current_image_index = 0;
+            self.slider_value = 0;
+            self.prev_slider_value = 0;
+            self.last_opened_pane = 0;
+
+            self.skate_right = false;
+            self.update_counter = 0;
+            self.show_about = false;
+            self.last_slider_update = Instant::now();
+            self.is_slider_moving = false;
+            self.use_slider_image_for_render = false;
+
+            // Clear primitive storage
+            self.clear_primitive_storage();
         } else {
+            // Reset only the specified pane
             self.panes[pane_index as usize].reset_state();
         }
 
-        // Reset viewer state
-        self.title = String::from("ViewSkater");
-        self.directory_path = None;
-        self.current_image_index = 0;
-        self.slider_value = 0;
-        self.prev_slider_value = 0;
-        self.last_opened_pane = 0;
-
-        self.skate_right = false;
-        self.update_counter = 0;
-        self.show_about = false;
-        self.last_slider_update = Instant::now();
-        self.is_slider_moving = false;
-        self.use_slider_image_for_render = false;
-
         crate::utils::mem::log_memory("DataViewer::reset_state: After reset_state");
-
-        // Clear primitive storage
-        self.clear_primitive_storage();
     }
 
     pub(crate) fn initialize_dir_path(&mut self, path: &PathBuf, pane_index: usize) -> Task<Message> {
@@ -350,7 +351,9 @@ impl DataViewer {
 
         self.ensure_pane_exists(pane_index);
         self.reset_state(pane_index as isize);
-        self.clear_slider_images();
+        self.panes[pane_index].slider_image = None;
+        self.panes[pane_index].slider_image_position = None;
+        self.panes[pane_index].slider_scene = None;
 
         // Dispatch async directory enumeration (Issue #73 - NFS performance fix)
         // Note: Loading spinner will be shown during neighbor loading phase (after first image displays)

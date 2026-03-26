@@ -657,7 +657,6 @@ impl Pane {
         let current_slider_value = initial_index as u16;
         debug!("current_slider_value: {:?}", current_slider_value);
         if is_slider_dual {
-            *slider_value = current_slider_value;
             self.slider_value = current_slider_value;
         } else if *pane_layout == PaneLayout::SinglePane || *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
             *slider_value = current_slider_value;
@@ -761,7 +760,6 @@ impl Pane {
         let current_slider_value = initial_index as u16;
         debug!("current_slider_value: {:?}", current_slider_value);
         if is_slider_dual {
-            *slider_value = current_slider_value;
             self.slider_value = current_slider_value;
         } else if *pane_layout == PaneLayout::SinglePane || *pane_layout == PaneLayout::DualPane && is_dir_size_bigger {
             *slider_value = current_slider_value;

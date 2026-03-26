@@ -68,32 +68,33 @@ impl DataViewer {
             }
             Key::Character("2") => {
                 debug!("Key2 pressed");
-                if self.pane_layout == PaneLayout::DualPane {
-                    if self.is_slider_dual {
-                        self.panes[1].is_selected = !self.panes[1].is_selected;
-                    }
-
-                    // If shift+alt is pressed, load a file into pane1
-                    if modifiers.shift() && modifiers.alt() {
-                        debug!("Key2 Shift+Alt pressed");
-                        tasks.push(Task::perform(file_io::pick_file(), move |result| {
-                            Message::FolderOpened(result, 1)
-                        }));
-                    }
-
-                    // If alt is pressed, load a folder into pane1
-                    else if modifiers.alt() {
-                        debug!("Key2 Alt pressed");
-                        tasks.push(Task::perform(file_io::pick_folder(), move |result| {
-                            Message::FolderOpened(result, 1)
-                        }));
-                    }
+                if self.pane_layout == PaneLayout::DualPane && self.is_slider_dual {
+                    self.panes[1].is_selected = !self.panes[1].is_selected;
                 }
 
-                // If platform_modifier is pressed, switch to dual pane layout
+                // If shift+alt is pressed, load a file into pane1
+                if self.pane_layout == PaneLayout::DualPane && modifiers.shift() && modifiers.alt() {
+                    debug!("Key2 Shift+Alt pressed");
+                    tasks.push(Task::perform(file_io::pick_file(), move |result| {
+                        Message::FolderOpened(result, 1)
+                    }));
+                }
+
+                // If alt is pressed, load a folder into pane1
+                else if self.pane_layout == PaneLayout::DualPane && modifiers.alt() {
+                    debug!("Key2 Alt pressed");
+                    tasks.push(Task::perform(file_io::pick_folder(), move |result| {
+                        Message::FolderOpened(result, 1)
+                    }));
+                }
+
+                // If platform_modifier is pressed, switch to dual pane with synced slider
                 else if is_platform_modifier(&modifiers) {
                     debug!("Key2 Ctrl pressed");
                     self.toggle_pane_layout(PaneLayout::DualPane);
+                    if self.is_slider_dual {
+                        self.toggle_slider_type();
+                    }
                 }
             }
 
