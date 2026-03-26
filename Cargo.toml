@@ -44,31 +44,45 @@ regex = "1.10"
 arboard = { version = "3", features = ["image-data"] }
 jpeg2k = { version = "0.10", optional = true, features = ["image"] }
 
-# Use custom iced (remote)
+# Custom iced (direct deps)
 iced_custom = { package = "iced", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = [
     "image", "tokio", "svg", "lazy", "wgpu"
 ] }
 iced_winit = { package = "iced_winit", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
 iced_wgpu = { package = "iced_wgpu", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
-iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["wgpu"] }
+iced_widget = { package = "iced_widget", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["wgpu", "canvas"] }
 iced_core = { package = "iced_core", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
 iced_runtime = { package = "iced_runtime", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
 iced_futures = { package = "iced_futures", git = "https://github.com/ggand0/iced.git", branch = "custom-0.13", features = ["tokio"] }
 iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
-iced_aw = { package = "iced_aw", git = "https://github.com/ggand0/iced_aw.git", branch = "custom-0.11.0", features = [
+# Upstream iced_aw -- iced deps overridden via [patch.crates-io] below
+iced_aw = { package = "iced_aw", git = "https://github.com/iced-rs/iced_aw.git", tag = "v.0.11.0", default-features = false, features = [
     "menu", "quad", "tabs"
 ] }
 
-# Debug setup with local iced
-#iced_custom = { package = "iced", path = "../iced", features=["image", "tokio", "svg", "lazy", "wgpu", "advanced"] }
-#iced_winit = { path = "../iced/winit" }
-#iced_wgpu = { path = "../iced/wgpu", features = ["image"]}
-#iced_widget = { path = "../iced/widget", features = ["wgpu", "image"] }
+# Override iced crates from crates.io (used by iced_aw and iced_fonts) with custom fork
+[patch.crates-io]
+iced = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_core = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_widget = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_runtime = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_renderer = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_futures = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_graphics = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_wgpu = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_tiny_skia = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+iced_winit = { git = "https://github.com/ggand0/iced.git", branch = "custom-0.13" }
+# Local iced development: uncomment below, comment above
+#iced = { path = "../iced" }
 #iced_core = { path = "../iced/core" }
+#iced_widget = { path = "../iced/widget" }
 #iced_runtime = { path = "../iced/runtime" }
-#iced_futures = { path = "../iced/futures", features = ["tokio"] }
+#iced_renderer = { path = "../iced/renderer" }
+#iced_futures = { path = "../iced/futures" }
 #iced_graphics = { path = "../iced/graphics" }
-#iced_aw = { path = "../iced_aw", features = ["menu", "quad"] }
+#iced_wgpu = { path = "../iced/wgpu" }
+#iced_tiny_skia = { path = "../iced/tiny_skia" }
+#iced_winit = { path = "../iced/winit" }
 
 [features]
 # Image selection/curation features for dataset preparation (disabled by default)
