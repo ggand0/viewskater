@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=ViewSkater
+Exec=viewskater
+Icon=icon
+Type=Application
+Categories=Graphics;Viewer;
+StartupWMClass=viewskater

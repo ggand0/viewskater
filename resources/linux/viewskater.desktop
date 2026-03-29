@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=ViewSkater
+Exec=/path/to/viewskater %f
+Icon=viewskater
+Type=Application
+Categories=Graphics;Viewer;
+StartupWMClass=viewskater
+MimeType=image/png;image/jpeg;image/webp;image/tiff;image/bmp;

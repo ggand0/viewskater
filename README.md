@@ -50,6 +50,28 @@ cargo build --release --features coco,selection,jp2
 
 See [docs/bundling.md](./docs/bundling.md) for full packaging instructions.
 
+### Linux icon setup
+
+On GNOME 46+ (Ubuntu 24.04+), the taskbar icon requires installing a `.desktop` file and icon:
+
+```bash
+mkdir -p ~/.local/share/icons/hicolor/256x256/apps
+cp assets/icon_256.png ~/.local/share/icons/hicolor/256x256/apps/viewskater.png
+gtk-update-icon-cache -f ~/.local/share/icons/hicolor/
+cp resources/linux/viewskater.desktop ~/.local/share/applications/
+```
+
+Edit the `Exec=` line in the installed `.desktop` file to point to your binary:
+```bash
+sed -i "s|Exec=.*|Exec=/path/to/viewskater %f|" \
+    ~/.local/share/applications/viewskater.desktop
+```
+
+For the AppImage, use the AppImage path instead:
+```bash
+sed -i "s|Exec=.*|Exec=/path/to/ViewSkater.AppImage %f|" \
+    ~/.local/share/applications/viewskater.desktop
+```
 
 ## Usage
 Drag and drop an image or a directory of images onto a pane, and navigate through the images using the **A / D** keys or the slider UI.

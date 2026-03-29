@@ -49,6 +49,8 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     keyboard::ModifiersState,
 };
+#[cfg(target_os = "linux")]
+use winit::platform::x11::WindowAttributesExtX11;
 
 use iced_wgpu::graphics::Viewport;
 use iced_wgpu::{wgpu, Engine, Renderer};
@@ -1128,11 +1130,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     let config_position = PhysicalPosition::new(CONFIG.window_position_x, CONFIG.window_position_y);
                     // Only use with_position on Linux (X11 needs it)
+                    // with_name sets WM_CLASS (X11) / app_id (Wayland) for .desktop file matching
                     #[cfg(target_os = "linux")]
                     {
                         window_attrs = window_attrs
                             .with_maximized(CONFIG.window_state == WindowState::Maximized)
-                            .with_position(config_position);
+                            .with_position(config_position)
+                            .with_name("viewskater", "viewskater");
                     }
 
                     let window = Arc::new(

@@ -131,6 +131,9 @@ identifier = "com.ggando.viewskater"
 icon = ["assets/ViewSkater.icns"]
 short_description = "A fast image viewer for browsing large collections of images."
 
+[package.metadata.appimage]
+desktop_entry = "./resources/linux/appimage.desktop"
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
