@@ -117,7 +117,7 @@ Mark images for dataset curation while browsing. Press **S** to mark an image as
 
 ## Resources
 - [Website](https://viewskater.com/)
-- [macOS App Store](https://apps.apple.com/us/app/viewskater/id6745068907)
+- [egui version](https://github.com/ggand0/viewskater-egui)
 
 ## Acknowledgments
 ViewSkater's slider UI was inspired by the open-source project [emulsion](https://github.com/ArturKovacs/emulsion).
