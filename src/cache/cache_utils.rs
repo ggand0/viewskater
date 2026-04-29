@@ -112,7 +112,7 @@ pub fn create_gpu_texture(
         } else {
             wgpu::TextureFormat::Rgba8UnormSrgb
         },
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     })
 }

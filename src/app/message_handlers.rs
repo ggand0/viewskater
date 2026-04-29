@@ -665,6 +665,18 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.show_metadata = enabled;
             Task::none()
         }
+
+        Message::HideSuccessSaveModal => {
+            app.toggle_success_save_modal();
+
+            Task::none()
+        }
+        Message::HideFailureSaveModal => {
+            app.set_failure_save_modal(None);
+            Task::none()
+        }
+
+
         Message::ToggleNearestNeighborFilter(enabled) => {
             debug!("ToggleNearestNeighborFilter: setting to {}", enabled);
             app.nearest_neighbor_filter = enabled;
