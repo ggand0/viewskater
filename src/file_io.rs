@@ -625,6 +625,27 @@ pub async fn pick_folder() -> Result<String, Error> {
     }
 }
 
+pub async fn pick_save_file() -> Result<PathBuf, Error> {
+    // let extensions = A
+    let handle = rfd::AsyncFileDialog::new().save_file().await;
+
+    match handle {
+        Some(file_info) => {
+            if let Some(extension) = file_info.path().extension().and_then(|ext| ext.to_str()) {
+                if ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
+                    Ok(file_info.path().into())
+                } else {
+                    Err(Error::InvalidExtension)
+                }
+            } else {
+                Err(Error::InvalidExtension)
+            }
+        }
+
+        None => Err(Error::DialogClosed),
+    }
+}
+
 pub async fn pick_file() -> Result<String, Error> {
     // https://stackoverflow.com/a/71194526
     #[cfg(feature = "jp2")]
