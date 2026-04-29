@@ -5,6 +5,8 @@ mod keyboard_handlers;
 mod replay_handlers;
 mod settings_widget;
 
+use iced_core::Length;
+use iced_core::alignment::Horizontal;
 // Re-exports
 pub use message::{Message, DirectoryEnumResult, DirectoryEnumError};
 pub use settings_widget::{RuntimeSettings, SettingsWidget};
@@ -64,6 +66,7 @@ use crate::build_info::BuildInfo;
 #[cfg(feature = "selection")]
 use crate::selection_manager::SelectionManager;
 use crate::settings::UserSettings;
+use crate::widgets::modal;
 
 use std::sync::mpsc::{Sender, Receiver};
 
