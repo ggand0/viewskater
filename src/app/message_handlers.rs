@@ -298,9 +298,9 @@ pub fn handle_file_messages(app: &mut DataViewer, message: Message) -> Task<Mess
             let path = &app.panes[pane_index].img_cache.image_paths[app.panes[pane_index].img_cache.current_index];
             let img_path = path.file_name().to_string();
             if let Some(dir_path) = app.panes[pane_index].directory_path.as_ref() {
-                let full_path = format!("{}/{}", dir_path, img_path);
-                debug!("Copying full path to clipboard: {}", full_path);
-                return clipboard::write(full_path);
+                let full_path = PathBuf::from(dir_path).join(img_path);
+                debug!("Copying full path to clipboard: {}", full_path.display());
+                return clipboard::write(full_path.to_string_lossy().to_string());
             }
             Task::none()
         }
