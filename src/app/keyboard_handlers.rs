@@ -114,6 +114,17 @@ impl DataViewer {
                 }
             }
 
+            Key::Character("s") if is_platform_modifier(&modifiers) => {
+                {
+                        debug!("Save file with platform_modifier+s");
+                        if self.panes[0].current_image.len() > 0 {
+                            tasks.push(Task::perform(file_io::pick_save_file(), move |result| {
+                                Message::ReadySaveImage(result)
+                            }));
+                        }
+                }
+            }
+
             Key::Character("o") => {
                 // If platform_modifier is pressed, open a file or folder
                 if is_platform_modifier(&modifiers) {
