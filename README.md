@@ -4,6 +4,8 @@
 ViewSkater is a fast, cross-platform image viewer written in Rust & Iced.
 It aims to alleviate the challenges of exploring and comparing numerous images. Linux, macOS and Windows are currently supported.
 
+> **Note:** This (iced) version is in maintenance mode. Active development is moving to the [egui version](https://github.com/ggand0/viewskater-egui), which offers better performance and a simpler codebase.
+
 ## Features
 - GPU-based image rendering powered by wgpu
 - Dynamic image caching on CPU or GPU memory
