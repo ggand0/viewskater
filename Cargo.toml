@@ -93,7 +93,7 @@ coco = []
 jp2 = ["dep:jpeg2k"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.5.2"
+objc2 = { version = "0.5.2", features = ["relax-sign-encoding"] }
 block2 = "0.5"
 objc2-foundation = { version = "0.2.2", default-features = false, features = [
     "std",

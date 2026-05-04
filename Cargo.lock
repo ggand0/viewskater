@@ -1619,7 +1619,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 [[package]]
 name = "dpi"
 version = "0.1.1"
-source = "git+https://github.com/ggand0/winit.git?rev=7dea6466a4b5e174932c493ec65919afb2b9d036#7dea6466a4b5e174932c493ec65919afb2b9d036"
+source = "git+https://github.com/ggand0/winit.git?rev=dc78ea756742fea15be27696bc00989124c3d216#dc78ea756742fea15be27696bc00989124c3d216"
 
 [[package]]
 name = "drm"
@@ -2479,7 +2479,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -2503,7 +2503,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "bitflags 2.9.4",
  "bytes",
@@ -2532,7 +2532,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "futures",
  "iced_core",
@@ -2559,7 +2559,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "bitflags 2.9.4",
  "bytemuck",
@@ -2581,7 +2581,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -2593,7 +2593,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "bytes",
  "iced_core",
@@ -2605,7 +2605,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2621,7 +2621,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "bitflags 2.9.4",
  "bytemuck",
@@ -2644,7 +2644,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "iced_renderer",
  "iced_runtime",
@@ -2659,7 +2659,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.13.5"
-source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#aa77631e2dda26666534116c93cd275c4d0edfb3"
+source = "git+https://github.com/ggand0/iced.git?branch=custom-0.13#e89b57b0dece505f7c7c709ea25f1a71af81d027"
 dependencies = [
  "iced_futures",
  "iced_graphics",
@@ -7112,7 +7112,7 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 [[package]]
 name = "winit"
 version = "0.30.0"
-source = "git+https://github.com/ggand0/winit.git?rev=7dea6466a4b5e174932c493ec65919afb2b9d036#7dea6466a4b5e174932c493ec65919afb2b9d036"
+source = "git+https://github.com/ggand0/winit.git?rev=dc78ea756742fea15be27696bc00989124c3d216#dc78ea756742fea15be27696bc00989124c3d216"
 dependencies = [
  "ahash 0.8.12",
  "android-activity",
