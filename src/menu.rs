@@ -138,6 +138,22 @@ fn labeled_button<'a>(
     .width(Length::Fill)
 }
 
+//Proposal!
+fn labeled_button_maybe<'a>(
+    label: &'a str,
+    text_size: u16,
+    msg: Option<Message>,
+) -> button::Button<'a, Message, WinitTheme, Renderer> {
+    button(
+        text(label)
+            .size(text_size)
+            .font(Font::with_name("Roboto"))
+    )
+    .style(labeled_style)
+    .on_press_maybe(msg)
+    .width(Length::Fill)
+}
+
 #[allow(dead_code)]
 fn nothing_button<'a>(label: &'a str, text_size: u16) -> button::Button<'a, Message, WinitTheme, Renderer> {
     button(
@@ -310,7 +326,10 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     .offset(5.0)
 }
 
-pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
+pub fn menu_1<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
+    //Is there a better way? 
+    let is_image_loaded = app.panes.first().unwrap().current_image.len() > 0;
+
     #[cfg(target_os = "macos")]
     let menu_tpl_2 = |items| Menu::new(items).max_width(210.0).offset(5.0);
 
@@ -374,11 +393,13 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     )(
         submenu_button(open_file_text, MENU_ITEM_FONT_SIZE),
         open_file_submenu
-    )(labeled_button(
+    )(labeled_button_maybe(
         save_text,
         MENU_ITEM_FONT_SIZE,
-        Message::RequestSaveImage
-    ))(labeled_button(
+        is_image_loaded.then(|| Message::RequestSaveImage)
+    )
+
+)(labeled_button(
         close_text,
         MENU_ITEM_FONT_SIZE,
         Message::Close
