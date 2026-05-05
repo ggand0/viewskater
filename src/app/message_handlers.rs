@@ -1381,7 +1381,13 @@ pub fn handle_save_image(app: &mut DataViewer, message: Message) -> Task<Message
                     }
 
                     Err(err) => {
-                        debug!("Folder open failed: {:?}", err);
+
+                        match err {
+                            file_io::Error::InvalidExtension => app.set_failure_save_modal(Some("Error selecting save file - invalid extension".into())),
+                            _ => {} //imho displaying error message when dialog is closed is wrong ux-wise; and InvalidSelection is unreachable anyways
+                        }
+
+                        debug!("Save file select error: {:?}", err);
                         Task::none()
                     }
                 }

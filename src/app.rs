@@ -806,7 +806,7 @@ impl iced_winit::runtime::Program for DataViewer {
                         stretch: iced_winit::core::font::Stretch::Normal,
                         style: iced_winit::core::font::Style::Normal,
                     }),
-                    text(format!("Error: {error_message}"))
+                    text(format!("Message: {error_message}"))
                         .size(12)
                         .style(|theme: &WinitTheme| {
                             iced_widget::text::Style {

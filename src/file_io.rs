@@ -626,14 +626,21 @@ pub async fn pick_folder() -> Result<String, Error> {
 }
 
 pub async fn pick_save_file() -> Result<PathBuf, Error> {
-    // let extensions = A
-    let handle = rfd::AsyncFileDialog::new().save_file().await;
+    #[cfg(feature = "jp2")]
+    let extensions = [&ALLOWED_EXTENSIONS[..], &ALLOWED_EXTENSIONS_JP2[..]].concat();
+    #[cfg(not(feature = "jp2"))]
+    let extensions = [&ALLOWED_EXTENSIONS[..]].concat();
+    
+    let handle = rfd::FileDialog::new()
+        .set_title("Save File")
+        .add_filter("Supported files", extensions.as_slice())
+        .save_file();
 
     match handle {
         Some(file_info) => {
-            if let Some(extension) = file_info.path().extension().and_then(|ext| ext.to_str()) {
-                if ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
-                    Ok(file_info.path().into())
+            if let Some(extension) = file_info.extension().and_then(|ext| ext.to_str()) {
+                if extensions.contains(&extension.to_lowercase().as_str()) {
+                    Ok(file_info)
                 } else {
                     Err(Error::InvalidExtension)
                 }
