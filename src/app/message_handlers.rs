@@ -12,6 +12,7 @@ use iced_runtime::clipboard;
 
 use crate::app::{DataViewer, Message};
 use crate::cache::img_cache::{CacheStrategy, CachedData, LoadOperation};
+use crate::exif_utils::decode_with_exif_orientation;
 use crate::settings::{UserSettings, WindowState};
 use crate::utils::save::extract_gpu_image;
 use crate::{file_io, window_state::get_window_visible};
@@ -1341,32 +1342,37 @@ pub fn handle_save_image(app: &mut DataViewer, message: Message) -> Task<Message
                         if let Some(format) = format {
                             let (width, height) = current_image.dimensions();
 
-                            let buf = match current_image {
-                                CachedData::Cpu(items) => items,
+                            let save_result = match current_image {
+                                CachedData::Cpu(items) => {
+                                    match decode_with_exif_orientation(items) {
+                                        Ok(image) => image.save_with_format(path, format),
+                                        Err(e) => Err(std::io::Error::from(e).into()),
+                                    }
+                                },
                                 CachedData::Gpu(texture) => {
                                     let texture = texture.clone();
-                                    &extract_gpu_image(app, &texture)
+                                    let buf=  extract_gpu_image(app, &texture);
+
+                                    match format {
+                                        image::ImageFormat::Jpeg => {
+                                            let rgb: Vec<u8> = buf
+                                                .chunks_exact(4)
+                                                .flat_map(|p| [p[0], p[1], p[2]])
+                                                .collect();
+                                            image::save_buffer_with_format(&path, &rgb, width, height, image::ColorType::Rgb8, format)
+                                            }
+                                            _ => {
+                                            image::save_buffer_with_format(&path, &buf, width, height, image::ColorType::Rgba8, format)
+                                            }
+                                     }
                                 }
                                 CachedData::BC1(_texture) => todo!(),
-                            };
-
-                           let save_result = match format {
-                                image::ImageFormat::Jpeg => {
-                                    let rgb: Vec<u8> = buf
-                                        .chunks_exact(4)
-                                        .flat_map(|p| [p[0], p[1], p[2]])
-                                        .collect();
-                                    image::save_buffer_with_format(&path, &rgb, width, height, image::ColorType::Rgb8, format)
-                                }
-                                _ => {
-                                    image::save_buffer_with_format(&path, buf, width, height, image::ColorType::Rgba8, format)
-                                }
                             };
 
                             match save_result {
                                 Ok(_) => app.toggle_success_save_modal(),
                                 Err(e) => app.set_failure_save_modal(Some(e.to_string())),
-}
+                            }
 
                             Task::none()
                         } else {
