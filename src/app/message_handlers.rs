@@ -1366,7 +1366,10 @@ pub fn handle_save_image(app: &mut DataViewer, message: Message) -> Task<Message
                                             }
                                      }
                                 }
-                                CachedData::BC1(_texture) => todo!(),
+                                CachedData::BC1(_texture) => {
+                                    app.set_failure_save_modal(Some("BC1 Saving is currently unsupported".into()));
+                                    return Task::none()
+                                },
                             };
 
                             match save_result {
