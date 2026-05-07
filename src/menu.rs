@@ -96,6 +96,16 @@ pub fn button_style(theme: &WinitTheme, status: button::Status, style_type: &str
                 },
                 ..Default::default()
             },
+            button::Status::Disabled => Style {
+                background: Some(theme.extended_palette().background.base.color.into()),
+                text_color: theme.extended_palette().background.strong.color,
+                border: iced::Border {
+                    color: iced::Color::TRANSPARENT,
+                    width: 1.0,
+                    radius: Radius::new(0.0),
+                },
+                ..Default::default()
+            },
             _ => Style::default(),
         },
         _ => Style::default(),
