@@ -465,7 +465,7 @@ impl DataViewer {
         self.show_failure_save_modal = error_message;
     }
 
-    fn save_modal_content(
+    fn save_result_modal(
         title: &str,
         detail: Option<String>,
         on_dismiss: Message,
@@ -812,10 +812,10 @@ impl iced_winit::runtime::Program for DataViewer {
         let content = ui::build_ui(self);
 
         if self.show_success_save_modal {
-            let modal_content = Self::save_modal_content("File saved", None, Message::HideSuccessSaveModal);
+            let modal_content = Self::save_result_modal("File saved", None, Message::HideSuccessSaveModal);
             modal::modal(content, modal_content, Message::HideSuccessSaveModal)
         } else if let Some(ref error_message) = self.show_failure_save_modal {
-            let modal_content = Self::save_modal_content("Error saving file", Some(format!("Message: {error_message}")), Message::HideFailureSaveModal);
+            let modal_content = Self::save_result_modal("Error saving file", Some(format!("Message: {error_message}")), Message::HideFailureSaveModal);
             modal::modal(content, modal_content, Message::HideFailureSaveModal)
         } else if self.settings.is_visible() {
             let options_content = crate::settings_modal::view_settings_modal(self);
