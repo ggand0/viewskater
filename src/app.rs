@@ -465,6 +465,49 @@ impl DataViewer {
         self.show_failure_save_modal = error_message;
     }
 
+    fn save_modal_content(
+        title: &str,
+        detail: Option<String>,
+        on_dismiss: Message,
+    ) -> container::Container<'_, Message, WinitTheme, Renderer> {
+        let mut col = column![
+            text(title.to_owned()).size(25).font(Font {
+                family: iced_winit::core::font::Family::Name("Roboto"),
+                weight: iced_winit::core::font::Weight::Bold,
+                stretch: iced_winit::core::font::Stretch::Normal,
+                style: iced_winit::core::font::Style::Normal,
+            }),
+        ].spacing(15).align_x(Horizontal::Center).width(Length::Fill);
+
+        if let Some(detail) = detail {
+            col = col.push(
+                text(detail)
+                    .size(12)
+                    .style(|theme: &WinitTheme| {
+                        iced_widget::text::Style {
+                            color: Some(theme.extended_palette().background.weak.color),
+                        }
+                    }),
+            );
+        }
+
+        col = col.push(button(text("OK")).on_press(on_dismiss));
+
+        container(col)
+            .width(300)
+            .padding(20)
+            .style(|theme: &WinitTheme| iced_widget::container::Style {
+                background: Some(theme.extended_palette().background.base.color.into()),
+                text_color: Some(theme.extended_palette().primary.weak.text),
+                border: iced_winit::core::Border {
+                    color: theme.extended_palette().background.strong.color,
+                    width: 1.0,
+                    radius: iced_winit::core::border::Radius::from(8.0),
+                },
+                ..Default::default()
+            })
+    }
+
     pub(crate) fn toggle_slider_type(&mut self) {
         // When toggling from dual to single, reset pane.is_selected to true
         if self.is_slider_dual {
@@ -769,70 +812,11 @@ impl iced_winit::runtime::Program for DataViewer {
         let content = ui::build_ui(self);
 
         if self.show_success_save_modal {
-            let message = container(
-                column![
-                    text("File saved").size(25).font(Font {
-                        family: iced_winit::core::font::Family::Name("Roboto"),
-                        weight: iced_winit::core::font::Weight::Bold,
-                        stretch: iced_winit::core::font::Stretch::Normal,
-                        style: iced_winit::core::font::Style::Normal,
-                    }),
-                    button(text("OK")).on_press(Message::HideSuccessSaveModal)
-                ]
-                .spacing(15)
-                .align_x(Horizontal::Center)
-                .width(Length::Fill),
-            )
-            .width(300)
-            .padding(20)
-            .style(|theme: &WinitTheme| iced_widget::container::Style {
-                background: Some(theme.extended_palette().background.base.color.into()),
-                text_color: Some(theme.extended_palette().primary.weak.text),
-                border: iced_winit::core::Border {
-                    color: theme.extended_palette().background.strong.color,
-                    width: 1.0,
-                    radius: iced_winit::core::border::Radius::from(8.0),
-                },
-                ..Default::default()
-            });
-
-            modal::modal(content, message, Message::HideSuccessSaveModal)
+            let modal_content = Self::save_modal_content("File saved", None, Message::HideSuccessSaveModal);
+            modal::modal(content, modal_content, Message::HideSuccessSaveModal)
         } else if let Some(ref error_message) = self.show_failure_save_modal {
-            let message = container(
-                column![
-                    text("Error saving file").size(25).font(Font {
-                        family: iced_winit::core::font::Family::Name("Roboto"),
-                        weight: iced_winit::core::font::Weight::Bold,
-                        stretch: iced_winit::core::font::Stretch::Normal,
-                        style: iced_winit::core::font::Style::Normal,
-                    }),
-                    text(format!("Message: {error_message}"))
-                        .size(12)
-                        .style(|theme: &WinitTheme| {
-                            iced_widget::text::Style {
-                                color: Some(theme.extended_palette().background.weak.color),
-                            }
-                        }),
-                    button(text("OK")).on_press(Message::HideFailureSaveModal)
-                ]
-                .spacing(15)
-                .align_x(Horizontal::Center)
-                .width(Length::Fill),
-            )
-            .width(300)
-            .padding(20)
-            .style(|theme: &WinitTheme| iced_widget::container::Style {
-                background: Some(theme.extended_palette().background.base.color.into()),
-                text_color: Some(theme.extended_palette().primary.weak.text),
-                border: iced_winit::core::Border {
-                    color: theme.extended_palette().background.strong.color,
-                    width: 1.0,
-                    radius: iced_winit::core::border::Radius::from(8.0),
-                },
-                ..Default::default()
-            });
-
-            modal::modal(content, message, Message::HideFailureSaveModal)
+            let modal_content = Self::save_modal_content("Error saving file", Some(format!("Message: {error_message}")), Message::HideFailureSaveModal);
+            modal::modal(content, modal_content, Message::HideFailureSaveModal)
         } else if self.settings.is_visible() {
             let options_content = crate::settings_modal::view_settings_modal(self);
             widgets::modal::modal(content, options_content, Message::HideOptions)
