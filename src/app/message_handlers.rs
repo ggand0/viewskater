@@ -1336,8 +1336,7 @@ pub fn handle_save_image(app: &mut DataViewer, message: Message) -> Task<Message
                     Ok(path) => {
                         let format = path
                             .extension()
-                            .map(|ext| image::ImageFormat::from_extension(ext))
-                            .flatten();
+                            .and_then(image::ImageFormat::from_extension);
 
                         if let Some(format) = format {
                             let (width, height) = current_image.dimensions();
@@ -1386,14 +1385,11 @@ pub fn handle_save_image(app: &mut DataViewer, message: Message) -> Task<Message
                             Task::none()
                         }
 
-                        // println!("SAVING {:?}", file);
                     }
 
                     Err(err) => {
-
-                        match err {
-                            file_io::Error::InvalidExtension => app.set_failure_save_modal(Some("Error selecting save file - invalid extension".into())),
-                            _ => {} //imho displaying error message when dialog is closed is wrong ux-wise; and InvalidSelection is unreachable anyways
+                        if let file_io::Error::InvalidExtension = err {
+                            app.set_failure_save_modal(Some("Error selecting save file - invalid extension".into()));
                         }
 
                         debug!("Save file select error: {:?}", err);
@@ -1406,9 +1402,6 @@ pub fn handle_save_image(app: &mut DataViewer, message: Message) -> Task<Message
                 Message::ReadySaveImage(result)
             }),
 
-            // Message::SuccessSaveImage => {},
-
-            // Message::FailedSaveImage => {}
             _ => Task::none(),
         }
     }
