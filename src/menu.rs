@@ -96,6 +96,16 @@ pub fn button_style(theme: &WinitTheme, status: button::Status, style_type: &str
                 },
                 ..Default::default()
             },
+            button::Status::Disabled => Style {
+                background: Some(theme.extended_palette().background.base.color.into()),
+                text_color: theme.extended_palette().background.strong.color,
+                border: iced::Border {
+                    color: iced::Color::TRANSPARENT,
+                    width: 1.0,
+                    radius: Radius::new(0.0),
+                },
+                ..Default::default()
+            },
             _ => Style::default(),
         },
         _ => Style::default(),
@@ -135,6 +145,22 @@ fn labeled_button<'a>(
     )
     .style(labeled_style)
     .on_press(msg)
+    .width(Length::Fill)
+}
+
+//Proposal!
+fn labeled_button_maybe<'a>(
+    label: &'a str,
+    text_size: u16,
+    msg: Option<Message>,
+) -> button::Button<'a, Message, WinitTheme, Renderer> {
+    button(
+        text(label)
+            .size(text_size)
+            .font(Font::with_name("Roboto"))
+    )
+    .style(labeled_style)
+    .on_press_maybe(msg)
     .width(Length::Fill)
 }
 
@@ -310,7 +336,10 @@ pub fn menu_3<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
     .offset(5.0)
 }
 
-pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
+pub fn menu_1<'a>(app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {
+    //Is there a better way? 
+    let is_image_loaded = app.panes.first().unwrap().current_image.len() > 0;
+
     #[cfg(target_os = "macos")]
     let menu_tpl_2 = |items| Menu::new(items).max_width(210.0).offset(5.0);
 
@@ -319,12 +348,22 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
 
     // Use platform-specific modifier text for menu items
     #[cfg(target_os = "macos")]
-    let (open_folder_text, open_file_text, close_text, quit_text) =
-        ("Open Folder (Cmd+Shift+O)", "Open File (Cmd+O)", "Close (Cmd+W)", "Quit (Cmd+Q)");
+    let (open_folder_text, open_file_text, save_text, close_text, quit_text) = (
+        "Open Folder (Cmd+Shift+O)",
+        "Open File (Cmd+O)",
+        "Save (Cmd+S)",
+        "Close (Cmd+W)",
+        "Quit (Cmd+Q)",
+    );
 
     #[cfg(not(target_os = "macos"))]
-    let (open_folder_text, open_file_text, close_text, quit_text) =
-        ("Open Folder (Ctrl+Shift+O)", "Open File (Ctrl+O)", "Close (Ctrl+W)", "Quit (Ctrl+Q)");
+    let (open_folder_text, open_file_text, save_text, close_text, quit_text) = (
+        "Open Folder (Ctrl+Shift+O)",
+        "Open File (Ctrl+O)",
+        "Save (Ctrl+S)",
+        "Close (Ctrl+W)",
+        "Quit (Ctrl+Q)",
+    );
 
     // Create submenu for "Open Folder"
     let open_folder_submenu = Menu::new(menu_items!(
@@ -358,14 +397,27 @@ pub fn menu_1<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> 
     .max_width(180.0)
     .spacing(0.0);
 
-    menu_tpl_2(
-        menu_items!(
-            (submenu_button(open_folder_text, MENU_ITEM_FONT_SIZE), open_folder_submenu)
-            (submenu_button(open_file_text, MENU_ITEM_FONT_SIZE), open_file_submenu)
-            (labeled_button(close_text, MENU_ITEM_FONT_SIZE, Message::Close))
-            (labeled_button(quit_text, MENU_ITEM_FONT_SIZE, Message::Quit))
-        )
+    menu_tpl_2(menu_items!((
+        submenu_button(open_folder_text, MENU_ITEM_FONT_SIZE),
+        open_folder_submenu
+    )(
+        submenu_button(open_file_text, MENU_ITEM_FONT_SIZE),
+        open_file_submenu
+    )(labeled_button_maybe(
+        save_text,
+        MENU_ITEM_FONT_SIZE,
+        is_image_loaded.then(|| Message::RequestSaveImage)
     )
+
+)(labeled_button(
+        close_text,
+        MENU_ITEM_FONT_SIZE,
+        Message::Close
+    ))(labeled_button(
+        quit_text,
+        MENU_ITEM_FONT_SIZE,
+        Message::Quit
+    ))))
 }
 
 pub fn menu_help<'a>(_app: &DataViewer) -> Menu<'a, Message, WinitTheme, Renderer> {

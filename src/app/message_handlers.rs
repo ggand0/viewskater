@@ -12,7 +12,9 @@ use iced_runtime::clipboard;
 
 use crate::app::{DataViewer, Message};
 use crate::cache::img_cache::{CacheStrategy, CachedData, LoadOperation};
+use crate::exif_utils::decode_with_exif_orientation;
 use crate::settings::{UserSettings, WindowState};
+use crate::utils::save::extract_gpu_image;
 use crate::{file_io, window_state::get_window_visible};
 use crate::loading_handler;
 use crate::navigation_slider;
@@ -85,6 +87,8 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::SliderChanged(_, _) | Message::SliderReleased(_, _) => {
             handle_slider_messages(app, message)
         }
+        
+        Message::RequestSaveImage | Message::ReadySaveImage(_) => handle_save_image(app, message),
 
         // Toggle and UI control messages
         Message::OnSplitResize(_) | Message::ResetSplit(_) | Message::ToggleSliderType(_) |
@@ -94,7 +98,11 @@ pub fn handle_message(app: &mut DataViewer, message: Message) -> Task<Message> {
         Message::ToggleFullScreen(_) | Message::ToggleFpsDisplay(_) | Message::ToggleSplitOrientation(_) |
         Message::CursorOnTop(_) | Message::CursorOnMenu(_) | Message::CursorOnFooter(_) |
         Message::PaneSelected(_, _) | Message::SetCacheStrategy(_) | Message::SetCompressionStrategy(_) |
-        Message::WindowResized(_, _, _) | Message::PositionChanged(_, _)=> {
+        Message::WindowResized(_, _, _) | Message::PositionChanged(_, _)
+        | Message::HideSuccessSaveModal
+        | Message::HideFailureSaveModal =>
+        {
+
             handle_toggle_messages(app, message)
         }
 
@@ -658,6 +666,18 @@ pub fn handle_toggle_messages(app: &mut DataViewer, message: Message) -> Task<Me
             app.show_metadata = enabled;
             Task::none()
         }
+
+        Message::HideSuccessSaveModal => {
+            app.toggle_success_save_modal();
+
+            Task::none()
+        }
+        Message::HideFailureSaveModal => {
+            app.set_failure_save_modal(None);
+            Task::none()
+        }
+
+
         Message::ToggleNearestNeighborFilter(enabled) => {
             debug!("ToggleNearestNeighborFilter: setting to {}", enabled);
             app.nearest_neighbor_filter = enabled;
@@ -1302,4 +1322,87 @@ fn handle_export_all_logs() {
         warn!("Log buffer not available for export");
     }
     println!("DEBUG: ExportAllLogs handler finished");
+}
+
+pub fn handle_save_image(app: &mut DataViewer, message: Message) -> Task<Message> {
+    let current_image = &app.panes.first().as_ref().unwrap().current_image;
+
+    if current_image.len() == 0 {
+        Task::none()
+    } else {
+        match message {
+            Message::ReadySaveImage(result) => {
+                match result {
+                    Ok(path) => {
+                        let format = path
+                            .extension()
+                            .and_then(image::ImageFormat::from_extension);
+
+                        if let Some(format) = format {
+                            let (width, height) = current_image.dimensions();
+
+                            let save_result = match current_image {
+                                CachedData::Cpu(items) => {
+                                    match decode_with_exif_orientation(items) {
+                                        Ok(image) => image.save_with_format(path, format),
+                                        Err(e) => Err(std::io::Error::from(e).into()),
+                                    }
+                                },
+                                CachedData::Gpu(texture) => {
+                                    let texture = texture.clone();
+                                    let buf=  extract_gpu_image(app, &texture);
+
+                                    match format {
+                                        image::ImageFormat::Jpeg => {
+                                            let rgb: Vec<u8> = buf
+                                                .chunks_exact(4)
+                                                .flat_map(|p| [p[0], p[1], p[2]])
+                                                .collect();
+                                            image::save_buffer_with_format(&path, &rgb, width, height, image::ColorType::Rgb8, format)
+                                            }
+                                            _ => {
+                                            image::save_buffer_with_format(&path, &buf, width, height, image::ColorType::Rgba8, format)
+                                            }
+                                     }
+                                }
+                                CachedData::BC1(_texture) => {
+                                    app.set_failure_save_modal(Some("BC1 Saving is currently unsupported".into()));
+                                    return Task::none()
+                                },
+                            };
+
+                            match save_result {
+                                Ok(_) => app.toggle_success_save_modal(),
+                                Err(e) => app.set_failure_save_modal(Some(e.to_string())),
+                            }
+
+                            Task::none()
+                        } else {
+                            app.set_failure_save_modal(Some(
+                                "Wrong file extension, cannot determine format".into(),
+                            ));
+
+                            Task::none()
+                        }
+
+                    }
+
+                    Err(err) => {
+                        if let file_io::Error::InvalidExtension = err {
+                            app.set_failure_save_modal(Some("Error selecting save file - invalid extension".into()));
+                        }
+
+                        debug!("Save file select error: {:?}", err);
+                        Task::none()
+                    }
+                }
+            }
+
+            Message::RequestSaveImage => Task::perform(file_io::pick_save_file(), move |result| {
+                Message::ReadySaveImage(result)
+            }),
+
+            _ => Task::none(),
+        }
+    }
 }

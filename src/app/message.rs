@@ -106,6 +106,13 @@ pub enum Message {
     AdvancedSettingChanged(String, String),  // (field_name, value)
     ResetAdvancedSettings,
     // Window resize
-    WindowResized(f32, PhysicalSize<u32>, bool),  // (new width, window size, is window maximized)
-    PositionChanged(PhysicalPosition<i32>, Option<iced_winit::winit::monitor::MonitorHandle>), // (window position, current monitor)
+    WindowResized(f32, PhysicalSize<u32>, bool), // (new width, window size, is window maximized)
+    PositionChanged(
+        PhysicalPosition<i32>,
+        Option<iced_winit::winit::monitor::MonitorHandle>,
+    ), // (window position, current monitor)
+    RequestSaveImage,
+    ReadySaveImage(Result<PathBuf, file_io::Error>),
+    HideSuccessSaveModal,
+    HideFailureSaveModal,
 }

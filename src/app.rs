@@ -5,6 +5,8 @@ mod keyboard_handlers;
 mod replay_handlers;
 mod settings_widget;
 
+use iced_core::Length;
+use iced_core::alignment::Horizontal;
 // Re-exports
 pub use message::{Message, DirectoryEnumResult, DirectoryEnumError};
 pub use settings_widget::{RuntimeSettings, SettingsWidget};
@@ -64,6 +66,7 @@ use crate::build_info::BuildInfo;
 #[cfg(feature = "selection")]
 use crate::selection_manager::SelectionManager;
 use crate::settings::UserSettings;
+use crate::widgets::modal;
 
 use std::sync::mpsc::{Sender, Receiver};
 
@@ -131,6 +134,8 @@ pub struct DataViewer {
     pub last_windowed_position: PhysicalPosition<i32>,  // Tracks position when in windowed mode
     pub position_before_transition: PhysicalPosition<i32>,  // Backup for Windows maximize fix
     pub last_monitor: Option<iced_winit::winit::monitor::MonitorHandle>, // Track position when not in windowed mode with multiple monitors
+    pub show_success_save_modal: bool,
+    pub show_failure_save_modal: Option<String>,
 }
 
 // Implement Deref to expose RuntimeSettings fields directly on DataViewer
@@ -236,6 +241,8 @@ impl DataViewer {
                 height: settings.window_height },
             maximized_size: None,
             last_monitor: None,
+            show_success_save_modal: false,
+            show_failure_save_modal: None,
         }
     }
 
@@ -450,6 +457,56 @@ impl DataViewer {
         }
     }
 
+    pub(crate) fn toggle_success_save_modal(&mut self) {
+        self.show_success_save_modal = !self.show_success_save_modal;
+    }
+
+    pub(crate) fn set_failure_save_modal(&mut self, error_message: Option<String>) {
+        self.show_failure_save_modal = error_message;
+    }
+
+    fn save_result_modal(
+        title: &str,
+        detail: Option<String>,
+        on_dismiss: Message,
+    ) -> container::Container<'_, Message, WinitTheme, Renderer> {
+        let mut col = column![
+            text(title.to_owned()).size(25).font(Font {
+                family: iced_winit::core::font::Family::Name("Roboto"),
+                weight: iced_winit::core::font::Weight::Bold,
+                stretch: iced_winit::core::font::Stretch::Normal,
+                style: iced_winit::core::font::Style::Normal,
+            }),
+        ].spacing(15).align_x(Horizontal::Center).width(Length::Fill);
+
+        if let Some(detail) = detail {
+            col = col.push(
+                text(detail)
+                    .size(12)
+                    .style(|theme: &WinitTheme| {
+                        iced_widget::text::Style {
+                            color: Some(theme.extended_palette().background.weak.color),
+                        }
+                    }),
+            );
+        }
+
+        col = col.push(button(text("OK")).on_press(on_dismiss));
+
+        container(col)
+            .width(300)
+            .padding(20)
+            .style(|theme: &WinitTheme| iced_widget::container::Style {
+                background: Some(theme.extended_palette().background.base.color.into()),
+                text_color: Some(theme.extended_palette().primary.weak.text),
+                border: iced_winit::core::Border {
+                    color: theme.extended_palette().background.strong.color,
+                    width: 1.0,
+                    radius: iced_winit::core::border::Radius::from(8.0),
+                },
+                ..Default::default()
+            })
+    }
 
     pub(crate) fn toggle_slider_type(&mut self) {
         // When toggling from dual to single, reset pane.is_selected to true
@@ -754,7 +811,13 @@ impl iced_winit::runtime::Program for DataViewer {
     fn view(&self) -> Element<'_, Message, WinitTheme, Renderer> {
         let content = ui::build_ui(self);
 
-        if self.settings.is_visible() {
+        if self.show_success_save_modal {
+            let modal_content = Self::save_result_modal("File saved", None, Message::HideSuccessSaveModal);
+            modal::modal(content, modal_content, Message::HideSuccessSaveModal)
+        } else if let Some(ref error_message) = self.show_failure_save_modal {
+            let modal_content = Self::save_result_modal("Error saving file", Some(format!("Message: {error_message}")), Message::HideFailureSaveModal);
+            modal::modal(content, modal_content, Message::HideFailureSaveModal)
+        } else if self.settings.is_visible() {
             let options_content = crate::settings_modal::view_settings_modal(self);
             widgets::modal::modal(content, options_content, Message::HideOptions)
         } else if self.show_about {
