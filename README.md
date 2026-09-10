@@ -123,6 +123,20 @@ Mark images for dataset curation while browsing. Press **S** to mark an image as
 - [Website](https://viewskater.com/)
 - [egui version](https://github.com/ggand0/viewskater-egui)
 
+## Issues moved to the egui version
+
+These issues were opened here and transferred to the egui repository on 2026-09-11. The old links redirect.
+
+| Here | Now | Title |
+|---|---|---|
+| #92 | [viewskater-egui#36](https://github.com/ggand0/viewskater-egui/issues/36) | Image deletion |
+| #86 | [viewskater-egui#37](https://github.com/ggand0/viewskater-egui/issues/37) | Dragging the image outside the app |
+| #78 | [viewskater-egui#38](https://github.com/ggand0/viewskater-egui/issues/38) | Intel Mac support |
+| #73 | [viewskater-egui#39](https://github.com/ggand0/viewskater-egui/issues/39) | Performance drops over NFS with 1.6k images |
+| #40 | [viewskater-egui#40](https://github.com/ggand0/viewskater-egui/issues/40) | Tool window with image properties |
+| #25 | [viewskater-egui#41](https://github.com/ggand0/viewskater-egui/issues/41) | Package manager distribution |
+| #7 | [viewskater-egui#42](https://github.com/ggand0/viewskater-egui/issues/42) | WASM support example |
+
 ## Acknowledgments
 ViewSkater's slider UI was inspired by the open-source project [emulsion](https://github.com/ArturKovacs/emulsion).
 
