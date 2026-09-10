@@ -1,10 +1,12 @@
+## Development has moved to the [egui version](https://github.com/ggand0/viewskater-egui)
+
+The egui version is faster than this iced version. If it is missing a feature you use here, open an issue over there and I'll look into it.
+
 <img src="https://github.com/user-attachments/assets/4c410f1b-1103-4b84-87f1-7278aa3a46f9" alt="Alt text" width="600"/>
 
 # ViewSkater
 ViewSkater is a fast, cross-platform image viewer written in Rust & Iced.
 It aims to alleviate the challenges of exploring and comparing numerous images. Linux, macOS and Windows are currently supported.
-
-> **Note:** This (iced) version is in maintenance mode. Active development is moving to the [egui version](https://github.com/ggand0/viewskater-egui), which offers better performance and a simpler codebase.
 
 ## Features
 - GPU-based image rendering powered by wgpu
@@ -19,7 +21,7 @@ It aims to alleviate the challenges of exploring and comparing numerous images. 
 - **Selection feature** (optional feature): Select and export subsets of images from large datasets
 
 ## Installation
-Download the pre-built binaries from the [releases page](https://github.com/ggand0/viewskater/releases), or build it locally:
+Download the latest builds from the [egui version releases](https://github.com/ggand0/viewskater-egui/releases). Builds of this iced version are on the [releases page](https://github.com/ggand0/viewskater/releases), or build it locally:
 
 ```sh
 cargo run
