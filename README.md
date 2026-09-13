@@ -1,6 +1,6 @@
 ## Development has moved to the [egui version](https://github.com/ggand0/viewskater-egui)
 
-The egui version is faster than this iced version. If it is missing a feature you use here, open an issue over there and I'll look into it.
+This repo is in maintenance mode and new features will be added to the egui version. If you rely on something in the iced version that it lacks, please open an issue at: https://github.com/ggand0/viewskater-egui/issues
 
 <img src="https://github.com/user-attachments/assets/4c410f1b-1103-4b84-87f1-7278aa3a46f9" alt="Alt text" width="600"/>
 
