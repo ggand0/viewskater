@@ -12,6 +12,7 @@ This is the egui port of the original [iced version](https://github.com/ggand0/v
 - Continuous image rendering via key presses and slider
 - Dual pane view for side-by-side image comparison
 - Scroll-to-zoom centered on cursor, click-drag to pan
+- Rotate the current image view left or right
 - Fullscreen mode with cursor proximity UI reveal
 - Supports jpg, jxl, png, bmp, webp, gif, tiff, qoi, tga
 - Opens camera RAW files (arw, cr2, cr3, dng, nef, raf, rw2 and more) by showing the JPEG the camera stored inside them
@@ -73,6 +74,7 @@ On macOS, use **Cmd** instead of **Ctrl**.
 | Scroll wheel | Zoom (centered on cursor) |
 | Click + drag | Pan |
 | Double-click | Reset zoom and pan |
+| R / Shift+R | Rotate right / left |
 | I | Show or hide the metadata panel |
 | F11 | Toggle fullscreen |
 | Escape | Exit fullscreen |

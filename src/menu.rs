@@ -279,6 +279,19 @@ pub(crate) fn show_menu_bar(
                 });
                 ui.separator();
                 hover_row(ui, theme, ml, mw, |ui| {
+                    if ui.button("Rotate Left  Shift+R").clicked() {
+                        action = MenuAction::RotateLeft;
+                        ui.close_menu();
+                    }
+                });
+                hover_row(ui, theme, ml, mw, |ui| {
+                    if ui.button("Rotate Right  R").clicked() {
+                        action = MenuAction::RotateRight;
+                        ui.close_menu();
+                    }
+                });
+                ui.separator();
+                hover_row(ui, theme, ml, mw, |ui| {
                     if ui.button("Reset Zoom/Pan").clicked() {
                         action = MenuAction::ResetZoom;
                         ui.close_menu();
@@ -617,6 +630,8 @@ pub(crate) enum MenuAction {
     SetSinglePane,
     SetDualPane,
     SetDualPaneIndependent,
+    RotateLeft,
+    RotateRight,
     ResetZoom,
     ToggleFullscreen,
     ShowAbout,
