@@ -22,6 +22,46 @@ fn accept(_: &Path) -> Result<(), String> {
 }
 
 #[test]
+fn rotation_cycles_in_both_directions() {
+    assert_eq!(Rotation::None.clockwise(), Rotation::Clockwise90);
+    assert_eq!(Rotation::Clockwise270.clockwise(), Rotation::None);
+    assert_eq!(Rotation::None.counter_clockwise(), Rotation::Clockwise270);
+    assert_eq!(Rotation::Clockwise90.counter_clockwise(), Rotation::None);
+}
+
+#[test]
+fn quarter_turn_swaps_the_display_size() {
+    let size = egui::vec2(400.0, 200.0);
+    assert_eq!(Rotation::None.size(size), size);
+    assert_eq!(Rotation::Clockwise90.size(size), egui::vec2(200.0, 400.0));
+    assert_eq!(Rotation::Clockwise180.size(size), size);
+    assert_eq!(Rotation::Clockwise270.size(size), egui::vec2(200.0, 400.0));
+}
+
+#[test]
+fn clockwise_turn_moves_the_top_left_corner_to_the_top_right() {
+    assert_eq!(
+        Rotation::Clockwise90.rotate_vec(egui::vec2(-1.0, -1.0)),
+        egui::vec2(1.0, -1.0)
+    );
+    assert_eq!(
+        Rotation::Clockwise270.rotate_vec(egui::vec2(-1.0, -1.0)),
+        egui::vec2(-1.0, 1.0)
+    );
+}
+
+#[test]
+fn changing_image_resets_rotation() {
+    let ctx = egui::Context::default();
+    let mut p = pane_with(&ctx, 3, 0);
+    p.rotation = Rotation::Clockwise90;
+
+    p.jump_to(1, &ctx);
+
+    assert_eq!(p.rotation, Rotation::None);
+}
+
+#[test]
 fn empty_pane_removes_nothing() {
     let ctx = egui::Context::default();
     let mut p = pane(&ctx);

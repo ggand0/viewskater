@@ -19,6 +19,54 @@ const IMAGE_DOUBLE_CLICK_MAX_DELAY: f64 = 0.30;
 const IMAGE_DOUBLE_CLICK_MAX_DISTANCE: f32 = 8.0;
 const DOUBLE_CLICK_ZOOM_ANIMATION_DURATION: f64 = 0.12;
 
+/// 当前图片的手动旋转方向，仅影响显示。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Rotation {
+    #[default]
+    None,
+    Clockwise90,
+    Clockwise180,
+    Clockwise270,
+}
+
+impl Rotation {
+    fn clockwise(self) -> Self {
+        match self {
+            Self::None => Self::Clockwise90,
+            Self::Clockwise90 => Self::Clockwise180,
+            Self::Clockwise180 => Self::Clockwise270,
+            Self::Clockwise270 => Self::None,
+        }
+    }
+
+    fn counter_clockwise(self) -> Self {
+        match self {
+            Self::None => Self::Clockwise270,
+            Self::Clockwise90 => Self::None,
+            Self::Clockwise180 => Self::Clockwise90,
+            Self::Clockwise270 => Self::Clockwise180,
+        }
+    }
+
+    /// 旋转后的显示尺寸；90° / 270° 时宽高互换。
+    fn size(self, size: egui::Vec2) -> egui::Vec2 {
+        match self {
+            Self::None | Self::Clockwise180 => size,
+            Self::Clockwise90 | Self::Clockwise270 => egui::vec2(size.y, size.x),
+        }
+    }
+
+    /// 把未旋转图片上的偏移量映射到旋转后的屏幕坐标。
+    fn rotate_vec(self, v: egui::Vec2) -> egui::Vec2 {
+        match self {
+            Self::None => v,
+            Self::Clockwise90 => egui::vec2(-v.y, v.x),
+            Self::Clockwise180 => egui::vec2(-v.x, -v.y),
+            Self::Clockwise270 => egui::vec2(v.y, -v.x),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ImageClick {
     time: f64,
@@ -32,6 +80,7 @@ pub(crate) struct Pane {
     pub(crate) image_paths: Vec<PathBuf>,
     pub(crate) current_index: usize,
     pub(crate) current_texture: Option<egui::TextureHandle>,
+    rotation: Rotation,
     /// File facts and EXIF of the image on screen, from the same decode
     /// that produced `current_texture`. Set when the image changes, not
     /// when an animation frame swaps the texture. Present without a
@@ -76,6 +125,7 @@ impl Pane {
             image_paths: Vec::new(),
             current_index: 0,
             current_texture: None,
+            rotation: Rotation::None,
             current_record: None,
             animation: None,
             zoom: 1.0,
@@ -102,6 +152,7 @@ impl Pane {
         self.image_paths.clear();
         self.current_index = 0;
         self.current_texture = None;
+        self.rotation = Rotation::None;
         self.current_record = None;
         self.animation = None;
         self.zoom = 1.0;
@@ -142,6 +193,7 @@ impl Pane {
 
         self.zoom = 1.0;
         self.pan = egui::Vec2::ZERO;
+        self.rotation = Rotation::None;
         self.decode_cache.clear();
         self.animation = None;
 
@@ -220,6 +272,18 @@ impl Pane {
         self.pan = egui::Vec2::ZERO;
     }
 
+    /// 顺时针或逆时针旋转当前显示，不改动文件。
+    pub(crate) fn rotate(&mut self, clockwise: bool) {
+        if self.current_texture.is_none() {
+            return;
+        }
+        self.rotation = if clockwise {
+            self.rotation.clockwise()
+        } else {
+            self.rotation.counter_clockwise()
+        };
+    }
+
     /// Try to navigate by `delta` images. Returns true if the display advanced.
     pub(crate) fn navigate(&mut self, delta: isize, ctx: &egui::Context) -> bool {
         if self.image_paths.is_empty() {
@@ -237,6 +301,7 @@ impl Pane {
             .and_then(|cache| cache.decoded_for(new_index))
         {
             self.current_index = new_index;
+            self.rotation = Rotation::None;
 
             if let Some(cache) = &mut self.cache {
                 if delta > 0 {
@@ -273,6 +338,7 @@ impl Pane {
         }
 
         self.current_index = index;
+        self.rotation = Rotation::None;
 
         if self.reset_zoom_pan_on_navigation {
             self.reset_view();
@@ -429,6 +495,7 @@ impl Pane {
         // The current image itself left. Show the file that took its
         // index, or the last file when the removed one was last.
         self.current_index = index.min(self.image_paths.len() - 1);
+        self.rotation = Rotation::None;
         if self.reset_zoom_pan_on_navigation {
             self.reset_view();
         }
@@ -449,6 +516,7 @@ impl Pane {
             return false;
         }
         self.current_index = clamped;
+        self.rotation = Rotation::None;
 
         if self.reset_zoom_pan_on_navigation {
             self.reset_view();
@@ -692,7 +760,8 @@ impl Pane {
         self.advance_view_animation(now, ui.ctx());
 
         let response = ui.allocate_rect(available, egui::Sense::click_and_drag());
-        let scale = (available.width() / tex_size.x).min(available.height() / tex_size.y);
+        let shown_size = self.rotation.size(tex_size);
+        let scale = (available.width() / shown_size.x).min(available.height() / shown_size.y);
         if response.clicked_by(egui::PointerButton::Primary) {
             self.image_clicked = true;
         }
@@ -739,15 +808,34 @@ impl Pane {
         }
 
         // 4. Draw with this frame's final zoom/pan (zero-frame-delay).
-        let base_size = tex_size * scale;
-        let display_size = base_size * self.zoom;
         let center = available.center() + self.pan;
-        let display_rect = egui::Rect::from_center_size(center, display_size);
+        let half = tex_size * (scale * self.zoom * 0.5);
+        let corners = [
+            egui::vec2(-half.x, -half.y),
+            egui::vec2(half.x, -half.y),
+            egui::vec2(half.x, half.y),
+            egui::vec2(-half.x, half.y),
+        ];
+        let uvs = [
+            egui::pos2(0.0, 0.0),
+            egui::pos2(1.0, 0.0),
+            egui::pos2(1.0, 1.0),
+            egui::pos2(0.0, 1.0),
+        ];
 
         // Clip to the pane rect so a zoomed image stays inside its own pane.
         let painter = ui.painter_at(available);
-        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-        painter.image(tex.id(), display_rect, uv, egui::Color32::WHITE);
+        let mut mesh = egui::Mesh::with_texture(tex.id());
+        for (corner, uv) in corners.into_iter().zip(uvs) {
+            mesh.vertices.push(egui::epaint::Vertex {
+                pos: center + self.rotation.rotate_vec(corner),
+                uv,
+                color: egui::Color32::WHITE,
+            });
+        }
+        mesh.add_triangle(0, 1, 2);
+        mesh.add_triangle(0, 2, 3);
+        painter.add(egui::Shape::mesh(mesh));
 
         self.zoom != old_zoom || self.pan != old_pan
     }

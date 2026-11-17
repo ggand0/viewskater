@@ -279,6 +279,19 @@ pub(crate) fn show_menu_bar(
                 });
                 ui.separator();
                 hover_row(ui, theme, ml, mw, |ui| {
+                    if ui.button("Rotate Left  Shift+R").clicked() {
+                        action = MenuAction::RotateLeft;
+                        ui.close_menu();
+                    }
+                });
+                hover_row(ui, theme, ml, mw, |ui| {
+                    if ui.button("Rotate Right  R").clicked() {
+                        action = MenuAction::RotateRight;
+                        ui.close_menu();
+                    }
+                });
+                ui.separator();
+                hover_row(ui, theme, ml, mw, |ui| {
                     if ui.button("Reset Zoom/Pan").clicked() {
                         action = MenuAction::ResetZoom;
                         ui.close_menu();
@@ -381,16 +394,23 @@ pub(crate) fn show_menu_bar(
     (action, menu_is_open)
 }
 
-/// Paint the footer. Returns the index of the pane whose Move to Trash
-/// button was clicked this frame, if any.
+/// The footer action clicked this frame, for the pane at the given index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FooterAction {
+    RotateLeft(usize),
+    RotateRight(usize),
+    Trash(usize),
+}
+
+/// Paint the footer. Returns the action clicked this frame, if any.
 pub(crate) fn show_footer(
     ctx: &egui::Context,
     panes: &[Pane],
     divider_fraction: f32,
     show_buttons: bool,
     theme: &UiTheme,
-) -> Option<usize> {
-    let mut trash_clicked = None;
+) -> Option<FooterAction> {
+    let mut action = None;
     egui::TopBottomPanel::bottom("footer").show(ctx, |ui| {
         if panes.len() >= 2 {
             let available = ui.available_rect_before_wrap();
@@ -410,13 +430,11 @@ pub(crate) fn show_footer(
             );
 
             ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left_rect), |ui| {
-                if paint_pane_footer(ui, &panes[0], show_buttons, theme) {
-                    trash_clicked = Some(0);
-                }
+                action = paint_pane_footer(ui, &panes[0], 0, show_buttons, theme);
             });
             ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right_rect), |ui| {
-                if paint_pane_footer(ui, &panes[1], show_buttons, theme) {
-                    trash_clicked = Some(1);
+                if let Some(clicked) = paint_pane_footer(ui, &panes[1], 1, show_buttons, theme) {
+                    action = Some(clicked);
                 }
             });
 
@@ -430,23 +448,27 @@ pub(crate) fn show_footer(
         } else {
             ui.horizontal(|ui| {
                 if let Some(pane) = panes.first() {
-                    if paint_pane_footer(ui, pane, show_buttons, theme) {
-                        trash_clicked = Some(0);
-                    }
+                    action = paint_pane_footer(ui, pane, 0, show_buttons, theme);
                 }
             });
         }
     });
-    trash_clicked
+    action
 }
 
-/// Width reserved for the trash button and the gap before the counter.
-const FOOTER_BUTTON_W: f32 = 26.0;
+/// Width reserved for the rotate-left, rotate-right and trash buttons,
+/// including the gaps before the counter and between buttons.
+const FOOTER_BUTTONS_W: f32 = 88.0;
 
-/// Paint one pane's footer. Returns true if its Move to Trash button was
-/// clicked.
-fn paint_pane_footer(ui: &mut egui::Ui, pane: &Pane, show_buttons: bool, theme: &UiTheme) -> bool {
-    let mut trash_clicked = false;
+/// Paint one pane's footer. Returns the action clicked in this pane, if any.
+fn paint_pane_footer(
+    ui: &mut egui::Ui,
+    pane: &Pane,
+    pane_idx: usize,
+    show_buttons: bool,
+    theme: &UiTheme,
+) -> Option<FooterAction> {
+    let mut action = None;
     ui.horizontal(|ui| {
         let Some(path) = pane.image_paths.get(pane.current_index) else {
             return;
@@ -499,7 +521,7 @@ fn paint_pane_footer(ui: &mut egui::Ui, pane: &Pane, show_buttons: bool, theme: 
         let filename_w = measure(ui, &filename);
         let res_w = resolution.as_ref().map_or(0.0, |r| measure(ui, r) + sep_w);
         let size_w = file_size.as_ref().map_or(0.0, |s| measure(ui, s) + sep_w);
-        let button_w = if show_buttons { FOOTER_BUTTON_W } else { 0.0 };
+        let button_w = if show_buttons { FOOTER_BUTTONS_W } else { 0.0 };
 
         let remaining = total - index_w - button_w - margin;
         let show_filename = remaining >= filename_w;
@@ -529,9 +551,10 @@ fn paint_pane_footer(ui: &mut egui::Ui, pane: &Pane, show_buttons: bool, theme: 
             );
         }
 
-        // Right end: the counter stays in the corner, the trash button sits
-        // to its left (the iced footer put the copy buttons there too).
-        // The counter is shortened before the button is dropped.
+        // Right end: the counter stays in the corner, then the trash and
+        // rotate buttons sit to its left (the iced footer put the copy
+        // buttons there too). The counter is shortened before the buttons
+        // are dropped.
         if !pane.image_paths.is_empty() {
             let used = ui.min_rect().width();
             let space = total - used - margin;
@@ -562,39 +585,101 @@ fn paint_pane_footer(ui: &mut egui::Ui, pane: &Pane, show_buttons: bool, theme: 
                     } else {
                         return;
                     };
-                    if show_buttons && space - counter_w >= FOOTER_BUTTON_W {
+                    if show_buttons && space - counter_w >= FOOTER_BUTTONS_W {
                         ui.add_space(4.0);
                         if trash_button(ui, theme).clicked() {
-                            trash_clicked = true;
+                            action = Some(FooterAction::Trash(pane_idx));
+                        }
+                        if rotate_button(ui, theme, true).clicked() {
+                            action = Some(FooterAction::RotateRight(pane_idx));
+                        }
+                        if rotate_button(ui, theme, false).clicked() {
+                            action = Some(FooterAction::RotateLeft(pane_idx));
                         }
                     }
                 },
             );
         }
     });
-    trash_clicked
+    action
 }
 
 /// The footer's Move to Trash button: a wastebasket glyph from egui's
 /// bundled emoji font, dim at rest and accent on hover like every other
 /// control.
 pub(crate) fn trash_button(ui: &mut egui::Ui, theme: &UiTheme) -> egui::Response {
-    let size = egui::vec2(20.0, 18.0);
+    let shortcut = if cfg!(target_os = "macos") { "Del / Cmd+Backspace" } else { "Del" };
+    footer_icon_button(
+        ui,
+        theme,
+        "🗑",
+        egui::FontId::proportional(15.0),
+        egui::vec2(20.0, 18.0),
+        0.0,
+        format!("Move to Trash ({shortcut})"),
+    )
+}
+
+/// A rotate button; `clockwise` picks the glyph and its shortcut hint.
+fn rotate_button(ui: &mut egui::Ui, theme: &UiTheme, clockwise: bool) -> egui::Response {
+    // The open-circle arrows open at the top. Rotating them 180 degrees puts
+    // the opening at the bottom without changing their direction.
+    let (glyph, shortcut) = if clockwise {
+        ("↻", "R")
+    } else {
+        ("↺", "Shift+R")
+    };
+    footer_icon_button(
+        ui,
+        theme,
+        glyph,
+        egui::FontId::proportional(15.0),
+        egui::vec2(20.0, 18.0),
+        std::f32::consts::PI,
+        format!(
+            "Rotate {} ({shortcut})",
+            if clockwise { "right" } else { "left" }
+        ),
+    )
+}
+
+fn footer_icon_button(
+    ui: &mut egui::Ui,
+    theme: &UiTheme,
+    glyph: &str,
+    font: egui::FontId,
+    size: egui::Vec2,
+    angle: f32,
+    tooltip: String,
+) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let color = if response.hovered() {
         theme.accent
     } else {
         egui::Color32::from_gray(160)
     };
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        "🗑",
-        egui::FontId::proportional(15.0),
-        color,
-    );
-    let shortcut = if cfg!(target_os = "macos") { "Del / Cmd+Backspace" } else { "Del" };
-    response.on_hover_text(format!("Move to Trash ({shortcut})"))
+    if angle == 0.0 {
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            glyph,
+            font,
+            color,
+        );
+    } else {
+        let galley = ui.fonts(|f| f.layout_no_wrap(glyph.to_owned(), font, color));
+        let pivot = rect.center() + galley.size() * 0.5;
+        ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
+            pos: pivot,
+            galley,
+            underline: egui::Stroke::NONE,
+            fallback_color: color,
+            override_text_color: Some(color),
+            opacity_factor: 1.0,
+            angle,
+        }));
+    }
+    response.on_hover_text(tooltip)
 }
 
 pub(crate) fn format_file_size(bytes: u64) -> String {
@@ -617,6 +702,8 @@ pub(crate) enum MenuAction {
     SetSinglePane,
     SetDualPane,
     SetDualPaneIndependent,
+    RotateLeft,
+    RotateRight,
     ResetZoom,
     ToggleFullscreen,
     ShowAbout,

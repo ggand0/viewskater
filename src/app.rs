@@ -929,15 +929,25 @@ impl eframe::App for App {
 
         // Footer — in fullscreen, revealed when cursor near bottom edge
         if self.settings.show_footer && (!is_fullscreen || cursor_near_bottom) {
-            let clicked = menu::show_footer(
+            let action = menu::show_footer(
                 ctx,
                 &self.panes,
                 self.divider_fraction,
                 self.settings.show_footer_buttons,
                 &self.theme,
             );
-            if let Some(pane_idx) = clicked {
-                self.trash_pane_image(pane_idx, ctx);
+            if let Some(action) = action {
+                match action {
+                    menu::FooterAction::RotateLeft(pane_idx) => {
+                        self.rotate_pane(pane_idx, false)
+                    }
+                    menu::FooterAction::RotateRight(pane_idx) => {
+                        self.rotate_pane(pane_idx, true)
+                    }
+                    menu::FooterAction::Trash(pane_idx) => {
+                        self.trash_pane_image(pane_idx, ctx)
+                    }
+                }
             }
         }
 

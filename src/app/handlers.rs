@@ -97,6 +97,23 @@ impl App {
         }
     }
 
+    /// 旋转当前激活的图片；独立双栏时只旋转选中的栏。
+    fn rotate_panes(&mut self, clockwise: bool) {
+        let use_selection = self.is_independent();
+        for pane in &mut self.panes {
+            if !use_selection || pane.selected {
+                pane.rotate(clockwise);
+            }
+        }
+    }
+
+    /// 底部按钮栏的旋转只作用于按钮所在的那一栏。
+    pub(super) fn rotate_pane(&mut self, pane_idx: usize, clockwise: bool) {
+        if let Some(pane) = self.panes.get_mut(pane_idx) {
+            pane.rotate(clockwise);
+        }
+    }
+
     pub(super) fn handle_menu_action(&mut self, action: MenuAction, ctx: &egui::Context) {
         match action {
             MenuAction::None => {}
@@ -113,6 +130,8 @@ impl App {
                 self.set_dual_pane(ctx);
                 self.dual_pane_mode = DualPaneMode::Independent;
             }
+            MenuAction::RotateLeft => self.rotate_panes(false),
+            MenuAction::RotateRight => self.rotate_panes(true),
             MenuAction::ResetZoom => {
                 for pane in &mut self.panes {
                     pane.zoom = 1.0;
@@ -378,6 +397,15 @@ impl App {
         let is_active = |p: &Pane| !use_selection || p.selected;
 
         if self.show_settings || self.show_about || self.pending_permanent_delete.is_some() {
+            return;
+        }
+
+        // R 顺时针旋转，Shift+R 逆时针旋转。
+        let rotate = ctx.input(|i| {
+            (i.key_pressed(egui::Key::R) && !i.modifiers.command).then_some(!i.modifiers.shift)
+        });
+        if let Some(clockwise) = rotate {
+            self.rotate_panes(clockwise);
             return;
         }
 
