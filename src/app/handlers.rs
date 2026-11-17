@@ -107,6 +107,13 @@ impl App {
         }
     }
 
+    /// 底部按钮栏的旋转只作用于按钮所在的那一栏。
+    pub(super) fn rotate_pane(&mut self, pane_idx: usize, clockwise: bool) {
+        if let Some(pane) = self.panes.get_mut(pane_idx) {
+            pane.rotate(clockwise);
+        }
+    }
+
     pub(super) fn handle_menu_action(&mut self, action: MenuAction, ctx: &egui::Context) {
         match action {
             MenuAction::None => {}

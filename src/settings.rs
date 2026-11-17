@@ -350,7 +350,7 @@ pub struct ImageSortOrder {
 #[serde(default)]
 pub struct AppSettings {
     pub show_footer: bool,
-    /// Action buttons at the right end of the footer (Move to Trash).
+    /// Action buttons at the right end of the footer (rotate and Move to Trash).
     /// Off for people who use the viewer as a plain reader.
     pub show_footer_buttons: bool,
     pub show_fps: bool,
